@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>图片分类工具</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: #1a1a2e; color: #fff; height: 100vh; display: flex; flex-direction: column; }
+
+    .toolbar { background: #16213e; padding: 12px 20px; display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
+    .toolbar h1 { font-size: 18px; white-space: nowrap; }
+    .toolbar .stats { color: #aaa; font-size: 13px; }
+    .toolbar button { padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; }
+    .btn-primary { background: #0f3460; color: #fff; }
+    .btn-primary:hover { background: #1a5276; }
+    .btn-success { background: #27ae60; color: #fff; }
+    .btn-success:hover { background: #2ecc71; }
+    .btn-danger { background: #c0392b; color: #fff; }
+    .btn-danger:hover { background: #e74c3c; }
+
+    .main { display: flex; flex: 1; overflow: hidden; }
+
+    /* 左侧：当前图片预览 */
+    .preview-panel { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; }
+    .preview-img { max-width: 100%; max-height: 70vh; object-fit: contain; background: #fff; border-radius: 8px; }
+    .preview-name { margin-top: 10px; color: #aaa; font-size: 13px; word-break: break-all; }
+    .preview-nav { display: flex; gap: 10px; margin-top: 15px; }
+    .preview-nav button { padding: 8px 20px; }
+    .preview-counter { color: #888; font-size: 13px; margin-top: 5px; }
+
+    /* 右侧：标签面板 */
+    .tag-panel { width: 320px; background: #16213e; padding: 15px; overflow-y: auto; border-left: 1px solid #0f3460; }
+    .tag-panel h3 { margin-bottom: 10px; font-size: 15px; }
+
+    .category-list { margin-bottom: 15px; }
+    .category-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+    .category-item:hover { background: #0f3460; }
+    .category-item.active { background: #0f3460; border: 1px solid #3498db; }
+    .category-item .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+    .category-item .label { font-size: 13px; flex: 1; }
+    .category-item .count { color: #666; font-size: 12px; }
+
+    .custom-tag { display: flex; gap: 5px; margin-top: 10px; }
+    .custom-tag input { flex: 1; padding: 6px 10px; border: none; border-radius: 4px; background: #0f3460; color: #fff; font-size: 13px; }
+    .custom-tag button { padding: 6px 12px; }
+
+    .tagged-list { margin-top: 15px; border-top: 1px solid #0f3460; padding-top: 10px; }
+    .tagged-list h4 { font-size: 13px; color: #aaa; margin-bottom: 8px; }
+    .tagged-item { display: flex; align-items: center; gap: 6px; padding: 4px 0; font-size: 12px; color: #ccc; }
+    .tagged-item .remove { color: #e74c3c; cursor: pointer; margin-left: auto; }
+
+    /* 底部：缩略图网格 */
+    .thumb-bar { height: 100px; background: #0f3460; overflow-x: auto; display: flex; gap: 4px; padding: 8px; }
+    .thumb-bar img { height: 80px; width: 80px; object-fit: contain; background: #fff; border-radius: 4px; cursor: pointer; opacity: 0.5; flex-shrink: 0; }
+    .thumb-bar img.active { opacity: 1; border: 2px solid #3498db; }
+    .thumb-bar img.tagged { border: 2px solid #27ae60; opacity: 0.8; }
+
+    .progress-bar { height: 3px; background: #333; }
+    .progress-bar .fill { height: 100%; background: #3498db; transition: width 0.3s; }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <h1>图片分类工具</h1>
+    <span class="stats">已分类: <span id="taggedCount">0</span> / <span id="totalCount">0</span></span>
+    <button class="btn-primary" onclick="prevImage()">上一张 (A)</button>
+    <button class="btn-primary" onclick="nextImage()">下一张 (D)</button>
+    <button class="btn-success" onclick="exportCatalog()">导出分类结果</button>
+    <button class="btn-danger" onclick="clearAllTags()">清空所有标签</button>
+    <span style="color:#666;font-size:12px;">快捷键: A=上一张 D=下一张 1-6=打标签</span>
+  </div>
+
+  <div class="progress-bar"><div class="fill" id="progress"></div></div>
+
+  <div class="main">
+    <div class="preview-panel">
+      <img class="preview-img" id="previewImg" src="" alt="">
+      <div class="preview-name" id="previewName"></div>
+      <div class="preview-nav">
+        <button class="btn-primary" onclick="prevImage()">◀ 上一张</button>
+        <button class="btn-primary" onclick="nextImage()">下一张 ▶</button>
+      </div>
+      <div class="preview-counter" id="previewCounter"></div>
+    </div>
+
+    <div class="tag-panel">
+      <h3>分类标签 (点击或按数字键)</h3>
+      <div class="category-list" id="categoryList"></div>
+
+      <div class="custom-tag">
+        <input type="text" id="customTagInput" placeholder="自定义标签..." onkeydown="if(event.key==='Enter')addCustomTag()">
+        <button class="btn-primary" onclick="addCustomTag()">添加</button>
+      </div>
+
+      <div class="tagged-list">
+        <h4>当前图片标签</h4>
+        <div id="currentTags"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="thumb-bar" id="thumbBar"></div>
+
+  <script>
+    // 预定义分类
+    const CATEGORIES = [
+      { id: 'electromagnetism', name: '电磁学', color: '#e74c3c', keys: ['1'] },
+      { id: 'optics', name: '光学', color: '#f39c12', keys: ['2'] },
+      { id: 'mechanics', name: '力学', color: '#27ae60', keys: ['3'] },
+      { id: 'thermal', name: '热学', color: '#3498db', keys: ['4'] },
+      { id: 'ui-element', name: 'UI元素', color: '#9b59b6', keys: ['5'] },
+      { id: 'other', name: '其他', color: '#95a5a6', keys: ['6'] },
+    ];
+
+    let allImages = [];
+    let currentIndex = 0;
+    let catalog = {}; // { filename: [category_id, ...] }
+
+    // 从 manifest 加载图片列表
+    async function init() {
+      try {
+        const resp = await fetch('/icons-manifest.json');
+        allImages = await resp.json();
+        document.getElementById('totalCount').textContent = allImages.length;
+
+        // 尝试加载已有的分类
+        try {
+          const saved = await fetch('/image-catalog.json');
+          catalog = await saved.json();
+        } catch(e) { catalog = {}; }
+
+        renderCategories();
+        renderThumbnails();
+        showImage(0);
+      } catch(e) {
+        document.body.innerHTML = '<p style="padding:40px;color:red;">加载失败: ' + e.message + '</p>';
+      }
+    }
+
+    function renderCategories() {
+      const list = document.getElementById('categoryList');
+      list.innerHTML = CATEGORIES.map(cat => {
+        const count = Object.values(catalog).filter(tags => tags.includes(cat.id)).length;
+        return `
+          <div class="category-item" onclick="toggleCategory('${cat.id}')" id="cat-${cat.id}">
+            <div class="dot" style="background:${cat.color}"></div>
+            <span class="label">${cat.name}</span>
+            <span class="count">${count}</span>
+            <span style="color:#555;font-size:11px;">[${cat.keys[0]}]</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function showImage(index) {
+      if (index < 0 || index >= allImages.length) return;
+      currentIndex = index;
+      const path = allImages[index];
+      const name = path.split('/').pop();
+
+      document.getElementById('previewImg').src = path;
+      document.getElementById('previewName').textContent = name;
+      document.getElementById('previewCounter').textContent = `${index + 1} / ${allImages.length}`;
+      document.getElementById('progress').style.width = ((index + 1) / allImages.length * 100) + '%';
+
+      // 更新缩略图高亮
+      document.querySelectorAll('.thumb-bar img').forEach((img, i) => {
+        img.classList.toggle('active', i === index);
+      });
+
+      // 滚动到当前缩略图
+      const thumb = document.querySelector(`.thumb-bar img[data-index="${index}"]`);
+      if (thumb) thumb.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+
+      renderCurrentTags();
+      updateTaggedCount();
+    }
+
+    function renderCurrentTags() {
+      const name = allImages[currentIndex].split('/').pop();
+      const tags = catalog[name] || [];
+      const container = document.getElementById('currentTags');
+      if (tags.length === 0) {
+        container.innerHTML = '<div style="color:#666;font-size:12px;">未分类</div>';
+        return;
+      }
+      container.innerHTML = tags.map(tagId => {
+        const cat = CATEGORIES.find(c => c.id === tagId);
+        const label = cat ? cat.name : tagId;
+        const color = cat ? cat.color : '#95a5a6';
+        return `<div class="tagged-item"><div class="dot" style="background:${color};width:8px;height:8px;"></div>${label}<span class="remove" onclick="removeTag('${tagId}')">✕</span></div>`;
+      }).join('');
+
+      // 高亮已选分类
+      CATEGORIES.forEach(cat => {
+        const el = document.getElementById('cat-' + cat.id);
+        if (el) el.classList.toggle('active', tags.includes(cat.id));
+      });
+    }
+
+    function toggleCategory(catId) {
+      const name = allImages[currentIndex].split('/').pop();
+      if (!catalog[name]) catalog[name] = [];
+      const idx = catalog[name].indexOf(catId);
+      if (idx === -1) {
+        catalog[name].push(catId);
+      } else {
+        catalog[name].splice(idx, 1);
+      }
+      if (catalog[name].length === 0) delete catalog[name];
+      renderCategories();
+      renderCurrentTags();
+      updateTaggedCount();
+      autoSave();
+    }
+
+    function removeTag(tagId) {
+      const name = allImages[currentIndex].split('/').pop();
+      if (!catalog[name]) return;
+      catalog[name] = catalog[name].filter(t => t !== tagId);
+      if (catalog[name].length === 0) delete catalog[name];
+      renderCategories();
+      renderCurrentTags();
+      updateTaggedCount();
+      autoSave();
+    }
+
+    function addCustomTag() {
+      const input = document.getElementById('customTagInput');
+      const tag = input.value.trim();
+      if (!tag) return;
+      const name = allImages[currentIndex].split('/').pop();
+      if (!catalog[name]) catalog[name] = [];
+      if (!catalog[name].includes(tag)) catalog[name].push(tag);
+      input.value = '';
+      renderCurrentTags();
+      updateTaggedCount();
+      autoSave();
+    }
+
+    function renderThumbnails() {
+      const bar = document.getElementById('thumbBar');
+      bar.innerHTML = allImages.map((path, i) => {
+        const name = path.split('/').pop();
+        const isTagged = catalog[name] && catalog[name].length > 0;
+        return `<img data-index="${i}" src="${path}" onclick="showImage(${i})" class="${isTagged ? 'tagged' : ''}">`;
+      }).join('');
+    }
+
+    function updateTaggedCount() {
+      const count = Object.keys(catalog).length;
+      document.getElementById('taggedCount').textContent = count;
+    }
+
+    function prevImage() { showImage(currentIndex - 1); }
+    function nextImage() { showImage(currentIndex + 1); }
+
+    // 自动保存到 localStorage
+    let saveTimer;
+    function autoSave() {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        localStorage.setItem('imageCatalog', JSON.stringify(catalog));
+      }, 500);
+    }
+
+    function exportCatalog() {
+      // 生成完整清单（包含未分类的）
+      const fullCatalog = {};
+      allImages.forEach(path => {
+        const name = path.split('/').pop();
+        fullCatalog[name] = catalog[name] || [];
+      });
+      const blob = new Blob([JSON.stringify(fullCatalog, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'image-catalog.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function clearAllTags() {
+      if (!confirm('确定清空所有标签？')) return;
+      catalog = {};
+      localStorage.removeItem('imageCatalog');
+      renderCategories();
+      renderThumbnails();
+      renderCurrentTags();
+      updateTaggedCount();
+    }
+
+    // 键盘快捷键
+    document.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT') return;
+      if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') prevImage();
+      if (e.key === 'd' || e.key === 'D' || e.key === 'ArrowRight') nextImage();
+      const num = parseInt(e.key);
+      if (num >= 1 && num <= CATEGORIES.length) {
+        toggleCategory(CATEGORIES[num - 1].id);
+      }
+    });
+
+    init();
+  </script>
+</body>
+</html>

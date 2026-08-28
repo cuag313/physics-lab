@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>导出分类结果</title>
+  <style>
+    body { font-family: Arial; background: #1a1a2e; color: #fff; padding: 40px; text-align: center; }
+    h1 { margin-bottom: 20px; }
+    .info { color: #aaa; margin-bottom: 20px; }
+    button { padding: 12px 24px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; margin: 10px; }
+    .btn-export { background: #27ae60; color: #fff; }
+    .btn-export:hover { background: #2ecc71; }
+    .btn-view { background: #3498db; color: #fff; }
+    .result { margin-top: 30px; text-align: left; background: #16213e; padding: 20px; border-radius: 8px; max-height: 400px; overflow-y: auto; display: none; white-space: pre-wrap; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>导出分类结果</h1>
+  <p class="info">从浏览器 localStorage 读取分类数据</p>
+  <button class="btn-view" onclick="viewData()">查看分类数据</button>
+  <button class="btn-export" onclick="exportData()">导出为 JSON 文件</button>
+  <div class="result" id="result"></div>
+
+  <script>
+    function getCatalog() {
+      const data = localStorage.getItem('imageCatalog');
+      return data ? JSON.parse(data) : {};
+    }
+
+    function viewData() {
+      const catalog = getCatalog();
+      const total = Object.keys(catalog).length;
+      const stats = {};
+      Object.values(catalog).forEach(tags => {
+        tags.forEach(t => { stats[t] = (stats[t] || 0) + 1; });
+      });
+      const result = document.getElementById('result');
+      result.style.display = 'block';
+      result.textContent = `已分类图片: ${total} 张\n\n分类统计:\n${Object.entries(stats).map(([k,v]) => `  ${k}: ${v} 张`).join('\n')}\n\n完整数据:\n${JSON.stringify(catalog, null, 2)}`;
+    }
+
+    function exportData() {
+      const catalog = getCatalog();
+      if (Object.keys(catalog).length === 0) {
+        alert('没有找到分类数据！请先在 categorize.html 中完成分类。');
+        return;
+      }
+      const blob = new Blob([JSON.stringify(catalog, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'image-catalog.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      alert('已导出 image-catalog.json');
+    }
+  </script>
+</body>
+</html>

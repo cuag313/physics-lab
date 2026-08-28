@@ -1,0 +1,36 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Nested node_modules in public assets
+public/**/node_modules
+
+# Third-party decrypted files
+NB3DDemo-main-decrypted.js
+
+# Debug/temp files
+debug.log
+failed_log.json
+rename_log.json
+nul
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

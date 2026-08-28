@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.mimocode/
+*.min.js
+*.min.css
+*.map

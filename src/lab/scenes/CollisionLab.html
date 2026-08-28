@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>碰撞实验室 — 一维弹性碰撞仿真</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', -apple-system, sans-serif; background: #e8e8e8; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 12px; user-select: none; }
+h1 { font-size: 20px; color: #333; margin-bottom: 10px; font-weight: 600; }
+
+.main-layout { display: flex; gap: 12px; max-width: 1100px; width: 100%; }
+
+/* ===== 仿真画布 ===== */
+.canvas-area { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.canvas-wrap { background: #fff; border: 2px solid #bbb; border-radius: 6px; overflow: hidden; position: relative; }
+canvas { display: block; width: 100%; }
+
+/* ===== 播放控制 ===== */
+.playback { background: #f0f0f0; border: 1px solid #ccc; border-radius: 6px; padding: 8px 12px; display: flex; align-items: center; gap: 8px; }
+.playback button { background: #4A90D9; color: #fff; border: none; border-radius: 4px; padding: 6px 14px; font-size: 13px; cursor: pointer; transition: background 0.15s; }
+.playback button:hover { background: #357ABD; }
+.playback button.active { background: #E53935; }
+.playback button.play-toggle { min-width: 70px; font-weight: 600; }
+.playback button.play-toggle.running { background: #E53935; }
+.playback button.set-btn { background: #7B1FA2; }
+.playback button.set-btn:hover { background: #6A1B9A; }
+.playback button:disabled { background: #bbb; cursor: default; }
+.playback .sep { width: 1px; height: 24px; background: #ccc; }
+.timer { font-size: 15px; font-family: 'Consolas', monospace; color: #333; margin-left: auto; }
+
+/* ===== 右侧面板 ===== */
+.right-panel { width: 200px; display: flex; flex-direction: column; gap: 8px; }
+.panel { background: #fff; border: 1px solid #ccc; border-radius: 6px; padding: 10px; }
+.panel-title { font-size: 13px; font-weight: 600; color: #444; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #eee; }
+
+.chk-row { display: flex; align-items: center; gap: 5px; margin: 3px 0; font-size: 12px; color: #333; }
+.chk-row input { accentColor: #2196F3; }
+
+.slider-group { margin: 6px 0; }
+.slider-label { display: flex; justify-content: space-between; font-size: 12px; color: #555; margin-bottom: 2px; }
+.slider-label .val { font-weight: 600; color: #E53935; }
+input[type="range"] { width: 100%; accentColor: #FF9800; height: 16px; }
+
+.preset-btn { display: inline-block; padding: 4px 10px; margin: 3px 4px 3px 0; font-size: 11px; border: 1px solid #bbb; border-radius: 4px; background: #fafafa; cursor: pointer; }
+.preset-btn:hover { background: #e0e0e0; }
+
+/* ===== 左下参数 ===== */
+.bottom-row { display: flex; gap: 12px; max-width: 1100px; width: 100%; margin-top: 8px; }
+.params { background: #fff; border: 1px solid #ccc; border-radius: 6px; padding: 10px 14px; flex: 1; }
+.params-title { font-size: 13px; font-weight: 600; color: #444; margin-bottom: 6px; }
+.param-group { display: flex; align-items: center; gap: 6px; margin: 5px 0; font-size: 12px; }
+.param-group .lbl { min-width: 22px; font-weight: 700; }
+.param-group .lbl.c1 { color: #00BCD4; }
+.param-group .lbl.c2 { color: #E91E63; }
+.param-group input[type="range"] { flex: 1; }
+.param-group input[type="number"] { width: 55px; padding: 2px 4px; border: 1px solid #ccc; border-radius: 3px; font-size: 12px; text-align: center; }
+.param-group .unit { color: #999; font-size: 11px; }
+
+/* 数值叠加 */
+.data-hud { position: absolute; top: 6px; right: 6px; background: rgba(255,255,255,0.93); border: 1px solid #ddd; border-radius: 5px; padding: 6px 10px; font-size: 11px; line-height: 1.7; pointer-events: none; font-family: 'Consolas', monospace; }
+.data-hud .b1 { color: #00838F; }
+.data-hud .b2 { color: #C2185B; }
+.data-hud .tot { color: #555; border-top: 1px solid #eee; padding-top: 3px; margin-top: 3px; }
+
+/* 实验说明 */
+.exp-desc { max-width: 1100px; width: 100%; margin-top: 10px; background: #fff; border: 1px solid #ccc; border-radius: 6px; padding: 14px 18px; }
+.exp-desc h2 { font-size: 15px; color: #333; margin-bottom: 6px; }
+.exp-desc p { font-size: 13px; color: #555; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<h1>碰撞实验室 — 一维碰撞</h1>
+
+<div class="main-layout">
+  <div class="canvas-area">
+    <div class="canvas-wrap">
+      <canvas id="sim" width="800" height="280"></canvas>
+      <div class="data-hud" id="hud" style="display:none;"></div>
+    </div>
+    <div class="playback">
+      <button id="btnToggle" class="play-toggle" onclick="togglePlay()">▶ 播放</button>
+      <button class="set-btn" onclick="doSet()">⚙ Set</button>
+      <div class="sep"></div>
+      <button onclick="doStep()">⏭</button>
+      <div class="sep"></div>
+      <span style="font-size:12px;color:#777;">弹性:</span>
+      <input type="range" id="elastSlider" min="0" max="100" value="100" style="width:100px;accentColor:#FF9800;">
+      <span id="elastVal" style="font-size:12px;font-weight:700;color:#E53935;min-width:32px;">100%</span>
+      <span class="timer">t = <span id="timer">0.000</span> s</span>
+    </div>
+  </div>
+
+  <div class="right-panel">
+    <div class="panel">
+      <div class="panel-title">显示</div>
+      <label class="chk-row"><input type="checkbox" id="chkVel" checked> 速度</label>
+      <label class="chk-row"><input type="checkbox" id="chkMom"> 动量</label>
+      <label class="chk-row"><input type="checkbox" id="chkMomChg"> 动量改变量</label>
+      <label class="chk-row"><input type="checkbox" id="chkCOM"> 质量中心</label>
+      <label class="chk-row"><input type="checkbox" id="chkKE"> 动能</label>
+      <label class="chk-row"><input type="checkbox" id="chkVals"> 数值</label>
+    </div>
+    <div class="panel">
+      <div class="panel-title">预设</div>
+      <button class="preset-btn" onclick="preset('equal')">等质量</button>
+      <button class="preset-btn" onclick="preset('heavy')">大撞小</button>
+      <button class="preset-btn" onclick="preset('small')">小撞大</button>
+      <button class="preset-btn" onclick="preset('same')">同向追碰</button>
+    </div>
+    <div class="panel">
+      <div class="panel-title">碰撞类型</div>
+      <label class="chk-row"><input type="radio" name="ctype" value="1" checked> 弹性</label>
+      <label class="chk-row"><input type="radio" name="ctype" value="0.5"> 部分弹性</label>
+      <label class="chk-row"><input type="radio" name="ctype" value="0"> 完全非弹性</label>
+    </div>
+  </div>
+</div>
+
+<div class="bottom-row">
+  <div class="params">
+    <div class="params-title">球 1（青色）</div>
+    <div class="param-group">
+      <span class="lbl c1">m₁</span>
+      <input type="range" id="m1S" min="0.1" max="5" step="0.1" value="1">
+      <input type="number" id="m1I" min="0.1" max="10" step="0.1" value="1.0">
+      <span class="unit">kg</span>
+    </div>
+    <div class="param-group">
+      <span class="lbl c1">v₁</span>
+      <input type="range" id="v1S" min="-5" max="5" step="0.1" value="1">
+      <input type="number" id="v1I" min="-10" max="10" step="0.1" value="1.0">
+      <span class="unit">m/s</span>
+    </div>
+  </div>
+  <div class="params">
+    <div class="params-title">球 2（粉色）</div>
+    <div class="param-group">
+      <span class="lbl c2">m₂</span>
+      <input type="range" id="m2S" min="0.1" max="5" step="0.1" value="1">
+      <input type="number" id="m2I" min="0.1" max="10" step="0.1" value="1.0">
+      <span class="unit">kg</span>
+    </div>
+    <div class="param-group">
+      <span class="lbl c2">v₂</span>
+      <input type="range" id="v2S" min="-5" max="5" step="0.1" value="-1">
+      <input type="number" id="v2I" min="-10" max="10" step="0.1" value="-1.0">
+      <span class="unit">m/s</span>
+    </div>
+  </div>
+</div>
+
+<div class="exp-desc">
+  <h2>实验：一维完全弹性对撞</h2>
+  <p>两球质量相等，以大小相等方向相反速度发生完全弹性碰撞，观察碰撞后速度交换现象。</p>
+</div>
+
+<script>
+// ================================================================
+//  碰撞实验室 — 一维碰撞仿真
+//  物理核心：动量守恒 + 恢复系数
+//
+//  碰撞公式（恢复系数 e）：
+//    v1' = (m1*v1 + m2*v2 + m2*e*(v2-v1)) / (m1+m2)
+//    v2' = (m1*v1 + m2*v2 + m1*e*(v1-v2)) / (m1+m2)
+//  e=1 完全弹性（动能守恒）
+//  e=0 完全非弹性（碰撞后共速）
+// ================================================================
+
+const C = document.getElementById('sim');
+const ctx = C.getContext('2d');
+const W = C.width, H = C.height;
+
+// 坐标系：物理 x ∈ [0, 10] 米
+const X0 = 40, X1 = W - 40;
+const PXM = (X1 - X0) / 10;
+const TRACK_Y = H * 0.5;
+const BALL_R_BASE = 14;  // 基础半径
+const BALL_R_SCALE = 8;   // 质量缩放系数
+function ballR(m) { return BALL_R_BASE + Math.cbrt(m) * BALL_R_SCALE; }
+
+const w2s = wx => X0 + wx * PXM;
+const s2w = sx => (sx - X0) / PXM;
+
+// 球
+let balls, initSnap;
+function makeBall(m, x, v, color, label) {
+  return { m, x, v, color, label, r: m * 0.18, dp: 0 };
+}
+
+function snap() { return JSON.parse(JSON.stringify(balls)); }
+
+function initBalls() {
+  balls = [
+    makeBall(1, 2.5, 1.5, '#00BCD4', '1'),
+    makeBall(1, 7.5, -1.5, '#E91E63', '2'),
+  ];
+  initSnap = snap();
+}
+initBalls();
+
+// 状态
+let eCoeff = 1.0;
+let simT = 0, running = false;
+const DT = 1 / 180;
+
+// ================================================================
+//  物理步进
+// ================================================================
+function physicsStep() {
+  const b1 = balls[0], b2 = balls[1];
+
+  // 记录碰撞前速度
+  const v1b = b1.v, v2b = b2.v;
+
+  // 碰撞检测（多步迭代防止穿模）
+  const gap = b1.r + b2.r;
+  const subSteps = 5;
+  const subDT = DT / subSteps;
+  for (let s = 0; s < subSteps; s++) {
+    b1.x += b1.v * subDT;
+    b2.x += b2.v * subDT;
+    const dx = b2.x - b1.x;
+    if (Math.abs(dx) < gap) {
+      const relV = b1.v - b2.v;
+      if ((dx > 0 && relV > 0) || (dx < 0 && relV < 0)) {
+        const overlap = gap - Math.abs(dx);
+        if (dx > 0) { b1.x -= overlap / 2; b2.x += overlap / 2; } else { b1.x += overlap / 2; b2.x -= overlap / 2; }
+        const m1 = b1.m, m2 = b2.m, e = eCoeff;
+        const v1n = (m1*v1b + m2*v2b + m2*e*(v2b - v1b)) / (m1 + m2);
+        const v2n = (m1*v1b + m2*v2b + m1*e*(v1b - v2b)) / (m1 + m2);
+        b1.dp = m1 * (v1n - v1b);
+        b2.dp = m2 * (v2n - v2b);
+        b1.v = v1n;
+        b2.v = v2n;
+        break; // 本帧不再碰撞
+      }
+    }
+  }
+
+  // 边界反弹
+  for (const b of balls) {
+    if (b.x - b.r < 0)  { b.x = b.r; b.v = Math.abs(b.v); }
+    if (b.x + b.r > 10) { b.x = 10 - b.r; b.v = -Math.abs(b.v); }
+  }
+
+  simT += DT;
+}
+
+// ================================================================
+//  绘制
+// ================================================================
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, H);
+
+  drawTrack();
+
+  if (document.getElementById('chkCOM').checked) drawCOM();
+
+  for (const b of balls) drawBall(b);
+
+  if (document.getElementById('chkVel').checked)
+    for (const b of balls) { const R=ballR(b.m); drawArrow(b, b.v * 35, '#4CAF50', `v=${b.v.toFixed(2)}`, -R - 14); }
+
+  if (document.getElementById('chkMom').checked)
+    for (const b of balls) { const R=ballR(b.m); drawArrow(b, b.m * b.v * 22, '#2196F3', `p=${(b.m*b.v).toFixed(2)}`, -R - 32); }
+
+  if (document.getElementById('chkMomChg').checked)
+    for (const b of balls) {
+      if (Math.abs(b.dp) > 0.01) {
+        { const R=ballR(b.m); drawArrow(b, b.dp * 40, '#FF5722', `Δp=${b.dp.toFixed(2)}`, -R - 50); }
+      }
+    }
+
+  if (document.getElementById('chkKE').checked) drawKE();
+
+  updateHUD();
+
+  document.getElementById('timer').textContent = simT.toFixed(3);
+}
+
+function drawTrack() {
+  const y = TRACK_Y;
+  // 轨道
+  ctx.strokeStyle = '#444'; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(X0, y); ctx.lineTo(X1, y); ctx.stroke();
+  // 端壁
+  ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.moveTo(X0, y-18); ctx.lineTo(X0, y+18); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(X1, y-18); ctx.lineTo(X1, y+18); ctx.stroke();
+
+  // 刻度
+  ctx.fillStyle = '#777'; ctx.font = '11px Consolas,monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+  for (let m = 0; m <= 10; m++) {
+    const sx = w2s(m);
+    ctx.strokeStyle = '#aaa'; ctx.lineWidth = m % 5 === 0 ? 2 : 1;
+    const tl = m % 5 === 0 ? 12 : 6;
+    ctx.beginPath(); ctx.moveTo(sx, y+2); ctx.lineTo(sx, y+2+tl); ctx.stroke();
+    if (m % 2 === 0) ctx.fillText(m+'', sx, y+16);
+  }
+
+  // 0.5m 标尺
+  const rx1 = w2s(0.5), rx2 = w2s(1.0);
+  ctx.strokeStyle = '#E91E63'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(rx1, y-30); ctx.lineTo(rx2, y-30); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(rx1, y-36); ctx.lineTo(rx1, y-24); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(rx2, y-36); ctx.lineTo(rx2, y-24); ctx.stroke();
+  ctx.fillStyle = '#C2185B'; ctx.font = 'bold 11px sans-serif';
+  ctx.fillText('0.5 m', (rx1+rx2)/2, y-44);
+}
+
+function drawBall(b) {
+  const sx = w2s(b.x), sy = TRACK_Y;
+  const R = ballR(b.m);
+
+  // 阴影
+  ctx.fillStyle = 'rgba(0,0,0,0.12)';
+  ctx.beginPath(); ctx.ellipse(sx+2, sy-R+5, R*0.85, R*0.4, 0, 0, Math.PI*2); ctx.fill();
+
+  // 球体渐变
+  const g = ctx.createRadialGradient(sx-R*0.3, sy-R*0.3, R*0.1, sx, sy-R, R);
+  g.addColorStop(0, lighten(b.color, 50));
+  g.addColorStop(0.6, b.color);
+  g.addColorStop(1, darken(b.color, 40));
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(sx, sy-R, R, 0, Math.PI*2); ctx.fill();
+
+  ctx.strokeStyle = darken(b.color, 60); ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(sx, sy-R, R, 0, Math.PI*2); ctx.stroke();
+
+  // 标号
+  ctx.fillStyle = '#fff'; ctx.font = `bold ${Math.round(R*0.8)}px sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(b.label, sx, sy-R);
+
+  // 质量
+  ctx.fillStyle = '#333'; ctx.font = '11px sans-serif';
+  ctx.fillText(b.m.toFixed(1)+'kg', sx, sy+4);
+}
+
+function drawArrow(b, len, color, label, yOffset) {
+  if (Math.abs(len) < 3) return;
+  const sx = w2s(b.x), sy = TRACK_Y + yOffset;
+  const ex = sx + len;
+  const angle = len > 0 ? 0 : Math.PI;
+  const al = 7;
+
+  ctx.strokeStyle = color; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, sy); ctx.stroke();
+
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(ex, sy);
+  ctx.lineTo(ex - al*Math.cos(angle-0.4), sy - al*Math.sin(angle-0.4));
+  ctx.lineTo(ex - al*Math.cos(angle+0.4), sy - al*Math.sin(angle+0.4));
+  ctx.closePath(); ctx.fill();
+
+  ctx.fillStyle = color; ctx.font = '10px Consolas,monospace'; ctx.textAlign = 'center';
+  ctx.fillText(label, (sx+ex)/2, sy-6);
+}
+
+function drawCOM() {
+  const b1=balls[0], b2=balls[1];
+  const com = (b1.m*b1.x + b2.m*b2.x) / (b1.m+b2.m);
+  const sx = w2s(com);
+  ctx.strokeStyle = '#FF9800'; ctx.lineWidth = 2; ctx.setLineDash([5,4]);
+  ctx.beginPath(); ctx.moveTo(sx, TRACK_Y-55); ctx.lineTo(sx, TRACK_Y+25); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#FF9800'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('质心', sx, TRACK_Y-58);
+}
+
+function drawKE() {
+  const maxEk = Math.max(0.5*balls[0].m*balls[0].v**2, 0.5*balls[1].m*balls[1].v**2, 1);
+  for (let i = 0; i < 2; i++) {
+    const b = balls[i];
+    const ek = 0.5 * b.m * b.v * b.v;
+    const bh = (ek / maxEk) * 40;
+    const sx = w2s(b.x) - 12;
+    const by = TRACK_Y + 28;
+    ctx.fillStyle = i === 0 ? 'rgba(0,188,212,0.45)' : 'rgba(233,30,99,0.45)';
+    ctx.fillRect(sx, by - bh, 24, bh);
+    ctx.fillStyle = '#555'; ctx.font = '9px monospace'; ctx.textAlign = 'center';
+    ctx.fillText(ek.toFixed(2)+'J', sx+12, by+12);
+  }
+}
+
+function updateHUD() {
+  const hud = document.getElementById('hud');
+  if (!document.getElementById('chkVals').checked) { hud.style.display='none'; return; }
+  hud.style.display = 'block';
+  const b1=balls[0], b2=balls[1];
+  const p1=b1.m*b1.v, p2=b2.m*b2.v;
+  const ek1=0.5*b1.m*b1.v**2, ek2=0.5*b2.m*b2.v**2;
+  hud.innerHTML =
+    `<div class="b1">球1: m=${b1.m.toFixed(1)} v=${b1.v.toFixed(2)} p=${p1.toFixed(2)} Ek=${ek1.toFixed(2)}</div>` +
+    `<div class="b2">球2: m=${b2.m.toFixed(1)} v=${b2.v.toFixed(2)} p=${p2.toFixed(2)} Ek=${ek2.toFixed(2)}</div>` +
+    `<div class="tot">总: p=${(p1+p2).toFixed(3)} Ek=${(ek1+ek2).toFixed(3)} e=${eCoeff.toFixed(2)}</div>`;
+}
+
+// 颜色工具
+function lighten(h,p){const n=parseInt(h.slice(1),16);const r=Math.min(255,(n>>16)+Math.round(255*p/100));const g=Math.min(255,((n>>8)&0xff)+Math.round(255*p/100));const b=Math.min(255,(n&0xff)+Math.round(255*p/100));return`rgb(${r},${g},${b})`}
+function darken(h,p){const n=parseInt(h.slice(1),16);const r=Math.max(0,(n>>16)-Math.round(255*p/100));const g=Math.max(0,((n>>8)&0xff)-Math.round(255*p/100));const b=Math.max(0,(n&0xff)-Math.round(255*p/100));return`rgb(${r},${g},${b})`}
+
+// ================================================================
+//  拖拽交互
+// ================================================================
+let drag = null, dragOff = 0;
+
+C.addEventListener('mousedown', e => {
+  const r = C.getBoundingClientRect();
+  const sx = (e.clientX-r.left)*(W/r.width), sy = (e.clientY-r.top)*(H/r.height);
+  for (let i=0;i<2;i++) {
+    const b=balls[i], R=ballR(b.m), bx=w2s(b.x), by=TRACK_Y-R;
+    // 速度箭头
+    const aEnd = bx + b.v*35;
+    if (Math.abs(sy-(by-14-R))<14 && sx>=Math.min(bx,aEnd)-8 && sx<=Math.max(bx,aEnd)+8) {
+      drag='v'+i; return;
+    }
+    if (Math.hypot(sx-bx, sy-by) < R+6) {
+      drag='b'+i; dragOff=sx-bx; return;
+    }
+  }
+});
+C.addEventListener('mousemove', e => {
+  const r = C.getBoundingClientRect();
+  const sx = (e.clientX-r.left)*(W/r.width);
+  if (!drag) {
+    // hover cursor
+    const sy = (e.clientY-r.top)*(H/r.height);
+    let hov = false;
+    for (const b of balls) {
+      const R=ballR(b.m), bx=w2s(b.x), by=TRACK_Y-R;
+      const aEnd=bx+b.v*35;
+      if (Math.abs(sy-(by-14-R))<14 && sx>=Math.min(bx,aEnd)-8 && sx<=Math.max(bx,aEnd)+8) {hov=true;break;}
+      if (Math.hypot(sx-bx,sy-by)<R+6) {hov=true;break;}
+    }
+    C.style.cursor = hov ? 'grab' : 'default';
+    return;
+  }
+  if (drag[0]==='b') {
+    const i=+drag[1];
+    balls[i].x = Math.max(balls[i].r, Math.min(10-balls[i].r, s2w(sx-dragOff)));
+  } else if (drag[0]==='v') {
+    const i=+drag[1];
+    balls[i].v = Math.max(-10, Math.min(10, (sx-w2s(balls[i].x))/35));
+    syncUI();
+  }
+});
+C.addEventListener('mouseup', ()=>{ drag=null; });
+C.addEventListener('mouseleave', ()=>{ drag=null; });
+
+// ================================================================
+//  控制
+// ================================================================
+function togglePlay() {
+  running = !running;
+  const btn = document.getElementById('btnToggle');
+  if (running) {
+    btn.textContent = '⏸ 暂停';
+    btn.classList.add('running');
+  } else {
+    btn.textContent = '▶ 播放';
+    btn.classList.remove('running');
+  }
+}
+function doSet() {
+  // 预设：等质量对心完全弹性碰撞
+  running = false;
+  simT = 0;
+  eCoeff = 1.0;
+  document.getElementById('elastSlider').value = 100;
+  document.getElementById('elastVal').textContent = '100%';
+  document.querySelectorAll('input[name="ctype"]').forEach(r => { r.checked = (r.value === '1'); });
+  balls[0] = makeBall(1.0, 2.5, 1.5, '#00BCD4', '1');
+  balls[1] = makeBall(1.0, 7.5, -1.5, '#E91E63', '2');
+  initSnap = snap();
+  syncUI();
+  const btn = document.getElementById('btnToggle');
+  btn.textContent = '▶ 播放';
+  btn.classList.remove('running');
+}
+function doStep() { running=false; const btn=document.getElementById('btnToggle'); btn.textContent='▶ 播放'; btn.classList.remove('running'); for(let i=0;i<3;i++) physicsStep(); }
+function doReset() {
+  running = false; simT = 0;
+  balls = JSON.parse(JSON.stringify(initSnap));
+  syncUI();
+  const btn = document.getElementById('btnToggle');
+  btn.textContent = '▶ 播放';
+  btn.classList.remove('running');
+}
+
+// 弹性滑块
+document.getElementById('elastSlider').addEventListener('input', e => {
+  eCoeff = +e.target.value / 100;
+  document.getElementById('elastVal').textContent = e.target.value + '%';
+});
+
+// 碰撞类型单选
+document.querySelectorAll('input[name="ctype"]').forEach(r => {
+  r.addEventListener('change', () => {
+    eCoeff = +r.value;
+    document.getElementById('elastSlider').value = eCoeff * 100;
+    document.getElementById('elastVal').textContent = Math.round(eCoeff*100) + '%';
+  });
+});
+
+// 参数绑定
+function bind(sid, iid, idx, prop) {
+  const s=document.getElementById(sid), inp=document.getElementById(iid);
+  s.addEventListener('input', ()=>{ balls[idx][prop]=+s.value; inp.value=s.value; initSnap=snap(); });
+  inp.addEventListener('change', ()=>{ const v=parseFloat(inp.value); if(!isNaN(v)){balls[idx][prop]=v; s.value=Math.max(+s.min,Math.min(+s.max,v)); initSnap=snap();} });
+}
+bind('m1S','m1I',0,'m'); bind('v1S','v1I',0,'v');
+bind('m2S','m2I',1,'m'); bind('v2S','v2I',1,'v');
+
+function syncUI() {
+  for (let i=0;i<2;i++) {
+    const b=balls[i];
+    document.getElementById(`m${i+1}S`).value=b.m;
+    document.getElementById(`m${i+1}I`).value=b.m.toFixed(1);
+    document.getElementById(`v${i+1}S`).value=Math.max(-5,Math.min(5,b.v));
+    document.getElementById(`v${i+1}I`).value=b.v.toFixed(1);
+  }
+}
+
+// 预设
+function preset(type) {
+  if (type==='equal')  { balls[0]=makeBall(1,2.5,2,'#00BCD4','1'); balls[1]=makeBall(1,7.5,-1,'#E91E63','2'); }
+  if (type==='heavy')  { balls[0]=makeBall(4,2,1,'#00BCD4','1');   balls[1]=makeBall(0.5,8,-2,'#E91E63','2'); }
+  if (type==='small')  { balls[0]=makeBall(0.5,2,3,'#00BCD4','1'); balls[1]=makeBall(4,8,0,'#E91E63','2'); }
+  if (type==='same')   { balls[0]=makeBall(1,2,3,'#00BCD4','1');   balls[1]=makeBall(1,5,1,'#E91E63','2'); }
+  initSnap=snap(); syncUI();
+}
+
+// ================================================================
+//  主循环
+// ================================================================
+function loop() {
+  if (running) for (let i=0;i<3;i++) physicsStep();
+  draw();
+  requestAnimationFrame(loop);
+}
+syncUI();
+loop();
+</script>
+</body>
+</html>

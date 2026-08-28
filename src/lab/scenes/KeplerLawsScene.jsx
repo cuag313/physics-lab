@@ -1,0 +1,547 @@
+import { useRef, useEffect, useState, useCallback } from 'react'
+
+/**
+ * KeplerLawsScene — 开普勒三大定律
+ *
+ * 定律一（椭圆定律）：行星绕太阳做椭圆运动，太阳在椭圆的一个焦点上
+ * 定律二（面积定律）：行星与太阳的连线在相等时间内扫过相等面积
+ * 定律三（调和定律）：T²/a³ = k（常数）
+ *
+ * 交互：
+ * - 切换定律演示
+ * - 拖拽调整椭圆偏心率
+ * - 调节半长轴
+ * - 实时显示周期、面积、T²/a³
+ */
+export default function KeplerLawsScene() {
+  const canvasRef = useRef(null)
+  const animRef = useRef(null)
+
+  const S = useRef({
+    law: 1,              // 1 | 2 | 3
+
+    // 椭圆参数
+    a: 2.5,              // 半长轴 m (scaled)
+    e: 0.6,              // 偏心率 (0~0.9)
+    b: 0,                // 半短轴 (computed)
+    c: 0,                // 焦距 (computed)
+
+    // 行星
+    angle: 0,            // 真近点角
+    omega: 0.8,          // 平均角速度
+    period: 0,           // 周期
+    planetR: 0.15,
+
+    // 面积定律
+    sweepAngles: [],     // 扫过的角度区间
+    sweepTime: 0,
+    sweepDuration: 2,    // 每段扫过的时间
+    sweepArea: 0,
+
+    // 第三定律数据
+    planets: [
+      { name: '水星', a: 0.39, T: 0.24, color: '#B0BEC5' },
+      { name: '金星', a: 0.72, T: 0.62, color: '#FFD54F' },
+      { name: '地球', a: 1.0, T: 1.0, color: '#4FC3F7' },
+      { name: '火星', a: 1.52, T: 1.88, color: '#F44336' },
+      { name: '木星', a: 5.2, T: 11.86, color: '#FF9800' },
+      { name: '土星', a: 9.54, T: 29.46, color: '#CE93D8' },
+    ],
+
+    time: 0,
+    running: true,
+    trail: [],
+    maxTrail: 500,
+  })
+
+  const [law, setLaw] = useState(1)
+  const [a, setA] = useState(2.5)
+  const [e, setE] = useState(0.6)
+  const [, forceUpdate] = useState(0)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const R = createRenderer(canvas)
+    canvasRef.current._R = R
+
+    computeEllipse()
+
+    const loop = () => {
+      updatePhysics()
+      renderFrame(R)
+      animRef.current = requestAnimationFrame(loop)
+    }
+    loop()
+
+    const onResize = () => R.resize()
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      if (animRef.current) cancelAnimationFrame(animRef.current)
+    }
+  }, [])
+
+  function createRenderer(canvas) {
+    const R = {
+      canvas, ctx: canvas.getContext('2d'),
+      W: 0, H: 0, scale: 80, ox: 0, oy: 0,
+      resize() {
+        const rect = canvas.getBoundingClientRect()
+        canvas.width = rect.width * devicePixelRatio
+        canvas.height = rect.height * devicePixelRatio
+        this.ctx.scale(devicePixelRatio, devicePixelRatio)
+        this.W = rect.width; this.H = rect.height
+        this.ox = this.W * 0.42; this.oy = this.H * 0.48
+      },
+      w2s(wx, wy) { return [this.ox + wx * this.scale, this.oy - wy * this.scale] },
+      clear() { this.ctx.clearRect(0, 0, this.W, this.H) },
+    }
+    R.resize()
+    return R
+  }
+
+  function computeEllipse() {
+    const s = S.current
+    s.b = s.a * Math.sqrt(1 - s.e * s.e)
+    s.c = s.a * s.e
+    s.period = 2 * Math.PI * Math.sqrt(s.a * s.a * s.a) // T² ∝ a³, simplified
+  }
+
+  // ========== Physics ==========
+  function updatePhysics() {
+    const s = S.current
+    if (!s.running) return
+
+    const dt = 1 / 60
+    s.time += dt
+
+    // 开普勒第二定律：角速度不均匀，近地点快，远地点慢
+    // r = a(1-e²)/(1+e·cosθ)
+    // dA/dt = L/(2m) = 常数 → r²·dθ/dt = 常数
+    const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(s.angle))
+    const r0 = s.a * (1 - s.e) // 近地点
+    const omegaAtR = s.omega * (r0 * r0) / (r * r) // 角速度随r变化
+
+    s.angle += omegaAtR * dt
+    if (s.angle > Math.PI * 2) s.angle -= Math.PI * 2
+
+    // 轨迹
+    const x = r * Math.cos(s.angle)
+    const y = r * Math.sin(s.angle)
+    s.trail.push({ x, y })
+    if (s.trail.length > s.maxTrail) s.trail.shift()
+
+    // 面积扫过
+    if (s.law === 2) {
+      s.sweepTime += dt
+      if (s.sweepTime > s.sweepDuration) {
+        s.sweepTime = 0
+        s.sweepAngles.push({ start: s.angle - 0.3, end: s.angle })
+        if (s.sweepAngles.length > 6) s.sweepAngles.shift()
+      }
+    }
+
+    forceUpdate(n => n + 1)
+  }
+
+  // ========== Render ==========
+  function renderFrame(R) {
+    const ctx = R.ctx
+    R.clear()
+
+    drawBackground(ctx, R)
+
+    if (S.current.law === 1) drawLaw1(ctx, R)
+    else if (S.current.law === 2) drawLaw2(ctx, R)
+    else drawLaw3(ctx, R)
+
+    drawInfoPanel(ctx, R)
+    drawDescription(ctx, R)
+  }
+
+  function drawBackground(ctx, R) {
+    const grad = ctx.createRadialGradient(R.ox, R.oy, 0, R.ox, R.oy, R.W * 0.6)
+    grad.addColorStop(0, '#0d1b2a'); grad.addColorStop(1, '#000')
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, R.W, R.H)
+
+    // 星星
+    ctx.fillStyle = 'rgba(255,255,255,0.3)'
+    for (let i = 0; i < 80; i++) {
+      const x = (Math.sin(i * 137.5) * 0.5 + 0.5) * R.W
+      const y = (Math.cos(i * 97.3) * 0.5 + 0.5) * R.H
+      ctx.beginPath(); ctx.arc(x, y, Math.random() * 1.5, 0, Math.PI * 2); ctx.fill()
+    }
+  }
+
+  // ========== 定律一：椭圆轨道 ==========
+  function drawLaw1(ctx, R) {
+    const s = S.current
+
+    // 绘制椭圆轨道
+    drawOrbit(ctx, R)
+
+    // 太阳（焦点）
+    const [fx, fy] = R.w2s(-s.c, 0)
+    drawSun(ctx, fx, fy)
+
+    // 第二焦点（虚线）
+    const [fx2, fy2] = R.w2s(s.c, 0)
+    ctx.fillStyle = 'rgba(139,148,158,0.3)'
+    ctx.beginPath(); ctx.arc(fx2, fy2, 4, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#484f58'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
+    ctx.fillText('焦点F₂', fx2, fy2 + 14)
+
+    // 行星
+    const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(s.angle))
+    const px = r * Math.cos(s.angle)
+    const py = r * Math.sin(s.angle)
+    drawPlanet(ctx, R, px, py, '#4FC3F7', 8)
+
+    // 标注
+    const [cx, cy] = R.w2s(0, 0)
+    // 半长轴
+    ctx.strokeStyle = 'rgba(255,213,79,0.5)'; ctx.lineWidth = 1; ctx.setLineDash([4, 4])
+    const [lx, ly] = R.w2s(-s.a, 0)
+    const [rx, ry] = R.w2s(s.a, 0)
+    ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(rx, ry); ctx.stroke()
+    ctx.setLineDash([])
+    ctx.fillStyle = '#FFD54F'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'
+    ctx.fillText(`a = ${s.a.toFixed(1)}`, cx, cy + 14)
+
+    // 半短轴
+    ctx.strokeStyle = 'rgba(79,195,247,0.4)'; ctx.setLineDash([4, 4])
+    const [tx, ty] = R.w2s(0, s.b)
+    const [bx, by] = R.w2s(0, -s.b)
+    ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(bx, by); ctx.stroke()
+    ctx.setLineDash([])
+    ctx.fillStyle = '#4FC3F7'; ctx.fillText(`b = ${s.b.toFixed(1)}`, cx + 14, cy)
+
+    // 公式
+    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
+    const [dx, dy] = R.w2s(-s.a - 0.5, s.b + 0.5)
+    ctx.fillText('定律一：行星轨道是椭圆', dx, dy)
+    ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'
+    ctx.fillText('太阳在椭圆的一个焦点上', dx, dy + 18)
+    ctx.fillText(`e = ${s.e.toFixed(2)}`, dx, dy + 36)
+  }
+
+  // ========== 定律二：面积定律 ==========
+  function drawLaw2(ctx, R) {
+    const s = S.current
+
+    drawOrbit(ctx, R)
+
+    // 太阳
+    const [fx, fy] = R.w2s(-s.c, 0)
+    drawSun(ctx, fx, fy)
+
+    // 扫过的面积（扇形）
+    const colors = ['rgba(255,152,0,0.15)', 'rgba(76,175,80,0.15)', 'rgba(79,195,247,0.15)']
+    s.sweepAngles.forEach((sweep, i) => {
+      ctx.fillStyle = colors[i % colors.length]
+      ctx.beginPath()
+      ctx.moveTo(fx, fy)
+      for (let a = sweep.start; a <= sweep.end; a += 0.05) {
+        const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(a))
+        const [sx, sy] = R.w2s(r * Math.cos(a), r * Math.sin(a))
+        ctx.lineTo(sx, sy)
+      }
+      ctx.closePath(); ctx.fill()
+    })
+
+    // 当前扫过
+    ctx.fillStyle = 'rgba(255,213,79,0.2)'
+    ctx.beginPath(); ctx.moveTo(fx, fy)
+    for (let a = 0; a <= s.angle; a += 0.05) {
+      const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(a))
+      const [sx, sy] = R.w2s(r * Math.cos(a), r * Math.sin(a))
+      ctx.lineTo(sx, sy)
+    }
+    ctx.closePath(); ctx.fill()
+
+    // 行星
+    const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(s.angle))
+    drawPlanet(ctx, R, r * Math.cos(s.angle), r * Math.sin(s.angle), '#4FC3F7', 8)
+
+    // 连线
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1
+    const [px, py] = R.w2s(r * Math.cos(s.angle), r * Math.sin(s.angle))
+    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(px, py); ctx.stroke()
+
+    // 公式
+    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
+    const [dx, dy] = R.w2s(-s.a - 0.5, s.b + 0.5)
+    ctx.fillText('定律二：面积定律', dx, dy)
+    ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'
+    ctx.fillText('相等时间扫过相等面积', dx, dy + 18)
+    ctx.fillText('近地点快，远地点慢', dx, dy + 36)
+  }
+
+  // ========== 定律三：T²∝a³ ==========
+  function drawLaw3(ctx, R) {
+    const s = S.current
+
+    // 绘制行星轨道对比（按比例缩放）
+    const orbits = [
+      { name: '水星', a: 0.8, e: 0.2, color: '#B0BEC5' },
+      { name: '金星', a: 1.2, e: 0.01, color: '#FFD54F' },
+      { name: '地球', a: 1.8, e: 0.02, color: '#4FC3F7' },
+      { name: '火星', a: 2.5, e: 0.09, color: '#F44336' },
+    ]
+
+    const [cx, cy] = R.w2s(0, 0)
+    drawSun(ctx, cx, cy)
+
+    orbits.forEach(orb => {
+      const b = orb.a * Math.sqrt(1 - orb.e * orb.e)
+      ctx.strokeStyle = orb.color; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.6
+      ctx.beginPath()
+      ctx.ellipse(cx, cy, orb.a * R.scale * 0.7, b * R.scale * 0.7, 0, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.globalAlpha = 1
+
+      // 标签
+      ctx.fillStyle = orb.color; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
+      const [lx, ly] = R.w2s(orb.a * 0.7 + 0.2, 0)
+      ctx.fillText(orb.name, lx, ly - 6)
+    })
+
+    // T²-a³ 图表
+    const gw = 260, gh = 180
+    const gx = R.W - gw - 30, gy = 60
+
+    ctx.fillStyle = 'rgba(22,27,34,0.95)'
+    ctx.beginPath(); ctx.roundRect(gx, gy, gw, gh, 8); ctx.fill()
+    ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.roundRect(gx, gy, gw, gh, 8); ctx.stroke()
+
+    ctx.fillStyle = '#c9d1d9'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'
+    ctx.fillText('📈 T² - a³ 图像', gx + 10, gy + 16)
+
+    const ox = gx + 50, oy = gy + gh - 25
+    const w = gw - 70, h = gh - 45
+
+    ctx.strokeStyle = '#484f58'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(ox, oy - h); ctx.lineTo(ox, oy); ctx.lineTo(ox + w, oy); ctx.stroke()
+
+    const maxA3 = Math.max(...s.planets.map(p => p.a * p.a * p.a))
+    const maxT2 = Math.max(...s.planets.map(p => p.T * p.T))
+
+    // 数据点
+    s.planets.forEach(p => {
+      const a3 = p.a * p.a * p.a
+      const t2 = p.T * p.T
+      const px = ox + (a3 / maxA3) * w
+      const py = oy - (t2 / maxT2) * h
+
+      ctx.fillStyle = p.color
+      ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill()
+
+      ctx.fillStyle = '#8b949e'; ctx.font = '8px sans-serif'; ctx.textAlign = 'left'
+      ctx.fillText(p.name, px + 6, py + 3)
+    })
+
+    // 理论线
+    ctx.strokeStyle = 'rgba(255,152,0,0.5)'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4])
+    ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + w, oy - h); ctx.stroke()
+    ctx.setLineDash([])
+
+    // 轴标签
+    ctx.fillStyle = '#484f58'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
+    ctx.fillText('a³', ox + w / 2, oy + 14)
+    ctx.save(); ctx.translate(gx + 12, oy - h / 2); ctx.rotate(-Math.PI / 2)
+    ctx.fillText('T²', 0, 0); ctx.restore()
+
+    // k值
+    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left'
+    ctx.fillText(`T²/a³ = k（常数）`, gx + 10, gy + gh - 6)
+
+    // 公式
+    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
+    ctx.fillText('定律三：T² ∝ a³', 20, R.H - 80)
+    ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'
+    ctx.fillText('所有行星的 T²/a³ 相同', 20, R.H - 62)
+  }
+
+  // ========== 通用绘制 ==========
+  function drawOrbit(ctx, R) {
+    const s = S.current
+    const [cx, cy] = R.w2s(0, 0)
+    const aPx = s.a * R.scale
+    const bPx = s.b * R.scale
+
+    ctx.strokeStyle = 'rgba(79,195,247,0.3)'; ctx.lineWidth = 2
+    ctx.setLineDash([8, 4])
+    ctx.beginPath()
+    ctx.ellipse(cx, cy, aPx, bPx, 0, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.setLineDash([])
+
+    // 轨迹
+    if (s.trail.length > 1) {
+      for (let i = 1; i < s.trail.length; i++) {
+        const alpha = (i / s.trail.length) * 0.5
+        const [x1, y1] = R.w2s(s.trail[i - 1].x, s.trail[i - 1].y)
+        const [x2, y2] = R.w2s(s.trail[i].x, s.trail[i].y)
+        ctx.strokeStyle = `rgba(255,152,0,${alpha})`; ctx.lineWidth = 2
+        ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
+      }
+    }
+  }
+
+  function drawSun(ctx, x, y) {
+    const r = 18
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, r * 2)
+    grad.addColorStop(0, '#FFF9C4'); grad.addColorStop(0.3, '#FFD54F'); grad.addColorStop(1, 'rgba(255,152,0,0)')
+    ctx.fillStyle = grad
+    ctx.beginPath(); ctx.arc(x, y, r * 2, 0, Math.PI * 2); ctx.fill()
+
+    ctx.fillStyle = '#FFD54F'
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
+
+    ctx.fillStyle = '#FFF9C4'
+    ctx.beginPath(); ctx.arc(x - 4, y - 4, r * 0.4, 0, Math.PI * 2); ctx.fill()
+  }
+
+  function drawPlanet(ctx, R, wx, wy, color, r) {
+    const [sx, sy] = R.w2s(wx, wy)
+
+    const grad = ctx.createRadialGradient(sx - r * 0.3, sy - r * 0.3, r * 0.1, sx, sy, r)
+    grad.addColorStop(0, color); grad.addColorStop(1, color.replace(/[0-9A-F]{2}$/i, '80'))
+    ctx.fillStyle = grad
+    ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill()
+
+    ctx.fillStyle = 'rgba(255,255,255,0.3)'
+    ctx.beginPath(); ctx.arc(sx - r * 0.25, sy - r * 0.25, r * 0.3, 0, Math.PI * 2); ctx.fill()
+  }
+
+  function drawInfoPanel(ctx, R) {
+    const s = S.current
+    const pw = 220, ph = 160
+    const px = R.W - pw - 16, py = R.H - ph - 16
+
+    ctx.fillStyle = 'rgba(22,27,34,0.95)'
+    ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill()
+    ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.stroke()
+
+    ctx.fillStyle = '#c9d1d9'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
+    ctx.fillText('📊 开普勒定律', px + 12, py + 20)
+
+    ctx.font = '11px sans-serif'; let y = py + 40
+
+    ctx.fillStyle = '#8b949e'
+    ctx.fillText(`半长轴 a = ${s.a.toFixed(2)} AU`, px + 12, y); y += 16
+    ctx.fillText(`偏心率 e = ${s.e.toFixed(3)}`, px + 12, y); y += 16
+    ctx.fillText(`半短轴 b = ${s.b.toFixed(2)} AU`, px + 12, y); y += 16
+    ctx.fillText(`周期 T = ${s.period.toFixed(2)} (×地球年)`, px + 12, y); y += 16
+
+    const k = (s.period * s.period) / (s.a * s.a * s.a)
+    ctx.fillStyle = '#4FC3F7'
+    ctx.fillText(`T²/a³ = ${k.toFixed(3)}`, px + 12, y); y += 16
+
+    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 10px sans-serif'
+    ctx.fillText(s.law === 1 ? '椭圆定律' : s.law === 2 ? '面积定律' : '调和定律', px + 12, y)
+  }
+
+  function drawDescription(ctx, R) {
+    const h = R.H, x = 16, y = h - 40
+    ctx.textBaseline = 'top'; ctx.textAlign = 'left'
+    ctx.fillStyle = '#c9d1d9'; ctx.font = 'bold 14px sans-serif'
+    ctx.fillText('开普勒三大定律', x, y)
+    ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'
+    ctx.fillText('切换定律查看不同演示 · 拖拽调整偏心率和半长轴', x + 130, y)
+  }
+
+  // ========== Controls ==========
+  const handleLawChange = useCallback((newLaw) => {
+    S.current.law = newLaw
+    S.current.trail = []
+    S.current.sweepAngles = []
+    setLaw(newLaw)
+  }, [])
+
+  const handleAChange = useCallback((val) => {
+    S.current.a = val
+    computeEllipse()
+    setA(val)
+  }, [])
+
+  const handleEChange = useCallback((val) => {
+    S.current.e = val
+    computeEllipse()
+    setE(val)
+  }, [])
+
+  const handleReset = useCallback(() => {
+    S.current.angle = 0
+    S.current.time = 0
+    S.current.trail = []
+    S.current.sweepAngles = []
+  }, [])
+
+  return (
+    <div style={styles.container}>
+      <div style={styles.toolbar}>
+        <span style={styles.title}>开普勒三大定律</span>
+        <div style={styles.toolbarActions}>
+          <button style={styles.btn} onClick={handleReset}>↺ 重置</button>
+          <div style={styles.sep} />
+          <div style={styles.modeGroup}>
+            {[1, 2, 3].map(l => (
+              <button key={l}
+                style={law === l ? styles.modeBtnActive : styles.modeBtn}
+                onClick={() => handleLawChange(l)}>
+                定律{l}
+              </button>
+            ))}
+          </div>
+          <label style={styles.controlLabel}>
+            半长轴 a：
+            <input type="range" min="1" max="4" step="0.1"
+              value={a}
+              onChange={(e) => handleAChange(parseFloat(e.target.value))}
+              style={styles.slider} />
+            <span style={styles.sliderVal}>{a.toFixed(1)}</span>
+          </label>
+          <label style={styles.controlLabel}>
+            偏心率 e：
+            <input type="range" min="0" max="0.85" step="0.01"
+              value={e}
+              onChange={(e) => handleEChange(parseFloat(e.target.value))}
+              style={styles.slider} />
+            <span style={styles.sliderVal}>{e.toFixed(2)}</span>
+          </label>
+        </div>
+      </div>
+      <div style={styles.main}>
+        <canvas ref={canvasRef} style={styles.canvas} />
+      </div>
+      <div style={styles.desc}>
+        <b>开普勒三大定律</b>
+        <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
+          定律一：椭圆轨道 · 定律二：面积定律 · 定律三：T²∝a³ · 拖拽调节参数观察变化
+        </span>
+      </div>
+    </div>
+  )
+}
+
+const styles = {
+  container: { display: 'flex', flexDirection: 'column', height: '100vh', background: '#000', color: '#e0e0e0', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
+  toolbar: { minHeight: 44, background: '#0d1b2a', borderBottom: '1px solid #1b2838', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', flexShrink: 0, flexWrap: 'wrap', gap: 6 },
+  title: { fontSize: 14, fontWeight: 600, color: '#c9d1d9' },
+  toolbarActions: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  controlLabel: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8b949e' },
+  slider: { width: 70, accentColor: '#FFD54F' },
+  sliderVal: { color: '#FFD54F', fontWeight: 600, minWidth: 35, fontSize: 12 },
+  btn: { background: '#1b2838', color: '#c9d1d9', border: '1px solid #2d3f52', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer' },
+  sep: { width: 1, height: 20, background: '#1b2838' },
+  modeGroup: { display: 'flex', gap: 4 },
+  modeBtn: { background: '#1b2838', color: '#8b949e', border: '1px solid #2d3f52', borderRadius: 4, padding: '4px 10px', fontSize: 11, cursor: 'pointer' },
+  modeBtnActive: { background: '#FFD54F', color: '#000', border: '1px solid #FFD54F', borderRadius: 4, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 600 },
+  main: { flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' },
+  canvas: { flex: 1, width: '100%' },
+  desc: { padding: '8px 14px', background: '#0d1b2a', borderTop: '1px solid #1b2838', fontSize: 13, color: '#c9d1d9' },
+}
