@@ -186,31 +186,29 @@ export default function PulleyEfficiencyScene() {
 
     } else {
       // ═══ n=3（奇数）：始端在动滑轮中心 ═══
+      // 路径：动滑轮中心 → 定滑轮左切点(斜上) → 定滑轮上半圆(左→上→右)
+      //      → 定滑轮右切点 → 动滑轮右切点(竖下) → 动滑轮下半圆(右→下→左)
+      //      → 动滑轮左切点 → 自由端向上
 
-      // 始端吊线：动滑轮中心 → 向上到横杆
-      ctx.strokeStyle = ROPE_COLOR; ctx.lineWidth = ROPE_W
-      drawLine(ctx, mpx, mpy, mpx, FRAME_TOP)
-
-      // 承重段①：动滑轮中心 → 定滑轮右切点（竖直向上）
-      // 注意：始端在动滑轮中心，先到定滑轮
+      // 承重段①：动滑轮中心 → 定滑轮左切点（斜向上）
       ctx.strokeStyle = LOAD_COLOR; ctx.lineWidth = LOAD_W
-      drawLine(ctx, mpx, mpy, xR, fpy)
+      drawLine(ctx, mpx, mpy, xL, fpy)
 
-      // 定滑轮上半圆弧：右→上→左 [arc(0, π, false)]
+      // 定滑轮上半圆弧：左(π)→上→右(2π) [arc(π, 2π, true)]
       ctx.strokeStyle = ROPE_COLOR; ctx.lineWidth = ROPE_W
-      ctx.beginPath(); ctx.arc(fpx, fpy, R, 0, Math.PI, false); ctx.stroke()
+      ctx.beginPath(); ctx.arc(fpx, fpy, R, Math.PI, 2 * Math.PI, true); ctx.stroke()
 
-      // 承重段②：定滑轮左切点 → 动滑轮左切点（竖直向下）
+      // 承重段②：定滑轮右切点 → 动滑轮右切点（竖直向下）
       ctx.strokeStyle = LOAD_COLOR; ctx.lineWidth = LOAD_W
-      drawLine(ctx, xL, fpy, xL, mpy)
+      drawLine(ctx, xR, fpy, xR, mpy)
 
-      // 动滑轮下半圆弧：左→下→右 [arc(π, 2π, false)]
+      // 动滑轮下半圆弧：右(0)→下→左(π) [arc(0, π, true)]
       ctx.strokeStyle = ROPE_COLOR; ctx.lineWidth = ROPE_W
-      ctx.beginPath(); ctx.arc(mpx, mpy, R, Math.PI, 2 * Math.PI, false); ctx.stroke()
+      ctx.beginPath(); ctx.arc(mpx, mpy, R, 0, Math.PI, true); ctx.stroke()
 
-      // 承重段③：动滑轮右切点 → 自由端向上
+      // 承重段③：动滑轮左切点 → 自由端向上
       ctx.strokeStyle = LOAD_COLOR; ctx.lineWidth = LOAD_W
-      drawLine(ctx, xR, mpy, xR, handleY)
+      drawLine(ctx, xL, mpy, xL, handleY)
     }
   }
 
@@ -345,8 +343,8 @@ export default function PulleyEfficiencyScene() {
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
       drawGrid(ctx)
       drawFrame(ctx, L)
-      drawRope(ctx, L)
-      drawPulley(ctx, L.fpx, L.fpy, R, '定')
+      drawRope(ctx, L)                          // 先画绳子（在下面）
+      drawPulley(ctx, L.fpx, L.fpy, R, '定')   // 再画滑轮（遮住绳子穿过内部的部分）
       drawPulley(ctx, L.mpx, L.mpy, R, '动')
       drawWeight(ctx, L)
       drawHandle(ctx, L)
