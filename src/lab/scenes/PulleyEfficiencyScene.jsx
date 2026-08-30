@@ -161,19 +161,22 @@ export default function PulleyEfficiencyScene() {
     if (n === 2) {
       // ═══ n=2（偶数）：始端在定滑轮中心 ═══
 
-      // 始端吊线：横杆 → 定滑轮中心
+      // 始端吊线：横杆 → 定滑轮顶部（挂钩位置）
       ctx.strokeStyle = ROPE_COLOR; ctx.lineWidth = ROPE_W
-      drawLine(ctx, fpx, FRAME_TOP, fpx, fpy)
+      drawLine(ctx, fpx, FRAME_TOP, fpx, fpy - R)
 
-      // 承重段①：定滑轮中心 → 动滑轮左切点（斜线）
+      // 定滑轮左四分之一弧：从顶部(3π/2)→左切点(π)，沿左侧外缘
+      ctx.beginPath(); ctx.arc(fpx, fpy, R, 1.5 * Math.PI, Math.PI, false); ctx.stroke()
+
+      // 承重段①：定滑轮左切点 → 动滑轮左切点（竖直向下）
       ctx.strokeStyle = LOAD_COLOR; ctx.lineWidth = LOAD_W
-      drawLine(ctx, fpx, fpy, xL, mpy)
+      drawLine(ctx, xL, fpy, xL, mpy)
 
       // 动滑轮下半圆弧：左→下→右 [arc(π, 2π, false)]
       ctx.strokeStyle = ROPE_COLOR; ctx.lineWidth = ROPE_W
       ctx.beginPath(); ctx.arc(mpx, mpy, R, Math.PI, 2 * Math.PI, false); ctx.stroke()
 
-      // 承重段②：动滑轮右切点 → 定滑轮右切点（竖直）
+      // 承重段②：动滑轮右切点 → 定滑轮右切点（竖直向上）
       ctx.strokeStyle = LOAD_COLOR; ctx.lineWidth = LOAD_W
       drawLine(ctx, xR, mpy, xR, fpy)
 
@@ -343,9 +346,9 @@ export default function PulleyEfficiencyScene() {
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
       drawGrid(ctx)
       drawFrame(ctx, L)
-      drawRope(ctx, L)                          // 先画绳子（在下面）
-      drawPulley(ctx, L.fpx, L.fpy, R, '定')   // 再画滑轮（遮住绳子穿过内部的部分）
+      drawPulley(ctx, L.fpx, L.fpy, R, '定')
       drawPulley(ctx, L.mpx, L.mpy, R, '动')
+      drawRope(ctx, L)                          // 绳子画在滑轮上面
       drawWeight(ctx, L)
       drawHandle(ctx, L)
       drawAnnotations(ctx, L, calcs)
