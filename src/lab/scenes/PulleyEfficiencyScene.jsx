@@ -167,13 +167,13 @@ export default function PulleyEfficiencyScene() {
     const LOAD_W = 4
 
     if (n === 2) {
-      // ═══ n=2（偶数）：始端在框架挂钩 ═══
-      // 路径：框架挂钩 → 动滑轮左切点（绕过定滑轮）
+      // ═══ n=2（偶数）：始端在定滑轮中心轴 ═══
+      // 路径：定滑轮中心轴 → 动滑轮左切点（经滑轮槽）
       //      → 动滑轮下半圆 → 定滑轮右切点 → 定滑轮上半圆 → 自由端向下
 
-      // 承重段①：左侧竖杆挂钩 → 动滑轮左切点（斜线，绕过定滑轮）
+      // 承重段①：定滑轮中心轴 → 动滑轮左切点（穿过滑轮槽）
       ctx.strokeStyle = LOAD_COLOR; ctx.lineWidth = LOAD_W
-      drawLine(ctx, L.hookX, L.hookY, xL, mpy)
+      drawLine(ctx, fpx, fpy, xL, mpy)
 
       // 动滑轮下半圆弧：左→下→右 [arc(π, 2π, false)]
       ctx.strokeStyle = ROPE_COLOR; ctx.lineWidth = ROPE_W
@@ -349,9 +349,9 @@ export default function PulleyEfficiencyScene() {
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
       drawGrid(ctx)
       drawFrame(ctx, L)
-      drawPulley(ctx, L.fpx, L.fpy, R, '定')
-      drawPulley(ctx, L.mpx, L.mpy, R, '动')
-      drawRope(ctx, L)                          // 绳子画在滑轮上面
+      drawRope(ctx, L)                          // 先画绳子（被滑轮遮住穿心部分）
+      drawPulley(ctx, L.fpx, L.fpy, R, '定')   // 再画滑轮（遮住绳子穿心部分）
+      drawPulley(ctx, L.mpx, L.mpy, R, '动')   // 动滑轮
       drawWeight(ctx, L)
       drawHandle(ctx, L)
       drawAnnotations(ctx, L, calcs)
@@ -607,3 +607,5 @@ export default function PulleyEfficiencyScene() {
     </div>
   )
 }
+
+
