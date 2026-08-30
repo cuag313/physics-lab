@@ -84,14 +84,18 @@ export default function PulleyEfficiencyScene() {
     // 手柄位置
     let handleX, handleY
     if (n === 2) {
-      handleX = xL   // 自由端在左侧，向下
-      handleY = weightY + weightH + 70
+      handleX = xL
+      handleY = fpy + 120
     } else {
-      handleX = xR   // 自由端在右侧，向上
-      handleY = mpy - R - 60
+      handleX = xL
+      handleY = Math.max(mpy - R - 60, 30)
     }
 
-    return { cx, barLeft, barRight, fpx, fpy, mpx, mpy, xL, xR, weightY, weightW, weightH, handleX, handleY, hPx }
+    // 挂钩在左侧竖杆上
+    const hookX = barLeft + 5
+    const hookY = FRAME_TOP + 20
+
+    return { cx, barLeft, barRight, fpx, fpy, hookX, hookY, mpx, mpy, xL, xR, weightY, weightW, weightH, handleX, handleY, hPx }
   }
 
   function drawLine(ctx, x1, y1, x2, y2) {
@@ -109,7 +113,7 @@ export default function PulleyEfficiencyScene() {
 
   // ============ L形支架（无右侧竖杆）============
   function drawFrame(ctx, L) {
-    const { barLeft, barRight, fpx, fpy } = L
+    const { barLeft, barRight, fpx, fpy, hookX, hookY } = L
     ctx.strokeStyle = '#888'; ctx.lineCap = 'round'
 
     // 左侧竖杆（唯一竖杆）
@@ -127,6 +131,10 @@ export default function PulleyEfficiencyScene() {
     // 定滑轮固定短横杆（从横杆下挂到定滑轮轴心）
     ctx.strokeStyle = '#999'; ctx.lineWidth = 3
     drawLine(ctx, fpx, FRAME_TOP, fpx, fpy - R)
+
+    // 挂钩标记（左侧竖杆上）
+    ctx.fillStyle = '#555'
+    ctx.beginPath(); ctx.arc(hookX, hookY, 4, 0, Math.PI * 2); ctx.fill()
   }
 
   // ============ 滑轮 ============
@@ -159,18 +167,13 @@ export default function PulleyEfficiencyScene() {
     const LOAD_W = 4
 
     if (n === 2) {
-      // ═══ n=2（偶数）：始端在定滑轮中心 ═══
+      // ═══ n=2（偶数）：始端在框架挂钩 ═══
+      // 路径：框架挂钩 → 动滑轮左切点（绕过定滑轮）
+      //      → 动滑轮下半圆 → 定滑轮右切点 → 定滑轮上半圆 → 自由端向下
 
-      // 始端吊线：横杆 → 定滑轮顶部（挂钩位置）
-      ctx.strokeStyle = ROPE_COLOR; ctx.lineWidth = ROPE_W
-      drawLine(ctx, fpx, FRAME_TOP, fpx, fpy - R)
-
-      // 定滑轮左四分之一弧：从顶部(3π/2)→左切点(π)，沿左侧外缘
-      ctx.beginPath(); ctx.arc(fpx, fpy, R, 1.5 * Math.PI, Math.PI, false); ctx.stroke()
-
-      // 承重段①：定滑轮左切点 → 动滑轮左切点（竖直向下）
+      // 承重段①：左侧竖杆挂钩 → 动滑轮左切点（斜线，绕过定滑轮）
       ctx.strokeStyle = LOAD_COLOR; ctx.lineWidth = LOAD_W
-      drawLine(ctx, xL, fpy, xL, mpy)
+      drawLine(ctx, L.hookX, L.hookY, xL, mpy)
 
       // 动滑轮下半圆弧：左→下→右 [arc(π, 2π, false)]
       ctx.strokeStyle = ROPE_COLOR; ctx.lineWidth = ROPE_W
