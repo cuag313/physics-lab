@@ -103,15 +103,15 @@ export default function PulleyEfficiencyScene() {
     ctx.fillText(label, x, y)
   }
 
-  // 隐藏绳段：从中心到左切点（被滑轮填充遮住）
+  // 隐藏绳段：从中心到左切点（完全在滑轮圆内，被填充遮住）
   function drawRopeHidden(ctx, L) {
     const { fpx, fpy, xL, mpx, mpy, n } = L
     ctx.strokeStyle = '#8B4513'; ctx.lineWidth = 3; ctx.lineCap = 'round'
     if (n === 2) {
-      // 定滑轮中心 → 左切点（水平，被遮住）
+      // 定滑轮中心 → 左切点（水平，在圆内）
       ctx.beginPath(); ctx.moveTo(fpx, fpy); ctx.lineTo(xL, fpy); ctx.stroke()
     } else {
-      // 动滑轮中心 → 左切点（水平，被遮住）
+      // 动滑轮中心 → 左切点（水平，在圆内）
       ctx.beginPath(); ctx.moveTo(mpx, mpy); ctx.lineTo(xL, mpy); ctx.stroke()
     }
   }
