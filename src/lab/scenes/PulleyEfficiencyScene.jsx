@@ -1,14 +1,32 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 
 /**
- * PulleyEfficiencyScene — 测量滑轮组机械效率（v11 严格按规范重写）
- * 绳子路径全部竖直，不穿滑轮圆心
- * n=2：定滑轮中心→隐藏到左切点→竖直下到动滑轮左切点→下半圆→竖直上到定滑轮右切点→上半圆→自由端竖直下
- * n=3：动滑轮中心→隐藏到左切点→竖直上到定滑轮左切点→上半圆→竖直下到动滑轮右切点→下半圆→自由端竖直上
- * 弧线方向实测：arc(π,2π,false)=下半圆，arc(0,π,false)=上半圆
+ * PulleyEfficiencyScene — 测量滑轮组机械效率（v12 绕线逻辑严格修正）
+ *
+ * n=2（偶数段）绕线规则：
+ *   ① 绳子一端固定在定滑轮底部挂钩
+ *   ② 竖直向下至动滑轮左侧切点
+ *   ③ 沿动滑轮下半圆从左绕到右（π→2π）
+ *   ④ 从动滑轮右切点竖直向上至定滑轮右侧切点
+ *   ⑤ 沿定滑轮上半圆从右绕到左（0→π）
+ *   ⑥ 从定滑轮左切点竖直向下，末端标注拉力 F
+ *   物理关系：s = 2h
+ *
+ * n=3（奇数段）绕线规则：
+ *   ① 绳子一端固定在动滑轮中心轴挂钩
+ *   ② 从动滑轮中心直接连接至定滑轮右侧切点
+ *   ③ 沿定滑轮上半圆从右绕到左（0→π），双股绳
+ *   ④ 从定滑轮左切点竖直向下至动滑轮左侧切点
+ *   ⑤ 沿动滑轮下半圆从左绕到右（π→2π）
+ *   ⑥ 从动滑轮右切点竖直向上至定滑轮右侧切点
+ *   ⑦ 再次沿定滑轮上半圆从右绕到左（0→π），与③重合
+ *   ⑧ 从定滑轮左切点竖直向下，末端标注拉力 F
+ *   物理关系：s = 3h
+ *
+ * 弧线方向：下半圆 arc(π,2π,true)，上半圆 arc(0,π,true)
  */
 
-const R = 22, CANVAS_W = 520, CANVAS_H = 420, FRAME_TOP = 30, FRAME_CX = 200
+const R = 22, CANVAS_W = 520, CANVAS_H = 500, FRAME_TOP = 30, FRAME_CX = 200
 
 export default function PulleyEfficiencyScene() {
   const canvasRef = useRef(null)
@@ -16,7 +34,7 @@ export default function PulleyEfficiencyScene() {
   const S = useRef({
     G: 10, G0: 2, n: 2, mu: 0.10, h: 0,
     dragging: false, dragStartY: 0, dragStartH: 0,
-    hoverWeight: false, records: [], breathPhase: 0,
+    records: [], breathPhase: 0,
   })
   const [gVal, setGVal] = useState(10)
   const [g0Val, setG0Val] = useState(2)
@@ -50,14 +68,15 @@ export default function PulleyEfficiencyScene() {
     const cx = FRAME_CX
     const fpx = cx, fpy = FRAME_TOP + 60
     const baseMpy = fpy + 150
-    const hPx = (h / 1.5) * 130
+    const hPx = (h / 0.5) * 100
     const mpy = baseMpy - hPx
     const mpx = cx
     const xL = mpx - R, xR = mpx + R
     const weightW = 64, weightH = 48
     const weightY = mpy + R + 16
-    const freeEndY = n === 2 ? fpy + 120 + hPx : mpy - 120 - hPx
-    return { cx, fpx, fpy, mpx, mpy, xL, xR, weightY, weightW, weightH, freeEndY, hPx }
+    const handleBaseY = baseMpy + R + 16 + weightH + 20
+    const freeEndY = handleBaseY + hPx * 1.5
+    return { cx, fpx, fpy, mpx, mpy, xL, xR, weightY, weightW, weightH, freeEndY, hPx, n }
   }
 
   // ============ 绘图 ============
@@ -83,98 +102,130 @@ export default function PulleyEfficiencyScene() {
     ctx.beginPath(); ctx.moveTo(bl - 5, FRAME_TOP); ctx.lineTo(br, FRAME_TOP); ctx.stroke()
     // 底座
     ctx.lineWidth = 6
-    ctx.beginPath(); ctx.moveTo(bl - 20, CANVAS_H - 10); ctx.lineTo(bl + 40, CANVAS_H - 10); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(bl - 20, CANVAS_H - 10); ctx.lineTo(br + 10, CANVAS_H - 10); ctx.stroke()
     // 定滑轮固定杆
     ctx.strokeStyle = '#999'; ctx.lineWidth = 3
     ctx.beginPath(); ctx.moveTo(fpx, FRAME_TOP); ctx.lineTo(fpx, fpy - R); ctx.stroke()
   }
 
-  function drawPulley(ctx, x, y, r, label) {
+  function drawPulley(ctx, x, y, r, label, angle) {
     const grad = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.1, x, y, r)
     grad.addColorStop(0, '#f0f0f0'); grad.addColorStop(1, '#aaa')
     ctx.fillStyle = grad
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
     ctx.strokeStyle = '#666'; ctx.lineWidth = 3
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke()
+    // 旋转辐条（3根）
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.rotate(angle || 0)
+    ctx.strokeStyle = '#999'; ctx.lineWidth = 2
+    for (let i = 0; i < 3; i++) {
+      const a = (i * Math.PI * 2) / 3
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * (r - 4), Math.sin(a) * (r - 4)); ctx.stroke()
+    }
+    ctx.restore()
+    // 中轴
     ctx.fillStyle = '#444'
     ctx.beginPath(); ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill()
+    // 标签
     ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     ctx.fillText(label, x, y)
   }
 
-  // 隐藏绳段：从中心到左切点（完全在滑轮圆内，被填充遮住）
+  // 隐藏绳段：从中心到底部挂钩（被滑轮填充遮住）
   function drawRopeHidden(ctx, L) {
-    const { fpx, fpy, xL, mpx, mpy, n } = L
+    const { fpx, fpy, n, xL, xR, mpx, mpy } = L
     ctx.strokeStyle = '#8B4513'; ctx.lineWidth = 3; ctx.lineCap = 'round'
     if (n === 2) {
-      // 定滑轮中心 → 左切点（水平，在圆内）
-      ctx.beginPath(); ctx.moveTo(fpx, fpy); ctx.lineTo(xL, fpy); ctx.stroke()
+      // 定滑轮中心 → 底部挂钩（竖直向下，在圆内）
+      ctx.beginPath(); ctx.moveTo(fpx, fpy); ctx.lineTo(fpx, fpy + R); ctx.stroke()
     } else {
-      // 动滑轮中心 → 左切点（水平，在圆内）
-      ctx.beginPath(); ctx.moveTo(mpx, mpy); ctx.lineTo(xL, mpy); ctx.stroke()
+      // 动滑轮中心 → 右侧切点（水平，在圆内）
+      ctx.beginPath(); ctx.moveTo(mpx, mpy); ctx.lineTo(xR, mpy); ctx.stroke()
     }
   }
 
-  // 可见绳段：竖直线 + 弧线 + 自由端
-  function drawRopeVisible(ctx, L, calcs) {
+  // 动滑轮弧线（画在动滑轮填充之前）
+  function drawRopeOnMovable(ctx, L) {
+    const { mpx, mpy, fpy, n } = L
+    ctx.strokeStyle = '#8B4513'; ctx.lineWidth = 3; ctx.lineCap = 'round'
+    if (n === 2) {
+      // 动滑轮下半圆：左侧切点(π) → 底部 → 右侧切点(2π)
+      // counterclockwise=true: 从π到2π走短路径，经π/2(底部)，才是下半圆
+      ctx.beginPath(); ctx.arc(mpx, mpy, R, Math.PI, 2 * Math.PI, true); ctx.stroke()
+    } else {
+      // n=3: 动滑轮下半圆：π→2π，逆时针经底部
+      ctx.beginPath(); ctx.arc(mpx, mpy, R, Math.PI, 2 * Math.PI, true); ctx.stroke()
+      // 从动滑轮中心直接到定滑轮右侧切点
+      ctx.lineWidth = 3
+      ctx.beginPath(); ctx.moveTo(mpx, mpy); ctx.lineTo(mpx + R, fpy); ctx.stroke()
+      // 右竖线：动滑轮右侧切点 → 定滑轮右侧切点（下半圆绕完后的回程段）
+      ctx.lineWidth = 4
+      ctx.beginPath(); ctx.moveTo(mpx + R, mpy); ctx.lineTo(mpx + R, fpy); ctx.stroke()
+      // 左竖线：定滑轮左侧切点 → 动滑轮左侧切点（向下）
+      ctx.beginPath(); ctx.moveTo(mpx - R, fpy); ctx.lineTo(mpx - R, mpy); ctx.stroke()
+    }
+  }
+
+  // 定滑轮弧线 + 承重段 + 自由端（画在所有滑轮填充之上）
+  function drawRopeOnFixed(ctx, L, calcs) {
     const { fpx, fpy, mpx, mpy, xL, xR, freeEndY, n } = L
     const C = '#8B4513'
     ctx.lineCap = 'round'
 
     if (n === 2) {
-      // 承重段（4px）：两条竖直平行线
-      ctx.strokeStyle = C; ctx.lineWidth = 4
-      // 左段：定滑轮左切点 → 动滑轮左切点（竖直）
-      ctx.beginPath(); ctx.moveTo(xL, fpy); ctx.lineTo(xL, mpy); ctx.stroke()
-      // 右段：动滑轮右切点 → 定滑轮右切点（竖直）
+      // 定滑轮上半圆：右侧切点(0°) → 顶部 → 左侧切点(180°)，顺时针（屏幕坐标系逆时针）
+      ctx.strokeStyle = C; ctx.lineWidth = 3
+      ctx.beginPath(); ctx.arc(fpx, fpy, R, 0, Math.PI, true); ctx.stroke()
+      // 承重段：定滑轮底部挂钩 → 动滑轮左侧切点（竖直向下）
+      ctx.lineWidth = 4
+      ctx.beginPath(); ctx.moveTo(fpx, fpy + R); ctx.lineTo(xL, mpy); ctx.stroke()
+      // 右段：动滑轮右侧切点 → 定滑轮右侧切点（竖直向上）
       ctx.beginPath(); ctx.moveTo(xR, mpy); ctx.lineTo(xR, fpy); ctx.stroke()
-
-      // 弧线（3px）
+      // 自由端：定滑轮左侧切点竖直向下，直接到手把
       ctx.lineWidth = 3
-      // 动滑轮下半圆：左(π)→下→右(2π)
-      ctx.beginPath(); ctx.arc(mpx, mpy, R, Math.PI, 2 * Math.PI, false); ctx.stroke()
-      // 定滑轮上半圆：右(0)→上→左(π)
-      ctx.beginPath(); ctx.arc(fpx, fpy, R, 0, Math.PI, false); ctx.stroke()
-
-      // 自由端（从定滑轮左切点竖直向下）
       ctx.beginPath(); ctx.moveTo(xL, fpy); ctx.lineTo(xL, freeEndY); ctx.stroke()
-
-      // 拉力箭头（绿色向下）
-      ctx.strokeStyle = '#2ecc71'; ctx.fillStyle = '#2ecc71'; ctx.lineWidth = 2.5
-      ctx.beginPath(); ctx.moveTo(xL, freeEndY - 15); ctx.lineTo(xL, freeEndY); ctx.stroke()
-      ctx.beginPath()
-      ctx.moveTo(xL - 5, freeEndY - 6); ctx.lineTo(xL, freeEndY); ctx.lineTo(xL + 5, freeEndY - 6)
-      ctx.fill()
-      ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
-      ctx.fillText('F = ' + calcs.F.toFixed(2) + ' N', xL + 10, freeEndY)
-
-    } else {
-      // n=3
-      // 承重段（4px）
-      ctx.strokeStyle = C; ctx.lineWidth = 4
-      // 始端段：动滑轮左切点 → 定滑轮左切点（竖直向上）
-      ctx.beginPath(); ctx.moveTo(xL, mpy); ctx.lineTo(xL, fpy); ctx.stroke()
-      // 右段：定滑轮右切点 → 动滑轮右切点（竖直向下）
-      ctx.beginPath(); ctx.moveTo(xR, fpy); ctx.lineTo(xR, mpy); ctx.stroke()
-      // 左段：动滑轮左切点 → 自由端（竖直向上）
-      ctx.beginPath(); ctx.moveTo(xL, mpy); ctx.lineTo(xL, freeEndY); ctx.stroke()
-
-      // 弧线（3px）
+      // 手把（T形握柄）—— 绳子末端直接连接
+      ctx.strokeStyle = '#555'; ctx.lineWidth = 4; ctx.lineCap = 'round'
+      ctx.beginPath(); ctx.moveTo(xL - 12, freeEndY); ctx.lineTo(xL + 12, freeEndY); ctx.stroke()
       ctx.lineWidth = 3
-      // 定滑轮上半圆：左(π)→上→右(2π)
-      ctx.beginPath(); ctx.arc(fpx, fpy, R, Math.PI, 2 * Math.PI, true); ctx.stroke()
-      // 动滑轮下半圆：右(0)→下→左(π)
-      ctx.beginPath(); ctx.arc(mpx, mpy, R, 0, Math.PI, true); ctx.stroke()
-
-      // 拉力箭头（绿色向上）
+      ctx.beginPath(); ctx.moveTo(xL - 8, freeEndY + 6); ctx.lineTo(xL + 8, freeEndY + 6); ctx.stroke()
+      // 拉力箭头（从手把向下）
       ctx.strokeStyle = '#2ecc71'; ctx.fillStyle = '#2ecc71'; ctx.lineWidth = 2.5
-      ctx.beginPath(); ctx.moveTo(xL, freeEndY + 15); ctx.lineTo(xL, freeEndY); ctx.stroke()
+      const arrTop = freeEndY + 10
+      const arrBot = freeEndY + 26
+      ctx.beginPath(); ctx.moveTo(xL, arrTop); ctx.lineTo(xL, arrBot); ctx.stroke()
       ctx.beginPath()
-      ctx.moveTo(xL - 5, freeEndY + 6); ctx.lineTo(xL, freeEndY); ctx.lineTo(xL + 5, freeEndY + 6)
+      ctx.moveTo(xL - 6, arrBot - 6); ctx.lineTo(xL, arrBot); ctx.lineTo(xL + 6, arrBot - 6)
       ctx.fill()
-      ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
-      ctx.fillText('F = ' + calcs.F.toFixed(2) + ' N', xL + 10, freeEndY)
+      ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'
+      ctx.fillStyle = '#2ecc71'
+      ctx.fillText('F = ' + calcs.F.toFixed(2) + ' N', xL + 14, arrBot - 3)
+    } else {
+      // n=3: 定滑轮上半圆（两次绕过，4px粗线表示双股）
+      ctx.strokeStyle = C; ctx.lineWidth = 4
+      ctx.beginPath(); ctx.arc(fpx, fpy, R, 0, Math.PI, true); ctx.stroke()
+      // 自由端：定滑轮左侧切点竖直向下到手把
+      ctx.lineWidth = 3
+      ctx.beginPath(); ctx.moveTo(xL, fpy); ctx.lineTo(xL, freeEndY); ctx.stroke()
+      // 手把（T形握柄）—— 绳子末端直接连接
+      ctx.strokeStyle = '#555'; ctx.lineWidth = 4; ctx.lineCap = 'round'
+      ctx.beginPath(); ctx.moveTo(xL - 12, freeEndY); ctx.lineTo(xL + 12, freeEndY); ctx.stroke()
+      ctx.lineWidth = 3
+      ctx.beginPath(); ctx.moveTo(xL - 8, freeEndY + 6); ctx.lineTo(xL + 8, freeEndY + 6); ctx.stroke()
+      // 拉力箭头（从手把向下）
+      ctx.strokeStyle = '#2ecc71'; ctx.fillStyle = '#2ecc71'; ctx.lineWidth = 2.5
+      const arrTop3 = freeEndY + 10
+      const arrBot3 = freeEndY + 26
+      ctx.beginPath(); ctx.moveTo(xL, arrTop3); ctx.lineTo(xL, arrBot3); ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(xL - 6, arrBot3 - 6); ctx.lineTo(xL, arrBot3); ctx.lineTo(xL + 6, arrBot3 - 6)
+      ctx.fill()
+      ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'
+      ctx.fillStyle = '#2ecc71'
+      ctx.fillText('F = ' + calcs.F.toFixed(2) + ' N', xL + 14, arrBot3 - 3)
     }
   }
 
@@ -199,26 +250,14 @@ export default function PulleyEfficiencyScene() {
     ctx.lineTo(x, y + rr)
     ctx.arcTo(x, y, x + rr, y, rr)
     ctx.fill()
-    // 拖拽高亮
-    if (S.current.dragging) {
-      ctx.shadowColor = 'rgba(232,80,80,0.5)'; ctx.shadowBlur = 12
-      ctx.strokeStyle = '#ff6b6b'; ctx.lineWidth = 2; ctx.stroke()
-      ctx.shadowBlur = 0
-    } else if (S.current.hoverWeight) {
-      ctx.strokeStyle = '#ff8888'; ctx.lineWidth = 2; ctx.stroke()
-    }
-    // 只写数值
+    // 数值
     ctx.fillStyle = '#fff'; ctx.font = 'bold 16px sans-serif'
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     ctx.fillText(S.current.G + 'N', mpx, y + weightH / 2)
-    // 拖拽提示
-    ctx.fillStyle = S.current.hoverWeight ? '#e85050' : '#aaa'
-    ctx.font = '13px sans-serif'
-    ctx.fillText('⋮⋮', mpx + weightW / 2 + 10, y + weightH / 2)
   }
 
   function drawAnnotations(ctx, L, calcs) {
-    const { mpx, mpy, weightY, weightW, weightH, fpy } = L
+    const { mpx, mpy, weightY, weightW, weightH, fpy, xR, xL, n, hPx, freeEndY } = L
     const { h } = calcs
 
     // G物（红色箭头，重物左侧，只标符号）
@@ -245,7 +284,7 @@ export default function PulleyEfficiencyScene() {
     if (h > 0.005) {
       const initCY = fpy + 150 + R + 16 + weightH / 2
       const curCY = weightY + weightH / 2
-      const ax = 25
+      const ax = CANVAS_W - 30
       ctx.strokeStyle = '#f5a623'; ctx.lineWidth = 2; ctx.fillStyle = '#f5a623'
       ctx.beginPath(); ctx.moveTo(ax - 5, initCY); ctx.lineTo(ax + 5, initCY); ctx.stroke()
       ctx.beginPath(); ctx.moveTo(ax - 5, curCY); ctx.lineTo(ax + 5, curCY); ctx.stroke()
@@ -256,16 +295,35 @@ export default function PulleyEfficiencyScene() {
       ctx.beginPath()
       ctx.moveTo(ax - 3, curCY + 6); ctx.lineTo(ax, curCY); ctx.lineTo(ax + 3, curCY + 6)
       ctx.fill()
+      ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'right'
+      ctx.fillText('h = ' + h.toFixed(2) + ' m', ax - 8, (initCY + curCY) / 2)
+    }
+
+    // s标注（左侧蓝色双箭头，显示绳端移动距离）
+    if (h > 0.005) {
+      const sInitY = fpy + 150 + R + 16 + weightH + 20  // F手把初始位置
+      const sCurY = freeEndY                              // F手把当前位置（向下移动）
+      const sx = 25
+      ctx.strokeStyle = '#3498db'; ctx.lineWidth = 2; ctx.fillStyle = '#3498db'
+      ctx.beginPath(); ctx.moveTo(sx - 5, sInitY); ctx.lineTo(sx + 5, sInitY); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(sx - 5, sCurY); ctx.lineTo(sx + 5, sCurY); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(sx, sInitY); ctx.lineTo(sx, sCurY); ctx.stroke()
+      ctx.beginPath()
+      ctx.moveTo(sx - 3, sInitY - 6); ctx.lineTo(sx, sInitY); ctx.lineTo(sx + 3, sInitY - 6)
+      ctx.fill()
+      ctx.beginPath()
+      ctx.moveTo(sx - 3, sCurY + 6); ctx.lineTo(sx, sCurY); ctx.lineTo(sx + 3, sCurY + 6)
+      ctx.fill()
       ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
-      ctx.fillText('h = ' + h.toFixed(2) + ' m', ax + 8, (initCY + curCY) / 2)
+      ctx.fillText('s = ' + calcs.s.toFixed(2) + ' m', sx + 8, (sInitY + sCurY) / 2)
     }
 
     // 呼吸提示
-    if (h === 0 && !S.current.dragging) {
+    if (h === 0) {
       const alpha = 0.3 + 0.3 * Math.sin(S.current.breathPhase)
-      ctx.fillStyle = 'rgba(232,80,80,' + alpha + ')'
+      ctx.fillStyle = 'rgba(46,204,113,' + alpha + ')'
       ctx.font = '12px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText('↑ 拖拽重物开始实验 ↑', mpx, weightY + weightH + 18)
+      ctx.fillText('↓ 拖动 F 拉手提升重物 ↓', mpx, weightY + weightH + 18)
     }
   }
 
@@ -278,30 +336,34 @@ export default function PulleyEfficiencyScene() {
       S.current.breathPhase += 0.03
       const L = getLayout()
       const calcs = calc()
+      // 滑轮旋转角度（绳子移动距离 / 半径）
+      const ropeMove = L.hPx * 1.5
+      const fixedAngle = -ropeMove / R   // 定滑轮逆时针
+      const movableAngle = -ropeMove / R // 动滑轮也是逆时针
       ctx.clearRect(0, 0, CANVAS_W, CANVAS_H)
       ctx.fillStyle = '#fafafa'
       ctx.fillRect(0, 0, CANVAS_W, CANVAS_H)
       drawGrid(ctx)
       drawFrame(ctx, L)
-      drawRopeHidden(ctx, L)                // 隐藏绳段（被滑轮遮住）
-      drawPulley(ctx, L.fpx, L.fpy, R, '定') // 定滑轮（遮住隐藏绳段）
-      drawPulley(ctx, L.mpx, L.mpy, R, '动') // 动滑轮
-      drawRopeVisible(ctx, L, calcs)          // 可见绳段（竖直+弧线+自由端）
-      drawWeight(ctx, L)
-      drawAnnotations(ctx, L, calcs)
+      drawRopeHidden(ctx, L)                          // ① 隐藏绳段
+      drawPulley(ctx, L.fpx, L.fpy, R, '定', fixedAngle)   // ② 定滑轮
+      drawPulley(ctx, L.mpx, L.mpy, R, '动', movableAngle) // ③ 动滑轮
+      drawRopeOnMovable(ctx, L)               // ④ 动滑轮弧线（画在填充之上，确保可见）
+      drawWeight(ctx, L)                      // ⑤ 重量块
+      drawRopeOnFixed(ctx, L, calcs)          // ⑥ 定滑轮弧线+承重段+自由端+手把+F
+      drawAnnotations(ctx, L, calcs)          // ⑦ 标注
       rafRef.current = requestAnimationFrame(render)
     }
     render()
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current) }
   }, [])
 
-  // ============ 拖拽 ============
+  // ============ 交互 ============
   const getPos = useCallback((e) => {
     const canvas = canvasRef.current
     if (!canvas) return null
     const rect = canvas.getBoundingClientRect()
-    const hasTouches = e.touches && e.touches.length > 0
-    const t = hasTouches ? e.touches[0] : (e.changedTouches && e.changedTouches[0]) || e
+    const t = e.touches ? e.touches[0] : e
     if (!t || t.clientX == null) return null
     return {
       x: (t.clientX - rect.left) * (canvas.width / rect.width),
@@ -310,54 +372,41 @@ export default function PulleyEfficiencyScene() {
   }, [])
 
   const handleDown = useCallback((e) => {
-    e.preventDefault()
     const pos = getPos(e)
     if (!pos) return
-    const canvas = canvasRef.current
     const L = getLayout()
-    const inW = pos.x >= L.mpx - L.weightW / 2 - 18 && pos.x <= L.mpx + L.weightW / 2 + 22 &&
-                pos.y >= L.weightY - 8 && pos.y <= L.weightY + L.weightH + 8
-    if (inW) {
+    const handleY = L.freeEndY
+    const hx = L.xL
+    if (pos.x >= hx - 15 && pos.x <= hx + 15 && pos.y >= handleY - 5 && pos.y <= handleY + 35) {
       S.current.dragging = true
       S.current.dragStartY = pos.y
       S.current.dragStartH = S.current.h
-      canvas.style.cursor = 'grabbing'
     }
   }, [getPos])
 
   const handleMove = useCallback((e) => {
+    if (!S.current.dragging) return
+    e.preventDefault()
     const pos = getPos(e)
     if (!pos) return
-    const canvas = canvasRef.current
-    const L = getLayout()
-    if (!S.current.dragging) {
-      const inW = pos.x >= L.mpx - L.weightW / 2 - 18 && pos.x <= L.mpx + L.weightW / 2 + 22 &&
-                  pos.y >= L.weightY - 8 && pos.y <= L.weightY + L.weightH + 8
-      S.current.hoverWeight = inW
-      if (canvas) canvas.style.cursor = inW ? 'grab' : 'default'
-      return
-    }
-    e.preventDefault()
     const dy = pos.y - S.current.dragStartY
-    const dh = -dy / (130 / 1.5)
+    // 向下拖 F → h 增大（重物上升）
+    const dh = dy / 300
     let newH = S.current.dragStartH + dh
-    newH = Math.max(0, Math.min(1.5, newH))
+    newH = Math.max(0, Math.min(0.5, newH))
     newH = Math.round(newH * 100) / 100
     S.current.h = newH
     setHVal(newH)
     triggerRender()
   }, [getPos, triggerRender])
 
-  const handleUp = useCallback(() => {
-    S.current.dragging = false
-    const canvas = canvasRef.current
-    if (canvas) canvas.style.cursor = S.current.hoverWeight ? 'grab' : 'default'
-  }, [])
+  const handleUp = useCallback(() => { S.current.dragging = false }, [])
 
   const updateG = useCallback((v) => { S.current.G = v; setGVal(v); triggerRender() }, [triggerRender])
   const updateG0 = useCallback((v) => { S.current.G0 = v; setG0Val(v); triggerRender() }, [triggerRender])
   const updateN = useCallback((v) => { S.current.n = v; setNVal(v); triggerRender() }, [triggerRender])
   const updateMu = useCallback((v) => { S.current.mu = v; setMuVal(v); triggerRender() }, [triggerRender])
+  const updateH = useCallback((v) => { S.current.h = v; setHVal(v); triggerRender() }, [triggerRender])
 
   const addRecord = useCallback(() => {
     const calcs = calc()
@@ -456,6 +505,11 @@ export default function PulleyEfficiencyScene() {
               <button style={st.nb(nVal === 3)} onClick={() => updateN(3)}>3段</button>
             </div>
           </div>
+          <div style={st.si}>
+            <span style={st.sl}>h</span>
+            <input type="range" min={0} max={0.5} step={0.01} value={hVal} style={st.sr} onChange={e => updateH(Number(e.target.value))} />
+            <span style={st.sv}>{hVal.toFixed(2)}m</span>
+          </div>
         </div>
         <div style={st.rb}>
           <span style={{ ...st.tg, background: '#27ae60' }}>九年级</span>
@@ -482,26 +536,26 @@ export default function PulleyEfficiencyScene() {
             <span style={st.rl}>动滑轮重 G动</span><span style={st.rv}>{g0Val.toFixed(2)} N</span>
             <span style={st.rl}>绳段数 n</span><span style={st.rv}>{nVal}</span>
             <span style={st.rl}>摩擦系数 μ</span><span style={st.rv}>{muVal.toFixed(2)}</span>
-            <div style={st.div} />
+            <div style={st.dv} />
             <span style={st.sc}>拉力分析</span>
             <span style={st.rl}>理想拉力 F理想</span><span style={st.rv}>{calcs.F_ideal.toFixed(2)} N</span>
             <span style={st.rl}>摩擦附加</span><span style={st.rv}>+{calcs.F_friction.toFixed(2)} N</span>
             <span style={st.rl}>实际拉力 F</span><span style={st.rB}>{calcs.F.toFixed(2)} N</span>
-            <div style={st.div} />
+            <div style={st.dv} />
             <span style={st.sc}>距离</span>
             <span style={st.rl}>提升高度 h</span><span style={st.rv}>{calcs.h.toFixed(2)} m</span>
             <span style={st.rl}>绳端距离 s</span><span style={st.rv}>{calcs.s.toFixed(2)} m</span>
             <span style={{ fontSize: 10, color: '#999', gridColumn: '1 / -1', textAlign: 'center' }}>
               （s = n × h = {nVal} × {calcs.h.toFixed(2)} = {calcs.s.toFixed(2)}）
             </span>
-            <div style={st.div} />
+            <div style={st.dv} />
             <span style={st.sc}>功与效率</span>
             <span style={st.rl}>有用功 W有</span><span style={st.rv}>{calcs.W_useful.toFixed(2)} J</span>
             <span style={st.rl}>总功 W总</span><span style={st.rv}>{calcs.W_total.toFixed(2)} J</span>
             <span style={st.rl}>额外功 W额</span><span style={st.rv}>{calcs.W_extra.toFixed(2)} J</span>
             <span style={st.sb}>├ 动滑轮重做功</span><span style={st.sV}>{calcs.W_pulley.toFixed(2)} J</span>
             <span style={st.sb}>└ 摩擦做功</span><span style={st.sV}>{calcs.W_friction.toFixed(2)} J</span>
-            <div style={st.div} />
+            <div style={st.dv} />
             <span style={st.rl}>机械效率 η</span><span style={st.rA}>{calcs.eta.toFixed(1)} %</span>
             <span style={{ fontSize: 10, color: '#999' }}>（理想无摩擦）</span>
             <span style={{ fontSize: 10, color: '#999', textAlign: 'right', paddingRight: 16 }}>
@@ -509,7 +563,7 @@ export default function PulleyEfficiencyScene() {
             </span>
 
             {showConclusion && (
-              <div style={st.conclusion}>
+              <div style={st.cn}>
                 <div style={{ fontWeight: 700, marginBottom: 2 }}>📋 结论</div>
                 <div>① 物重越大效率越高 ② 动滑轮越重效率越低 ③ 摩擦越大效率越低</div>
               </div>
@@ -518,7 +572,7 @@ export default function PulleyEfficiencyScene() {
             {records.length > 0 && (
               <div style={{ marginTop: 4, gridColumn: '1 / -1' }}>
                 <div style={{ fontWeight: 600, fontSize: 11, marginBottom: 2 }}>📝 记录</div>
-                <table style={st.table}>
+                <table style={st.tb}>
                   <thead>
                     <tr>{['#', 'G物', 'G动', 'n', 'μ', 'h', 's', 'F', 'W有', 'W总', 'η'].map(h =>
                       <th key={h} style={st.th}>{h}</th>
@@ -549,9 +603,9 @@ export default function PulleyEfficiencyScene() {
       </div>
 
       {/* 底部说明 */}
-      <div style={st.bottom}>
+      <div style={{ flexShrink: 0, padding: '6px 14px', background: '#fff', borderTop: '1px solid #e0e0e0' }}>
         <div style={st.fm}>η = W有 / W总 = G物·h / (F·s) = G物 / (n·F)</div>
-        <div style={st.hi}>① 调节参数 → ② 上下拖拽重物（s = n×h） → ③ 记录保存</div>
+        <div style={st.hi}>① 调节参数 → ② 拖动 F 拉手（s = n×h） → ③ 记录保存</div>
       </div>
     </div>
   )
