@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<body>
+<canvas id="c" width="300" height="300" style="border:1px solid #ccc"></canvas>
+<script>
+const ctx = document.getElementById('c').getContext('2d');
+const cx = 150, cy = 150, R = 80;
+
+// 画圆参考线
+ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1;
+ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI*2); ctx.stroke();
+
+// 标记四个方向
+ctx.fillStyle = '#000'; ctx.font = '12px sans-serif';
+ctx.fillText('0=右', cx+R+5, cy);
+ctx.fillText('π/2=下', cx, cy+R+15);
+ctx.fillText('π=左', cx-R-30, cy);
+ctx.fillText('3π/2=上', cx, cy-R-5);
+
+// 测试 arc(0, π, false) — 应该是右→下→左
+ctx.strokeStyle = 'red'; ctx.lineWidth = 4;
+ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI, false); ctx.stroke();
+ctx.fillStyle = 'red'; ctx.fillText('arc(0,π,false) = 红色', 10, 280);
+
+// 测试 arc(0, π, true) — 应该是右→上→左
+ctx.strokeStyle = 'blue'; ctx.lineWidth = 4;
+ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI, true); ctx.stroke();
+ctx.fillStyle = 'blue'; ctx.fillText('arc(0,π,true) = 蓝色', 10, 295);
+</script>
+</body>
+</html>
