@@ -44,6 +44,7 @@ import KeplerLawsScene from './scenes/KeplerLawsScene'
 import UniversalGravitationScene from './scenes/UniversalGravitationScene'
 import CosmicVelocityScene from './scenes/CosmicVelocityScene'
 import RocketScene from './scenes/RocketScene'
+import SoundWaveScene from './scenes/SoundWaveScene'
 import { PRESETS } from './scenes'
 import { EXPERIMENT_CATALOG, CATEGORIES, DIFFICULTY_LABELS } from './scenes/catalog'
 
@@ -304,6 +305,8 @@ export default function LabPage({ onBack }) {
           <CosmicVelocityScene />
         ) : currentExperiment?.key === 'rocket' ? (
           <RocketScene />
+        ) : currentExperiment?.key === 'soundWave' ? (
+          <SoundWaveScene />
         ) : currentExperiment?.key === 'measureSpeed' ? (
           <MeasureSpeedScene />
         ) : (

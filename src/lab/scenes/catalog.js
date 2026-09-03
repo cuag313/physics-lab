@@ -328,6 +328,18 @@ export const EXPERIMENT_CATALOG = [
     tags: ['凹透镜', '虚像', '正立缩小', '发散透镜'],
     examLevel: '★★',
   },
+  // ==================== 声学·声波基础 ====================
+  {
+    key: 'soundWave',
+    name: '声波可视化与发声',
+    description: '实时波形+频谱+拍频，Web Audio发声，频率/波形/音量可调',
+    category: 'sound',
+    subCategory: '声学基础',
+    difficulty: 1,
+    grade: '八年级',
+    tags: ['声波', '波形', '频谱', '拍频', '频率', '发声'],
+    examLevel: '★',
+  },
   {
     key: 'soundBasics',
     name: '声音的产生与传播',
