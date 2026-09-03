@@ -746,20 +746,18 @@ export default function ProjectileMotionScene() {
     const rad = s.angle * Math.PI / 180
     const b = s.ball
 
-    // 【动画循环新增处】发射前自动调整比例尺，让全程轨迹可见
-    const v0x = s.v0 * Math.cos(rad)
-    const v0y = s.v0 * Math.sin(rad)
-    const tFlight = 2 * v0y / s.g
-    const range = v0x * tFlight
-    const maxH = v0y * v0y / (2 * s.g)
-    // 留20%余量
-    const neededW = (range + s.launchX) * 1.2
-    const neededH = maxH * 1.4
+    // 发射前：用45度最大射程作为固定基准，不再随角度变化
+    const maxRange = s.v0 * s.v0 / s.g  // 45度时 R=v0²/g
+    const maxH = (s.v0 * s.v0) / (2 * s.g)  // 45度时最大高度
+    const neededW = (maxRange + s.launchX) * 1.15
+    const neededH = maxH * 1.3
     const scaleX = (s.screenW - s.offsetX - 40) / neededW
     const scaleY = (s.offsetY - 60) / Math.max(neededH, 2)
     s.scale = Math.max(15, Math.min(scaleX, scaleY))
 
     // 从炮口位置发射
+    const v0x = s.v0 * Math.cos(rad)
+    const v0y = s.v0 * Math.sin(rad)
     b.x = s._muzzleWorldX || s.launchX
     b.y = s._muzzleWorldY || s.launchY
     b.vx = v0x; b.vy = v0y
