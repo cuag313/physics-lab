@@ -55,6 +55,7 @@ import SoundStringScene from './scenes/SoundStringScene'
 import SoundPipeScene from './scenes/SoundPipeScene'
 import SoundDopplerScene from './scenes/SoundDopplerScene'
 import SoundInterferenceScene from './scenes/SoundInterferenceScene'
+import SoundEchoScene from './scenes/SoundEchoScene'
 import { PRESETS } from './scenes'
 import { EXPERIMENT_CATALOG, CATEGORIES, DIFFICULTY_LABELS } from './scenes/catalog'
 
@@ -337,6 +338,8 @@ export default function LabPage({ onBack }) {
           <SoundDopplerScene />
         ) : currentExperiment?.key === 'soundInterference' ? (
           <SoundInterferenceScene />
+        ) : currentExperiment?.key === 'soundEcho' ? (
+          <SoundEchoScene />
         ) : currentExperiment?.key === 'measureSpeed' ? (
           <MeasureSpeedScene />
         ) : (
