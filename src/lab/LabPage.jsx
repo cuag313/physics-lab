@@ -49,6 +49,12 @@ import SoundPropagationScene from './scenes/SoundPropagationScene'
 import SoundPitchScene from './scenes/SoundPitchScene'
 import SoundLoudnessScene from './scenes/SoundLoudnessScene'
 import SoundTimbreScene from './scenes/SoundTimbreScene'
+import SoundNoiseScene from './scenes/SoundNoiseScene'
+import SoundResonanceScene from './scenes/SoundResonanceScene'
+import SoundStringScene from './scenes/SoundStringScene'
+import SoundPipeScene from './scenes/SoundPipeScene'
+import SoundDopplerScene from './scenes/SoundDopplerScene'
+import SoundInterferenceScene from './scenes/SoundInterferenceScene'
 import { PRESETS } from './scenes'
 import { EXPERIMENT_CATALOG, CATEGORIES, DIFFICULTY_LABELS } from './scenes/catalog'
 
@@ -319,6 +325,18 @@ export default function LabPage({ onBack }) {
           <SoundLoudnessScene />
         ) : currentExperiment?.key === 'soundTimbre' ? (
           <SoundTimbreScene />
+        ) : currentExperiment?.key === 'soundNoise' ? (
+          <SoundNoiseScene />
+        ) : currentExperiment?.key === 'soundResonance' ? (
+          <SoundResonanceScene />
+        ) : currentExperiment?.key === 'soundString' ? (
+          <SoundStringScene />
+        ) : currentExperiment?.key === 'soundPipe' ? (
+          <SoundPipeScene />
+        ) : currentExperiment?.key === 'soundDoppler' ? (
+          <SoundDopplerScene />
+        ) : currentExperiment?.key === 'soundInterference' ? (
+          <SoundInterferenceScene />
         ) : currentExperiment?.key === 'measureSpeed' ? (
           <MeasureSpeedScene />
         ) : (
