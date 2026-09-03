@@ -56,6 +56,15 @@ import SoundPipeScene from './scenes/SoundPipeScene'
 import SoundDopplerScene from './scenes/SoundDopplerScene'
 import SoundInterferenceScene from './scenes/SoundInterferenceScene'
 import SoundEchoScene from './scenes/SoundEchoScene'
+import PhotoelectricScene from './scenes/PhotoelectricScene'
+import RutherfordScene from './scenes/RutherfordScene'
+import BohrScene from './scenes/BohrScene'
+import RadioactiveDecayScene from './scenes/RadioactiveDecayScene'
+import BlackbodyScene from './scenes/BlackbodyScene'
+import ElectronDoubleSlitScene from './scenes/ElectronDoubleSlitScene'
+import NuclearReactionScene from './scenes/NuclearReactionScene'
+import RelativityScene from './scenes/RelativityScene'
+import ComptonScene from './scenes/ComptonScene'
 import { PRESETS } from './scenes'
 import { EXPERIMENT_CATALOG, CATEGORIES, DIFFICULTY_LABELS } from './scenes/catalog'
 
@@ -340,6 +349,24 @@ export default function LabPage({ onBack }) {
           <SoundInterferenceScene />
         ) : currentExperiment?.key === 'soundEcho' ? (
           <SoundEchoScene />
+        ) : currentExperiment?.key === 'photoelectric' ? (
+          <PhotoelectricScene />
+        ) : currentExperiment?.key === 'rutherford' ? (
+          <RutherfordScene />
+        ) : currentExperiment?.key === 'bohr' ? (
+          <BohrScene />
+        ) : currentExperiment?.key === 'radioactiveDecay' ? (
+          <RadioactiveDecayScene />
+        ) : currentExperiment?.key === 'blackbody' ? (
+          <BlackbodyScene />
+        ) : currentExperiment?.key === 'electronDoubleSlit' ? (
+          <ElectronDoubleSlitScene />
+        ) : currentExperiment?.key === 'nuclearReaction' ? (
+          <NuclearReactionScene />
+        ) : currentExperiment?.key === 'relativity' ? (
+          <RelativityScene />
+        ) : currentExperiment?.key === 'compton' ? (
+          <ComptonScene />
         ) : currentExperiment?.key === 'measureSpeed' ? (
           <MeasureSpeedScene />
         ) : (
