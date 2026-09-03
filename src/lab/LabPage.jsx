@@ -45,6 +45,10 @@ import UniversalGravitationScene from './scenes/UniversalGravitationScene'
 import CosmicVelocityScene from './scenes/CosmicVelocityScene'
 import RocketScene from './scenes/RocketScene'
 import SoundWaveScene from './scenes/SoundWaveScene'
+import SoundPropagationScene from './scenes/SoundPropagationScene'
+import SoundPitchScene from './scenes/SoundPitchScene'
+import SoundLoudnessScene from './scenes/SoundLoudnessScene'
+import SoundTimbreScene from './scenes/SoundTimbreScene'
 import { PRESETS } from './scenes'
 import { EXPERIMENT_CATALOG, CATEGORIES, DIFFICULTY_LABELS } from './scenes/catalog'
 
@@ -307,6 +311,14 @@ export default function LabPage({ onBack }) {
           <RocketScene />
         ) : currentExperiment?.key === 'soundWave' ? (
           <SoundWaveScene />
+        ) : currentExperiment?.key === 'soundPropagation' ? (
+          <SoundPropagationScene />
+        ) : currentExperiment?.key === 'soundPitch' ? (
+          <SoundPitchScene />
+        ) : currentExperiment?.key === 'soundLoudness' ? (
+          <SoundLoudnessScene />
+        ) : currentExperiment?.key === 'soundTimbre' ? (
+          <SoundTimbreScene />
         ) : currentExperiment?.key === 'measureSpeed' ? (
           <MeasureSpeedScene />
         ) : (
