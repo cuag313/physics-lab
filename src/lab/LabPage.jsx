@@ -69,6 +69,21 @@ import BrownianMotionScene from './scenes/BrownianMotionScene'
 import GasLawsScene from './scenes/GasLawsScene'
 import ThermodynamicsFirstScene from './scenes/ThermodynamicsFirstScene'
 import CarnotEngineScene from './scenes/CarnotEngineScene'
+import ElectricEnergyScene from './scenes/ElectricEnergyScene'
+import OstersExperimentScene from './scenes/OstersExperimentScene'
+import ElectricMotorScene from './scenes/ElectricMotorScene'
+import ElectromagneticInductionScene from './scenes/ElectromagneticInductionScene'
+import CoulombLawScene from './scenes/CoulombLawScene'
+import ElectricFieldLineScene from './scenes/ElectricFieldLineScene'
+import ElectricPotentialScene from './scenes/ElectricPotentialScene'
+import CapacitorChargeScene from './scenes/CapacitorChargeScene'
+import ClosedCircuitOhmScene from './scenes/ClosedCircuitOhmScene'
+import MeterConversionScene from './scenes/MeterConversionScene'
+import FaradayLawScene from './scenes/FaradayLawScene'
+import SelfInductionScene from './scenes/SelfInductionScene'
+import AlternatingCurrentScene from './scenes/AlternatingCurrentScene'
+import LorentzForceScene from './scenes/LorentzForceScene'
+import HallEffectScene from './scenes/HallEffectScene'
 import { PRESETS } from './scenes'
 import { EXPERIMENT_CATALOG, CATEGORIES, DIFFICULTY_LABELS } from './scenes/catalog'
 
@@ -379,6 +394,36 @@ export default function LabPage({ onBack }) {
           <ThermodynamicsFirstScene />
         ) : currentExperiment?.key === 'carnotEngine' ? (
           <CarnotEngineScene />
+        ) : currentExperiment?.key === 'electricEnergy' ? (
+          <ElectricEnergyScene />
+        ) : currentExperiment?.key === 'ostersExperiment' ? (
+          <OstersExperimentScene />
+        ) : currentExperiment?.key === 'electricMotor' ? (
+          <ElectricMotorScene />
+        ) : currentExperiment?.key === 'electromagneticInduction' ? (
+          <ElectromagneticInductionScene />
+        ) : currentExperiment?.key === 'coulombLaw' ? (
+          <CoulombLawScene />
+        ) : currentExperiment?.key === 'electricFieldLine' ? (
+          <ElectricFieldLineScene />
+        ) : currentExperiment?.key === 'electricPotential' ? (
+          <ElectricPotentialScene />
+        ) : currentExperiment?.key === 'capacitorCharge' ? (
+          <CapacitorChargeScene />
+        ) : currentExperiment?.key === 'closedCircuitOhm' ? (
+          <ClosedCircuitOhmScene />
+        ) : currentExperiment?.key === 'meterConversion' ? (
+          <MeterConversionScene />
+        ) : currentExperiment?.key === 'faradayLaw' ? (
+          <FaradayLawScene />
+        ) : currentExperiment?.key === 'selfInduction' ? (
+          <SelfInductionScene />
+        ) : currentExperiment?.key === 'alternatingCurrent' ? (
+          <AlternatingCurrentScene />
+        ) : currentExperiment?.key === 'lorentzForce' ? (
+          <LorentzForceScene />
+        ) : currentExperiment?.key === 'hallEffect' ? (
+          <HallEffectScene />
         ) : currentExperiment?.key === 'measureSpeed' ? (
           <MeasureSpeedScene />
         ) : (
