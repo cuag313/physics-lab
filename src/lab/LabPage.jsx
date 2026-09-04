@@ -65,6 +65,10 @@ import ElectronDoubleSlitScene from './scenes/ElectronDoubleSlitScene'
 import NuclearReactionScene from './scenes/NuclearReactionScene'
 import RelativityScene from './scenes/RelativityScene'
 import ComptonScene from './scenes/ComptonScene'
+import BrownianMotionScene from './scenes/BrownianMotionScene'
+import GasLawsScene from './scenes/GasLawsScene'
+import ThermodynamicsFirstScene from './scenes/ThermodynamicsFirstScene'
+import CarnotEngineScene from './scenes/CarnotEngineScene'
 import { PRESETS } from './scenes'
 import { EXPERIMENT_CATALOG, CATEGORIES, DIFFICULTY_LABELS } from './scenes/catalog'
 
@@ -367,6 +371,14 @@ export default function LabPage({ onBack }) {
           <RelativityScene />
         ) : currentExperiment?.key === 'compton' ? (
           <ComptonScene />
+        ) : currentExperiment?.key === 'brownianMotion' ? (
+          <BrownianMotionScene />
+        ) : currentExperiment?.key === 'gasLaws' ? (
+          <GasLawsScene />
+        ) : currentExperiment?.key === 'thermodynamicsFirst' ? (
+          <ThermodynamicsFirstScene />
+        ) : currentExperiment?.key === 'carnotEngine' ? (
+          <CarnotEngineScene />
         ) : currentExperiment?.key === 'measureSpeed' ? (
           <MeasureSpeedScene />
         ) : (
