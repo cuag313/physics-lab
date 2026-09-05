@@ -29,11 +29,11 @@ const G = 9.8
  *  液体选项（Tab1用5种，Tab2用3种）
  * ═══════════════════════════════════════════════════════════ */
 const ALL_LIQUIDS = {
-  alcohol:   { name: '酒精',   density: 800,  color: 'rgba(200,200,200,0.25)' },
-  oil:       { name: '食用油', density: 920,  color: 'rgba(255,213,79,0.30)' },
-  water:     { name: '水',     density: 1000, color: 'rgba(33,150,243,0.35)' },
-  saltwater: { name: '盐水',   density: 1100, color: 'rgba(33,150,243,0.50)' },
-  mercury:   { name: '水银',   density: 13600, color: 'rgba(192,192,192,0.65)' },
+  alcohol:   { name: '酒精',   density: 800,   color: 'rgba(201,177,232,0.35)' },
+  oil:       { name: '食用油', density: 920,   color: 'rgba(245,222,179,0.40)' },
+  water:     { name: '水',     density: 1000,  color: 'rgba(126,200,227,0.45)' },
+  saltwater: { name: '盐水',   density: 1100,  color: 'rgba(168,216,168,0.45)' },
+  mercury:   { name: '水银',   density: 13600, color: 'rgba(184,184,184,0.70)' },
 }
 
 const TAB1_LIQUIDS = ALL_LIQUIDS
@@ -82,6 +82,8 @@ export default function ArchimedesPrincipleScene() {
   const [records, setRecords] = useState([])
   const [cursor, setCursor] = useState('grab')
   const [activeTab, setActiveTab] = useState(1) // 1 | 2
+  const [showGuide, setShowGuide] = useState(true)
+  const guideAlpha = useRef(1)
   const [, forceUpdate] = useState(0)
 
   // 当前 tab 对应的液体列表
@@ -106,6 +108,7 @@ export default function ArchimedesPrincipleScene() {
     }
     s.objectY = 0
     setRecords([])
+    setShowGuide(true)
     forceUpdate(n => n + 1)
   }, [])
 
@@ -222,6 +225,7 @@ export default function ArchimedesPrincipleScene() {
     drawSpringScale(ctx, rect)
     drawObject(ctx, rect)
     drawForceArrows(ctx, rect)
+    drawGuideBubble(ctx, rect)
     drawDataPanel(ctx, rect)
     drawKnowledgeCard(ctx, rect)
     drawFormula(ctx, rect)
@@ -299,6 +303,14 @@ export default function ArchimedesPrincipleScene() {
       if (x === bx - bw / 2 + 6) ctx.moveTo(x, y)
       else ctx.lineTo(x, y)
     }
+    ctx.stroke()
+
+    // 液面高光线
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(bx - bw / 2 + 6, currentLiquidY)
+    ctx.lineTo(bx + bw / 2 - 6, currentLiquidY)
     ctx.stroke()
 
     // 液体名称标签
@@ -621,37 +633,30 @@ export default function ArchimedesPrincipleScene() {
       ctx.font = 'bold 13px sans-serif'
       ctx.textAlign = 'left'
       ctx.textBaseline = 'top'
-      ctx.fillText('📊 实时数据', px + 14, y); y += 26
+      ctx.fillText('📊 阿基米德原理验证', px + 14, y); y += 22
 
-      ctx.fillStyle = s.submerged ? '#2196F3' : '#888'
-      ctx.font = 'bold 11px sans-serif'
-      ctx.fillText(s.submerged ? '● 完全浸没' : '○ 部分浸入', px + 14, y); y += lh + 2
+      ctx.fillStyle = '#666'
+      ctx.font = '10px sans-serif'
+      ctx.fillText('F浮 = G排（浮力等于排开液体的重力）', px + 14, y); y += lh + 4
 
-      ctx.font = '11px sans-serif'
-
-      ctx.fillStyle = '#FF6B6B'
-      ctx.fillText(`物体重力 G = ${s.G.toFixed(3)} N`, px + 14, y); y += lh
-
-      ctx.fillStyle = '#4CAF50'
-      ctx.fillText(`弹簧拉力 F拉 = ${s.F拉.toFixed(3)} N`, px + 14, y); y += lh
-
+      ctx.font = '12px sans-serif'
       ctx.fillStyle = '#2196F3'
-      ctx.font = 'bold 11px sans-serif'
-      ctx.fillText(`浮力 F浮 = ${s.F浮.toFixed(3)} N`, px + 14, y); y += lh
-
-      ctx.fillStyle = '#E6A800'
-      ctx.font = '11px sans-serif'
-      ctx.fillText(`排开体积 V排 = ${s.V排.toFixed(1)} cm³`, px + 14, y); y += lh
+      ctx.font = 'bold 12px sans-serif'
+      ctx.fillText(`F浮 = ${s.F浮.toFixed(3)} N`, px + 14, y); y += lh
 
       ctx.fillStyle = '#9C27B0'
-      ctx.fillText(`排开液体重力 G排 = ${s.G排.toFixed(3)} N`, px + 14, y); y += lh + 4
+      ctx.fillText(`G排 = ${s.G排.toFixed(3)} N`, px + 14, y); y += lh
 
-      // 验证 F浮 ≈ G排
       const diff = Math.abs(s.F浮 - s.G排)
+      ctx.fillStyle = '#555'
+      ctx.font = '12px sans-serif'
+      ctx.fillText(`差值 = ${diff.toFixed(4)} N`, px + 14, y); y += lh + 4
+
+      // 验证结果
       const ok = diff < 0.01
       ctx.fillStyle = ok ? '#4CAF50' : '#FF9800'
-      ctx.font = 'bold 11px sans-serif'
-      ctx.fillText(ok ? '✔ F浮 = G排（验证通过）' : `✘ |F浮−G排|=${diff.toFixed(4)}N`, px + 14, y)
+      ctx.font = 'bold 13px sans-serif'
+      ctx.fillText(ok ? '✓ 验证成功：F浮 = G排' : '✗ 继续调整浸入深度', px + 14, y)
     }
   }
 
@@ -821,6 +826,61 @@ export default function ArchimedesPrincipleScene() {
     }
   }
 
+  // ── 操作引导气泡 ──
+  function drawGuideBubble(ctx, rect) {
+    // 更新透明度
+    const targetAlpha = showGuide ? 1 : 0
+    guideAlpha.current += (targetAlpha - guideAlpha.current) * 0.15
+    if (guideAlpha.current < 0.01) return
+
+    const w = rect.width
+    const s = sim.current
+    const sx = w * 0.5
+    const objY = getObjectScreenY(rect)
+    const objSize = activeTab === 1 ? (14 + (s.objectVolume - 50) / (500 - 50) * 18) : 22
+
+    // 浮动动画
+    const floatY = Math.sin(Date.now() / 500 * Math.PI * 2 / 1.5) * 4
+
+    const text = activeTab === 1 ? '👇 拽物体进入液体' : '👇 拽物体浸入水中，记录F浮=G排'
+    const bx = sx + objSize + 30
+    const by = objY + floatY
+
+    ctx.save()
+    ctx.globalAlpha = guideAlpha.current
+
+    // 测量文字宽度
+    ctx.font = '13px sans-serif'
+    const tw = ctx.measureText(text).width
+    const pw = tw + 20
+    const ph = 30
+    const px = bx
+    const py = by - ph / 2
+
+    // 气泡背景
+    ctx.fillStyle = 'rgba(33,33,33,0.85)'
+    ctx.beginPath()
+    ctx.roundRect(px, py, pw, ph, 8)
+    ctx.fill()
+
+    // 左箭头
+    ctx.beginPath()
+    ctx.moveTo(px, by - 6)
+    ctx.lineTo(px - 8, by)
+    ctx.lineTo(px, by + 6)
+    ctx.closePath()
+    ctx.fill()
+
+    // 文字
+    ctx.fillStyle = '#fff'
+    ctx.font = '13px sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(text, px + 10, by)
+
+    ctx.restore()
+  }
+
   function roundedRect(ctx, x, y, w, h, r) {
     ctx.beginPath()
     ctx.moveTo(x + r, y)
@@ -851,6 +911,7 @@ export default function ArchimedesPrincipleScene() {
     if (Math.abs(mx - sx) <= objSize + 10 && Math.abs(my - sy) <= objSize + 10) {
       interRef.current.mode = 'dragging'
       setCursor('grabbing')
+      setShowGuide(false)
     }
   }, [activeTab])
 
