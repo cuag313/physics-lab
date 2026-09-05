@@ -63,14 +63,14 @@ export default function CosmicVelocityScene() {
 
     // 发射参数
     v: V1,
-    launchAlt: 0,            // km 发射高度（近地轨道）
+    launchAlt: 200,          // km 近地轨道近似
 
     // 轨道状态
     launched: false,
     crashed: false,
     escaped: false,
     theta: 0,                // 真近点角 rad
-    r: R_EARTH,              // 当前地心距 km
+    r: R_EARTH + 200,        // 当前地心距 km
     orbit: null,             // 轨道元素缓存
     trail: [],               // {x, y} 屏幕坐标轨迹
     maxTrail: 1200,
@@ -999,7 +999,7 @@ export default function CosmicVelocityScene() {
     S.current.mode = newMode
     // 设置默认发射速度
     if (newMode === 'first') { S.current.v = V1; setV(V1) }
-    else if (newMode === 'second') { S.current.v = V2; setV(V2) }
+    else if (newMode === 'second') { S.current.v = 11.5; setV(11.5) }
     handleReset()
     setMode(newMode)
   }, [handleReset])
@@ -1054,7 +1054,7 @@ export default function CosmicVelocityScene() {
               轨道高度：
               <input
                 type="range"
-                min="0"
+                min="200"
                 max="100000"
                 step="100"
                 value={syncH}
