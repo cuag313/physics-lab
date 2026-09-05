@@ -28,6 +28,7 @@ const G = 9.8
  * ═══════════════════════════════════════════════════════════ */
 const LIQUIDS = {
   alcohol:   { name: '酒精',   density: 800,  color: 'rgba(200,200,200,0.25)' },
+  oil:       { name: '食用油', density: 920,  color: 'rgba(255,213,79,0.30)' },
   water:     { name: '水',     density: 1000, color: 'rgba(33,150,243,0.35)' },
   saltwater: { name: '盐水',   density: 1100, color: 'rgba(33,150,243,0.50)' },
   mercury:   { name: '水银',   density: 13600, color: 'rgba(192,192,192,0.65)' },
@@ -53,6 +54,7 @@ export default function BuoyancyFactorsScene() {
   const sim = useRef({
     objectY: 0,           // 0=空气中, 1=完全浸没
     objectVolume: 200,    // cm³
+    objectDensity: 2700,  // kg/m³ (铝)
     liquidType: 'water',
     liquidDensity: 1000,
     beakerTop: 280, beakerH: 380,
@@ -135,7 +137,9 @@ export default function BuoyancyFactorsScene() {
     s.V排 = V排_m3 * 1e6
 
     s.F浮 = rho液 * G * V排_m3
-    s.G = 0.5 * G  // 固定质量，关注浮力本身
+    // 重力随物体体积和密度变化
+    const rhoObj = s.objectDensity
+    s.G = rhoObj * V物体 * G
     s.F拉 = Math.max(0, s.G - s.F浮)
 
     forceUpdate(n => n + 1)
@@ -340,7 +344,8 @@ export default function BuoyancyFactorsScene() {
     const s = sim.current
     const sx = w * 0.5
     const sy = getObjectScreenY(rect)
-    const objSize = 22
+    // 物体大小随体积变化：50cm³→14px, 500cm³→32px
+    const objSize = 14 + (s.objectVolume - 50) / (500 - 50) * 18
 
     // 物体颜色根据体积变化
     const volRatio = (s.objectVolume - 50) / (500 - 50)
@@ -603,9 +608,19 @@ export default function BuoyancyFactorsScene() {
   // ============================================================
   //  交互
   // ============================================================
-  const handleMouseDown = useCallback(() => {
-    interRef.current.mode = 'dragging'
-    setCursor('grabbing')
+  const handleMouseDown = useCallback((e) => {
+    // 检查鼠标是否在物体上
+    const rect = canvasRef.current.getBoundingClientRect()
+    const w = rect.width
+    const sx = w * 0.5
+    const sy = getObjectScreenY(rect)
+    const objSize = 14 + (sim.current.objectVolume - 50) / (500 - 50) * 18
+    const mx = e.clientX - rect.left
+    const my = e.clientY - rect.top
+    if (Math.abs(mx - sx) <= objSize + 10 && Math.abs(my - sy) <= objSize + 10) {
+      interRef.current.mode = 'dragging'
+      setCursor('grabbing')
+    }
   }, [])
 
   const handleMouseMove = useCallback((e) => {
@@ -646,6 +661,17 @@ export default function BuoyancyFactorsScene() {
       <div style={S.toolbar}>
         <span style={S.title}>探究浮力的大小与哪些因素有关</span>
         <div style={S.actions}>
+          <div style={S.modeGroup}>
+            <button
+              style={sim.current.mode === 'varyV' ? S.modeBtnActive : S.modeBtn}
+              onClick={() => { sim.current.mode = 'varyV'; forceUpdate(n => n + 1) }}
+            >改变V排</button>
+            <button
+              style={sim.current.mode === 'varyRho' ? S.modeBtnActive : S.modeBtn}
+              onClick={() => { sim.current.mode = 'varyRho'; forceUpdate(n => n + 1) }}
+            >改变ρ液</button>
+          </div>
+          <div style={S.sep} />
           <label style={S.label}>
             液体：
             <select value={sim.current.liquidType}
@@ -738,6 +764,16 @@ const S = {
   },
   title: { fontSize: 14, fontWeight: 600, color: '#333' },
   actions: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
+  modeGroup: { display: 'flex', gap: 4 },
+  modeBtn: {
+    background: '#f0f0f0', color: '#555', border: '1px solid #ddd',
+    borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer',
+  },
+  modeBtnActive: {
+    background: '#4A90D9', color: '#fff', border: '1px solid #4A90D9',
+    borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer', fontWeight: 600,
+  },
+  sep: { width: 1, height: 20, background: '#ddd' },
   label: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#555' },
   sliderVal: { color: '#E6A800', fontWeight: 600, minWidth: 45, fontSize: 12 },
   select: {
