@@ -195,7 +195,7 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'voltAmpereResistor',
     name: '伏安法测定值电阻',
-    description: '用电流表和电压表测量未知电阻，多次测量求平均值',
+    description: '用电流表和电压表测量未知电阻，多次测量求平均值（初中基础版；内接/外接系统误差分析见高中版）',
     category: 'electric',
     subCategory: '初中电学',
     difficulty: 2,
@@ -207,7 +207,7 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'bulbPower',
     name: '伏安法测小灯泡电功率',
-    description: '测量小灯泡在不同电压下的功率，不能求平均值',
+    description: '测量小灯泡在不同电压下的功率，不能求平均值（初中版；伏安特性曲线分析见高中版）',
     category: 'electric',
     subCategory: '初中电学',
     difficulty: 3,
@@ -226,7 +226,6 @@ export const EXPERIMENT_CATALOG = [
     grade: '九年级',
     tags: ['Q=I²Rt', '转换法', '控制变量'],
     examLevel: '★★',
-    comingSoon: true,
   },
   {
     key: 'electromagnet',
@@ -238,7 +237,6 @@ export const EXPERIMENT_CATALOG = [
     grade: '九年级',
     tags: ['奥斯特实验', '电磁铁', '控制变量'],
     examLevel: '★★',
-    comingSoon: true,
   },
   {
     key: 'electricEnergy',
@@ -589,7 +587,7 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'springForce',
     name: '探究弹力和弹簧伸长关系',
-    description: '绘制F-x图像，求劲度系数k',
+    description: '绘制F-x图像，求劲度系数k（基础版；增强版见同名NB+PhET融合版）',
     category: 'mechanics',
     subCategory: '高中力学',
     difficulty: 2,
@@ -670,7 +668,7 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'momentumConservation',
     name: '探究动量守恒定律',
-    description: '斜槽平抛方案或气垫导轨方案',
+    description: '斜槽平抛方案或气垫导轨方案（交互式碰撞模拟见同名碰撞实验室增强版）',
     category: 'mechanics',
     subCategory: '高中力学',
     difficulty: 3,
@@ -683,9 +681,9 @@ export const EXPERIMENT_CATALOG = [
     name: '牛顿第一定律（惯性定律）',
     description: '理想斜面实验：物体不受力时保持静止或匀速直线运动，推理法得出惯性定律',
     category: 'mechanics',
-    subCategory: '高中力学',
+    subCategory: '初中力学',
     difficulty: 2,
-    grade: '高一',
+    grade: '八年级',
     tags: ['惯性', '理想斜面', '推理法', '伽利略'],
     examLevel: '★★★',
     beyondCurriculum: true,
@@ -807,7 +805,7 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'voltAmpereMethodHS',
     name: '伏安法测电阻（内接/外接）',
-    description: '根据待测电阻阻值选择电流表内接法或外接法',
+    description: '根据待测电阻阻值选择电流表内接法或外接法，分析系统误差来源（高中进阶版，初中基础伏安法见九年级）',
     category: 'electric',
     subCategory: '高中电磁学',
     difficulty: 3,
@@ -819,7 +817,7 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'bulbIVCurve',
     name: '测绘小灯泡伏安特性曲线',
-    description: '分压式接法，绘制I-V曲线，分析非线性原因',
+    description: '分压式接法，绘制I-V曲线，分析非线性原因（高中进阶版，初中测功率见九年级）',
     category: 'electric',
     subCategory: '高中电磁学',
     difficulty: 3,
@@ -831,14 +829,13 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'emfInternalResistance',
     name: '测量电源电动势和内阻',
-    description: '两种电路方案，分析系统误差来源',
+    description: '两种电路方案，U-I图像截距与斜率，分析系统误差来源（重测量方法；规律探究见闭合电路欧姆定律）',
     category: 'electric',
     subCategory: '高中电磁学',
     difficulty: 3,
     grade: '高二',
     tags: ['电动势', '内阻', 'U-I图像', '系统误差'],
     examLevel: '★★★',
-    comingSoon: true,
   },
   {
     key: 'multimeter',
@@ -850,7 +847,6 @@ export const EXPERIMENT_CATALOG = [
     grade: '高二',
     tags: ['多用电表', '欧姆档', '二极管'],
     examLevel: '★★',
-    comingSoon: true,
   },
   {
     key: 'ampereForce',
@@ -862,7 +858,6 @@ export const EXPERIMENT_CATALOG = [
     grade: '高二',
     tags: ['安培力', 'F=BIL', '左手定则'],
     examLevel: '★',
-    comingSoon: true,
   },
   {
     key: 'lenzLaw',
@@ -874,7 +869,6 @@ export const EXPERIMENT_CATALOG = [
     grade: '高二',
     tags: ['楞次定律', '感应电流', '磁通量变化'],
     examLevel: '★★',
-    comingSoon: true,
   },
 
   // ==================== 高中·静电学（4个）====================
@@ -927,7 +921,7 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'closedCircuitOhm',
     name: '闭合电路欧姆定律',
-    description: '探究路端电压与电流关系 U=ε-Ir，内外电压分配',
+    description: '探究路端电压与电流关系 U=ε-Ir，内外电压分配（重规律探究；测量方法见电动势和内阻实验）',
     category: 'electric',
     subCategory: '高中电磁学',
     difficulty: 3,
@@ -1028,19 +1022,6 @@ export const EXPERIMENT_CATALOG = [
     examLevel: '★★',
   },
 
-  // ==================== 高中·热学（1个）====================
-  {
-    key: 'oilFilmMethod',
-    name: '用油膜法估测分子大小',
-    description: '单分子油膜模型：d=V/S',
-    category: 'thermal',
-    subCategory: '高中热学',
-    difficulty: 2,
-    grade: '高二',
-    tags: ['油膜法', '分子大小', '模型法'],
-    examLevel: '★★',
-    comingSoon: true,
-  },
 
   // ==================== 高中·光学（3个）====================
   {

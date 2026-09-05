@@ -84,6 +84,12 @@ import SelfInductionScene from './scenes/SelfInductionScene'
 import AlternatingCurrentScene from './scenes/AlternatingCurrentScene'
 import LorentzForceScene from './scenes/LorentzForceScene'
 import HallEffectScene from './scenes/HallEffectScene'
+import JouleLawScene from './scenes/JouleLawScene'
+import ElectromagnetScene from './scenes/ElectromagnetScene'
+import EmfInternalResistanceScene from './scenes/EmfInternalResistanceScene'
+import MultimeterScene from './scenes/MultimeterScene'
+import AmpereForceScene from './scenes/AmpereForceScene'
+import LenzLawScene from './scenes/LenzLawScene'
 import { PRESETS } from './scenes'
 import { EXPERIMENT_CATALOG, CATEGORIES, DIFFICULTY_LABELS } from './scenes/catalog'
 
@@ -91,6 +97,8 @@ export default function LabPage({ onBack }) {
   const [currentExperiment, setCurrentExperiment] = useState(null)
   const [showCatalog, setShowCatalog] = useState(true)
   const [activeCategory, setActiveCategory] = useState('mechanics')
+  const [showBeyond, setShowBeyond] = useState(true)
+  const [gradeFilter, setGradeFilter] = useState('all')
 
   const handleSelectExperiment = useCallback((exp) => {
     if (exp.comingSoon) return
@@ -114,7 +122,12 @@ export default function LabPage({ onBack }) {
 
   // 目录页
   if (showCatalog) {
-    const filteredExps = EXPERIMENT_CATALOG.filter(e => e.category === activeCategory)
+    const filteredExps = EXPERIMENT_CATALOG.filter(e => {
+      if (e.category !== activeCategory) return false
+      if (!showBeyond && e.beyondCurriculum) return false
+      if (gradeFilter !== 'all' && e.grade !== gradeFilter) return false
+      return true
+    })
 
     return (
       <div style={styles.catalogPage}>
@@ -156,6 +169,51 @@ export default function LabPage({ onBack }) {
               </div>
             )
           })}
+        </div>
+
+        {/* 筛选工具栏 */}
+        <div style={styles.filterBar}>
+          <div style={styles.filterGroup}>
+            <span style={styles.filterLabel}>超纲：</span>
+            <button
+              style={{
+                ...styles.filterBtn,
+                background: !showBeyond ? '#4A90D9' : '#f0f0f0',
+                color: !showBeyond ? '#fff' : '#555',
+              }}
+              onClick={() => setShowBeyond(false)}
+            >仅课标</button>
+            <button
+              style={{
+                ...styles.filterBtn,
+                background: showBeyond ? '#4A90D9' : '#f0f0f0',
+                color: showBeyond ? '#fff' : '#555',
+              }}
+              onClick={() => setShowBeyond(true)}
+            >含超纲</button>
+          </div>
+          <div style={styles.filterGroup}>
+            <span style={styles.filterLabel}>年级：</span>
+            {['all', '八年级', '九年级', '高一', '高二', '高三'].map(g => (
+              <button
+                key={g}
+                style={{
+                  ...styles.filterBtn,
+                  background: gradeFilter === g ? '#4A90D9' : '#f0f0f0',
+                  color: gradeFilter === g ? '#fff' : '#555',
+                }}
+                onClick={() => setGradeFilter(g)}
+              >{g === 'all' ? '全部' : g}</button>
+            ))}
+          </div>
+          {(gradeFilter !== 'all' || !showBeyond) && (
+            <div style={{...styles.filterGroup, marginLeft: 'auto'}}>
+              <button
+                style={{...styles.filterBtn, background: '#eee', color: '#888'}}
+                onClick={() => { setGradeFilter('all'); setShowBeyond(true) }}
+              >重置筛选</button>
+            </div>
+          )}
         </div>
 
         {/* 实验卡片网格 */}
@@ -223,11 +281,10 @@ export default function LabPage({ onBack }) {
 
         {/* 底部统计 */}
         <div style={styles.catalogFooter}>
-          <span>
-            共 {EXPERIMENT_CATALOG.length} 个实验，
-            已上线 {EXPERIMENT_CATALOG.filter(e => !e.comingSoon).length} 个，
-            超纲 {EXPERIMENT_CATALOG.filter(e => e.beyondCurriculum).length} 个
-          </span>
+          <span>共 {EXPERIMENT_CATALOG.length} 个实验</span>
+          <span style={{color:'#4CAF50'}}>已上线 {EXPERIMENT_CATALOG.filter(e => !e.comingSoon).length} 个</span>
+          <span style={{color:'#FF9800'}}>待上线 {EXPERIMENT_CATALOG.filter(e => e.comingSoon).length} 个</span>
+          <span style={{color:'#9C27B0'}}>超纲 {EXPERIMENT_CATALOG.filter(e => e.beyondCurriculum).length} 个</span>
         </div>
       </div>
     )
@@ -424,6 +481,18 @@ export default function LabPage({ onBack }) {
           <LorentzForceScene />
         ) : currentExperiment?.key === 'hallEffect' ? (
           <HallEffectScene />
+        ) : currentExperiment?.key === 'jouleLaw' ? (
+          <JouleLawScene />
+        ) : currentExperiment?.key === 'electromagnet' ? (
+          <ElectromagnetScene />
+        ) : currentExperiment?.key === 'emfInternalResistance' ? (
+          <EmfInternalResistanceScene />
+        ) : currentExperiment?.key === 'multimeter' ? (
+          <MultimeterScene />
+        ) : currentExperiment?.key === 'ampereForce' ? (
+          <AmpereForceScene />
+        ) : currentExperiment?.key === 'lenzLaw' ? (
+          <LenzLawScene />
         ) : currentExperiment?.key === 'measureSpeed' ? (
           <MeasureSpeedScene />
         ) : (
@@ -506,6 +575,34 @@ const styles = {
     fontSize: 11,
     color: '#484f58',
     fontFamily: 'monospace',
+  },
+
+  // 筛选工具栏
+  filterBar: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 16,
+    padding: '12px 40px',
+    flexWrap: 'wrap',
+  },
+  filterGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+  },
+  filterLabel: {
+    fontSize: 13,
+    color: '#8b949e',
+    marginRight: 4,
+  },
+  filterBtn: {
+    padding: '4px 12px',
+    borderRadius: 6,
+    border: '1px solid #ccc',
+    fontSize: 12,
+    cursor: 'pointer',
+    transition: 'all 0.15s',
+    fontWeight: 500,
   },
 
   // 实验卡片网格
