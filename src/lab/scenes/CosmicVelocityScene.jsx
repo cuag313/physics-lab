@@ -63,19 +63,20 @@ export default function CosmicVelocityScene() {
 
     // 发射参数
     v: V1,
-    launchAlt: 200,          // km 发射高度
+    launchAlt: 0,            // km 发射高度（近地轨道）
 
     // 轨道状态
     launched: false,
     crashed: false,
     escaped: false,
     theta: 0,                // 真近点角 rad
-    r: R_EARTH + 200,        // 当前地心距 km
+    r: R_EARTH,              // 当前地心距 km
     orbit: null,             // 轨道元素缓存
     trail: [],               // {x, y} 屏幕坐标轨迹
     maxTrail: 1200,
     time: 0,
     dt: 0.015,               // 物理时间步 s (动画用)
+    timeScale: 600,          // 动画时间加速因子
 
     // 同步卫星模式
     syncH: 35786,
@@ -99,6 +100,7 @@ export default function CosmicVelocityScene() {
   const [mode, setMode] = useState('first')
   const [v, setV] = useState(V1)
   const [syncH, setSyncH] = useState(35786)
+  const [timeScale, setTimeScale] = useState(600)
   const [, forceUpdate] = useState(0)
 
   // ============ 渲染器初始化 ============
@@ -161,6 +163,7 @@ export default function CosmicVelocityScene() {
 
     const dt = s.dt
     const steps = 3  // 每帧多步
+    const ts = s.timeScale || 600
 
     for (let i = 0; i < steps; i++) {
       if (s.crashed || s.escaped) break
@@ -169,7 +172,7 @@ export default function CosmicVelocityScene() {
       const orbit = s.orbit
 
       // 用真实轨道方程
-      const dtheta = dThetaDt(orbit.h, r) * dt
+      const dtheta = dThetaDt(orbit.h, r) * dt * ts
       s.theta += dtheta
 
       // 更新 r
@@ -183,7 +186,7 @@ export default function CosmicVelocityScene() {
       }
 
       // 逃逸检测
-      if (newR > R_EARTH * 12) {
+      if (newR > R_EARTH * 25) {
         s.escaped = true
         break
       }
@@ -197,7 +200,7 @@ export default function CosmicVelocityScene() {
       recordTrail(s, scale)
     }
 
-    s.time += dt * steps
+    s.time += dt * steps * ts
   }
 
   function updateThirdVelocity(s) {
@@ -229,7 +232,8 @@ export default function CosmicVelocityScene() {
     // 同步卫星角速度
     const r_km = R_EARTH + s.syncH
     const omega = Math.sqrt(GM / (r_km * r_km * r_km))
-    s.syncAngle += omega * s.dt * 500  // 加速可视化
+    const ts = s.timeScale || 600
+    s.syncAngle += omega * s.dt * ts  // 加速可视化
     s.time += s.dt
   }
 
@@ -286,25 +290,37 @@ export default function CosmicVelocityScene() {
     ctx.arc(cx, cy, earthR_px * 1.12, 0, Math.PI * 2)
     ctx.fill()
 
-    // 地球本体
+    // 地球本体 — 蓝色径向渐变
     const grad = ctx.createRadialGradient(cx - earthR_px * 0.25, cy - earthR_px * 0.25, 0, cx, cy, earthR_px)
-    grad.addColorStop(0, '#81C784')
-    grad.addColorStop(0.3, '#4DB6AC')
-    grad.addColorStop(0.6, '#4FC3F7')
-    grad.addColorStop(1, '#1565C0')
+    grad.addColorStop(0, '#81D4FA')
+    grad.addColorStop(0.5, '#4FC3F7')
+    grad.addColorStop(1, '#0277BD')
     ctx.fillStyle = grad
     ctx.beginPath()
     ctx.arc(cx, cy, earthR_px, 0, Math.PI * 2)
     ctx.fill()
 
-    // 陆地块
-    ctx.fillStyle = 'rgba(76,175,80,0.35)'
+    // 经纬线（简洁专业风格）
+    ctx.save()
     ctx.beginPath()
-    ctx.arc(cx - earthR_px * 0.15, cy - earthR_px * 0.1, earthR_px * 0.28, 0, Math.PI * 2)
-    ctx.fill()
+    ctx.arc(cx, cy, earthR_px, 0, Math.PI * 2)
+    ctx.clip()
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.25)'
+    ctx.lineWidth = 0.8
+    // 赤道
     ctx.beginPath()
-    ctx.arc(cx + earthR_px * 0.25, cy + earthR_px * 0.15, earthR_px * 0.22, 0, Math.PI * 2)
-    ctx.fill()
+    ctx.ellipse(cx, cy, earthR_px, earthR_px * 0.2, 0, 0, Math.PI * 2)
+    ctx.stroke()
+    // 两条经线
+    ctx.beginPath()
+    ctx.ellipse(cx, cy, earthR_px * 0.2, earthR_px, 0, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.beginPath()
+    ctx.ellipse(cx, cy, earthR_px * 0.55, earthR_px, 0, 0, Math.PI * 2)
+    ctx.stroke()
+
+    ctx.restore()
 
     // 高光
     ctx.fillStyle = 'rgba(255,255,255,0.2)'
@@ -727,7 +743,8 @@ export default function CosmicVelocityScene() {
     drawFormulaPanel(ctx, R, [
       { text: '📡 同步卫星推导', bold: true, color: '#333' },
       { text: '', color: '#555' },
-      { text: '① T = 24h = 86400s', color: '#555' },
+      { text: '① T = 23h56min4s = 86164s（恒星日）', color: '#555' },
+      { text: '   （同步卫星使用恒星日而非太阳日）', color: '#888' },
       { text: '② 引力 = 向心力:', color: '#555' },
       { text: '   GMm/r² = m·4π²r/T²', color: '#4A90D9' },
       { text: '③ r³ = GMT²/(4π²)', color: '#555' },
@@ -867,6 +884,35 @@ export default function CosmicVelocityScene() {
       ctx.fillText(`v = ${item.v} km/s  ${item.label}`, x + 10, cy)
       cy += 18
     }
+
+    // V1/V2 模式实时数据
+    if ((s.mode === 'first' || s.mode === 'second') && s.launched && s.orbit && !s.crashed && !s.escaped) {
+      const panelX = 16
+      const panelY = y - 90
+      ctx.fillStyle = 'rgba(245,245,245,0.95)'
+      ctx.beginPath()
+      ctx.roundRect(panelX, panelY, 180, 80, 6)
+      ctx.fill()
+      ctx.strokeStyle = '#ddd'
+      ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.roundRect(panelX, panelY, 180, 80, 6)
+      ctx.stroke()
+
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'top'
+      ctx.fillStyle = '#333'
+      ctx.font = 'bold 11px sans-serif'
+      ctx.fillText('📊 实时数据', panelX + 10, panelY + 6)
+      ctx.font = '11px sans-serif'
+      ctx.fillStyle = '#4A90D9'
+      ctx.fillText(`h = ${(s.r - R_EARTH).toFixed(0)} km`, panelX + 10, panelY + 24)
+      const curV = s.orbit.h / s.r
+      ctx.fillStyle = '#4CAF50'
+      ctx.fillText(`v = ${curV.toFixed(2)} km/s`, panelX + 10, panelY + 40)
+      ctx.fillStyle = '#FF9800'
+      ctx.fillText(`e = ${s.orbit.e.toFixed(3)}`, panelX + 10, panelY + 56)
+    }
   }
 
   // ============ 动画循环 ============
@@ -951,6 +997,9 @@ export default function CosmicVelocityScene() {
 
   const handleModeChange = useCallback((newMode) => {
     S.current.mode = newMode
+    // 设置默认发射速度
+    if (newMode === 'first') { S.current.v = V1; setV(V1) }
+    else if (newMode === 'second') { S.current.v = V2; setV(V2) }
     handleReset()
     setMode(newMode)
   }, [handleReset])
@@ -984,7 +1033,7 @@ export default function CosmicVelocityScene() {
 
           <div style={styles.sep} />
 
-          {mode !== 'third' && (
+          {mode !== 'third' && mode !== 'sync' && (
             <label style={styles.controlLabel}>
               发射速度：
               <input
@@ -1005,7 +1054,7 @@ export default function CosmicVelocityScene() {
               轨道高度：
               <input
                 type="range"
-                min="200"
+                min="0"
                 max="100000"
                 step="100"
                 value={syncH}
@@ -1016,7 +1065,23 @@ export default function CosmicVelocityScene() {
             </label>
           )}
 
-          <button style={styles.launchBtn} onClick={handleLaunch}>🚀 发射</button>
+          <label style={styles.controlLabel}>
+            动画速度：
+            <input
+              type="range"
+              min="100"
+              max="2000"
+              step="50"
+              value={timeScale}
+              onChange={(e) => { const val = parseInt(e.target.value); setTimeScale(val); S.current.timeScale = val }}
+              style={styles.slider}
+            />
+            <span style={styles.sliderVal}>{timeScale}×</span>
+          </label>
+
+          {mode !== 'sync' && (
+            <button style={styles.launchBtn} onClick={handleLaunch}>🚀 发射</button>
+          )}
           <button style={styles.resetBtn} onClick={handleReset}>↺ 重置</button>
         </div>
       </div>
@@ -1031,7 +1096,7 @@ export default function CosmicVelocityScene() {
           {mode === 'first' && '调节发射速度 → 观察圆形/椭圆轨道变化，v < v₁ 则坠落'}
           {mode === 'second' && 'v ≥ v₂ = 11.2 km/s 时物体逃逸地球引力，轨道为双曲线'}
           {mode === 'third' && 'v₃ = √(v₂² + 12.3²) ≈ 16.7 km/s，可飞出太阳系'}
-          {mode === 'sync' && '同步卫星：T = 24h，h = 35786 km，在赤道平面上空'}
+          {mode === 'sync' && '同步卫星：T = 23h56min（恒星日），h = 35786 km，在赤道平面上空'}
         </span>
       </div>
     </div>
