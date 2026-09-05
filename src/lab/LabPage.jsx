@@ -31,7 +31,6 @@ import EnergyConservationScene from './scenes/EnergyConservationScene'
 import MomentumConservationScene from './scenes/MomentumConservationScene'
 import CollisionLabScene from './scenes/CollisionLabScene'
 import MeasureSpeedScene from './scenes/MeasureSpeedScene'
-import BuoyancyFactorsScene from './scenes/BuoyancyFactorsScene'
 import FloatSinkScene from './scenes/FloatSinkScene'
 import PascalPrincipleScene from './scenes/PascalPrincipleScene'
 import AtmosphericPressureScene from './scenes/AtmosphericPressureScene'
@@ -363,8 +362,6 @@ export default function LabPage({ onBack }) {
           <ParallelogramRuleScene />
         ) : currentExperiment?.key === 'archimedesPrinciple' ? (
           <ArchimedesPrincipleScene />
-        ) : currentExperiment?.key === 'buoyancyFactors' ? (
-          <BuoyancyFactorsScene />
         ) : currentExperiment?.key === 'floatSink' ? (
           <FloatSinkScene />
         ) : currentExperiment?.key === 'pressureEffect' ? (

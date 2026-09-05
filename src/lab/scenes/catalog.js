@@ -101,8 +101,8 @@ export const EXPERIMENT_CATALOG = [
   },
   {
     key: 'archimedesPrinciple',
-    name: '探究浮力与排开液体重力',
-    description: '验证阿基米德原理：F浮=G排',
+    name: '浮力综合实验',
+    description: '控制变量法探究浮力因素（ρ液、V排）+ 验证阿基米德原理F浮=G排',
     category: 'mechanics',
     subCategory: '初中力学',
     difficulty: 3,
@@ -110,17 +110,7 @@ export const EXPERIMENT_CATALOG = [
     tags: ['阿基米德', '称重法', '步骤排序'],
     examLevel: '★★★',
   },
-  {
-    key: 'buoyancyFactors',
-    name: '探究浮力大小与哪些因素有关',
-    description: '控制变量法探究液体密度和排开液体体积对浮力的影响',
-    category: 'mechanics',
-    subCategory: '初中力学',
-    difficulty: 2,
-    grade: '九年级',
-    tags: ['控制变量', '浮力因素', 'ρ液', 'V排'],
-    examLevel: '★★★',
-  },
+
   {
     key: 'floatSink',
     name: '物体的浮沉条件',
