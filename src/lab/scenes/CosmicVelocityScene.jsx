@@ -3,560 +3,945 @@ import { useRef, useEffect, useState, useCallback } from 'react'
 /**
  * CosmicVelocityScene — 三大宇宙速度 + 同步卫星
  *
- * 第一宇宙速度（环绕速度）：v₁ = √(gR) = 7.9 km/s
- * 第二宇宙速度（逃逸速度）：v₂ = √(2gR) = 11.2 km/s
- * 第三宇宙速度（飞出太阳系）：v₃ = 16.7 km/s
+ * 真实轨道力学：使用开普勒轨道方程，而非 sin() 近似
+ * GM = 398600.4 km³/s² (地球引力参数)
+ * R = 6371 km (地球半径)
  *
- * 同步卫星：T=24h, h≈36000km, 轨道在赤道平面上空
- *
- * 交互：
- * - 切换三种宇宙速度演示
- * - 发射卫星，调节初速度
- * - 同步卫星参数推导
- * - 轨道可视化
+ * 四个模式：
+ *   1. v₁ 环绕速度 — 圆/椭圆轨道
+ *   2. v₂ 逃逸速度 — 抛物线/双曲线逃逸
+ *   3. v₃ 飞出太阳系 — 日心参考系
+ *   4. 同步卫星 — 地球同步轨道推导
  */
+
+// ============ 物理常量 ============
+const GM = 398600.4       // km³/s²  地球引力参数
+const R_EARTH = 6371      // km      地球半径
+const V1 = Math.sqrt(GM / R_EARTH)           // ≈ 7.905 km/s
+const V2 = Math.sqrt(2 * GM / R_EARTH)       // ≈ 11.186 km/s
+const V3 = 16.7                              // km/s (近似)
+const GM_SUN = 1.327e11   // km³/s²  太阳引力参数
+const AU = 149597870.7     // km      天文单位
+
+// ============ 工具函数 ============
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
+
+/** 给定 r0 (km), v0 (km/s), 返回轨道元素 {a, e, h, rp, ra, type} */
+function computeOrbit(r0, v0) {
+  const epsilon = v0 * v0 / 2 - GM / r0   // 比机械能
+  const a = -GM / (2 * epsilon)            // 半长轴
+  // 角动量 h = r0 * v_tangential (切向速度分量，假设切向发射)
+  const h = r0 * v0
+  const eSq = 1 + 2 * epsilon * h * h / (GM * GM)
+  const e = Math.sqrt(Math.max(0, eSq))
+  const rp = a * (1 - e)    // 近地点
+  const ra = e < 1 ? a * (1 + e) : Infinity  // 远地点
+  let type = 'elliptical'
+  if (e > 0.999 && e < 1.001) type = 'parabolic'
+  else if (e > 1) type = 'hyperbolic'
+  return { a, e, h, rp, ra, epsilon, type }
+}
+
+/** r(θ) = a(1-e²)/(1+e·cosθ) */
+function orbitRadius(a, e, theta) {
+  const p = a * (1 - e * e)   // 半通径
+  return p / (1 + e * Math.cos(theta))
+}
+
+/** dθ/dt = h / r² */
+function dThetaDt(h, r) {
+  return h / (r * r)
+}
+
+// ============ 组件 ============
 export default function CosmicVelocityScene() {
   const canvasRef = useRef(null)
   const animRef = useRef(null)
 
   const S = useRef({
-    mode: 'first',       // first | second | third | sync
+    mode: 'first',
 
-    // 地球参数
-    R: 6371,             // km
-    M: 5.972e24,         // kg
-    g: 9.8,              // m/s²
+    // 发射参数
+    v: V1,
+    launchAlt: 200,          // km 发射高度
 
-    // 卫星
-    v: 7.9,              // km/s (初速度)
-    altitude: 200,       // km
-    angle: 0,            // 当前角度
-    trail: [],
-    maxTrail: 800,
+    // 轨道状态
     launched: false,
     crashed: false,
     escaped: false,
-
-    // 同步卫星
-    syncH: 35786,        // km
-    syncT: 24,           // h
-    syncV: 3.07,         // km/s
-
-    // 动画
+    theta: 0,                // 真近点角 rad
+    r: R_EARTH + 200,        // 当前地心距 km
+    orbit: null,             // 轨道元素缓存
+    trail: [],               // {x, y} 屏幕坐标轨迹
+    maxTrail: 1200,
     time: 0,
-    dt: 0.02,            // 时间步长（加速动画）
-    animSpeed: 1,
+    dt: 0.015,               // 物理时间步 s (动画用)
 
-    // 第三宇宙速度
-    v3Sun: 42.1,         // 绕太阳速度 km/s
-    v3Earth: 16.7,       // 地球系速度 km/s
+    // 同步卫星模式
+    syncH: 35786,
+    syncT: 24,
+    syncV: 3.07,
+    syncAngle: 0,
+
+    // 第三宇宙速度模式
+    earthOrbitAngle: 0,
+    satRelAngle: 0,
+    satDistFromEarth: 0,
+    v3Launched: false,
+    v3Trail: [],
+
+    // 渲染缓存
+    stars: null,
+    lastResizeW: 0,
+    lastResizeH: 0,
   })
 
   const [mode, setMode] = useState('first')
-  const [v, setV] = useState(7.9)
-  const [altitude, setAltitude] = useState(200)
+  const [v, setV] = useState(V1)
+  const [syncH, setSyncH] = useState(35786)
   const [, forceUpdate] = useState(0)
 
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const R = createRenderer(canvas)
-    canvasRef.current._R = R
-
-    const loop = () => {
-      updatePhysics()
-      renderFrame(R)
-      animRef.current = requestAnimationFrame(loop)
-    }
-    loop()
-
-    const onResize = () => R.resize()
-    window.addEventListener('resize', onResize)
-    return () => {
-      window.removeEventListener('resize', onResize)
-      if (animRef.current) cancelAnimationFrame(animRef.current)
-    }
-  }, [])
-
-  function createRenderer(canvas) {
+  // ============ 渲染器初始化 ============
+  const createRenderer = useCallback((canvas) => {
+    const ctx = canvas.getContext('2d')
     const R = {
-      canvas, ctx: canvas.getContext('2d'),
-      W: 0, H: 0, scale: 1, ox: 0, oy: 0,
+      canvas, ctx,
+      W: 0, H: 0, dpr: 1,
+      ox: 0, oy: 0,
+      scale: 1,          // km -> px
       resize() {
+        const dpr = window.devicePixelRatio || 1
         const rect = canvas.getBoundingClientRect()
-        canvas.width = rect.width * devicePixelRatio
-        canvas.height = rect.height * devicePixelRatio
-        this.ctx.scale(devicePixelRatio, devicePixelRatio)
-        this.W = rect.width; this.H = rect.height
-        this.ox = this.W * 0.5; this.oy = this.H * 0.5
-        this.scale = Math.min(this.W, this.H) / 300000 // 缩放
+        this.dpr = dpr
+        canvas.width = rect.width * dpr
+        canvas.height = rect.height * dpr
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+        this.W = rect.width
+        this.H = rect.height
+        this.ox = this.W / 2
+        this.oy = this.H / 2
       },
-      clear() { this.ctx.clearRect(0, 0, this.W, this.H) },
     }
     R.resize()
     return R
+  }, [])
+
+  // ============ 生成星星（仅一次） ============
+  function ensureStars() {
+    const s = S.current
+    if (s.stars) return
+    const arr = []
+    for (let i = 0; i < 80; i++) {
+      // 用确定性伪随机
+      arr.push({
+        x: (Math.sin(i * 137.508 + 0.1) * 0.5 + 0.5),
+        y: (Math.cos(i * 97.314 + 0.2) * 0.5 + 0.5),
+        r: 0.5 + (Math.sin(i * 43.7) * 0.5 + 0.5) * 1.2,
+        a: 0.15 + (Math.cos(i * 71.3) * 0.5 + 0.5) * 0.25,
+      })
+    }
+    s.stars = arr
   }
 
-  // ========== Physics ==========
+  // ============ 物理更新 ============
   function updatePhysics() {
     const s = S.current
+
+    if (s.mode === 'third') {
+      updateThirdVelocity(s)
+      return
+    }
+
+    if (s.mode === 'sync') {
+      updateSyncSatellite(s)
+      return
+    }
+
     if (!s.launched || s.crashed || s.escaped) return
 
-    const dt = s.dt * s.animSpeed
-    s.time += dt
+    const dt = s.dt
+    const steps = 3  // 每帧多步
 
-    // 简化轨道计算（圆形/椭圆轨道近似）
-    const r = s.R + s.altitude // km
-    const vKm = s.v            // km/s
+    for (let i = 0; i < steps; i++) {
+      if (s.crashed || s.escaped) break
 
-    // 环绕速度 at altitude
-    const vOrbit = Math.sqrt(398600 / r) // √(GM/r), GM=398600 km³/s²
+      const r = s.r
+      const orbit = s.orbit
 
-    if (s.mode === 'first' || s.mode === 'sync') {
-      // 圆形轨道
-      if (Math.abs(vKm - vOrbit) < 0.5) {
-        // 近似圆轨道
-        const omega = vKm / r
-        s.angle += omega * dt
-        s.altitude = r - s.R
-      } else if (vKm > vOrbit) {
-        // 椭圆轨道（简化）
-        const omega = vKm / r * 0.95
-        s.angle += omega * dt
-        s.altitude = r - s.R + Math.sin(s.angle * 2) * 500
-      } else {
-        // 速度不足，坠落
-        s.altitude -= 50 * dt
-        if (s.altitude < 0) { s.altitude = 0; s.crashed = true }
+      // 用真实轨道方程
+      const dtheta = dThetaDt(orbit.h, r) * dt
+      s.theta += dtheta
+
+      // 更新 r
+      const newR = orbitRadius(orbit.a, orbit.e, s.theta)
+      s.r = newR
+
+      // 碰撞检测
+      if (newR < R_EARTH) {
+        s.crashed = true
+        break
       }
-    } else if (s.mode === 'second') {
-      // 逃逸轨道
-      const vEsc = Math.sqrt(2 * 398600 / r)
-      if (vKm >= vEsc * 0.95) {
-        // 逃逸
-        s.altitude += (vKm - vOrbit) * 50 * dt
-        if (s.altitude > 50000) s.escaped = true
-        s.angle += (vOrbit / r) * dt
-      } else {
-        // 椭圆轨道
-        const omega = vKm / r
-        s.angle += omega * dt
-        s.altitude = r - s.R + Math.sin(s.angle) * 2000
+
+      // 逃逸检测
+      if (newR > R_EARTH * 12) {
+        s.escaped = true
+        break
       }
     }
 
-    // 记录轨迹
-    const px = (s.R + s.altitude) * Math.cos(s.angle)
-    const py = (s.R + s.altitude) * Math.sin(s.angle)
-    s.trail.push({ x: px, y: py })
-    if (s.trail.length > s.maxTrail) s.trail.shift()
+    // 记录轨迹（屏幕坐标）
+    const R = canvasRef.current?._R
+    if (R) {
+      const earthR_px = Math.min(R.W, R.H) * (s.mode === 'second' ? 0.15 : 0.18)
+      const scale = earthR_px / R_EARTH
+      recordTrail(s, scale)
+    }
 
-    forceUpdate(n => n + 1)
+    s.time += dt * steps
   }
 
-  // ========== Render ==========
+  function updateThirdVelocity(s) {
+    if (!s.v3Launched) return
+
+    const dt = s.dt * 0.4
+
+    // 地球公转角速度 (rad/s)
+    const omegaEarth = Math.sqrt(GM_SUN / (AU * AU * AU))
+    s.earthOrbitAngle += omegaEarth * dt * 8000  // 加速可视化
+
+    // 卫星离地球越来越远
+    s.satDistFromEarth += dt * 1800
+    s.satRelAngle += dt * 0.5
+
+    // 轨迹
+    const earthX = s.earthOrbitAngle
+    const earthR_screen = 120
+    const satR = earthR_screen + s.satDistFromEarth * 0.015
+    const satAngle = earthX + s.satRelAngle * 0.3
+
+    s.v3Trail.push({ angle: satAngle, r: satR })
+    if (s.v3Trail.length > 600) s.v3Trail.shift()
+
+    s.time += dt
+  }
+
+  function updateSyncSatellite(s) {
+    // 同步卫星角速度
+    const r_km = R_EARTH + s.syncH
+    const omega = Math.sqrt(GM / (r_km * r_km * r_km))
+    s.syncAngle += omega * s.dt * 500  // 加速可视化
+    s.time += s.dt
+  }
+
+  function recordTrail(s, scale) {
+    const r_px = worldToScreen(s.r, scale)
+    const x = r_px * Math.cos(s.theta)
+    const y = r_px * Math.sin(s.theta)
+    s.trail.push({ x, y })
+    if (s.trail.length > s.maxTrail) s.trail.shift()
+  }
+
+  // 坐标转换：km -> 屏幕像素
+  function worldToScreen(r_km, scale) {
+    return r_km * scale
+  }
+
+  // ============ 渲染 ============
   function renderFrame(R) {
     const ctx = R.ctx
-    R.clear()
+    const s = S.current
 
-    drawBackground(ctx, R)
+    // 背景
+    ctx.fillStyle = '#fff'
+    ctx.fillRect(0, 0, R.W, R.H)
 
-    if (S.current.mode === 'first') drawFirstVelocity(ctx, R)
-    else if (S.current.mode === 'second') drawSecondVelocity(ctx, R)
-    else if (S.current.mode === 'third') drawThirdVelocity(ctx, R)
+    // 微弱星星（浅色背景上几乎不可见，仅用于装饰）
+    if (s.stars) {
+      ctx.fillStyle = 'rgba(0,0,0,0.04)'
+      for (const st of s.stars) {
+        ctx.beginPath()
+        ctx.arc(st.x * R.W, st.y * R.H, st.r, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+
+    if (s.mode === 'first') drawFirstVelocity(ctx, R)
+    else if (s.mode === 'second') drawSecondVelocity(ctx, R)
+    else if (s.mode === 'third') drawThirdVelocity(ctx, R)
     else drawSyncSatellite(ctx, R)
 
     drawInfoPanel(ctx, R)
-    drawDescription(ctx, R)
   }
 
-  function drawBackground(ctx, R) {
-    const grad = ctx.createRadialGradient(R.ox, R.oy, 0, R.ox, R.oy, R.W)
-    grad.addColorStop(0, '#0d1b2a'); grad.addColorStop(0.5, '#000814'); grad.addColorStop(1, '#000')
-    ctx.fillStyle = grad; ctx.fillRect(0, 0, R.W, R.H)
-
-    // 星星
-    ctx.fillStyle = 'rgba(255,255,255,0.2)'
-    for (let i = 0; i < 100; i++) {
-      const x = (Math.sin(i * 137.5) * 0.5 + 0.5) * R.W
-      const y = (Math.cos(i * 97.3) * 0.5 + 0.5) * R.H
-      ctx.beginPath(); ctx.arc(x, y, Math.random(), 0, Math.PI * 2); ctx.fill()
-    }
-  }
-
-  // ========== 地球绘制 ==========
-  function drawEarth(ctx, R, earthR) {
-    const [cx, cy] = [R.ox, R.oy]
+  // ============ 地球绘制 ============
+  function drawEarth(ctx, R, earthR_px) {
+    const cx = R.ox, cy = R.oy
 
     // 大气层
-    const atmosGrad = ctx.createRadialGradient(cx, cy, earthR, cx, cy, earthR * 1.15)
-    atmosGrad.addColorStop(0, 'rgba(100,181,246,0.15)')
-    atmosGrad.addColorStop(1, 'rgba(100,181,246,0)')
-    ctx.fillStyle = atmosGrad
-    ctx.beginPath(); ctx.arc(cx, cy, earthR * 1.15, 0, Math.PI * 2); ctx.fill()
+    const atmos = ctx.createRadialGradient(cx, cy, earthR_px * 0.95, cx, cy, earthR_px * 1.12)
+    atmos.addColorStop(0, 'rgba(100,181,246,0.18)')
+    atmos.addColorStop(1, 'rgba(100,181,246,0)')
+    ctx.fillStyle = atmos
+    ctx.beginPath()
+    ctx.arc(cx, cy, earthR_px * 1.12, 0, Math.PI * 2)
+    ctx.fill()
 
-    // 地球
-    const grad = ctx.createRadialGradient(cx - earthR * 0.3, cy - earthR * 0.3, 0, cx, cy, earthR)
-    grad.addColorStop(0, '#4FC3F7'); grad.addColorStop(0.4, '#0288D1'); grad.addColorStop(1, '#01579B')
+    // 地球本体
+    const grad = ctx.createRadialGradient(cx - earthR_px * 0.25, cy - earthR_px * 0.25, 0, cx, cy, earthR_px)
+    grad.addColorStop(0, '#81C784')
+    grad.addColorStop(0.3, '#4DB6AC')
+    grad.addColorStop(0.6, '#4FC3F7')
+    grad.addColorStop(1, '#1565C0')
     ctx.fillStyle = grad
-    ctx.beginPath(); ctx.arc(cx, cy, earthR, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath()
+    ctx.arc(cx, cy, earthR_px, 0, Math.PI * 2)
+    ctx.fill()
 
-    // 陆地（简化）
-    ctx.fillStyle = 'rgba(76,175,80,0.3)'
-    ctx.beginPath(); ctx.arc(cx - earthR * 0.2, cy - earthR * 0.1, earthR * 0.3, 0, Math.PI * 2); ctx.fill()
-    ctx.beginPath(); ctx.arc(cx + earthR * 0.3, cy + earthR * 0.2, earthR * 0.25, 0, Math.PI * 2); ctx.fill()
+    // 陆地块
+    ctx.fillStyle = 'rgba(76,175,80,0.35)'
+    ctx.beginPath()
+    ctx.arc(cx - earthR_px * 0.15, cy - earthR_px * 0.1, earthR_px * 0.28, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.beginPath()
+    ctx.arc(cx + earthR_px * 0.25, cy + earthR_px * 0.15, earthR_px * 0.22, 0, Math.PI * 2)
+    ctx.fill()
 
     // 高光
-    ctx.fillStyle = 'rgba(255,255,255,0.15)'
-    ctx.beginPath(); ctx.arc(cx - earthR * 0.3, cy - earthR * 0.3, earthR * 0.4, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = 'rgba(255,255,255,0.2)'
+    ctx.beginPath()
+    ctx.arc(cx - earthR_px * 0.3, cy - earthR_px * 0.3, earthR_px * 0.35, 0, Math.PI * 2)
+    ctx.fill()
 
     // 标签
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'
-    ctx.fillText('地球', cx, cy + earthR + 18)
-    ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif'
-    ctx.fillText(`R = 6371 km`, cx, cy + earthR + 32)
+    ctx.fillStyle = '#333'
+    ctx.font = 'bold 13px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText('地球', cx, cy + earthR_px + 10)
+    ctx.fillStyle = '#888'
+    ctx.font = '11px sans-serif'
+    ctx.fillText('R = 6371 km', cx, cy + earthR_px + 26)
   }
 
-  // ========== 第一宇宙速度 ==========
+  // ============ 第一宇宙速度 ============
   function drawFirstVelocity(ctx, R) {
-    const earthR = Math.min(R.W, R.H) * 0.18
-    drawEarth(ctx, R, earthR)
-
     const s = S.current
+    const earthR_px = Math.min(R.W, R.H) * 0.18
 
-    // 轨道
-    if (s.launched && !s.crashed) {
-      const orbitR = earthR * (1 + s.altitude / s.R)
+    // 计算轨道显示缩放
+    const scale = earthR_px / R_EARTH  // km -> px
 
-      // 轨道圆
-      ctx.strokeStyle = 'rgba(79,195,247,0.3)'; ctx.lineWidth = 2
-      ctx.setLineDash([8, 4])
-      ctx.beginPath(); ctx.arc(R.ox, R.oy, orbitR, 0, Math.PI * 2); ctx.stroke()
+    drawEarth(ctx, R, earthR_px)
+
+    if (s.launched && !s.crashed && !s.escaped) {
+      const orbit = s.orbit
+
+      // 画理论轨道椭圆
+      ctx.strokeStyle = 'rgba(74,144,217,0.25)'
+      ctx.lineWidth = 1.5
+      ctx.setLineDash([6, 4])
+      ctx.beginPath()
+      for (let i = 0; i <= 360; i++) {
+        const ang = (i * Math.PI) / 180
+        const r_km = orbitRadius(orbit.a, orbit.e, ang)
+        const r_px = r_km * scale
+        const x = R.ox + r_px * Math.cos(ang)
+        const y = R.oy + r_px * Math.sin(ang)
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      }
+      ctx.closePath()
+      ctx.stroke()
       ctx.setLineDash([])
-
-      // 卫星位置
-      const sx = R.ox + orbitR * Math.cos(s.angle)
-      const sy = R.oy + orbitR * Math.sin(s.angle)
 
       // 轨迹
       if (s.trail.length > 1) {
-        ctx.strokeStyle = 'rgba(255,152,0,0.4)'; ctx.lineWidth = 2; ctx.beginPath()
-        for (let i = 0; i < s.trail.length; i++) {
-          const dist = Math.sqrt(s.trail[i].x ** 2 + s.trail[i].y ** 2)
-          const scale = earthR / (s.R * 1000) // 简化缩放
-          const tx = R.ox + s.trail[i].x * scale / 1000
-          const ty = R.oy + s.trail[i].y * scale / 1000
-          if (i === 0) ctx.moveTo(tx, ty); else ctx.lineTo(tx, ty)
+        ctx.strokeStyle = 'rgba(255,152,0,0.5)'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.moveTo(s.trail[0].x + R.ox, s.trail[0].y + R.oy)
+        for (let i = 1; i < s.trail.length; i++) {
+          ctx.lineTo(s.trail[i].x + R.ox, s.trail[i].y + R.oy)
+        }
+        ctx.stroke()
+      }
+
+      // 卫星位置
+      const r_px = s.r * scale
+      const sx = R.ox + r_px * Math.cos(s.theta)
+      const sy = R.oy + r_px * Math.sin(s.theta)
+
+      // 卫星本体
+      drawSatellite(ctx, sx, sy, s.theta)
+
+      // 速度箭头（切线方向）
+      const vAngle = s.theta + Math.PI / 2
+      drawArrow(ctx, sx, sy, vAngle, 30, '#4CAF50', 'v')
+
+      // 半径线
+      ctx.strokeStyle = 'rgba(255,152,0,0.3)'
+      ctx.lineWidth = 1
+      ctx.setLineDash([3, 3])
+      ctx.beginPath()
+      ctx.moveTo(R.ox, R.oy)
+      ctx.lineTo(sx, sy)
+      ctx.stroke()
+      ctx.setLineDash([])
+
+      // 高度标注
+      ctx.fillStyle = '#E65100'
+      ctx.font = '11px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'bottom'
+      const midX = (R.ox + sx) / 2
+      const midY = (R.oy + sy) / 2
+      ctx.fillText(`h = ${(s.r - R_EARTH).toFixed(0)} km`, midX, midY - 6)
+
+      // 轨道类型标注
+      let orbitType = ''
+      if (orbit.e < 0.01) orbitType = '近似圆轨道 (e ≈ 0)'
+      else if (orbit.e < 1) orbitType = `椭圆轨道 (e = ${orbit.e.toFixed(3)})`
+      else orbitType = `双曲线 (e = ${orbit.e.toFixed(3)})`
+      ctx.fillStyle = '#4A90D9'
+      ctx.font = '12px sans-serif'
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'top'
+      ctx.fillText(orbitType, 16, R.H - 60)
+    }
+
+    if (s.crashed) {
+      ctx.fillStyle = '#D32F2F'
+      ctx.font = 'bold 18px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('💥 撞击地球！速度过低', R.W / 2, 50)
+      ctx.font = '13px sans-serif'
+      ctx.fillText('v < v₁ 时，卫星无法维持轨道', R.W / 2, 75)
+    }
+
+    if (s.escaped) {
+      ctx.fillStyle = '#FF9800'
+      ctx.font = 'bold 18px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('🛰️ 速度过高，脱离地球引力！', R.W / 2, 50)
+    }
+
+    // 公式面板
+    drawFormulaPanel(ctx, R, [
+      { text: 'v₁ = √(GM/R) = √(gR)', bold: true, color: '#333' },
+      { text: `   = √(${GM.toFixed(0)}/${R_EARTH})`, color: '#555' },
+      { text: `   ≈ ${V1.toFixed(1)} km/s`, bold: true, color: '#4A90D9' },
+      { text: '', color: '#555' },
+      { text: `当前 v = ${s.v.toFixed(1)} km/s`, color: s.v < V1 ? '#D32F2F' : '#4CAF50', bold: true },
+      { text: `v/v₁ = ${(s.v / V1).toFixed(2)}`, color: '#555' },
+    ], R.W - 220, 16)
+  }
+
+  // ============ 第二宇宙速度 ============
+  function drawSecondVelocity(ctx, R) {
+    const s = S.current
+    const earthR_px = Math.min(R.W, R.H) * 0.15
+    const scale = earthR_px / R_EARTH
+
+    drawEarth(ctx, R, earthR_px)
+
+    // 始终显示 v₁ 圆轨道作对比
+    const v1OrbitR = earthR_px
+    ctx.strokeStyle = 'rgba(76,175,80,0.3)'
+    ctx.lineWidth = 1.5
+    ctx.setLineDash([6, 4])
+    ctx.beginPath()
+    ctx.arc(R.ox, R.oy, v1OrbitR, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.setLineDash([])
+    ctx.fillStyle = '#4CAF50'
+    ctx.font = '11px sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'bottom'
+    ctx.fillText('v₁ 圆轨道', R.ox + v1OrbitR + 4, R.oy - 4)
+
+    if (s.launched && !s.crashed && !s.escaped) {
+      const orbit = s.orbit
+
+      // 画轨道（椭圆或双曲线）
+      ctx.strokeStyle = 'rgba(255,152,0,0.4)'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+
+      if (orbit.type === 'hyperbolic') {
+        // 双曲线：只画可见部分
+        const maxTheta = Math.acos(-1 / orbit.e) * 0.95  // 渐近线角
+        for (let i = 0; i <= 200; i++) {
+          const ang = -maxTheta + (2 * maxTheta * i) / 200
+          const r_km = orbitRadius(orbit.a, orbit.e, ang)
+          const r_px = Math.min(r_km * scale, earthR_px * 6)
+          const x = R.ox + r_px * Math.cos(ang + s.theta)
+          const y = R.oy + r_px * Math.sin(ang + s.theta)
+          if (i === 0) ctx.moveTo(x, y)
+          else ctx.lineTo(x, y)
+        }
+      } else {
+        // 椭圆
+        for (let i = 0; i <= 360; i++) {
+          const ang = (i * Math.PI) / 180
+          const r_km = orbitRadius(orbit.a, orbit.e, ang)
+          const r_px = r_km * scale
+          const x = R.ox + r_px * Math.cos(ang)
+          const y = R.oy + r_px * Math.sin(ang)
+          if (i === 0) ctx.moveTo(x, y)
+          else ctx.lineTo(x, y)
+        }
+        ctx.closePath()
+      }
+      ctx.stroke()
+
+      // 轨迹
+      if (s.trail.length > 1) {
+        ctx.strokeStyle = 'rgba(255,152,0,0.6)'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        ctx.moveTo(s.trail[0].x + R.ox, s.trail[0].y + R.oy)
+        for (let i = 1; i < s.trail.length; i++) {
+          ctx.lineTo(s.trail[i].x + R.ox, s.trail[i].y + R.oy)
+        }
+        ctx.stroke()
+      }
+
+      // 卫星
+      const r_px = Math.min(s.r * scale, earthR_px * 6)
+      const sx = R.ox + r_px * Math.cos(s.theta)
+      const sy = R.oy + r_px * Math.sin(s.theta)
+      drawSatellite(ctx, sx, sy, s.theta)
+    }
+
+    if (s.escaped) {
+      ctx.fillStyle = '#FF9800'
+      ctx.font = 'bold 18px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText('🚀 成功逃逸地球引力！', R.W / 2, 50)
+      ctx.font = '13px sans-serif'
+      ctx.fillText(`e = ${s.orbit?.e.toFixed(3) || '—'}  (e > 1 为双曲线逃逸)`, R.W / 2, 75)
+    }
+
+    if (s.crashed) {
+      ctx.fillStyle = '#D32F2F'
+      ctx.font = 'bold 16px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.fillText('💥 速度不足以逃逸，坠回地球', R.W / 2, 50)
+    }
+
+    drawFormulaPanel(ctx, R, [
+      { text: 'v₂ = √(2GM/R) = √(2gR)', bold: true, color: '#333' },
+      { text: `   = √2 × v₁ ≈ √2 × ${V1.toFixed(1)}`, color: '#555' },
+      { text: `   ≈ ${V2.toFixed(1)} km/s`, bold: true, color: '#FF9800' },
+      { text: '', color: '#555' },
+      { text: `当前 v = ${s.v.toFixed(1)} km/s`, color: s.v >= V2 ? '#FF9800' : '#D32F2F', bold: true },
+      { text: s.v >= V2 ? 'v ≥ v₂ → 逃逸！' : 'v < v₂ → 椭圆轨道', color: '#555' },
+    ], R.W - 220, 16)
+  }
+
+  // ============ 第三宇宙速度 ============
+  function drawThirdVelocity(ctx, R) {
+    const s = S.current
+    const sunX = R.W * 0.5, sunY = R.oy
+
+    // 太阳
+    const sunR = 20
+    const sunGrad = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR * 2.5)
+    sunGrad.addColorStop(0, '#FFF9C4')
+    sunGrad.addColorStop(0.3, '#FFD54F')
+    sunGrad.addColorStop(1, 'rgba(255,152,0,0)')
+    ctx.fillStyle = sunGrad
+    ctx.beginPath()
+    ctx.arc(sunX, sunY, sunR * 2.5, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#FFD54F'
+    ctx.beginPath()
+    ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#F57F17'
+    ctx.font = 'bold 12px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText('太阳', sunX, sunY + sunR + 6)
+
+    // 地球轨道
+    const earthOrbitR = Math.min(R.W, R.H) * 0.28
+    ctx.strokeStyle = 'rgba(74,144,217,0.2)'
+    ctx.lineWidth = 1
+    ctx.setLineDash([8, 4])
+    ctx.beginPath()
+    ctx.arc(sunX, sunY, earthOrbitR, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.setLineDash([])
+
+    // 地球位置
+    const ex = sunX + earthOrbitR * Math.cos(s.earthOrbitAngle)
+    const ey = sunY + earthOrbitR * Math.sin(s.earthOrbitAngle)
+    ctx.fillStyle = '#4FC3F7'
+    ctx.beginPath()
+    ctx.arc(ex, ey, 8, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = '#1565C0'
+    ctx.font = '10px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText('地球', ex, ey + 14)
+
+    if (s.v3Launched) {
+      // 卫星从地球飞出
+      const satR = earthOrbitR + s.satDistFromEarth * 0.015
+      const satAngle = s.earthOrbitAngle + s.satRelAngle * 0.3
+      const satX = sunX + satR * Math.cos(satAngle)
+      const satY = sunY + satR * Math.sin(satAngle)
+
+      // 轨迹
+      if (s.v3Trail.length > 1) {
+        ctx.strokeStyle = 'rgba(244,67,54,0.4)'
+        ctx.lineWidth = 2
+        ctx.beginPath()
+        for (let i = 0; i < s.v3Trail.length; i++) {
+          const p = s.v3Trail[i]
+          const px = sunX + p.r * Math.cos(p.angle)
+          const py = sunY + p.r * Math.sin(p.angle)
+          if (i === 0) ctx.moveTo(px, py)
+          else ctx.lineTo(px, py)
         }
         ctx.stroke()
       }
 
       // 卫星
       ctx.fillStyle = '#FFD54F'
-      ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI * 2); ctx.fill()
-
+      ctx.beginPath()
+      ctx.arc(satX, satY, 4, 0, Math.PI * 2)
+      ctx.fill()
       // 太阳能板
-      ctx.strokeStyle = '#aaa'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.moveTo(sx - 10, sy); ctx.lineTo(sx + 10, sy); ctx.stroke()
-      ctx.fillStyle = '#1565C0'
-      ctx.fillRect(sx - 12, sy - 3, 6, 6)
-      ctx.fillRect(sx + 6, sy - 3, 6, 6)
+      ctx.strokeStyle = '#999'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      ctx.moveTo(satX - 8, satY)
+      ctx.lineTo(satX + 8, satY)
+      ctx.stroke()
 
       // 速度箭头
-      const vx = -Math.sin(s.angle)
-      const vy = Math.cos(s.angle)
-      const vLen = 25
-      ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx + vx * vLen, sy + vy * vLen); ctx.stroke()
-      drawArrowHead(ctx, sx + vx * vLen, sy + vy * vLen, Math.atan2(vy, vx), '#4CAF50')
-
-      // 高度标注
-      ctx.strokeStyle = 'rgba(255,213,79,0.4)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3])
-      ctx.beginPath(); ctx.moveTo(R.ox, R.oy); ctx.lineTo(sx, sy); ctx.stroke()
-      ctx.setLineDash([])
-      ctx.fillStyle = '#FFD54F'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText(`h = ${s.altitude.toFixed(0)} km`, (R.ox + sx) / 2, (R.oy + sy) / 2 - 8)
+      const vAngle = satAngle + Math.PI / 2
+      drawArrow(ctx, satX, satY, vAngle, 25, '#F44336', 'v₃')
     }
-
-    // 三个速度标注
-    const v1 = 7.9, v2 = 11.2, v3 = 16.7
-    const infoY = R.H - 120
-    const infoX = 20
-    ctx.font = '12px sans-serif'; ctx.textAlign = 'left'
-
-    const items = [
-      { v: v1, label: 'v₁ = 7.9 km/s（环绕）', color: '#4CAF50' },
-      { v: v2, label: 'v₂ = 11.2 km/s（逃逸）', color: '#FF9800' },
-      { v: v3, label: 'v₃ = 16.7 km/s（飞出太阳系）', color: '#F44336' },
-    ]
-
-    items.forEach((item, i) => {
-      ctx.fillStyle = item.color
-      ctx.fillText(item.label, infoX, infoY + i * 20)
-    })
-
-    // 当前速度
-    ctx.fillStyle = s.v >= v3 ? '#F44336' : s.v >= v2 ? '#FF9800' : s.v >= v1 ? '#4CAF50' : '#8b949e'
-    ctx.font = 'bold 14px sans-serif'
-    ctx.fillText(`当前速度: ${s.v.toFixed(1)} km/s`, infoX, infoY - 25)
-  }
-
-  // ========== 第二宇宙速度 ==========
-  function drawSecondVelocity(ctx, R) {
-    const earthR = Math.min(R.W, R.H) * 0.15
-    drawEarth(ctx, R, earthR)
-
-    const s = S.current
-
-    // 双曲线逃逸轨道
-    if (s.launched) {
-      const vEsc = Math.sqrt(2 * 398600 / (s.R + s.altitude))
-      const isEscaping = s.v >= vEsc * 0.95
-
-      if (isEscaping) {
-        // 逃逸轨迹（螺旋向外）
-        ctx.strokeStyle = 'rgba(255,152,0,0.5)'; ctx.lineWidth = 2; ctx.beginPath()
-        for (let i = 0; i < 200; i++) {
-          const t = i / 200
-          const r = earthR * (1 + t * 3)
-          const a = s.angle - t * 4
-          const x = R.ox + r * Math.cos(a)
-          const y = R.oy + r * Math.sin(a)
-          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
-        }
-        ctx.stroke()
-
-        // 卫星
-        const satR = earthR * (1 + (s.altitude / 50000) * 3)
-        const sx = R.ox + satR * Math.cos(s.angle)
-        const sy = R.oy + satR * Math.sin(s.angle)
-        ctx.fillStyle = '#FFD54F'
-        ctx.beginPath(); ctx.arc(sx, sy, 5, 0, Math.PI * 2); ctx.fill()
-
-        // "逃逸"标签
-        ctx.fillStyle = '#4CAF50'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'
-        ctx.fillText('正在逃逸地球引力！', R.W / 2, 40)
-      }
-    }
-
-    // 公式
-    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
-    ctx.fillText('v₂ = √(2gR) = 11.2 km/s', 20, R.H - 80)
-    ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'
-    ctx.fillText('当 v ≥ v₂ 时，物体脱离地球引力', 20, R.H - 62)
-    ctx.fillText('v₂ = √2 × v₁', 20, R.H - 44)
-  }
-
-  // ========== 第三宇宙速度 ==========
-  function drawThirdVelocity(ctx, R) {
-    const s = S.current
-
-    // 太阳
-    const sunR = 25
-    const [sunX, sunY] = [R.W * 0.5, R.oy]
-    const sunGrad = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sunR * 3)
-    sunGrad.addColorStop(0, '#FFF9C4'); sunGrad.addColorStop(0.3, '#FFD54F'); sunGrad.addColorStop(1, 'rgba(255,152,0,0)')
-    ctx.fillStyle = sunGrad
-    ctx.beginPath(); ctx.arc(sunX, sunY, sunR * 3, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = '#FFD54F'
-    ctx.beginPath(); ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2); ctx.fill()
-
-    // 地球轨道
-    const earthOrbitR = 120
-    ctx.strokeStyle = 'rgba(79,195,247,0.3)'; ctx.lineWidth = 1; ctx.setLineDash([6, 4])
-    ctx.beginPath(); ctx.arc(sunX, sunY, earthOrbitR, 0, Math.PI * 2); ctx.stroke()
-    ctx.setLineDash([])
-
-    // 地球
-    const earthAngle = s.time * 0.3
-    const ex = sunX + earthOrbitR * Math.cos(earthAngle)
-    const ey = sunY + earthOrbitR * Math.sin(earthAngle)
-    ctx.fillStyle = '#4FC3F7'
-    ctx.beginPath(); ctx.arc(ex, ey, 8, 0, Math.PI * 2); ctx.fill()
-
-    // 第三宇宙速度箭头
-    if (s.launched) {
-      const arrowLen = 60
-      const vx = -Math.sin(earthAngle)
-      const vy = Math.cos(earthAngle)
-      ctx.strokeStyle = '#F44336'; ctx.lineWidth = 3
-      ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(ex + vx * arrowLen, ey + vy * arrowLen); ctx.stroke()
-      drawArrowHead(ctx, ex + vx * arrowLen, ey + vy * arrowLen, Math.atan2(vy, vx), '#F44336')
-
-      // 逃逸轨迹（螺旋出太阳系）
-      ctx.strokeStyle = 'rgba(244,67,54,0.4)'; ctx.lineWidth = 2; ctx.beginPath()
-      for (let i = 0; i < 300; i++) {
-        const t = i / 300
-        const r = earthOrbitR + t * 300
-        const a = earthAngle - t * 3
-        const x = sunX + r * Math.cos(a)
-        const y = sunY + r * Math.sin(a)
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
-      }
-      ctx.stroke()
-    }
-
-    // 推导公式
-    const bx = 20, by = R.H - 160
-    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
-    ctx.fillText('第三宇宙速度推导', bx, by)
-    ctx.fillStyle = '#c9d1d9'; ctx.font = '11px sans-serif'
-    ctx.fillText('① 先脱离地球引力 → v₂ = 11.2 km/s', bx, by + 20)
-    ctx.fillText('② 在地球轨道上脱离太阳引力', bx, by + 38)
-    ctx.fillText('   v_太阳逃逸 = √(2GM_sun/r) ≈ 42.1 km/s', bx, by + 56)
-    ctx.fillText('③ 地球公转速度 ≈ 29.8 km/s', bx, by + 74)
-    ctx.fillText('④ 需额外速度 = 42.1 - 29.8 = 12.3 km/s', bx, by + 92)
-    ctx.fillStyle = '#F44336'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText('⑤ v₃ = √(v₂² + 12.3²) ≈ 16.7 km/s', bx, by + 110)
-  }
-
-  // ========== 同步卫星 ==========
-  function drawSyncSatellite(ctx, R) {
-    const s = S.current
-    const earthR = Math.min(R.W, R.H) * 0.12
-    drawEarth(ctx, R, earthR)
-
-    // 同步轨道
-    const syncOrbitR = earthR * (1 + s.syncH / s.R)
-    ctx.strokeStyle = 'rgba(255,213,79,0.4)'; ctx.lineWidth = 2
-    ctx.setLineDash([8, 4])
-    ctx.beginPath(); ctx.arc(R.ox, R.oy, syncOrbitR, 0, Math.PI * 2); ctx.stroke()
-    ctx.setLineDash([])
-
-    // 普通轨道对比
-    const lowOrbitR = earthR * (1 + 400 / s.R)
-    ctx.strokeStyle = 'rgba(139,148,158,0.3)'; ctx.lineWidth = 1
-    ctx.setLineDash([4, 4])
-    ctx.beginPath(); ctx.arc(R.ox, R.oy, lowOrbitR, 0, Math.PI * 2); ctx.stroke()
-    ctx.setLineDash([])
-
-    // 同步卫星
-    const syncAngle = s.time * 0.15 // 24h一圈，动画加速
-    const sx = R.ox + syncOrbitR * Math.cos(syncAngle)
-    const sy = R.oy + syncOrbitR * Math.sin(syncAngle)
-
-    // 卫星
-    ctx.fillStyle = '#FFD54F'
-    ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.fill()
-    ctx.strokeStyle = '#aaa'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.moveTo(sx - 12, sy); ctx.lineTo(sx + 12, sy); ctx.stroke()
-    ctx.fillStyle = '#1565C0'
-    ctx.fillRect(sx - 14, sy - 3, 6, 6)
-    ctx.fillRect(sx + 8, sy - 3, 6, 6)
-
-    // 连线（地心-卫星）
-    ctx.strokeStyle = 'rgba(255,213,79,0.3)'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.moveTo(R.ox, R.oy); ctx.lineTo(sx, sy); ctx.stroke()
-
-    // 标注
-    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'
-    ctx.fillText('同步卫星', sx, sy - 18)
-    ctx.fillStyle = '#8b949e'; ctx.font = '10px sans-serif'
-    ctx.fillText(`h = ${s.syncH.toLocaleString()} km`, sx, sy + 22)
-
-    // 半径标注
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1; ctx.setLineDash([3, 3])
-    ctx.beginPath(); ctx.moveTo(R.ox, R.oy); ctx.lineTo(R.ox + syncOrbitR, R.oy); ctx.stroke()
-    ctx.setLineDash([])
-    ctx.fillStyle = '#c9d1d9'; ctx.font = '10px sans-serif'
-    ctx.fillText(`r = ${(s.R + s.syncH).toLocaleString()} km`, R.ox + syncOrbitR / 2, R.oy + 14)
 
     // 推导面板
-    const pw = 260, ph = 200
-    const px = R.W - pw - 20, py = 60
-
-    ctx.fillStyle = 'rgba(22,27,34,0.95)'
-    ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill()
-    ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.stroke()
-
-    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
-    ctx.fillText('📡 同步卫星推导', px + 12, py + 20)
-
-    ctx.fillStyle = '#c9d1d9'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'
-    let y = py + 40
-    ctx.fillText('① T = 24h = 86400s', px + 12, y); y += 18
-    ctx.fillText('② 万有引力提供向心力：', px + 12, y); y += 18
-    ctx.fillStyle = '#4FC3F7'
-    ctx.fillText('   GMm/r² = m·4π²r/T²', px + 12, y); y += 18
-    ctx.fillStyle = '#c9d1d9'
-    ctx.fillText('③ 解出 r³ = GMT²/(4π²)', px + 12, y); y += 18
-    ctx.fillText(`④ r = ${(s.R + s.syncH).toLocaleString()} km`, px + 12, y); y += 18
-    ctx.fillText(`⑤ h = r - R = ${s.syncH.toLocaleString()} km`, px + 12, y); y += 18
-    ctx.fillStyle = '#4CAF50'
-    ctx.fillText(`⑥ v = 2πr/T = ${s.syncV} km/s`, px + 12, y); y += 22
-    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 10px sans-serif'
-    ctx.fillText('特点：赤道平面、定高35786km、T=24h', px + 12, y)
+    drawFormulaPanel(ctx, R, [
+      { text: '第三宇宙速度推导', bold: true, color: '#333' },
+      { text: '', color: '#555' },
+      { text: '① 逃逸地球: v₂ = 11.2 km/s', color: '#555' },
+      { text: '② 逃逸太阳(在地球轨道):', color: '#555' },
+      { text: '   v_sun = √(2GM_sun/AU)', color: '#4A90D9' },
+      { text: '   ≈ 42.1 km/s', color: '#4A90D9' },
+      { text: '③ 地球公转: v_earth = 29.8 km/s', color: '#555' },
+      { text: '④ 需额外: 42.1 - 29.8 = 12.3 km/s', color: '#555' },
+      { text: '', color: '#555' },
+      { text: '⑤ v₃ = √(v₂² + 12.3²)', bold: true, color: '#F44336' },
+      { text: `   ≈ ${V3} km/s`, bold: true, color: '#F44336' },
+    ], R.W - 240, 16)
   }
 
-  // ========== 信息面板 ==========
+  // ============ 同步卫星 ============
+  function drawSyncSatellite(ctx, R) {
+    const s = S.current
+    const earthR_px = Math.min(R.W, R.H) * 0.12
+    const scale = earthR_px / R_EARTH
+
+    drawEarth(ctx, R, earthR_px)
+
+    // 低轨道对比 (400 km)
+    const lowOrbitR = (R_EARTH + 400) * scale
+    ctx.strokeStyle = 'rgba(158,158,158,0.35)'
+    ctx.lineWidth = 1
+    ctx.setLineDash([4, 4])
+    ctx.beginPath()
+    ctx.arc(R.ox, R.oy, lowOrbitR, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.setLineDash([])
+    ctx.fillStyle = '#999'
+    ctx.font = '10px sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillText('低轨道 400km', R.ox + lowOrbitR + 4, R.oy)
+
+    // 同步轨道
+    const syncOrbitR = (R_EARTH + s.syncH) * scale
+    ctx.strokeStyle = 'rgba(74,144,217,0.5)'
+    ctx.lineWidth = 2
+    ctx.setLineDash([8, 4])
+    ctx.beginPath()
+    ctx.arc(R.ox, R.oy, syncOrbitR, 0, Math.PI * 2)
+    ctx.stroke()
+    ctx.setLineDash([])
+
+    // 赤道平面指示线
+    ctx.strokeStyle = 'rgba(74,144,217,0.15)'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(R.ox - syncOrbitR - 20, R.oy)
+    ctx.lineTo(R.ox + syncOrbitR + 20, R.oy)
+    ctx.stroke()
+    ctx.fillStyle = '#4A90D9'
+    ctx.font = '10px sans-serif'
+    ctx.textAlign = 'right'
+    ctx.fillText('赤道平面', R.ox + syncOrbitR + 18, R.oy - 6)
+
+    // 同步卫星
+    const sx = R.ox + syncOrbitR * Math.cos(s.syncAngle)
+    const sy = R.oy + syncOrbitR * Math.sin(s.syncAngle)
+
+    drawSatellite(ctx, sx, sy, s.syncAngle, 7)
+
+    // 连线
+    ctx.strokeStyle = 'rgba(255,152,0,0.3)'
+    ctx.lineWidth = 1
+    ctx.setLineDash([3, 3])
+    ctx.beginPath()
+    ctx.moveTo(R.ox, R.oy)
+    ctx.lineTo(sx, sy)
+    ctx.stroke()
+    ctx.setLineDash([])
+
+    // 半径标注
+    ctx.strokeStyle = 'rgba(0,0,0,0.15)'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(R.ox, R.oy)
+    ctx.lineTo(R.ox + syncOrbitR, R.oy)
+    ctx.stroke()
+    ctx.fillStyle = '#555'
+    ctx.font = '10px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'top'
+    ctx.fillText(`r = ${(R_EARTH + s.syncH).toLocaleString()} km`, R.ox + syncOrbitR / 2, R.oy + 6)
+
+    // 推导面板
+    const r_km = R_EARTH + s.syncH
+    const period_h = (2 * Math.PI * Math.sqrt(r_km * r_km * r_km / GM)) / 3600
+    const orbV = Math.sqrt(GM / r_km)
+
+    drawFormulaPanel(ctx, R, [
+      { text: '📡 同步卫星推导', bold: true, color: '#333' },
+      { text: '', color: '#555' },
+      { text: '① T = 24h = 86400s', color: '#555' },
+      { text: '② 引力 = 向心力:', color: '#555' },
+      { text: '   GMm/r² = m·4π²r/T²', color: '#4A90D9' },
+      { text: '③ r³ = GMT²/(4π²)', color: '#555' },
+      { text: `④ r = ${r_km.toLocaleString()} km`, color: '#555' },
+      { text: `⑤ h = r - R = ${s.syncH.toLocaleString()} km`, bold: true, color: '#4A90D9' },
+      { text: `⑥ v = 2πr/T = ${orbV.toFixed(2)} km/s`, color: '#555' },
+      { text: '', color: '#555' },
+      { text: `当前 T = ${period_h.toFixed(1)} h`, color: '#333', bold: true },
+      { text: `当前 v = ${orbV.toFixed(2)} km/s`, color: '#333' },
+    ], R.W - 240, 16)
+
+    // 高度滑块标注
+    ctx.fillStyle = '#333'
+    ctx.font = '12px sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    ctx.fillText(`轨道高度 h = ${s.syncH.toLocaleString()} km`, 16, R.H - 35)
+  }
+
+  // ============ 通用绘制 ============
+  function drawSatellite(ctx, x, y, angle, size) {
+    const sz = size || 5
+    // 本体
+    ctx.fillStyle = '#FFD54F'
+    ctx.beginPath()
+    ctx.arc(x, y, sz, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = '#F9A825'
+    ctx.lineWidth = 1
+    ctx.stroke()
+
+    // 太阳能板
+    const panelLen = sz * 2.4
+    const panelW = sz * 0.8
+    const cos = Math.cos(angle), sin = Math.sin(angle)
+    ctx.fillStyle = '#1565C0'
+    ctx.strokeStyle = '#0D47A1'
+    ctx.lineWidth = 0.5
+
+    // 左面板
+    ctx.fillRect(x - cos * panelLen - panelW / 2, y - sin * panelLen - panelW / 2, panelLen, panelW)
+    // 右面板
+    ctx.fillRect(x + cos * panelLen - panelW / 2, y + sin * panelLen - panelW / 2, panelLen, panelW)
+  }
+
+  function drawArrow(ctx, x, y, angle, len, color, label) {
+    const ex = x + Math.cos(angle) * len
+    const ey = y + Math.sin(angle) * len
+    ctx.strokeStyle = color
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.lineTo(ex, ey)
+    ctx.stroke()
+
+    // 箭头
+    const headLen = 8
+    ctx.fillStyle = color
+    ctx.beginPath()
+    ctx.moveTo(ex, ey)
+    ctx.lineTo(ex - headLen * Math.cos(angle - 0.35), ey - headLen * Math.sin(angle - 0.35))
+    ctx.lineTo(ex - headLen * Math.cos(angle + 0.35), ey - headLen * Math.sin(angle + 0.35))
+    ctx.closePath()
+    ctx.fill()
+
+    if (label) {
+      ctx.fillStyle = color
+      ctx.font = 'bold 11px sans-serif'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'bottom'
+      ctx.fillText(label, ex + Math.cos(angle) * 12, ey + Math.sin(angle) * 12)
+    }
+  }
+
+  function drawFormulaPanel(ctx, R, lines, x, y) {
+    const lineH = 18
+    const padX = 12, padY = 10
+    const w = 210
+    const h = lines.length * lineH + padY * 2
+
+    // 背景
+    ctx.fillStyle = 'rgba(245,245,245,0.95)'
+    ctx.beginPath()
+    ctx.roundRect(x, y, w, h, 6)
+    ctx.fill()
+    ctx.strokeStyle = '#ddd'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.roundRect(x, y, w, h, 6)
+    ctx.stroke()
+
+    // 文字
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    let cy = y + padY
+    for (const line of lines) {
+      if (!line.text) { cy += lineH * 0.5; continue }
+      ctx.fillStyle = line.color || '#333'
+      ctx.font = line.bold ? 'bold 12px sans-serif' : '11px sans-serif'
+      ctx.fillText(line.text, x + padX, cy)
+      cy += lineH
+    }
+  }
+
+  // ============ 信息面板 ============
   function drawInfoPanel(ctx, R) {
     const s = S.current
-    const pw = 200, ph = 140
-    const px = 16, py = 16
+    const panelW = 180
+    const panelH = 100
+    const x = 16, y = R.H - panelH - 16
 
-    ctx.fillStyle = 'rgba(22,27,34,0.95)'
-    ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill()
-    ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.stroke()
+    ctx.fillStyle = 'rgba(245,245,245,0.95)'
+    ctx.beginPath()
+    ctx.roundRect(x, y, panelW, panelH, 6)
+    ctx.fill()
+    ctx.strokeStyle = '#ddd'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.roundRect(x, y, panelW, panelH, 6)
+    ctx.stroke()
 
-    ctx.fillStyle = '#c9d1d9'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
-    ctx.fillText('📊 宇宙速度', px + 12, py + 20)
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    ctx.fillStyle = '#333'
+    ctx.font = 'bold 12px sans-serif'
+    ctx.fillText('宇宙速度参考', x + 10, y + 8)
 
-    ctx.font = '11px sans-serif'; let y = py + 40
-
+    ctx.font = '11px sans-serif'
     const items = [
       { v: '7.9', label: '环绕速度', color: '#4CAF50' },
       { v: '11.2', label: '逃逸速度', color: '#FF9800' },
       { v: '16.7', label: '飞出太阳系', color: '#F44336' },
     ]
-
-    items.forEach(item => {
+    let cy = y + 28
+    for (const item of items) {
       ctx.fillStyle = item.color
-      ctx.fillText(`v = ${item.v} km/s  ${item.label}`, px + 12, y)
-      y += 18
-    })
-
-    y += 8
-    ctx.fillStyle = '#FFD54F'
-    ctx.fillText(`当前: ${s.v.toFixed(1)} km/s`, px + 12, y)
+      ctx.fillText(`v = ${item.v} km/s  ${item.label}`, x + 10, cy)
+      cy += 18
+    }
   }
 
-  function drawDescription(ctx, R) {
-    const h = R.H, x = 16, y = h - 40
-    ctx.textBaseline = 'top'; ctx.textAlign = 'left'
-    ctx.fillStyle = '#c9d1d9'; ctx.font = 'bold 14px sans-serif'
-    ctx.fillText('三大宇宙速度与同步卫星', x, y)
-    ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'
-    ctx.fillText('调节发射速度观察不同轨道 · 切换模式查看推导过程', x + 230, y)
-  }
+  // ============ 动画循环 ============
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const R = createRenderer(canvas)
+    canvasRef.current._R = R
 
-  // ========== 通用 ==========
-  function drawArrowHead(ctx, x, y, angle, color) {
-    const headLen = 8
-    ctx.fillStyle = color
-    ctx.beginPath()
-    ctx.moveTo(x, y)
-    ctx.lineTo(x - headLen * Math.cos(angle - 0.35), y - headLen * Math.sin(angle - 0.35))
-    ctx.lineTo(x - headLen * Math.cos(angle + 0.35), y - headLen * Math.sin(angle + 0.35))
-    ctx.closePath(); ctx.fill()
-  }
+    ensureStars()
 
-  // ========== Controls ==========
+    const loop = () => {
+      updatePhysics()
+      renderFrame(R)
+      animRef.current = requestAnimationFrame(loop)
+    }
+    animRef.current = requestAnimationFrame(loop)
+
+    const onResize = () => R.resize()
+    window.addEventListener('resize', onResize)
+
+    return () => {
+      window.removeEventListener('resize', onResize)
+      if (animRef.current) cancelAnimationFrame(animRef.current)
+    }
+  }, [createRenderer])
+
+  // ============ 同步卫星高度变化时重新计算 ============
+  useEffect(() => {
+    const s = S.current
+    s.syncH = syncH
+    const r_km = R_EARTH + syncH
+    s.syncV = Math.sqrt(GM / r_km)
+    s.syncT = (2 * Math.PI * Math.sqrt(r_km * r_km * r_km / GM)) / 3600
+  }, [syncH])
+
+  // ============ 控制 ============
   const handleLaunch = useCallback(() => {
     const s = S.current
     s.launched = true
     s.crashed = false
     s.escaped = false
-    s.angle = 0
     s.time = 0
+
+    if (s.mode === 'third') {
+      s.v3Launched = true
+      s.satDistFromEarth = 0
+      s.satRelAngle = 0
+      s.v3Trail = []
+      return
+    }
+
+    // 计算初始轨道
+    const r0 = R_EARTH + s.launchAlt
+    const v0 = s.v
+    s.r = r0
+    s.theta = 0
+    s.orbit = computeOrbit(r0, v0)
     s.trail = []
   }, [])
 
   const handleReset = useCallback(() => {
     const s = S.current
-    s.launched = false; s.crashed = false; s.escaped = false
-    s.angle = 0; s.time = 0; s.trail = []
+    s.launched = false
+    s.crashed = false
+    s.escaped = false
+    s.theta = 0
+    s.r = R_EARTH + s.launchAlt
+    s.orbit = null
+    s.trail = []
+    s.time = 0
+    s.v3Launched = false
+    s.v3Trail = []
+    s.satDistFromEarth = 0
+    s.syncAngle = 0
   }, [])
 
   const handleVChange = useCallback((val) => {
@@ -570,66 +955,205 @@ export default function CosmicVelocityScene() {
     setMode(newMode)
   }, [handleReset])
 
+  const handleSyncHChange = useCallback((val) => {
+    setSyncH(val)
+  }, [])
+
+  // ============ UI ============
   return (
     <div style={styles.container}>
       <div style={styles.toolbar}>
         <span style={styles.title}>三大宇宙速度 · 同步卫星</span>
         <div style={styles.toolbarActions}>
-          <button style={styles.launchBtn} onClick={handleLaunch}>🚀 发射</button>
-          <button style={styles.btn} onClick={handleReset}>↺ 重置</button>
-          <div style={styles.sep} />
           <div style={styles.modeGroup}>
             {[
-              { key: 'first', label: 'v₁环绕' },
-              { key: 'second', label: 'v₂逃逸' },
-              { key: 'third', label: 'v₃飞出' },
+              { key: 'first', label: 'v₁ 环绕' },
+              { key: 'second', label: 'v₂ 逃逸' },
+              { key: 'third', label: 'v₃ 飞出' },
               { key: 'sync', label: '同步卫星' },
             ].map(m => (
-              <button key={m.key}
+              <button
+                key={m.key}
                 style={mode === m.key ? styles.modeBtnActive : styles.modeBtn}
-                onClick={() => handleModeChange(m.key)}>
+                onClick={() => handleModeChange(m.key)}
+              >
                 {m.label}
               </button>
             ))}
           </div>
-          <label style={styles.controlLabel}>
-            发射速度：
-            <input type="range" min="1" max="20" step="0.1"
-              value={v}
-              onChange={(e) => handleVChange(parseFloat(e.target.value))}
-              style={styles.slider} />
-            <span style={styles.sliderVal}>{v.toFixed(1)} km/s</span>
-          </label>
+
+          <div style={styles.sep} />
+
+          {mode !== 'third' && (
+            <label style={styles.controlLabel}>
+              发射速度：
+              <input
+                type="range"
+                min="1"
+                max="20"
+                step="0.1"
+                value={v}
+                onChange={(e) => handleVChange(parseFloat(e.target.value))}
+                style={styles.slider}
+              />
+              <span style={styles.sliderVal}>{v.toFixed(1)} km/s</span>
+            </label>
+          )}
+
+          {mode === 'sync' && (
+            <label style={styles.controlLabel}>
+              轨道高度：
+              <input
+                type="range"
+                min="200"
+                max="100000"
+                step="100"
+                value={syncH}
+                onChange={(e) => handleSyncHChange(parseInt(e.target.value))}
+                style={styles.slider}
+              />
+              <span style={styles.sliderVal}>{syncH.toLocaleString()} km</span>
+            </label>
+          )}
+
+          <button style={styles.launchBtn} onClick={handleLaunch}>🚀 发射</button>
+          <button style={styles.resetBtn} onClick={handleReset}>↺ 重置</button>
         </div>
       </div>
+
       <div style={styles.main}>
         <canvas ref={canvasRef} style={styles.canvas} />
       </div>
+
       <div style={styles.desc}>
-        <b>宇宙速度</b>
-        <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
-          调节发射速度 → v₁=7.9环绕 · v₂=11.2逃逸 · v₃=16.7飞出太阳系 · 同步卫星模式展示推导
+        <b style={{ color: '#333' }}>宇宙速度</b>
+        <span style={{ marginLeft: 12, color: '#666', fontSize: 13 }}>
+          {mode === 'first' && '调节发射速度 → 观察圆形/椭圆轨道变化，v < v₁ 则坠落'}
+          {mode === 'second' && 'v ≥ v₂ = 11.2 km/s 时物体逃逸地球引力，轨道为双曲线'}
+          {mode === 'third' && 'v₃ = √(v₂² + 12.3²) ≈ 16.7 km/s，可飞出太阳系'}
+          {mode === 'sync' && '同步卫星：T = 24h，h = 35786 km，在赤道平面上空'}
         </span>
       </div>
     </div>
   )
 }
 
+// ============ 样式 ============
 const styles = {
-  container: { display: 'flex', flexDirection: 'column', height: '100vh', background: '#000', color: '#e0e0e0', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
-  toolbar: { minHeight: 44, background: '#0d1b2a', borderBottom: '1px solid #1b2838', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', flexShrink: 0, flexWrap: 'wrap', gap: 6 },
-  title: { fontSize: 14, fontWeight: 600, color: '#c9d1d9' },
-  toolbarActions: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  controlLabel: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8b949e' },
-  slider: { width: 80, accentColor: '#FFD54F' },
-  sliderVal: { color: '#FFD54F', fontWeight: 600, minWidth: 60, fontSize: 12 },
-  btn: { background: '#1b2838', color: '#c9d1d9', border: '1px solid #2d3f52', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer' },
-  launchBtn: { background: '#F44336', color: '#fff', border: 'none', borderRadius: 4, padding: '5px 14px', fontSize: 13, cursor: 'pointer', fontWeight: 600 },
-  sep: { width: 1, height: 20, background: '#1b2838' },
-  modeGroup: { display: 'flex', gap: 4 },
-  modeBtn: { background: '#1b2838', color: '#8b949e', border: '1px solid #2d3f52', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer' },
-  modeBtnActive: { background: '#FFD54F', color: '#000', border: '1px solid #FFD54F', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer', fontWeight: 600 },
-  main: { flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' },
-  canvas: { flex: 1, width: '100%' },
-  desc: { padding: '8px 14px', background: '#0d1b2a', borderTop: '1px solid #1b2838', fontSize: 13, color: '#c9d1d9' },
+  container: {
+    display: 'flex',
+    flexDirection: 'column',
+    height: '100vh',
+    background: '#e8e8e8',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    overflow: 'hidden',
+  },
+  toolbar: {
+    minHeight: 44,
+    background: '#f5f5f5',
+    borderBottom: '1px solid #ccc',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '6px 16px',
+    flexShrink: 0,
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  title: {
+    fontSize: 15,
+    fontWeight: 600,
+    color: '#333',
+  },
+  toolbarActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  modeGroup: {
+    display: 'flex',
+    gap: 4,
+  },
+  modeBtn: {
+    background: '#f0f0f0',
+    color: '#555',
+    border: '1px solid #ddd',
+    borderRadius: 4,
+    padding: '5px 10px',
+    fontSize: 12,
+    cursor: 'pointer',
+    transition: 'all 0.15s',
+  },
+  modeBtnActive: {
+    background: '#4A90D9',
+    color: '#fff',
+    border: '1px solid #4A90D9',
+    borderRadius: 4,
+    padding: '5px 10px',
+    fontSize: 12,
+    cursor: 'pointer',
+    fontWeight: 600,
+    transition: 'all 0.15s',
+  },
+  sep: {
+    width: 1,
+    height: 24,
+    background: '#ddd',
+  },
+  controlLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    fontSize: 12,
+    color: '#555',
+  },
+  slider: {
+    width: 90,
+    accentColor: '#4A90D9',
+  },
+  sliderVal: {
+    color: '#4A90D9',
+    fontWeight: 600,
+    minWidth: 70,
+    fontSize: 12,
+  },
+  launchBtn: {
+    background: '#4A90D9',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 4,
+    padding: '5px 14px',
+    fontSize: 13,
+    cursor: 'pointer',
+    fontWeight: 600,
+  },
+  resetBtn: {
+    background: '#f0f0f0',
+    color: '#555',
+    border: '1px solid #ddd',
+    borderRadius: 4,
+    padding: '5px 12px',
+    fontSize: 12,
+    cursor: 'pointer',
+  },
+  main: {
+    flex: 1,
+    display: 'flex',
+    overflow: 'hidden',
+    position: 'relative',
+    minHeight: 0,
+  },
+  canvas: {
+    flex: 1,
+    width: '100%',
+    background: '#fff',
+  },
+  desc: {
+    padding: '8px 16px',
+    background: '#f5f5f5',
+    borderTop: '1px solid #ccc',
+    fontSize: 13,
+    flexShrink: 0,
+  },
 }
