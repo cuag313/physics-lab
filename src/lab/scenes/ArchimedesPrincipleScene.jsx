@@ -557,7 +557,7 @@ export default function ArchimedesPrincipleScene() {
   function drawDataPanel(ctx, rect) {
     const w = rect.width
     const s = sim.current
-    const panelW = 240, panelH = activeTab === 1 ? 240 : 260
+    const panelW = 240, panelH = activeTab === 1 ? 240 : 180
     const px = w - panelW - 16, py = 16
 
     ctx.fillStyle = 'rgba(255,255,255,0.95)'
