@@ -336,12 +336,12 @@ export default function KeplerLawsScene() {
 
     // 缩放：让所有轨道都能放进画面
     const maxA = Math.max(...s.law3Planets.map(p => p.a))
-    const sc = Math.min(R.W * 0.32, R.H * 0.38) / (maxA * 1.2)
+    // 不用额外 sc 缩放，w2s 内部 scale=80 已足够
+    // 如果轨道太小或太大，调 w2s 的 scale
 
     // 太阳位置
     const sunWx = 0
-    const [sunSx, sunSy] = R.w2s(sunWx, 0)
-    drawSun(ctx, sunSx, sunSy)
+    drawSun(ctx, ...R.w2s(sunWx, 0))
 
     // 4颗行星轨道 + 运动
     s.law3Planets.forEach(p => {
@@ -349,27 +349,25 @@ export default function KeplerLawsScene() {
       const cVal = p.a * p.e
       const cx = sunWx + cVal  // 椭圆中心 = 太阳 + c
 
-      // 轨道
+      // 轨道（直接用 w2s，不乘额外缩放）
       ctx.strokeStyle = p.color; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.5
       ctx.beginPath()
       for (let i = 0; i <= 360; i++) {
         const E = (i / 360) * 2 * Math.PI
         const x = cx + p.a * Math.cos(E)
         const y = b * Math.sin(E)
-        const [sx, sy] = R.w2s(x * sc, y * sc)
+        const [sx, sy] = R.w2s(x, y)
         if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy)
       }
       ctx.closePath(); ctx.stroke(); ctx.globalAlpha = 1
 
       // 标签
       ctx.fillStyle = p.color; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'
-      const [lx, ly] = R.w2s((cx + p.a) * sc + 0.3, 0)
+      const [lx, ly] = R.w2s(cx + p.a + 0.15, 0)
       ctx.fillText(p.name, lx, ly - 6)
 
       // 运动行星
-      const px = cx + p.planetX
-      const py = p.planetY
-      drawPlanet(ctx, R, px * sc, py * sc, p.color, 6)
+      drawPlanet(ctx, R, cx + p.planetX, p.planetY, p.color, 6)
     })
 
     // ========== 右上角：实时数据表 ==========
