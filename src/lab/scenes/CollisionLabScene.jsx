@@ -252,6 +252,11 @@ function ConservationTab() {
   const handleReset = useCallback(() => {
     const s = stateRef.current
     s.x1 = -3; s.x2 = 2; s.time = 0; s.phase = 'setup'
+    s.v1 = 2; s.v2 = -1
+    s.v1_before = 0; s.v2_before = 0
+    s.v1_after = 0; s.v2_after = 0
+    s.p1_before = 0; s.p2_before = 0; s.p_total_before = 0
+    s.p1_after = 0; s.p2_after = 0; s.p_total_after = 0
     setPhase('setup')
   }, [])
 
