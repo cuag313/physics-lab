@@ -9,8 +9,7 @@ import { useRef, useEffect, useState, useCallback } from 'react'
  *
  * 交互：
  * - 切换定律演示
- * - 拖拽调整椭圆偏心率
- * - 调节半长轴
+ * - 调节滑块改变偏心率和半长轴
  * - 实时显示周期、面积、T²/a³
  */
 export default function KeplerLawsScene() {
@@ -58,6 +57,8 @@ export default function KeplerLawsScene() {
   const [a, setA] = useState(2.5)
   const [e, setE] = useState(0.6)
   const [, forceUpdate] = useState(0)
+  const [records, setRecords] = useState([])
+  const [showRecords, setShowRecords] = useState(false)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -106,6 +107,19 @@ export default function KeplerLawsScene() {
     s.b = s.a * Math.sqrt(1 - s.e * s.e)
     s.c = s.a * s.e
     s.period = 2 * Math.PI * Math.sqrt(s.a * s.a * s.a) // T² ∝ a³, simplified
+  }
+
+  // 计算扇形面积（数值积分 A = 0.5 * ∫r²dθ）
+  function calcSweepArea(aVal, eVal, startAngle, endAngle) {
+    const steps = 200
+    const dθ = (endAngle - startAngle) / steps
+    let area = 0
+    for (let i = 0; i < steps; i++) {
+      const θ = startAngle + (i + 0.5) * dθ
+      const r = aVal * (1 - eVal * eVal) / (1 + eVal * Math.cos(θ))
+      area += 0.5 * r * r * dθ
+    }
+    return Math.abs(area)
   }
 
   // ========== Physics ==========
@@ -161,17 +175,8 @@ export default function KeplerLawsScene() {
   }
 
   function drawBackground(ctx, R) {
-    const grad = ctx.createRadialGradient(R.ox, R.oy, 0, R.ox, R.oy, R.W * 0.6)
-    grad.addColorStop(0, '#0d1b2a'); grad.addColorStop(1, '#000')
-    ctx.fillStyle = grad; ctx.fillRect(0, 0, R.W, R.H)
-
-    // 星星
-    ctx.fillStyle = 'rgba(255,255,255,0.3)'
-    for (let i = 0; i < 80; i++) {
-      const x = (Math.sin(i * 137.5) * 0.5 + 0.5) * R.W
-      const y = (Math.cos(i * 97.3) * 0.5 + 0.5) * R.H
-      ctx.beginPath(); ctx.arc(x, y, Math.random() * 1.5, 0, Math.PI * 2); ctx.fill()
-    }
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, R.W, R.H)
   }
 
   // ========== 定律一：椭圆轨道 ==========
@@ -187,9 +192,9 @@ export default function KeplerLawsScene() {
 
     // 第二焦点（虚线）
     const [fx2, fy2] = R.w2s(s.c, 0)
-    ctx.fillStyle = 'rgba(139,148,158,0.3)'
+    ctx.fillStyle = 'rgba(100,100,100,0.3)'
     ctx.beginPath(); ctx.arc(fx2, fy2, 4, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = '#484f58'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
+    ctx.fillStyle = '#999'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
     ctx.fillText('焦点F₂', fx2, fy2 + 14)
 
     // 行星
@@ -221,7 +226,7 @@ export default function KeplerLawsScene() {
     ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
     const [dx, dy] = R.w2s(-s.a - 0.5, s.b + 0.5)
     ctx.fillText('定律一：行星轨道是椭圆', dx, dy)
-    ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'
+    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'
     ctx.fillText('太阳在椭圆的一个焦点上', dx, dy + 18)
     ctx.fillText(`e = ${s.e.toFixed(2)}`, dx, dy + 36)
   }
@@ -236,8 +241,9 @@ export default function KeplerLawsScene() {
     const [fx, fy] = R.w2s(-s.c, 0)
     drawSun(ctx, fx, fy)
 
-    // 扫过的面积（扇形）
+    // 扫过的面积（扇形）+ 面积值
     const colors = ['rgba(255,152,0,0.15)', 'rgba(76,175,80,0.15)', 'rgba(79,195,247,0.15)']
+    const areaLabels = []
     s.sweepAngles.forEach((sweep, i) => {
       ctx.fillStyle = colors[i % colors.length]
       ctx.beginPath()
@@ -248,7 +254,26 @@ export default function KeplerLawsScene() {
         ctx.lineTo(sx, sy)
       }
       ctx.closePath(); ctx.fill()
+
+      // 计算并记录面积
+      const area = calcSweepArea(s.a, s.e, sweep.start, sweep.end)
+      areaLabels.push(area)
+
+      // 在扇形中心显示面积值
+      const midAngle = (sweep.start + sweep.end) / 2
+      const rMid = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(midAngle))
+      const [lx, ly] = R.w2s(rMid * Math.cos(midAngle) * 0.6, rMid * Math.sin(midAngle) * 0.6)
+      ctx.fillStyle = '#333'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
+      ctx.fillText(`A${i + 1}=${area.toFixed(1)}`, lx, ly)
     })
+
+    // 面积对比提示
+    if (areaLabels.length >= 2) {
+      const text = areaLabels.map((a, i) => `面积${i + 1}: ${a.toFixed(1)}`).join('  ')
+      const verifyText = text + '  (应相等)'
+      ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'
+      ctx.fillText(verifyText, 16, 70)
+    }
 
     // 当前扫过
     ctx.fillStyle = 'rgba(255,213,79,0.2)'
@@ -265,7 +290,7 @@ export default function KeplerLawsScene() {
     drawPlanet(ctx, R, r * Math.cos(s.angle), r * Math.sin(s.angle), '#4FC3F7', 8)
 
     // 连线
-    ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1
+    ctx.strokeStyle = 'rgba(100,100,100,0.3)'; ctx.lineWidth = 1
     const [px, py] = R.w2s(r * Math.cos(s.angle), r * Math.sin(s.angle))
     ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(px, py); ctx.stroke()
 
@@ -273,7 +298,7 @@ export default function KeplerLawsScene() {
     ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
     const [dx, dy] = R.w2s(-s.a - 0.5, s.b + 0.5)
     ctx.fillText('定律二：面积定律', dx, dy)
-    ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'
+    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'
     ctx.fillText('相等时间扫过相等面积', dx, dy + 18)
     ctx.fillText('近地点快，远地点慢', dx, dy + 36)
   }
@@ -311,18 +336,18 @@ export default function KeplerLawsScene() {
     const gw = 260, gh = 180
     const gx = R.W - gw - 30, gy = 60
 
-    ctx.fillStyle = 'rgba(22,27,34,0.95)'
+    ctx.fillStyle = 'rgba(255,255,255,0.95)'
     ctx.beginPath(); ctx.roundRect(gx, gy, gw, gh, 8); ctx.fill()
-    ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1
+    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1
     ctx.beginPath(); ctx.roundRect(gx, gy, gw, gh, 8); ctx.stroke()
 
-    ctx.fillStyle = '#c9d1d9'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'
+    ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'
     ctx.fillText('📈 T² - a³ 图像', gx + 10, gy + 16)
 
     const ox = gx + 50, oy = gy + gh - 25
     const w = gw - 70, h = gh - 45
 
-    ctx.strokeStyle = '#484f58'; ctx.lineWidth = 1
+    ctx.strokeStyle = '#999'; ctx.lineWidth = 1
     ctx.beginPath(); ctx.moveTo(ox, oy - h); ctx.lineTo(ox, oy); ctx.lineTo(ox + w, oy); ctx.stroke()
 
     const maxA3 = Math.max(...s.planets.map(p => p.a * p.a * p.a))
@@ -338,7 +363,7 @@ export default function KeplerLawsScene() {
       ctx.fillStyle = p.color
       ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill()
 
-      ctx.fillStyle = '#8b949e'; ctx.font = '8px sans-serif'; ctx.textAlign = 'left'
+      ctx.fillStyle = '#666'; ctx.font = '8px sans-serif'; ctx.textAlign = 'left'
       ctx.fillText(p.name, px + 6, py + 3)
     })
 
@@ -348,7 +373,7 @@ export default function KeplerLawsScene() {
     ctx.setLineDash([])
 
     // 轴标签
-    ctx.fillStyle = '#484f58'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
+    ctx.fillStyle = '#999'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
     ctx.fillText('a³', ox + w / 2, oy + 14)
     ctx.save(); ctx.translate(gx + 12, oy - h / 2); ctx.rotate(-Math.PI / 2)
     ctx.fillText('T²', 0, 0); ctx.restore()
@@ -360,7 +385,7 @@ export default function KeplerLawsScene() {
     // 公式
     ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
     ctx.fillText('定律三：T² ∝ a³', 20, R.H - 80)
-    ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'
+    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'
     ctx.fillText('所有行星的 T²/a³ 相同', 20, R.H - 62)
   }
 
@@ -408,7 +433,7 @@ export default function KeplerLawsScene() {
     const [sx, sy] = R.w2s(wx, wy)
 
     const grad = ctx.createRadialGradient(sx - r * 0.3, sy - r * 0.3, r * 0.1, sx, sy, r)
-    grad.addColorStop(0, color); grad.addColorStop(1, color.replace(/[0-9A-F]{2}$/i, '80'))
+    grad.addColorStop(0, color); grad.addColorStop(1, 'rgba(100,150,200,0.4)')
     ctx.fillStyle = grad
     ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill()
 
@@ -421,17 +446,17 @@ export default function KeplerLawsScene() {
     const pw = 220, ph = 160
     const px = R.W - pw - 16, py = R.H - ph - 16
 
-    ctx.fillStyle = 'rgba(22,27,34,0.95)'
+    ctx.fillStyle = 'rgba(255,255,255,0.95)'
     ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill()
-    ctx.strokeStyle = '#30363d'; ctx.lineWidth = 1
+    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1
     ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.stroke()
 
-    ctx.fillStyle = '#c9d1d9'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
+    ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
     ctx.fillText('📊 开普勒定律', px + 12, py + 20)
 
     ctx.font = '11px sans-serif'; let y = py + 40
 
-    ctx.fillStyle = '#8b949e'
+    ctx.fillStyle = '#666'
     ctx.fillText(`半长轴 a = ${s.a.toFixed(2)} AU`, px + 12, y); y += 16
     ctx.fillText(`偏心率 e = ${s.e.toFixed(3)}`, px + 12, y); y += 16
     ctx.fillText(`半短轴 b = ${s.b.toFixed(2)} AU`, px + 12, y); y += 16
@@ -448,10 +473,10 @@ export default function KeplerLawsScene() {
   function drawDescription(ctx, R) {
     const h = R.H, x = 16, y = h - 40
     ctx.textBaseline = 'top'; ctx.textAlign = 'left'
-    ctx.fillStyle = '#c9d1d9'; ctx.font = 'bold 14px sans-serif'
+    ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'
     ctx.fillText('开普勒三大定律', x, y)
-    ctx.fillStyle = '#8b949e'; ctx.font = '11px sans-serif'
-    ctx.fillText('切换定律查看不同演示 · 拖拽调整偏心率和半长轴', x + 130, y)
+    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'
+    ctx.fillText('切换定律查看不同演示 · 调节滑块改变偏心率和半长轴', x + 130, y)
   }
 
   // ========== Controls ==========
@@ -481,12 +506,49 @@ export default function KeplerLawsScene() {
     S.current.sweepAngles = []
   }, [])
 
+  // 行星预设
+  const handlePreset = useCallback((presetA, presetE) => {
+    S.current.a = presetA
+    S.current.e = presetE
+    computeEllipse()
+    setA(presetA)
+    setE(presetE)
+  }, [])
+
+  // 数据记录
+  const handleRecord = useCallback(() => {
+    const s = S.current
+    const k = (s.period * s.period) / (s.a * s.a * s.a)
+    setRecords(prev => [...prev, {
+      a: s.a.toFixed(2),
+      e: s.e.toFixed(3),
+      T: s.period.toFixed(2),
+      k: k.toFixed(4),
+      id: Date.now(),
+    }])
+  }, [])
+
+  const handleClearRecords = useCallback(() => {
+    setRecords([])
+  }, [])
+
+  const presets = [
+    { name: '水星', a: 0.39, e: 0.21 },
+    { name: '金星', a: 0.72, e: 0.01 },
+    { name: '地球', a: 1.0, e: 0.02 },
+    { name: '火星', a: 1.52, e: 0.09 },
+  ]
+
   return (
     <div style={styles.container}>
       <div style={styles.toolbar}>
         <span style={styles.title}>开普勒三大定律</span>
         <div style={styles.toolbarActions}>
           <button style={styles.btn} onClick={handleReset}>↺ 重置</button>
+          <button style={styles.btn} onClick={handleRecord}>📝 记录数据</button>
+          <button style={styles.btn} onClick={() => setShowRecords(v => !v)}>
+            {showRecords ? '隐藏数据' : '📋 数据表'}
+          </button>
           <div style={styles.sep} />
           <div style={styles.modeGroup}>
             {[1, 2, 3].map(l => (
@@ -497,19 +559,31 @@ export default function KeplerLawsScene() {
               </button>
             ))}
           </div>
+          <div style={styles.sep} />
+          <div style={styles.modeGroup}>
+            {presets.map(p => (
+              <button key={p.name}
+                style={styles.presetBtn}
+                onClick={() => handlePreset(p.a, p.e)}
+                title={`a=${p.a}, e=${p.e}`}>
+                {p.name}
+              </button>
+            ))}
+          </div>
+          <div style={styles.sep} />
           <label style={styles.controlLabel}>
             半长轴 a：
             <input type="range" min="1" max="4" step="0.1"
               value={a}
-              onChange={(e) => handleAChange(parseFloat(e.target.value))}
+              onChange={(ev) => handleAChange(parseFloat(ev.target.value))}
               style={styles.slider} />
             <span style={styles.sliderVal}>{a.toFixed(1)}</span>
           </label>
           <label style={styles.controlLabel}>
             偏心率 e：
-            <input type="range" min="0" max="0.85" step="0.01"
+            <input type="range" min="0" max="0.5" step="0.01"
               value={e}
-              onChange={(e) => handleEChange(parseFloat(e.target.value))}
+              onChange={(ev) => handleEChange(parseFloat(ev.target.value))}
               style={styles.slider} />
             <span style={styles.sliderVal}>{e.toFixed(2)}</span>
           </label>
@@ -517,11 +591,41 @@ export default function KeplerLawsScene() {
       </div>
       <div style={styles.main}>
         <canvas ref={canvasRef} style={styles.canvas} />
+        {showRecords && records.length > 0 && (
+          <div style={styles.recordPanel}>
+            <div style={styles.recordHeader}>
+              <span style={{ fontWeight: 600, color: '#333' }}>📊 数据记录</span>
+              <button style={styles.recordClearBtn} onClick={handleClearRecords}>清空</button>
+            </div>
+            <table style={styles.recordTable}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>#</th>
+                  <th style={styles.th}>a (AU)</th>
+                  <th style={styles.th}>e</th>
+                  <th style={styles.th}>T</th>
+                  <th style={styles.th}>T²/a³</th>
+                </tr>
+              </thead>
+              <tbody>
+                {records.map((rec, i) => (
+                  <tr key={rec.id}>
+                    <td style={styles.td}>{i + 1}</td>
+                    <td style={styles.td}>{rec.a}</td>
+                    <td style={styles.td}>{rec.e}</td>
+                    <td style={styles.td}>{rec.T}</td>
+                    <td style={styles.td}>{rec.k}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
       <div style={styles.desc}>
         <b>开普勒三大定律</b>
         <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
-          定律一：椭圆轨道 · 定律二：面积定律 · 定律三：T²∝a³ · 拖拽调节参数观察变化
+          定律一：椭圆轨道 · 定律二：面积定律 · 定律三：T²∝a³ · 调节滑块改变偏心率和半长轴
         </span>
       </div>
     </div>
@@ -529,19 +633,30 @@ export default function KeplerLawsScene() {
 }
 
 const styles = {
-  container: { display: 'flex', flexDirection: 'column', height: '100vh', background: '#000', color: '#e0e0e0', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
-  toolbar: { minHeight: 44, background: '#0d1b2a', borderBottom: '1px solid #1b2838', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', flexShrink: 0, flexWrap: 'wrap', gap: 6 },
-  title: { fontSize: 14, fontWeight: 600, color: '#c9d1d9' },
+  container: { display: 'flex', flexDirection: 'column', height: '100vh', background: '#e8e8e8', color: '#333', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
+  toolbar: { minHeight: 44, background: '#f5f5f5', borderBottom: '1px solid #ccc', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', flexShrink: 0, flexWrap: 'wrap', gap: 6 },
+  title: { fontSize: 14, fontWeight: 600, color: '#333' },
   toolbarActions: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  controlLabel: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#8b949e' },
+  controlLabel: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#666' },
   slider: { width: 70, accentColor: '#FFD54F' },
   sliderVal: { color: '#FFD54F', fontWeight: 600, minWidth: 35, fontSize: 12 },
-  btn: { background: '#1b2838', color: '#c9d1d9', border: '1px solid #2d3f52', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer' },
-  sep: { width: 1, height: 20, background: '#1b2838' },
+  btn: { background: '#f0f0f0', color: '#333', border: '1px solid #ddd', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer' },
+  sep: { width: 1, height: 20, background: '#ddd' },
   modeGroup: { display: 'flex', gap: 4 },
-  modeBtn: { background: '#1b2838', color: '#8b949e', border: '1px solid #2d3f52', borderRadius: 4, padding: '4px 10px', fontSize: 11, cursor: 'pointer' },
+  modeBtn: { background: '#f0f0f0', color: '#666', border: '1px solid #ddd', borderRadius: 4, padding: '4px 10px', fontSize: 11, cursor: 'pointer' },
   modeBtnActive: { background: '#FFD54F', color: '#000', border: '1px solid #FFD54F', borderRadius: 4, padding: '4px 10px', fontSize: 11, cursor: 'pointer', fontWeight: 600 },
+  presetBtn: { background: '#f0f0f0', color: '#333', border: '1px solid #ddd', borderRadius: 4, padding: '4px 8px', fontSize: 11, cursor: 'pointer' },
   main: { flex: 1, display: 'flex', overflow: 'hidden', position: 'relative' },
   canvas: { flex: 1, width: '100%' },
-  desc: { padding: '8px 14px', background: '#0d1b2a', borderTop: '1px solid #1b2838', fontSize: 13, color: '#c9d1d9' },
+  desc: { padding: '8px 14px', background: '#f5f5f5', borderTop: '1px solid #ccc', fontSize: 13, color: '#333' },
+  recordPanel: {
+    position: 'absolute', top: 10, left: 10, background: 'rgba(255,255,255,0.95)',
+    border: '1px solid #ddd', borderRadius: 8, padding: 10, maxHeight: 300, overflowY: 'auto',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)', zIndex: 10,
+  },
+  recordHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  recordClearBtn: { background: '#ff5252', color: '#fff', border: 'none', borderRadius: 4, padding: '2px 8px', fontSize: 11, cursor: 'pointer' },
+  recordTable: { borderCollapse: 'collapse', fontSize: 11 },
+  th: { borderBottom: '1px solid #ddd', padding: '4px 8px', textAlign: 'left', color: '#333', fontWeight: 600 },
+  td: { borderBottom: '1px solid #eee', padding: '4px 8px', color: '#666' },
 }
