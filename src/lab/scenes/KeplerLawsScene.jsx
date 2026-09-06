@@ -252,6 +252,19 @@ export default function KeplerLawsScene() {
     drawOrbitByParam(ctx, R, s.a, s.b, s.c, 'rgba(79,195,247,0.3)')
     drawSun(ctx, fx, fy)
 
+    // 翻转后的轨道（极坐标从太阳画，翻转180度）
+    ctx.strokeStyle = 'rgba(79,195,247,0.3)'; ctx.lineWidth = 2; ctx.setLineDash([8, 4])
+    ctx.beginPath()
+    for (let i = 0; i <= 360; i++) {
+      const θ = (i / 360) * 2 * Math.PI
+      const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(θ))
+      const rawX = -s.c + r * Math.cos(θ)
+      const rawY = r * Math.sin(θ)
+      const [sx, sy] = R.w2s(-2 * s.c - rawX, -rawY)
+      if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy)
+    }
+    ctx.closePath(); ctx.stroke(); ctx.setLineDash([])
+
     // 已扫过区域（从0到当前θ，以太阳为中心翻转180度）
     ctx.fillStyle = 'rgba(255,213,79,0.12)'
     ctx.beginPath(); ctx.moveTo(fx, fy)
