@@ -203,6 +203,13 @@ export default function KeplerLawsScene() {
     const py = r * Math.sin(s.angle)
     drawPlanet(ctx, R, px, py, '#4FC3F7', 8)
 
+    // 行星标签
+    const [plSx, plSy] = R.w2s(px, py)
+    ctx.fillStyle = '#4FC3F7'
+    ctx.font = 'bold 11px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText('🌍 行星', plSx, plSy - 18)
+
     // 标注
     const [cx, cy] = R.w2s(0, 0)
     // 半长轴
@@ -288,6 +295,13 @@ export default function KeplerLawsScene() {
     // 行星
     const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(s.angle))
     drawPlanet(ctx, R, r * Math.cos(s.angle), r * Math.sin(s.angle), '#4FC3F7', 8)
+
+    // 行星标签
+    const [plSx2, plSy2] = R.w2s(r * Math.cos(s.angle), r * Math.sin(s.angle))
+    ctx.fillStyle = '#4FC3F7'
+    ctx.font = 'bold 11px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText('🌍 行星', plSx2, plSy2 - 18)
 
     // 连线
     ctx.strokeStyle = 'rgba(100,100,100,0.3)'; ctx.lineWidth = 1
@@ -427,6 +441,11 @@ export default function KeplerLawsScene() {
 
     ctx.fillStyle = '#FFF9C4'
     ctx.beginPath(); ctx.arc(x - 4, y - 4, r * 0.4, 0, Math.PI * 2); ctx.fill()
+
+    ctx.fillStyle = '#F57F17'
+    ctx.font = 'bold 12px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText('☀ 太阳', x, y + r + 16)
   }
 
   function drawPlanet(ctx, R, wx, wy, color, r) {
