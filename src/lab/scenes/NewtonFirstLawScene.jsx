@@ -54,6 +54,8 @@ export default function NewtonFirstLawScene() {
   const [, forceUpdate] = useState(0)
   const [cursor, setCursor] = useState('default')
   const [isDragging, setIsDragging] = useState(false)
+  const [showGuide, setShowGuide] = useState(true)
+  const guideAlpha = useRef(1)
   const [records, setRecords] = useState([])
 
   useEffect(() => {
@@ -164,6 +166,7 @@ export default function NewtonFirstLawScene() {
     drawTable(ctx, R)
     drawTrail(ctx, R)
     drawBall(ctx, R)
+    drawGuideBubble(ctx, R)
     drawForceArrows(ctx, R)
     drawInfoPanel(ctx, R)
     drawInferencePanel(ctx, R)
@@ -347,6 +350,58 @@ export default function NewtonFirstLawScene() {
     }
   }
 
+  // 引导气泡
+  function drawGuideBubble(ctx, R) {
+    const targetAlpha = showGuide ? 1 : 0
+    guideAlpha.current += (targetAlpha - guideAlpha.current) * 0.15
+    if (guideAlpha.current < 0.01) return
+
+    const s = S.current
+    if (s.ballPhase !== 'idle' || !s.ballOnRamp) return
+
+    const angle = s.rampAngle * Math.PI / 180
+    const [bx, by] = R.w2s(s.rampX, s.tableY)
+    const dist = s.ballProgress * s.rampLen * R.scale
+    const ballSx = bx - dist * Math.cos(angle)
+    const ballSy = by - dist * Math.sin(angle)
+    const r = s.ballR * R.scale
+
+    const floatY = Math.sin(Date.now() / 500 * Math.PI * 2 / 1.5) * 3
+    const text = '👆 点击并拖拽小球，然后释放'
+    const tx = ballSx + r + 20
+    const ty = ballSy - r + floatY
+
+    ctx.save()
+    ctx.globalAlpha = guideAlpha.current
+
+    ctx.font = '13px sans-serif'
+    const tw = ctx.measureText(text).width
+    const pw = tw + 20
+    const ph = 28
+    const px = tx
+    const py = ty - ph / 2
+
+    ctx.fillStyle = 'rgba(33,33,33,0.85)'
+    ctx.beginPath()
+    ctx.roundRect(px, py, pw, ph, 8)
+    ctx.fill()
+
+    ctx.beginPath()
+    ctx.moveTo(px, ty - 5)
+    ctx.lineTo(px - 7, ty)
+    ctx.lineTo(px, ty + 5)
+    ctx.closePath()
+    ctx.fill()
+
+    ctx.fillStyle = '#fff'
+    ctx.font = '13px sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(text, px + 10, ty)
+
+    ctx.restore()
+  }
+
   function drawForceArrows(ctx, R) {
     const s = S.current
     if (s.ballPhase !== 'sliding') return
@@ -524,6 +579,7 @@ export default function NewtonFirstLawScene() {
     if (dx * dx + dy * dy < (r * 2) * (r * 2)) {
       setIsDragging(true)
       setCursor('grabbing')
+      setShowGuide(false)
     }
   }, [])
 
@@ -592,6 +648,7 @@ export default function NewtonFirstLawScene() {
     s.trail = []
     setPhase('idle')
     setDist(0)
+    setShowGuide(true)
     setRecords([])
   }, [])
 
