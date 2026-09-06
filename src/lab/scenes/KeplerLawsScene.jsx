@@ -256,9 +256,9 @@ export default function KeplerLawsScene() {
     ctx.fillStyle = 'rgba(255,213,79,0.12)'
     ctx.beginPath(); ctx.moveTo(fx, fy)
     for (let E = 0; E <= s.E + 0.01; E += 0.05) {
-      const r = s.a * (1 - s.e * Math.cos(E))  // 正确的 r(E) 公式
+      const r = s.a * (1 - s.e * Math.cos(E))
       const θ = 2 * Math.atan2(Math.sqrt(1 + s.e) * Math.sin(E / 2), Math.sqrt(1 - s.e) * Math.cos(E / 2))
-      const [sx, sy] = R.w2s(r * Math.cos(θ), r * Math.sin(θ))
+      const [sx, sy] = R.w2s(-s.c + r * Math.cos(θ), r * Math.sin(θ))
       ctx.lineTo(sx, sy)
     }
     ctx.closePath(); ctx.fill()
@@ -279,7 +279,7 @@ export default function KeplerLawsScene() {
           const t = j / steps
           const θ = p0.theta + t * (p1.theta - p0.theta)
           const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(θ))
-          const [sx, sy] = R.w2s(r * Math.cos(θ), r * Math.sin(θ))
+          const [sx, sy] = R.w2s(-s.c + r * Math.cos(θ), r * Math.sin(θ))
           ctx.lineTo(sx, sy)
         }
         ctx.closePath(); ctx.fill()
