@@ -1,11 +1,11 @@
 /**
- * HookeLawScene — 探究胡克定律（NB + PhET 融合版）
- * 修复版：Record采集、图表同步、工具栏精简、双Reset分离
+ * HookeLawScene — 探究胡克定律
+ * 探究胡克定律：Record采集、图表同步、工具栏精简、双Reset分离
  */
 
 import { useRef, useEffect, useState, useCallback } from 'react'
 
-const ELASTIC_LIMIT_RATIO = 0.6
+const ELASTIC_LIMIT_RATIO = 0.8
 const WALL_X = 70
 const GAUGE_W = 120
 const GAUGE_H = 36
@@ -51,6 +51,8 @@ export default function HookeLawScene() {
   const [showDisplacement, setShowDisplacement] = useState(true)
   const [showEquilibrium, setShowEquilibrium] = useState(true)
   const [showValues, setShowValues] = useState(true)
+  const [showGuide, setShowGuide] = useState(true)
+  const guideAlpha = useRef(1)
   const [, forceUpdate] = useState(0)
   const triggerRender = useCallback(() => forceUpdate(n => n + 1), [])
 
@@ -150,9 +152,9 @@ export default function HookeLawScene() {
     const w = s.screenW, h = s.screenH
     if (!w || !h) return
 
-    ctx.fillStyle = '#1a1d23'
+    ctx.fillStyle = '#fff'
     ctx.fillRect(0, 0, w, h)
-    ctx.strokeStyle = 'rgba(255,255,255,0.03)'; ctx.lineWidth = 1
+    ctx.strokeStyle = 'rgba(0,0,0,0.04)'; ctx.lineWidth = 1
     for (let gx = 0; gx < w; gx += 40) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke() }
     for (let gy = 0; gy < h; gy += 40) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke() }
 
@@ -163,6 +165,7 @@ export default function HookeLawScene() {
     if (s.mode === 'parallel') drawSpringCoil2(ctx, L)
     drawGaugeBar(ctx, L)
     drawHandle(ctx, L)
+    if (showGuide) drawGuideBubble(ctx, L)
 
     // 绘制顺序：标签背景→箭头→标签文字，确保箭头尖端不被覆盖
     if (s.showValues) drawLabelBgs(ctx, L)
@@ -171,7 +174,6 @@ export default function HookeLawScene() {
     if (s.showExtForce) drawForceArrow(ctx, L, 'ext')
     if (s.showNetForce) drawForceArrow(ctx, L, 'net')
     if (s.showComponent) drawComponentArrow(ctx, L)
-    if (s.showEquilibrium) drawEquilibriumLine(ctx, L)
     if (s.showValues) drawLabelTexts(ctx, L)
     if (s.elasticLimit) drawElasticWarning(ctx)
   }
@@ -179,16 +181,16 @@ export default function HookeLawScene() {
   function drawWall(ctx, L) {
     const x = WALL_X, y = L.y
     const grad = ctx.createLinearGradient(x - 30, 0, x + 10, 0)
-    grad.addColorStop(0, '#2d3139'); grad.addColorStop(1, '#4a5060')
+    grad.addColorStop(0, '#d0d0d0'); grad.addColorStop(1, '#b0b0b0')
     ctx.fillStyle = grad
     ctx.fillRect(x - 30, y - 60, 40, 120)
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1
+    ctx.strokeStyle = 'rgba(0,0,0,0.08)'; ctx.lineWidth = 1
     for (let i = -60; i < 120; i += 12) {
       ctx.beginPath(); ctx.moveTo(x - 30, y + i); ctx.lineTo(x + 10, y + i + 20); ctx.stroke()
     }
-    ctx.strokeStyle = '#5a6070'; ctx.lineWidth = 2
+    ctx.strokeStyle = '#999'; ctx.lineWidth = 2
     ctx.strokeRect(x - 30, y - 60, 40, 120)
-    ctx.strokeStyle = '#3a3f4a'; ctx.lineWidth = 2
+    ctx.strokeStyle = '#bbb'; ctx.lineWidth = 2
     ctx.beginPath(); ctx.moveTo(x - 30, y + 60); ctx.lineTo(sim.current.screenW - 20, y + 60); ctx.stroke()
   }
 
@@ -231,18 +233,18 @@ export default function HookeLawScene() {
     const x = L.gaugeStartX, y = L.y, w = GAUGE_W, h = GAUGE_H
 
     const shellGrad = ctx.createLinearGradient(x, y - h / 2, x, y + h / 2)
-    shellGrad.addColorStop(0, '#5a6070'); shellGrad.addColorStop(0.5, '#4a5060'); shellGrad.addColorStop(1, '#3a3f4a')
+    shellGrad.addColorStop(0, '#ddd'); shellGrad.addColorStop(0.5, '#ccc'); shellGrad.addColorStop(1, '#bbb')
     ctx.fillStyle = shellGrad
     ctx.fillRect(x, y - h / 2 - 4, w, h + 8)
-    ctx.strokeStyle = '#6b7280'; ctx.lineWidth = 1
+    ctx.strokeStyle = '#aaa'; ctx.lineWidth = 1
     ctx.strokeRect(x, y - h / 2 - 4, w, h + 8)
 
     const barX = x + 10, barY = y - 8, barW = w - 20, barH = 16
-    ctx.fillStyle = '#f0f0f0'
+    ctx.fillStyle = '#f5f5f5'
     ctx.beginPath(); roundedRect(ctx, barX, barY, barW, barH, 3); ctx.fill()
 
     const maxForce = getEffectiveK() * s.restLength * ELASTIC_LIMIT_RATIO * 1.3
-    ctx.strokeStyle = '#333'; ctx.fillStyle = '#333'
+    ctx.strokeStyle = '#555'; ctx.fillStyle = '#555'
     ctx.font = '7px sans-serif'; ctx.textAlign = 'center'
     for (let i = 0; i <= 10; i++) {
       const px = barX + (i / 10) * barW, major = i % 2 === 0
@@ -262,7 +264,7 @@ export default function HookeLawScene() {
     ctx.beginPath(); ctx.moveTo(ptrX, barY - 4); ctx.lineTo(ptrX, barY + barH); ctx.stroke()
 
     const force = getSpringForce()
-    ctx.fillStyle = s.elasticLimit ? '#dc2626' : '#1a1a2e'
+    ctx.fillStyle = s.elasticLimit ? '#dc2626' : '#333'
     ctx.font = 'bold 12px monospace'; ctx.textAlign = 'center'
     ctx.fillText(force.toFixed(2) + ' N', x + w / 2, y + h / 2 + 4)
   }
@@ -270,17 +272,17 @@ export default function HookeLawScene() {
   function drawHandle(ctx, L) {
     const x = L.handleX, y = L.y
     const hg = ctx.createLinearGradient(x, y - 14, x, y + 14)
-    hg.addColorStop(0, '#6b7280'); hg.addColorStop(0.5, '#9ca3af'); hg.addColorStop(1, '#6b7280')
+    hg.addColorStop(0, '#aaa'); hg.addColorStop(0.5, '#ccc'); hg.addColorStop(1, '#aaa')
     ctx.fillStyle = hg
     ctx.beginPath(); roundedRect(ctx, x, y - 14, HANDLE_W, 28, 4); ctx.fill()
-    ctx.strokeStyle = '#d1d5db'; ctx.lineWidth = 1
+    ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1
     ctx.beginPath(); roundedRect(ctx, x, y - 14, HANDLE_W, 28, 4); ctx.stroke()
-    ctx.strokeStyle = 'rgba(0,0,0,0.2)'; ctx.lineWidth = 1
+    ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 1
     for (let i = 0; i < 3; i++) {
       const lx = x + 6 + i * 5
       ctx.beginPath(); ctx.moveTo(lx, y - 6); ctx.lineTo(lx, y + 6); ctx.stroke()
     }
-    ctx.strokeStyle = '#9ca3af'; ctx.lineWidth = 2
+    ctx.strokeStyle = '#999'; ctx.lineWidth = 2
     ctx.beginPath(); ctx.moveTo(x + HANDLE_W, y); ctx.lineTo(x + HANDLE_W + 8, y); ctx.stroke()
     ctx.beginPath(); ctx.arc(x + HANDLE_W + 12, y, 4, Math.PI * 0.5, Math.PI * 1.5, false); ctx.stroke()
   }
@@ -289,7 +291,7 @@ export default function HookeLawScene() {
     const s = sim.current
     const rulerY = L.y + 70, startX = L.springStartX, endX = s.screenW - 30
     const pxPerCm = s.scale * 0.01
-    ctx.fillStyle = 'rgba(255,255,255,0.04)'
+    ctx.fillStyle = 'rgba(0,0,0,0.03)'
     ctx.fillRect(startX, rulerY - 6, endX - startX, 20)
 
     const zeroX = L.restEndX
@@ -299,7 +301,7 @@ export default function HookeLawScene() {
     ctx.fillStyle = '#2196F3'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'
     ctx.fillText('0 cm', zeroX, rulerY + 16)
 
-    ctx.fillStyle = '#8a8f9a'; ctx.strokeStyle = '#5a5f6a'; ctx.font = '9px sans-serif'
+    ctx.fillStyle = '#666'; ctx.strokeStyle = '#999'; ctx.font = '9px sans-serif'
     const maxCm = Math.floor((endX - zeroX) / pxPerCm)
     for (let cm = 1; cm <= maxCm; cm++) {
       const x = zeroX + cm * pxPerCm; if (x > endX) break
@@ -316,6 +318,28 @@ export default function HookeLawScene() {
       ctx.fillStyle = '#4CAF50'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'
       ctx.fillText('L₀', zeroX + 4, L.y - 70)
     }
+  }
+
+  function drawGuideBubble(ctx, L) {
+    const handleCenterX = L.handleX + HANDLE_W / 2
+    const handleCenterY = L.y
+    const floatOffset = 3 * Math.sin(Date.now() / 1000 * Math.PI * 2 / 1.5)
+    const bx = handleCenterX - 100
+    const by = handleCenterY - 55 + floatOffset
+
+    ctx.fillStyle = 'rgba(0,0,0,0.75)'
+    ctx.beginPath(); roundedRect(ctx, bx, by, 130, 30, 8); ctx.fill()
+    // arrow pointing down to handle
+    ctx.beginPath()
+    ctx.moveTo(handleCenterX - 6, by + 30)
+    ctx.lineTo(handleCenterX + 6, by + 30)
+    ctx.lineTo(handleCenterX, by + 38)
+    ctx.closePath(); ctx.fill()
+
+    ctx.fillStyle = '#fff'
+    ctx.font = 'bold 12px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText('← 拖拽把手拉伸弹簧', bx + 65, by + 20)
   }
 
   function drawForceArrow(ctx, L, type) {
@@ -476,16 +500,16 @@ export default function HookeLawScene() {
     }
   }
 
-  function drawEquilibriumLine() {}
-
   function drawElasticWarning(ctx) {
     const x = sim.current.screenW / 2
-    const alpha = 0.6 + 0.4 * Math.sin(Date.now() / 200)
-    ctx.fillStyle = `rgba(239,68,68,${alpha})`
+    const alpha = 0.6 + 0.4 * Math.sin(Date.now() / 800)
     ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'
-    ctx.fillText('⚠ 超出弹性限度！弹簧可能失效！', x, 30)
-    ctx.fillStyle = 'rgba(239,68,68,0.15)'
-    ctx.fillRect(x - 200, 10, 400, 28)
+    const text = '⚠ 超出弹性限度！弹簧可能失效！'
+    const tw = ctx.measureText(text).width
+    ctx.fillStyle = `rgba(239,68,68,0.15)`
+    ctx.fillRect(x - tw / 2 - 12, 10, tw + 24, 28)
+    ctx.fillStyle = `rgba(239,68,68,${alpha})`
+    ctx.fillText(text, x, 29)
   }
 
   // ============ 交互 ============
@@ -498,10 +522,12 @@ export default function HookeLawScene() {
     const [sx, sy] = getPos(e), L = getLayout(), y = L.y
     if (sx >= L.handleX - 5 && sx <= L.handleEndX + 15 && Math.abs(sy - y) < 30) {
       sim.current.dragging = true; sim.current.dragStartX = sx; sim.current.dragStartLength = sim.current.currentLength
+      setShowGuide(false)
       canvasRef.current.style.cursor = 'grabbing'; e.preventDefault(); return
     }
     if (sx >= L.gaugeStartX && sx <= L.gaugeEndX && Math.abs(sy - y) < GAUGE_H) {
       sim.current.dragging = true; sim.current.dragStartX = sx; sim.current.dragStartLength = sim.current.currentLength
+      setShowGuide(false)
       canvasRef.current.style.cursor = 'grabbing'; e.preventDefault()
     }
   }, [])
@@ -547,6 +573,7 @@ export default function HookeLawScene() {
     s.currentLength = s.restLength; s.externalForce = 0; s.velocity = 0
     s.elasticLimit = false; s.gaugePointerX = 10
     setExtForce(0)
+    setShowGuide(true)
   }
 
   // 数据重置：清空表格和图表，不改变物理状态
@@ -565,8 +592,10 @@ export default function HookeLawScene() {
     sim.current.externalForce = f
     const targetLen = sim.current.restLength + f / getEffectiveK()
     sim.current.currentLength = Math.max(sim.current.restLength * 0.5, Math.min(sim.current.restLength * 2.0, targetLen))
+    // Re-sync externalForce after clamping
+    sim.current.externalForce = getEffectiveK() * Math.max(0, sim.current.currentLength - sim.current.restLength)
     sim.current.velocity = 0
-    setExtForce(parseFloat(f.toFixed(2)))
+    setExtForce(parseFloat(sim.current.externalForce.toFixed(2)))
     triggerRender()
   }
 
@@ -592,14 +621,15 @@ export default function HookeLawScene() {
         <div style={st.tableTitle}>📋 实验数据</div>
         <div style={st.tableScroll}>
           <table style={st.table}>
-            <thead><tr><th style={st.th}>#</th><th style={st.th}>Δx (m)</th><th style={st.th}>F (N)</th></tr></thead>
+            <thead><tr><th style={st.th}>#</th><th style={st.th}>Δx (m)</th><th style={st.th}>F (N)</th><th style={st.th}>k (N/m)</th></tr></thead>
             <tbody>
-              {dataPoints.length === 0 ? <tr><td colSpan={3} style={st.emptyTd}>暂无数据</td></tr>
+              {dataPoints.length === 0 ? <tr><td colSpan={4} style={st.emptyTd}>暂无数据</td></tr>
                 : dataPoints.map((p, i) => (
                   <tr key={i} style={i % 2 === 0 ? st.trEven : st.trOdd}>
                     <td style={st.td}>{i + 1}</td>
                     <td style={st.tdNum}>{p.dx.toFixed(4)}</td>
                     <td style={st.tdNum}>{p.F.toFixed(3)}</td>
+                    <td style={st.tdNum}>{p.dx > 0 ? (p.F / p.dx).toFixed(1) : '—'}</td>
                   </tr>
                 ))
               }
@@ -619,7 +649,7 @@ export default function HookeLawScene() {
           <span>📈 F - Δx 关系图像</span>
           <button style={st.chartCloseBtn} onClick={() => setChartVisible(false)}>✕</button>
         </div>
-        <div style={{ padding: 40, textAlign: 'center', color: '#484f58' }}>请先采集数据</div>
+        <div style={{ padding: 40, textAlign: 'center', color: '#666' }}>请先采集数据</div>
       </div>
     )
 
@@ -639,7 +669,6 @@ export default function HookeLawScene() {
 
     const gw = 380, gh = 240, padL = 50, padB = 35, padR = 20, padT = 15
     const plotW = gw - padL - padR, plotH = gh - padB - padT
-    // 原点在 (padL, gh - padB)，X向右增大，Y向上增大
     const toX = v => padL + (v / Math.max(maxX * 1.15, 0.001)) * plotW
     const toY = v => (gh - padB) - (v / Math.max(maxY * 1.15, 0.001)) * plotH
 
@@ -655,20 +684,20 @@ export default function HookeLawScene() {
           {/* X轴 */}
           <line x1={padL} y1={gh - padB} x2={gw - padR} y2={gh - padB} stroke="#9ca3af" strokeWidth="1" />
           {/* 原点标注 */}
-          <text x={padL - 5} y={gh - padB + 14} textAnchor="end" fontSize="9" fill="#6b7280">0</text>
+          <text x={padL - 5} y={gh - padB + 14} textAnchor="end" fontSize="9" fill="#666">0</text>
           {/* X轴刻度 */}
           {[0.25, 0.5, 0.75, 1].map(t => {
             const vx = maxX * 1.15 * t
             const x = toX(vx)
             if (x > gw - padR) return null
-            return <g key={`x${t}`}><line x1={x} y1={gh - padB} x2={x} y2={gh - padB + 4} stroke="#6b7280" strokeWidth="1" /><text x={x} y={gh - padB + 14} textAnchor="middle" fontSize="8" fill="#6b7280">{vx.toFixed(2)}</text></g>
+            return <g key={`x${t}`}><line x1={x} y1={gh - padB} x2={x} y2={gh - padB + 4} stroke="#666" strokeWidth="1" /><text x={x} y={gh - padB + 14} textAnchor="middle" fontSize="8" fill="#666">{vx.toFixed(2)}</text></g>
           })}
           {/* Y轴刻度 */}
           {[0.25, 0.5, 0.75, 1].map(t => {
             const vy = maxY * 1.15 * t
             const y = toY(vy)
             if (y < padT) return null
-            return <g key={`y${t}`}><line x1={padL - 4} y1={y} x2={padL} y2={y} stroke="#6b7280" strokeWidth="1" /><text x={padL - 7} y={y + 3} textAnchor="end" fontSize="8" fill="#6b7280">{vy.toFixed(1)}</text></g>
+            return <g key={`y${t}`}><line x1={padL - 4} y1={y} x2={padL} y2={y} stroke="#666" strokeWidth="1" /><text x={padL - 7} y={y + 3} textAnchor="end" fontSize="8" fill="#666">{vy.toFixed(1)}</text></g>
           })}
           {/* 拟合线 */}
           {pts.length >= 2 && <line x1={toX(0)} y1={toY(intercept >= 0 ? intercept : 0)} x2={toX(maxX * 1.15)} y2={toY(slope * maxX * 1.15 + intercept)} stroke="#ef4444" strokeWidth="2" strokeDasharray="8,4" />
@@ -678,16 +707,17 @@ export default function HookeLawScene() {
           {/* 实时点 */}
           {getDisplacement() > 0.001 && <circle cx={toX(getDisplacement())} cy={toY(getSpringForce())} r="6" fill="#f59e0b" stroke="#fff" strokeWidth="2" />}
           {/* 轴标签 */}
-          <text x={gw / 2} y={gh - 2} textAnchor="middle" fontSize="11" fill="#9ca3af">Δx (m)</text>
-          <text x={12} y={gh / 2} textAnchor="middle" fontSize="11" fill="#9ca3af" transform={`rotate(-90,12,${gh / 2})`}>F (N)</text>
+          <text x={gw / 2} y={gh - 2} textAnchor="middle" fontSize="11" fill="#666">Δx (m)</text>
+          <text x={12} y={gh / 2} textAnchor="middle" fontSize="11" fill="#666" transform={`rotate(-90,12,${gh / 2})`}>F (N)</text>
           {/* k标注 */}
           {pts.length >= 2 && <text x={gw - padR - 5} y={padT + 14} textAnchor="end" fontSize="12" fill="#f59e0b" fontWeight="bold">k = {slope.toFixed(1)} N/m</text>}
         </svg>
         {pts.length >= 2 && (
           <div style={st.fitInfo}>
             <div>拟合斜率 k = <span style={{ color: '#f59e0b', fontWeight: 700 }}>{slope.toFixed(2)} N/m</span></div>
+            <div>F = {slope.toFixed(2)}·x + {intercept.toFixed(3)}</div>
             <div>R² = {r2.toFixed(4)} | 截距 = {intercept.toFixed(3)} N</div>
-            <div style={{ fontSize: 10, color: '#6b7280', marginTop: 2 }}>{pts.length} 个数据点</div>
+            <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>{pts.length} 个数据点</div>
           </div>
         )}
       </div>
@@ -695,11 +725,13 @@ export default function HookeLawScene() {
   }
 
   // ============ 渲染 ============
+  const forceSliderMax = getEffectiveK() * sim.current.restLength * ELASTIC_LIMIT_RATIO
+
   return (
     <div style={st.page}>
       <div style={st.header}>
         <span style={st.headerTitle}>🔬 探究胡克定律</span>
-        <span style={st.headerSub}>F = k·Δx | NB + PhET 融合仿真</span>
+        <span style={st.headerSub}>F = k·Δx | 弹簧伸长与拉力的关系</span>
       </div>
       <div style={st.main}>
         {/* 左侧工具栏：只保留3个有效按钮 */}
@@ -713,7 +745,7 @@ export default function HookeLawScene() {
             }
           </button>
           <div style={st.toolDivider} />
-          <button style={{ ...st.toolBtn, color: '#9ca3af' }}
+          <button style={{ ...st.toolBtn, color: '#666' }}
             title="仿真重置：弹簧回原长、力归零（保留表格数据）"
             onClick={handleSimReset}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 4v6h6M23 20v-6h-6" /><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15" /></svg>
@@ -780,7 +812,7 @@ export default function HookeLawScene() {
                 style={st.forceInput} onChange={e => handleForceInput(+e.target.value)} />
               <span style={st.forceUnit}>N</span>
             </div>
-            <input type="range" min={0} max={getEffectiveK() * 0.25} step={0.01} value={extForce}
+            <input type="range" min={0} max={forceSliderMax} step={0.01} value={extForce}
               style={{ ...st.slider, marginTop: 8 }}
               onChange={e => handleForceInput(+e.target.value)} />
           </div>
@@ -794,7 +826,7 @@ export default function HookeLawScene() {
               { key: 'showComponent', label: '分力', color: '#8b5cf6', val: showComponent, set: setShowComponent },
               { key: 'showDisplacement', label: '位移矢量箭头', color: '#06b6d4', val: showDisplacement, set: setShowDisplacement },
               { key: 'showEquilibrium', label: '平衡位置参考线', color: '#2196F3', val: showEquilibrium, set: setShowEquilibrium },
-              { key: 'showValues', label: '数值标签', color: '#e5e7eb', val: showValues, set: setShowValues },
+              { key: 'showValues', label: '数值标签', color: '#333', val: showValues, set: setShowValues },
             ].map(item => (
               <label key={item.key} style={st.checkRow}>
                 <input type="checkbox" checked={item.val}
@@ -807,7 +839,7 @@ export default function HookeLawScene() {
 
           <div style={st.section}>
             <div style={st.formulaBox}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#9ca3af', marginBottom: 4 }}>📐 胡克定律</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#666', marginBottom: 4 }}>📐 胡克定律</div>
               <div style={{ color: '#4CAF50', fontSize: 16, fontFamily: 'serif', fontWeight: 'bold' }}>F = k · Δx</div>
               {mode === 'parallel' && <div style={{ color: '#a78bfa', fontSize: 12, marginTop: 2 }}>k = k₁ + k₂</div>}
             </div>
@@ -819,7 +851,7 @@ export default function HookeLawScene() {
               { l: '弹力 F', v: `${getSpringForce().toFixed(3)} N`, c: isOverLimit() ? '#ef4444' : '#22c55e' },
               { l: '伸长量 Δx', v: `${getDisplacement().toFixed(4)} m`, c: '#06b6d4' },
               { l: '验证 kΔx', v: `${(getEffectiveK() * getDisplacement()).toFixed(3)} N`, c: '#f59e0b' },
-              { l: '数据点数', v: `${dataPoints.length}`, c: '#e5e7eb' },
+              { l: '数据点数', v: `${dataPoints.length}`, c: '#333' },
             ].map(d => (
               <div key={d.l} style={st.dataRow}>
                 <span style={st.dataLabel}>{d.l}</span>
@@ -834,51 +866,55 @@ export default function HookeLawScene() {
 }
 
 const st = {
-  page: { display: 'flex', flexDirection: 'column', width: '100%', height: '100vh', background: '#0d1117', color: '#e5e7eb', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace', overflow: 'hidden', userSelect: 'none' },
-  header: { height: 44, flexShrink: 0, background: 'linear-gradient(135deg, #1e3a5f, #0d47a1)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', boxShadow: '0 2px 8px rgba(0,0,0,0.3)', zIndex: 20 },
-  headerTitle: { color: '#fff', fontSize: 15, fontWeight: 700 },
-  headerSub: { color: 'rgba(255,255,255,0.6)', fontSize: 12 },
+  page: { display: 'flex', flexDirection: 'column', width: '100%', height: '100vh', background: '#e8e8e8', color: '#333', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace', overflow: 'hidden', userSelect: 'none' },
+  header: { height: 44, flexShrink: 0, background: '#f5f5f5', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', borderBottom: '1px solid #ccc', zIndex: 20 },
+  headerTitle: { color: '#333', fontSize: 15, fontWeight: 700 },
+  headerSub: { color: '#666', fontSize: 12 },
   main: { display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' },
-  toolbar: { position: 'absolute', top: 12, left: 12, zIndex: 15, background: 'rgba(30,35,45,0.95)', borderRadius: 10, padding: '8px 6px', display: 'flex', flexDirection: 'column', gap: 4, border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 4px 16px rgba(0,0,0,0.3)' },
-  toolBtn: { width: 36, height: 36, borderRadius: 8, border: 'none', background: 'transparent', color: '#9ca3af', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, transition: 'all 0.15s' },
-  toolDivider: { height: 1, background: 'rgba(255,255,255,0.08)', margin: '2px 4px' },
-  leftPanel: { position: 'absolute', top: 12, left: 60, zIndex: 10, width: 280, maxHeight: 'calc(100vh - 70px)', background: 'rgba(22,27,34,0.95)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', padding: 14, overflowY: 'auto', boxShadow: '0 4px 16px rgba(0,0,0,0.3)' },
+  toolbar: { position: 'absolute', top: 12, left: 12, zIndex: 15, background: 'rgba(255,255,255,0.95)', borderRadius: 10, padding: '8px 6px', display: 'flex', flexDirection: 'column', gap: 4, border: '1px solid #ddd', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' },
+  toolBtn: { width: 36, height: 36, borderRadius: 8, border: 'none', background: 'transparent', color: '#666', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, transition: 'all 0.15s' },
+  toolDivider: { height: 1, background: '#eee', margin: '2px 4px' },
+  leftPanel: { position: 'absolute', top: 12, left: 60, zIndex: 10, width: 280, maxHeight: 'calc(100vh - 70px)', background: 'rgba(255,255,255,0.95)', borderRadius: 12, border: '1px solid #ddd', padding: 14, overflowY: 'auto', boxShadow: '0 4px 16px rgba(0,0,0,0.08)' },
   tableWrap: { marginBottom: 10 },
-  tableTitle: { fontSize: 12, fontWeight: 700, color: '#9ca3af', marginBottom: 8 },
+  tableTitle: { fontSize: 12, fontWeight: 700, color: '#666', marginBottom: 8 },
   tableScroll: { maxHeight: 160, overflowY: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 11 },
-  th: { background: '#21262d', color: '#8b949e', padding: '6px 8px', textAlign: 'center', fontWeight: 600, borderBottom: '1px solid #30363d', position: 'sticky', top: 0 },
-  td: { padding: '5px 8px', textAlign: 'center', borderBottom: '1px solid #21262d' },
-  tdNum: { padding: '5px 8px', textAlign: 'right', borderBottom: '1px solid #21262d', fontFamily: 'monospace' },
-  emptyTd: { padding: 16, textAlign: 'center', color: '#484f58', fontStyle: 'italic' },
-  trEven: { background: 'rgba(255,255,255,0.02)' },
+  th: { background: '#f5f5f5', color: '#555', padding: '6px 8px', textAlign: 'center', fontWeight: 600, borderBottom: '1px solid #ddd', position: 'sticky', top: 0 },
+  td: { padding: '5px 8px', textAlign: 'center', borderBottom: '1px solid #eee' },
+  tdNum: { padding: '5px 8px', textAlign: 'right', borderBottom: '1px solid #eee', fontFamily: 'monospace' },
+  emptyTd: { padding: 16, textAlign: 'center', color: '#999', fontStyle: 'italic' },
+  trEven: { background: 'rgba(0,0,0,0.02)' },
   trOdd: { background: 'transparent' },
   tableBtns: { display: 'flex', gap: 6, marginBottom: 10 },
   btnRecord: { flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: '#2563eb', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
-  btnReset: { flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: '#374151', color: '#9ca3af', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
+  btnReset: { flex: 1, padding: '7px 0', borderRadius: 6, border: 'none', background: '#e5e7eb', color: '#555', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
   btnChart: { flex: 1.3, padding: '7px 0', borderRadius: 6, border: 'none', background: '#059669', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
   btnExport: { width: 34, padding: '7px 0', borderRadius: 6, border: 'none', background: '#6366f1', color: '#fff', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  chartModal: { position: 'absolute', top: 60, left: '50%', transform: 'translateX(-50%)', zIndex: 100, background: 'rgba(22,27,34,0.98)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', padding: 16, minWidth: 400 },
-  chartModalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, fontSize: 13, fontWeight: 700, color: '#e5e7eb' },
-  chartCloseBtn: { width: 28, height: 28, borderRadius: 6, border: 'none', background: 'rgba(255,255,255,0.08)', color: '#9ca3af', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  fitInfo: { marginTop: 8, padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 6, fontSize: 11, color: '#9ca3af', lineHeight: 1.8 },
+  chartModal: { position: 'absolute', top: 60, left: '50%', transform: 'translateX(-50%)', zIndex: 100, background: 'rgba(255,255,255,0.98)', borderRadius: 12, border: '1px solid #ddd', boxShadow: '0 8px 32px rgba(0,0,0,0.12)', padding: 16, minWidth: 400 },
+  chartModalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, fontSize: 13, fontWeight: 700, color: '#333' },
+  chartCloseBtn: { width: 28, height: 28, borderRadius: 6, border: 'none', background: '#f0f0f0', color: '#666', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  fitInfo: { marginTop: 8, padding: '8px 12px', background: '#f9f9f9', borderRadius: 6, fontSize: 11, color: '#666', lineHeight: 1.8 },
   canvasWrap: { flex: 1, position: 'relative', overflow: 'hidden' },
   canvas: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', touchAction: 'none' },
-  rightPanel: { width: 220, flexShrink: 0, background: 'rgba(22,27,34,0.95)', borderLeft: '1px solid rgba(255,255,255,0.06)', padding: '14px 12px', overflowY: 'auto', zIndex: 10 },
-  section: { marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.06)' },
-  sectionTitle: { fontSize: 11, fontWeight: 700, color: '#6b7280', marginBottom: 8, letterSpacing: 0.5 },
+  rightPanel: { width: 220, flexShrink: 0, background: 'rgba(255,255,255,0.95)', borderLeft: '1px solid #eee', padding: '14px 12px', overflowY: 'auto', zIndex: 10 },
+  section: { marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid #eee' },
+  sectionTitle: { fontSize: 11, fontWeight: 700, color: '#888', marginBottom: 8, letterSpacing: 0.5 },
   controlRow: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 },
-  controlLabel: { fontSize: 12, color: '#9ca3af', minWidth: 24, fontWeight: 600 },
+  controlLabel: { fontSize: 12, color: '#666', minWidth: 24, fontWeight: 600 },
   slider: { flex: 1, accentColor: '#3b82f6', height: 4 },
-  sliderVal: { fontSize: 11, fontWeight: 600, color: '#60a5fa', minWidth: 60, textAlign: 'right', fontFamily: 'monospace' },
-  modeSwitch: { display: 'flex', gap: 2, background: '#161b22', borderRadius: 6, padding: 2, flex: 1 },
-  modeBtn: { flex: 1, padding: '5px 0', borderRadius: 4, border: 'none', background: 'transparent', color: '#6b7280', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
+  sliderVal: { fontSize: 11, fontWeight: 600, color: '#3b82f6', minWidth: 60, textAlign: 'right', fontFamily: 'monospace' },
+  modeSwitch: { display: 'flex', gap: 2, background: '#f5f5f5', borderRadius: 6, padding: 2, flex: 1 },
+  modeBtn: { flex: 1, padding: '5px 0', borderRadius: 4, border: 'none', background: 'transparent', color: '#888', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
   modeBtnActive: { background: '#2563eb', color: '#fff' },
   parallelInfo: { fontSize: 11, color: '#a78bfa', padding: '6px 10px', background: 'rgba(167,139,250,0.1)', borderRadius: 6, marginBottom: 8, fontFamily: 'monospace' },
   forceInputWrap: { display: 'flex', alignItems: 'center', gap: 8 },
-  forceInput: { width: 80, padding: '6px 8px', borderRadius: 6, border: '1px solid #30363d', background: '#161b22', color: '#e5e7eb', fontSize: 13, fontFamily: 'monospace', fontWeight: 600 },
-  forceUnit: { fontSize: 12, color: '#6b7280' },
+  forceInput: { width: 80, padding: '6px 8px', borderRadius: 6, border: '1px solid #ccc', background: '#f5f5f5', color: '#333', fontSize: 13, fontFamily: 'monospace', fontWeight: 600 },
+  forceUnit: { fontSize: 12, color: '#888' },
   checkRow: { display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', cursor: 'pointer' },
   checkDot: { width: 8, height: 8, borderRadius: '50%', flexShrink: 0 },
-  checkLabel: { fontSize: 12, color: '#9ca3af' },
+  checkLabel: { fontSize: 12, color: '#666' },
+  formulaBox: { padding: '10px 12px', background: '#f9f9f9', borderRadius: 8, border: '1px solid #eee', textAlign: 'center' },
+  dataRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' },
+  dataLabel: { fontSize: 12, color: '#666' },
+  dataValue: { fontSize: 12, fontWeight: 600, fontFamily: 'monospace' },
 }
