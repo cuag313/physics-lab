@@ -704,12 +704,9 @@ function LabTab() {
 
       {/* 实验说明 */}
       <div style={s.desc}>
-        <b>{activeTab === 1 ? '探究动量守恒定律' : '碰撞实验室'}</b>
+        <b>碰撞实验室</b>
         <span style={{ marginLeft: 12, color: '#666', fontSize: 13 }}>
-          {activeTab === 1
-            ? '调整质量和速度，点击播放观察碰撞。验证 m₁v₁ + m₂v₂ = m₁v₁\' + m₂v₂\''
-            : '拖拽球体或速度箭头调整参数，调节恢复系数e，播放观察碰撞过程'
-          }
+          拖拽球体或速度箭头调整参数，调节恢复系数e，播放观察碰撞过程
         </span>
       </div>
     </div>
