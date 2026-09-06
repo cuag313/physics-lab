@@ -106,7 +106,7 @@ export default function KeplerLawsScene() {
     const s = S.current
     s.b = s.a * Math.sqrt(1 - s.e * s.e)
     s.c = s.a * s.e
-    s.period = 2 * Math.PI * Math.sqrt(s.a * s.a * s.a) // T² ∝ a³, simplified
+    s.period = Math.pow(s.a, 1.5) // T=a^1.5, 单位: AU→年fied
   }
 
   // 计算扇形面积（数值积分 A = 0.5 * ∫r²dθ）
