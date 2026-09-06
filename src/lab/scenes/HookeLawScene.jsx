@@ -781,9 +781,9 @@ export default function HookeLawScene() {
               <span style={st.controlLabel}>模式</span>
               <div style={st.modeSwitch}>
                 <button style={{ ...st.modeBtn, ...(mode === 'single' ? st.modeBtnActive : {}) }}
-                  onClick={() => { setMode('single'); sim.current.mode = 'single'; triggerRender() }}>单弹簧</button>
+                  onClick={() => { setMode('single'); sim.current.mode = 'single'; sim.current.currentLength = sim.current.restLength; sim.current.externalForce = 0; sim.current.velocity = 0; setExtForce(0); triggerRender() }}>单弹簧</button>
                 <button style={{ ...st.modeBtn, ...(mode === 'parallel' ? st.modeBtnActive : {}) }}
-                  onClick={() => { setMode('parallel'); sim.current.mode = 'parallel'; triggerRender() }}>并联</button>
+                  onClick={() => { setMode('parallel'); sim.current.mode = 'parallel'; sim.current.currentLength = sim.current.restLength; sim.current.externalForce = 0; sim.current.velocity = 0; setExtForce(0); triggerRender() }}>并联</button>
               </div>
             </div>
             <div style={st.controlRow}>
