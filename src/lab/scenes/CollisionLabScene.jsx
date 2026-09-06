@@ -1,16 +1,16 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 
 /**
- * CollisionLabScene — 碰撞实验室（PhET风格一维碰撞仿真）
+ * CollisionLabScene — 碰撞实验室（双Tab合并版）
  *
- * 与 CollisionLab.html 共享同一套物理引擎和渲染逻辑
+ * Tab1: 探究动量守恒（课标基础版）— 气垫导轨方案，简化交互
+ * Tab2: 碰撞实验室（增强版）— PhET风格，拖拽/矢量/多次碰撞
+ *
+ * 共享物理引擎：substep碰撞检测 + 恢复系数e
  */
 
 // ================================================================
-//  物理核心：动量守恒 + 恢复系数
-//  碰撞公式（恢复系数 e）：
-//    v1' = (m1*v1 + m2*v2 + m2*e*(v2-v1)) / (m1+m2)
-//    v2' = (m1*v1 + m2*v2 + m1*e*(v1-v2)) / (m1+m2)
+//  物理核心
 // ================================================================
 
 const W = 800, H = 280
@@ -30,7 +30,358 @@ function snap(balls) { return JSON.parse(JSON.stringify(balls)) }
 function lighten(h, p) { const n = parseInt(h.slice(1), 16); return `rgb(${Math.min(255, (n >> 16) + Math.round(255 * p / 100))},${Math.min(255, ((n >> 8) & 0xff) + Math.round(255 * p / 100))},${Math.min(255, (n & 0xff) + Math.round(255 * p / 100))})` }
 function darken(h, p) { const n = parseInt(h.slice(1), 16); return `rgb(${Math.max(0, (n >> 16) - Math.round(255 * p / 100))},${Math.max(0, ((n >> 8) & 0xff) - Math.round(255 * p / 100))},${Math.max(0, (n & 0xff) - Math.round(255 * p / 100))})` }
 
+// ================================================================
+//  主组件
+// ================================================================
+
 export default function CollisionLabScene() {
+  const [activeTab, setActiveTab] = useState('conservation') // 'conservation' | 'lab'
+
+  return (
+    <div style={s.container}>
+      {/* Tab切换 */}
+      <div style={s.tabBar}>
+        <button style={activeTab === 'conservation' ? s.tabActive : s.tab} onClick={() => setActiveTab('conservation')}>探究动量守恒</button>
+        <button style={activeTab === 'lab' ? s.tabActive : s.tab} onClick={() => setActiveTab('lab')}>碰撞实验室</button>
+      </div>
+      {activeTab === 'conservation' ? <ConservationTab /> : <LabTab />}
+    </div>
+  )
+}
+
+// ================================================================
+//  Tab1: 探究动量守恒（课标基础版）
+// ================================================================
+
+function ConservationTab() {
+  const canvasRef = useRef(null)
+  const animRef = useRef(null)
+  const rendererRef = useRef(null)
+
+  const stateRef = useRef({
+    m1: 0.5, m2: 0.5,
+    v1: 2, v2: -1,
+    v1_before: 0, v2_before: 0,
+    v1_after: 0, v2_after: 0,
+    collisionType: 'elastic', // 'elastic' | 'inelastic'
+    phase: 'setup', // 'setup' | 'moving' | 'done'
+    x1: -3, x2: 2,
+    time: 0,
+    p1_before: 0, p2_before: 0, p_total_before: 0,
+    p1_after: 0, p2_after: 0, p_total_after: 0,
+    records: [],
+  })
+
+  const [collisionType, setCollisionType] = useState('elastic')
+  const [phase, setPhase] = useState('setup')
+  const [, forceUpdate] = useState(0)
+
+  const doUpdatePhysics = useCallback(() => {
+    const s = stateRef.current
+    if (s.phase !== 'moving') return
+    const dt = 1 / 60
+    s.time += dt
+    s.x1 += s.v1 * dt
+    s.x2 += s.v2 * dt
+    const gap = 0.8
+    if (s.x1 + gap / 2 >= s.x2 - gap / 2 && s.x1 < s.x2) {
+      if (s.collisionType === 'elastic') {
+        const m1 = s.m1, m2 = s.m2, v1 = s.v1, v2 = s.v2
+        s.v1_after = ((m1 - m2) * v1 + 2 * m2 * v2) / (m1 + m2)
+        s.v2_after = ((m2 - m1) * v2 + 2 * m1 * v1) / (m1 + m2)
+        s.v1 = s.v1_after; s.v2 = s.v2_after
+      } else {
+        const V = (s.m1 * s.v1 + s.m2 * s.v2) / (s.m1 + s.m2)
+        s.v1_after = V; s.v2_after = V
+        s.v1 = V; s.v2 = V
+      }
+      s.p1_before = s.m1 * s.v1_before
+      s.p2_before = s.m2 * s.v2_before
+      s.p_total_before = s.p1_before + s.p2_before
+      s.p1_after = s.m1 * s.v1_after
+      s.p2_after = s.m2 * s.v2_after
+      s.p_total_after = s.p1_after + s.p2_after
+      s.phase = 'done'
+      setPhase('done')
+    }
+    forceUpdate(n => n + 1)
+  }, [])
+
+  const doRender = useCallback(() => {
+    const renderer = rendererRef.current
+    if (!renderer) return
+    const ctx = renderer.ctx
+    const w = renderer.screenW, h = renderer.screenH
+    ctx.save()
+    const scale = renderer.scale
+    const wts = (wx, wy) => [w / 2 + wx * scale, h * 0.55 - wy * scale]
+
+    ctx.fillStyle = '#f8f9fa'; ctx.fillRect(0, 0, w, h)
+
+    // 导轨
+    const [x1t] = wts(-6, 0), [x2t] = wts(6, 0), [, yt] = wts(0, 0)
+    ctx.strokeStyle = '#bbb'; ctx.lineWidth = 6
+    ctx.beginPath(); ctx.moveTo(x1t, yt); ctx.lineTo(x2t, yt); ctx.stroke()
+    ctx.strokeStyle = '#999'; ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(x1t, yt - 3); ctx.lineTo(x2t, yt - 3); ctx.stroke()
+    // 刻度
+    ctx.fillStyle = '#888'; ctx.font = '9px monospace'; ctx.textAlign = 'center'
+    for (let i = -5; i <= 5; i++) {
+      const [sx] = wts(i, 0)
+      ctx.fillText(`${i}`, sx, yt + 18)
+    }
+
+    const s = stateRef.current
+    // 滑块
+    const drawBlock = (x, m, color) => {
+      const [bx] = wts(x, 0)
+      const bw = m * 60 + 30
+      ctx.fillStyle = color
+      ctx.beginPath(); ctx.roundRect(bx - bw / 2, yt - 40, bw, 35, 4); ctx.fill()
+      ctx.strokeStyle = lighten(color, 30); ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.roundRect(bx - bw / 2, yt - 40, bw, 35, 4); ctx.stroke()
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'
+      ctx.fillText(`${m}kg`, bx, yt - 20)
+    }
+    drawBlock(s.x1, s.m1, '#FF6B6B')
+    drawBlock(s.x2, s.m2, '#4ECDC4')
+
+    // 速度箭头
+    const drawV = (x, v, color) => {
+      const [sx] = wts(x, 0)
+      const len = v * scale * 0.5
+      if (Math.abs(len) < 2) return
+      ctx.strokeStyle = color; ctx.lineWidth = 3
+      ctx.beginPath(); ctx.moveTo(sx, yt - 50); ctx.lineTo(sx + len, yt - 50); ctx.stroke()
+      const dir = Math.sign(len)
+      ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(sx + len, yt - 50)
+      ctx.lineTo(sx + len - dir * 8, yt - 54); ctx.lineTo(sx + len - dir * 8, yt - 46)
+      ctx.closePath(); ctx.fill()
+      ctx.font = '10px sans-serif'; ctx.textAlign = 'center'
+      ctx.fillText(`v=${v.toFixed(2)}`, sx + len / 2, yt - 56)
+    }
+    if (s.phase === 'setup' || s.phase === 'moving') {
+      drawV(s.x1, s.v1, '#FF6B6B')
+      drawV(s.x2, s.v2, '#4ECDC4')
+    } else if (s.phase === 'done') {
+      drawV(s.x1, s.v1_after, '#FF6B6B')
+      drawV(s.x2, s.v2_after, '#4ECDC4')
+    }
+
+    // 动量面板
+    const panelW = 240, panelH = 230
+    const px = w - panelW - 16, py = 16
+    ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.beginPath(); ctx.roundRect(px, py, panelW, panelH, 8); ctx.fill()
+    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(px, py, panelW, panelH, 8); ctx.stroke()
+    ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
+    ctx.fillText('📊 动量守恒验证', px + 14, py + 20)
+    let yy = py + 42; ctx.font = '11px sans-serif'
+    if (s.phase === 'done') {
+      ctx.fillStyle = '#888'; ctx.fillText('── 碰撞前 ──', px + 14, yy); yy += 18
+      ctx.fillStyle = '#FF6B6B'
+      ctx.fillText(`p₁ = ${s.m1}×${s.v1_before.toFixed(2)} = ${s.p1_before.toFixed(3)} kg·m/s`, px + 14, yy); yy += 16
+      ctx.fillStyle = '#4ECDC4'
+      ctx.fillText(`p₂ = ${s.m2}×${s.v2_before.toFixed(2)} = ${s.p2_before.toFixed(3)} kg·m/s`, px + 14, yy); yy += 18
+      ctx.fillStyle = '#E65100'; ctx.font = 'bold 11px sans-serif'
+      ctx.fillText(`p总(前) = ${s.p_total_before.toFixed(3)} kg·m/s`, px + 14, yy); yy += 22
+      ctx.fillStyle = '#888'; ctx.font = '11px sans-serif'; ctx.fillText('── 碰撞后 ──', px + 14, yy); yy += 18
+      ctx.fillStyle = '#FF6B6B'
+      ctx.fillText(`p₁' = ${s.m1}×${s.v1_after.toFixed(2)} = ${s.p1_after.toFixed(3)}`, px + 14, yy); yy += 16
+      ctx.fillStyle = '#4ECDC4'
+      ctx.fillText(`p₂' = ${s.m2}×${s.v2_after.toFixed(2)} = ${s.p2_after.toFixed(3)}`, px + 14, yy); yy += 18
+      ctx.fillStyle = '#E65100'; ctx.font = 'bold 11px sans-serif'
+      ctx.fillText(`p总(后) = ${s.p_total_after.toFixed(3)} kg·m/s`, px + 14, yy); yy += 22
+      const diff = Math.abs(s.p_total_before - s.p_total_after)
+      ctx.fillStyle = diff < 0.05 ? '#4CAF50' : '#FF9800'; ctx.font = '11px sans-serif'
+      ctx.fillText(`|Δp| = ${diff.toFixed(4)} kg·m/s`, px + 14, yy); yy += 16
+      const pct = s.p_total_before !== 0 ? (diff / Math.abs(s.p_total_before) * 100) : 0
+      ctx.fillText(`误差: ${pct.toFixed(2)}%`, px + 14, yy)
+    } else {
+      ctx.fillStyle = '#888'
+      ctx.fillText(`m₁ = ${s.m1} kg, v₁ = ${s.v1} m/s`, px + 14, yy); yy += 18
+      ctx.fillText(`m₂ = ${s.m2} kg, v₂ = ${s.v2} m/s`, px + 14, yy); yy += 22
+      ctx.fillStyle = '#E65100'
+      ctx.fillText(`p₁ = ${(s.m1 * s.v1).toFixed(3)} kg·m/s`, px + 14, yy); yy += 16
+      ctx.fillText(`p₂ = ${(s.m2 * s.v2).toFixed(3)} kg·m/s`, px + 14, yy); yy += 16
+      ctx.fillText(`p总 = ${(s.m1 * s.v1 + s.m2 * s.v2).toFixed(3)} kg·m/s`, px + 14, yy)
+    }
+
+    // 公式
+    const fy = h - 90
+    ctx.textBaseline = 'top'; ctx.textAlign = 'left'
+    ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'
+    ctx.fillText('探究动量守恒定律', 16, fy)
+    ctx.fillStyle = '#1565C0'; ctx.font = 'bold 14px serif'
+    ctx.fillText("m₁v₁ + m₂v₂ = m₁v₁' + m₂v₂'", 16, fy + 22)
+    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'
+    ctx.fillText('① 调整滑块质量和速度  ② 选择碰撞类型  ③ 点击"碰撞"开始', 16, fy + 46)
+
+    ctx.restore()
+  }, [])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const renderer = {
+      canvas, ctx: canvas.getContext('2d'), screenW: 0, screenH: 0, scale: 60,
+      resize() {
+        const rect = canvas.getBoundingClientRect()
+        canvas.width = rect.width * devicePixelRatio
+        canvas.height = rect.height * devicePixelRatio
+        this.ctx.scale(devicePixelRatio, devicePixelRatio)
+        this.screenW = rect.width; this.screenH = rect.height
+      },
+    }
+    renderer.resize(); rendererRef.current = renderer
+    const loop = () => { doUpdatePhysics(); doRender(); animRef.current = requestAnimationFrame(loop) }
+    loop()
+    const onResize = () => renderer.resize()
+    window.addEventListener('resize', onResize)
+    return () => { window.removeEventListener('resize', onResize); if (animRef.current) cancelAnimationFrame(animRef.current) }
+  }, [doUpdatePhysics, doRender])
+
+  useEffect(() => { stateRef.current.collisionType = collisionType }, [collisionType])
+
+  const handleStart = useCallback(() => {
+    const s = stateRef.current
+    s.v1_before = s.v1; s.v2_before = s.v2
+    s.x1 = -4; s.x2 = 3; s.time = 0; s.phase = 'moving'
+    setPhase('moving')
+  }, [])
+
+  const handleReset = useCallback(() => {
+    const s = stateRef.current
+    s.x1 = -3; s.x2 = 2; s.time = 0; s.phase = 'setup'
+    setPhase('setup')
+  }, [])
+
+  const handleRecord = useCallback(() => {
+    const s = stateRef.current
+    if (s.phase !== 'done') return
+    const diff = Math.abs(s.p_total_before - s.p_total_after)
+    const pct = s.p_total_before !== 0 ? (diff / Math.abs(s.p_total_before) * 100) : 0
+    s.records = [...s.records, {
+      id: s.records.length + 1,
+      m1: s.m1, m2: s.m2,
+      v1b: s.v1_before, v2b: s.v2_before,
+      v1a: s.v1_after, v2a: s.v2_after,
+      ptb: s.p_total_before, pta: s.p_total_after,
+      diff, pct,
+      type: s.collisionType === 'elastic' ? '弹性' : '非弹性',
+    }]
+    forceUpdate(n => n + 1)
+  }, [])
+
+  const s_local = stateRef.current
+
+  return (
+    <div style={s.flexCol}>
+      {/* 工具栏 */}
+      <div style={s.toolbar}>
+        <span style={s.title}>探究动量守恒 — 气垫导轨</span>
+        <div style={s.toolbarActions}>
+          {phase !== 'moving' ? (
+            <button style={s.playBtn} onClick={handleStart}>💥 碰撞</button>
+          ) : (
+            <button style={s.pauseBtn} disabled>碰撞中…</button>
+          )}
+          <button style={s.setBtn} onClick={handleReset}>⚙ 重置</button>
+          <button style={s.btn} onClick={handleRecord} disabled={phase !== 'done'}>📝 记录</button>
+          <div style={s.sep} />
+          <label style={s.controlLabel}>
+            m₁：<input type="range" min="0.1" max="2" step="0.1" value={s_local.m1}
+              onChange={(e) => { stateRef.current.m1 = parseFloat(e.target.value); forceUpdate(n => n + 1) }} style={{ width: 70 }} />
+            <span style={s.sliderVal}>{s_local.m1} kg</span>
+          </label>
+          <label style={s.controlLabel}>
+            v₁：<input type="range" min="-3" max="5" step="0.5" value={s_local.v1}
+              onChange={(e) => { stateRef.current.v1 = parseFloat(e.target.value); forceUpdate(n => n + 1) }} style={{ width: 70 }} />
+            <span style={s.sliderVal}>{s_local.v1} m/s</span>
+          </label>
+          <label style={s.controlLabel}>
+            m₂：<input type="range" min="0.1" max="2" step="0.1" value={s_local.m2}
+              onChange={(e) => { stateRef.current.m2 = parseFloat(e.target.value); forceUpdate(n => n + 1) }} style={{ width: 70 }} />
+            <span style={s.sliderVal}>{s_local.m2} kg</span>
+          </label>
+          <label style={s.controlLabel}>
+            v₂：<input type="range" min="-3" max="5" step="0.5" value={s_local.v2}
+              onChange={(e) => { stateRef.current.v2 = parseFloat(e.target.value); forceUpdate(n => n + 1) }} style={{ width: 70 }} />
+            <span style={s.sliderVal}>{s_local.v2} m/s</span>
+          </label>
+          <label style={s.controlLabel}>
+            碰撞：
+            <select value={collisionType} onChange={(e) => setCollisionType(e.target.value)} style={s.select}>
+              <option value="elastic">弹性</option>
+              <option value="inelastic">完全非弹性</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      {/* 主区域 */}
+      <div style={s.main}>
+        <canvas ref={canvasRef} style={{ flex: 1, width: '100%' }} />
+      </div>
+
+      {/* 数据记录表 */}
+      {s_local.records.length > 0 && (
+        <div style={s.recordPanel}>
+          <div style={s.recordTitle}>📋 实验记录</div>
+          <div style={s.recordTableWrap}>
+            <table style={s.recordTable}>
+              <thead>
+                <tr>
+                  <th style={s.th}>#</th>
+                  <th style={s.th}>类型</th>
+                  <th style={s.th}>m₁</th>
+                  <th style={s.th}>m₂</th>
+                  <th style={s.th}>v₁(前)</th>
+                  <th style={s.th}>v₂(前)</th>
+                  <th style={s.th}>v₁'(后)</th>
+                  <th style={s.th}>v₂'(后)</th>
+                  <th style={s.th}>p总(前)</th>
+                  <th style={s.th}>p总(后)</th>
+                  <th style={s.th}>|Δp|</th>
+                  <th style={s.th}>误差%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {s_local.records.map(r => (
+                  <tr key={r.id}>
+                    <td style={s.td}>{r.id}</td>
+                    <td style={s.td}>{r.type}</td>
+                    <td style={s.td}>{r.m1}</td>
+                    <td style={s.td}>{r.m2}</td>
+                    <td style={s.td}>{r.v1b.toFixed(2)}</td>
+                    <td style={s.td}>{r.v2b.toFixed(2)}</td>
+                    <td style={s.td}>{r.v1a.toFixed(2)}</td>
+                    <td style={s.td}>{r.v2a.toFixed(2)}</td>
+                    <td style={s.td}>{r.ptb.toFixed(3)}</td>
+                    <td style={s.td}>{r.pta.toFixed(3)}</td>
+                    <td style={{ ...s.td, color: r.diff < 0.05 ? '#4CAF50' : '#FF9800' }}>{r.diff.toFixed(4)}</td>
+                    <td style={{ ...s.td, color: r.pct < 5 ? '#4CAF50' : '#FF9800' }}>{r.pct.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* 底部说明 */}
+      <div style={s.desc}>
+        <b>实验：探究动量守恒定律</b>
+        <span style={{ marginLeft: 12, color: '#666', fontSize: 13 }}>调整滑块质量和速度，选择碰撞类型，点击"碰撞"开始。验证碰撞前后总动量守恒：m₁v₁ + m₂v₂ = m₁v₁' + m₂v₂'。</span>
+      </div>
+    </div>
+  )
+}
+
+// ================================================================
+//  Tab2: 碰撞实验室（增强版）
+// ================================================================
+
+function LabTab() {
   const canvasRef = useRef(null)
   const animRef = useRef(null)
   const rendererRef = useRef(null)
@@ -53,7 +404,6 @@ export default function CollisionLabScene() {
   const [showVals, setShowVals] = useState(false)
   const [, forceUpdate] = useState(0)
 
-  // ========== 物理 ==========
   const physicsStep = useCallback(() => {
     const s = stateRef.current
     const balls = ballsRef.current
@@ -88,7 +438,6 @@ export default function CollisionLabScene() {
     s.simT += s.DT
   }, [])
 
-  // ========== 渲染 ==========
   const renderFrame = useCallback(() => {
     const renderer = rendererRef.current
     if (!renderer) return
@@ -97,7 +446,7 @@ export default function CollisionLabScene() {
     ctx.save()
     ctx.scale(scale, scale)
 
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H)
+    ctx.fillStyle = '#f8f9fa'; ctx.fillRect(0, 0, W, H)
     drawTrack(ctx)
 
     if (showCOM) {
@@ -172,7 +521,7 @@ export default function CollisionLabScene() {
     return () => { window.removeEventListener('resize', handleResize); if (animRef.current) cancelAnimationFrame(animRef.current) }
   }, [physicsStep, renderFrame])
 
-  // ========== Canvas绑定 ==========
+  // Canvas交互
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -228,7 +577,6 @@ export default function CollisionLabScene() {
     return () => { canvas.removeEventListener('mousedown', onDown); canvas.removeEventListener('mousemove', onMove); canvas.removeEventListener('mouseup', onUp); canvas.removeEventListener('mouseleave', onUp) }
   }, [])
 
-  // ========== 控制 ==========
   const togglePlay = useCallback(() => {
     stateRef.current.running = !stateRef.current.running
     setRunning(stateRef.current.running)
@@ -269,7 +617,7 @@ export default function CollisionLabScene() {
   }, [])
 
   return (
-    <div style={s.container}>
+    <div style={s.flexCol}>
       {/* 工具栏 */}
       <div style={s.toolbar}>
         <span style={s.title}>碰撞实验室 — 一维碰撞</span>
@@ -356,19 +704,25 @@ export default function CollisionLabScene() {
 
       {/* 实验说明 */}
       <div style={s.desc}>
-        <b>实验：一维完全弹性对撞</b>
-        <span style={{ marginLeft: 12, color: '#666', fontSize: 13 }}>两球质量相等，以大小相等方向相反速度发生完全弹性碰撞，观察碰撞后速度交换现象。</span>
+        <b>{activeTab === 1 ? '探究动量守恒定律' : '碰撞实验室'}</b>
+        <span style={{ marginLeft: 12, color: '#666', fontSize: 13 }}>
+          {activeTab === 1
+            ? '调整质量和速度，点击播放观察碰撞。验证 m₁v₁ + m₂v₂ = m₁v₁\' + m₂v₂\''
+            : '拖拽球体或速度箭头调整参数，调节恢复系数e，播放观察碰撞过程'
+          }
+        </span>
       </div>
     </div>
   )
 }
 
 // ================================================================
-//  Canvas绘制函数（与CollisionLab.html共享逻辑）
+//  Canvas绘制函数
 // ================================================================
+
 function drawTrack(ctx) {
   const y = TRACK_Y
-  ctx.strokeStyle = '#444'; ctx.lineWidth = 4
+  ctx.strokeStyle = '#bbb'; ctx.lineWidth = 4
   ctx.beginPath(); ctx.moveTo(X0, y); ctx.lineTo(X1, y); ctx.stroke()
   ctx.lineWidth = 5
   ctx.beginPath(); ctx.moveTo(X0, y - 18); ctx.lineTo(X0, y + 18); ctx.stroke()
@@ -415,8 +769,18 @@ function drawArrow(ctx, b, len, color, label, yOffset) {
   ctx.fillText(label, (sx + ex) / 2, sy - 6)
 }
 
+// ================================================================
+//  样式
+// ================================================================
+
 const s = {
   container: { display: 'flex', flexDirection: 'column', height: '100vh', background: '#e8e8e8', color: '#333', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
+  flexCol: { display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' },
+  // Tab栏
+  tabBar: { display: 'flex', background: '#f0f0f0', borderBottom: '2px solid #ddd', flexShrink: 0 },
+  tab: { flex: 1, padding: '10px 16px', fontSize: 14, fontWeight: 600, background: 'transparent', border: 'none', borderBottom: '3px solid transparent', color: '#888', cursor: 'pointer', transition: 'all 0.15s' },
+  tabActive: { flex: 1, padding: '10px 16px', fontSize: 14, fontWeight: 600, background: '#fff', border: 'none', borderBottom: '3px solid #4A90D9', color: '#333', cursor: 'pointer' },
+  // 工具栏
   toolbar: { minHeight: 44, background: '#f5f5f5', borderBottom: '1px solid #ccc', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', flexShrink: 0, flexWrap: 'wrap', gap: 6 },
   title: { fontSize: 14, fontWeight: 600 },
   toolbarActions: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
@@ -426,12 +790,17 @@ const s = {
   setBtn: { background: '#7B1FA2', color: '#fff', border: 'none', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer' },
   sep: { width: 1, height: 20, background: '#ccc' },
   timer: { fontFamily: 'Consolas,monospace', fontSize: 13, marginLeft: 8 },
+  controlLabel: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#555' },
+  sliderVal: { color: '#4A90D9', fontWeight: 600, minWidth: 40, fontSize: 12 },
+  select: { background: '#fff', color: '#333', border: '1px solid #ccc', borderRadius: 4, padding: '3px 6px', fontSize: 12 },
+  // 主区域
   main: { flex: 1, display: 'flex', overflow: 'hidden', background: '#fff', position: 'relative' },
   sidePanel: { width: 180, display: 'flex', flexDirection: 'column', gap: 8, padding: 8, background: '#f9f9f9', borderLeft: '1px solid #ddd', flexShrink: 0 },
   panel: { background: '#fff', border: '1px solid #ddd', borderRadius: 6, padding: 8 },
   panelTitle: { fontSize: 12, fontWeight: 600, color: '#444', marginBottom: 4, paddingBottom: 3, borderBottom: '1px solid #eee' },
   chk: { display: 'flex', alignItems: 'center', gap: 4, margin: '2px 0', fontSize: 12, cursor: 'pointer' },
   presetBtn: { display: 'inline-block', padding: '3px 8px', margin: '2px 3px 2px 0', fontSize: 11, border: '1px solid #bbb', borderRadius: 4, background: '#fafafa', cursor: 'pointer' },
+  // 参数面板
   bottomRow: { display: 'flex', gap: 10, padding: '6px 12px', background: '#f0f0f0', borderTop: '1px solid #ccc', flexWrap: 'wrap' },
   params: { background: '#fff', border: '1px solid #ddd', borderRadius: 6, padding: '8px 12px', flex: 1, minWidth: 280 },
   paramsTitle: { fontSize: 12, fontWeight: 600, color: '#444', marginBottom: 4 },
@@ -439,5 +808,13 @@ const s = {
   lbl: { minWidth: 20, fontWeight: 700, fontSize: 12 },
   numInput: { width: 48, padding: '2px 4px', border: '1px solid #ccc', borderRadius: 3, fontSize: 12, textAlign: 'center' },
   unit: { color: '#999', fontSize: 11 },
-  desc: { padding: '8px 14px', background: '#fff', borderTop: '1px solid #ddd', fontSize: 13 },
+  // 记录表
+  recordPanel: { background: '#fff', borderTop: '1px solid #ddd', padding: '8px 12px', maxHeight: 180, overflow: 'auto' },
+  recordTitle: { fontSize: 13, fontWeight: 600, marginBottom: 6 },
+  recordTableWrap: { overflowX: 'auto' },
+  recordTable: { borderCollapse: 'collapse', fontSize: 11, width: '100%' },
+  th: { background: '#f0f0f0', padding: '4px 8px', border: '1px solid #ddd', fontWeight: 600, whiteSpace: 'nowrap' },
+  td: { padding: '3px 8px', border: '1px solid #eee', whiteSpace: 'nowrap', textAlign: 'center' },
+  // 底部说明
+  desc: { padding: '8px 14px', background: '#fff', borderTop: '1px solid #ddd', fontSize: 13, flexShrink: 0 },
 }

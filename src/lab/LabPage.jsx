@@ -28,7 +28,6 @@ import PressureEffectScene from './scenes/PressureEffectScene'
 import LiquidPressureScene from './scenes/LiquidPressureScene'
 import PulleyEfficiencyScene from './scenes/PulleyEfficiencyScene'
 import EnergyConservationScene from './scenes/EnergyConservationScene'
-import MomentumConservationScene from './scenes/MomentumConservationScene'
 import CollisionLabScene from './scenes/CollisionLabScene'
 import MeasureSpeedScene from './scenes/MeasureSpeedScene'
 import FloatSinkScene from './scenes/FloatSinkScene'
@@ -378,8 +377,6 @@ export default function LabPage({ onBack }) {
           <PulleyEfficiencyScene />
         ) : currentExperiment?.key === 'energyConservation' ? (
           <EnergyConservationScene />
-        ) : currentExperiment?.key === 'momentumConservation' ? (
-          <MomentumConservationScene />
         ) : currentExperiment?.key === 'collisionLab' ? (
           <CollisionLabScene />
         ) : currentExperiment?.key === 'newtonFirstLaw' ? (
