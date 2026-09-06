@@ -27,7 +27,10 @@ export default function KeplerLawsScene() {
 
     // 行星
     angle: 0,            // 真近点角
-    omega: 0.8,          // 平均角速度
+    M: 0,                // 平近点角
+    planetX: 0,          // 行星位置x（以太阳为原点）
+    planetY: 0,          // 行星位置y
+    omega: 0,            // 平均角速度（由period推导）
     period: 0,           // 周期
     planetR: 0.15,
 
@@ -106,7 +109,8 @@ export default function KeplerLawsScene() {
     const s = S.current
     s.b = s.a * Math.sqrt(1 - s.e * s.e)
     s.c = s.a * s.e
-    s.period = Math.pow(s.a, 1.5) // T=a^1.5, 单位: AU→年fied
+    s.period = Math.pow(s.a, 1.5) // T=a^1.5, 单位: AU→年
+    s.omega = (2 * Math.PI) / s.period // 由period推导
   }
 
   // 计算扇形面积（数值积分 A = 0.5 * ∫r²dθ）
@@ -130,22 +134,31 @@ export default function KeplerLawsScene() {
     const dt = 1 / 60
     s.time += dt
 
-    // 定律二：面积定律 — 角速度不均匀，近地点快，远地点慢
-    // 用参数方程 x=a·cos(θ), y=b·sin(θ) 确保行星在椭圆上
-    // 角速度修正：dA/dt = 常数 → dθ/dt ∝ 1/r²
-    const x_now = s.a * Math.cos(s.angle)
-    const y_now = s.b * Math.sin(s.angle)
-    const r2 = x_now * x_now + y_now * y_now
-    const r0_2 = s.a * s.a * (1 - s.e) * (1 - s.e) // 近地点 r²
-    const omegaAtR = s.omega * r0_2 / r2
+    // 开普勒方程法：平近点角匀速增加
+    s.M += s.omega * dt
+    if (s.M > 2 * Math.PI) s.M -= 2 * Math.PI
 
-    s.angle += omegaAtR * dt
-    if (s.angle > Math.PI * 2) s.angle -= Math.PI * 2
+    // 解开普勒方程 M = E - e·sinE（牛顿迭代5次）
+    let E = s.M
+    for (let k = 0; k < 5; k++) {
+      E = E - (E - s.e * Math.sin(E) - s.M) / (1 - s.e * Math.cos(E))
+    }
 
-    // 轨迹（椭圆参数方程）
-    const x = s.a * Math.cos(s.angle)
-    const y = s.b * Math.sin(s.angle)
-    s.trail.push({ x, y })
+    // 真近点角
+    const theta = 2 * Math.atan2(
+      Math.sqrt(1 + s.e) * Math.sin(E / 2),
+      Math.sqrt(1 - s.e) * Math.cos(E / 2)
+    )
+    s.angle = theta
+    if (s.angle < 0) s.angle += 2 * Math.PI
+
+    // 行星位置（以太阳/焦点为原点）
+    const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(theta))
+    s.planetX = r * Math.cos(theta)
+    s.planetY = r * Math.sin(theta)
+
+    // 轨迹
+    s.trail.push({ x: s.planetX, y: s.planetY })
     if (s.trail.length > s.maxTrail) s.trail.shift()
 
     // 面积扫过（等时间间隔采样）
@@ -153,10 +166,8 @@ export default function KeplerLawsScene() {
       s.sweepTime += dt
       if (s.sweepTime >= s.sweepDuration) {
         s.sweepTime = 0
-        // 记录当前位置
-        const x = s.a * Math.cos(s.angle)
-        const y = s.b * Math.sin(s.angle)
-        s.sweepPoints.push({ x, y, angle: s.angle })
+        // 记录当前位置（使用开普勒方程计算的世界坐标）
+        s.sweepPoints.push({ x: s.planetX, y: s.planetY, angle: s.angle })
         if (s.sweepPoints.length > 8) s.sweepPoints.shift()
       }
     }
@@ -202,13 +213,11 @@ export default function KeplerLawsScene() {
     ctx.fillStyle = '#999'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
     ctx.fillText('焦点F₂', fx2, fy2 + 14)
 
-    // 行星（椭圆参数方程）
-    const px = s.a * Math.cos(s.angle)
-    const py = s.b * Math.sin(s.angle)
-    drawPlanet(ctx, R, px, py, '#4FC3F7', 8)
+    // 行星（开普勒方程计算位置）
+    drawPlanet(ctx, R, s.planetX, s.planetY, '#4FC3F7', 8)
 
     // 行星标签
-    const [plSx, plSy] = R.w2s(px, py)
+    const [plSx, plSy] = R.w2s(s.planetX, s.planetY)
     ctx.fillStyle = '#4FC3F7'
     ctx.font = 'bold 11px sans-serif'
     ctx.textAlign = 'center'
@@ -253,12 +262,12 @@ export default function KeplerLawsScene() {
     drawSun(ctx, fx, fy)
 
     // 扫过的面积（等时间间隔扇形）
-    const colors = ['rgba(255,152,0,0.18)', 'rgba(76,175,80,0.18)', 'rgba(79,195,247,0.18)', 'rgba(233,30,99,0.18)']
+    const colors = ['rgba(255,152,0,0.18)', 'rgba(76,175,80,0.18)', 'rgba(79,195,247,0.18)', 'rgba(233,30,99,0.18)', 'rgba(156,39,176,0.18)', 'rgba(0,188,212,0.18)', 'rgba(255,87,34,0.18)', 'rgba(139,195,74,0.18)']
     const areaLabels = []
     const pts = s.sweepPoints
     if (pts.length >= 2) {
       // 添加当前行星位置作为最后一个点
-      const curPt = { x: s.a * Math.cos(s.angle), y: s.b * Math.sin(s.angle), angle: s.angle }
+      const curPt = { x: s.planetX, y: s.planetY, angle: s.angle }
       const allPts = [...pts, curPt]
 
       for (let i = 0; i < allPts.length - 1; i++) {
@@ -311,11 +320,11 @@ export default function KeplerLawsScene() {
     }
     ctx.closePath(); ctx.fill()
 
-    // 行星（椭圆参数方程）
-    drawPlanet(ctx, R, s.a * Math.cos(s.angle), s.b * Math.sin(s.angle), '#4FC3F7', 8)
+    // 行星（开普勒方程位置）
+    drawPlanet(ctx, R, s.planetX, s.planetY, '#4FC3F7', 8)
 
     // 行星标签
-    const [plSx2, plSy2] = R.w2s(s.a * Math.cos(s.angle), s.b * Math.sin(s.angle))
+    const [plSx2, plSy2] = R.w2s(s.planetX, s.planetY)
     ctx.fillStyle = '#4FC3F7'
     ctx.font = 'bold 11px sans-serif'
     ctx.textAlign = 'center'
@@ -323,7 +332,7 @@ export default function KeplerLawsScene() {
 
     // 连线
     ctx.strokeStyle = 'rgba(100,100,100,0.3)'; ctx.lineWidth = 1
-    const [px, py] = R.w2s(s.a * Math.cos(s.angle), s.b * Math.sin(s.angle))
+    const [px, py] = R.w2s(s.planetX, s.planetY)
     ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(px, py); ctx.stroke()
 
     // 公式
@@ -341,10 +350,10 @@ export default function KeplerLawsScene() {
 
     // 绘制行星轨道对比（按比例缩放）
     const orbits = [
-      { name: '水星', a: 0.8, e: 0.2, color: '#B0BEC5' },
-      { name: '金星', a: 1.2, e: 0.01, color: '#FFD54F' },
-      { name: '地球', a: 1.8, e: 0.02, color: '#4FC3F7' },
-      { name: '火星', a: 2.5, e: 0.09, color: '#F44336' },
+      { name: '水星', a: 0.39, e: 0.21, color: '#B0BEC5' },
+      { name: '金星', a: 0.72, e: 0.01, color: '#FFD54F' },
+      { name: '地球', a: 1.0, e: 0.02, color: '#4FC3F7' },
+      { name: '火星', a: 1.52, e: 0.09, color: '#F44336' },
     ]
 
     const [cx, cy] = R.w2s(0, 0)
@@ -382,11 +391,13 @@ export default function KeplerLawsScene() {
     ctx.strokeStyle = '#999'; ctx.lineWidth = 1
     ctx.beginPath(); ctx.moveTo(ox, oy - h); ctx.lineTo(ox, oy); ctx.lineTo(ox + w, oy); ctx.stroke()
 
-    const maxA3 = Math.max(...s.planets.map(p => p.a * p.a * p.a))
-    const maxT2 = Math.max(...s.planets.map(p => p.T * p.T))
+    const chartPlanets = s.planets.slice(0, 4) // 仅显示4颗行星
+    const maxA3 = Math.max(...chartPlanets.map(p => p.a * p.a * p.a))
+    const maxT2 = Math.max(...chartPlanets.map(p => p.T * p.T))
 
-    // 数据点
-    s.planets.forEach(p => {
+    // 数据点（带偏移标签避免重叠）
+    const labelOffsets = [[6, -8], [6, 3], [6, -8], [6, 3]] // 交替上下偏移
+    chartPlanets.forEach((p, idx) => {
       const a3 = p.a * p.a * p.a
       const t2 = p.T * p.T
       const px = ox + (a3 / maxA3) * w
@@ -395,8 +406,9 @@ export default function KeplerLawsScene() {
       ctx.fillStyle = p.color
       ctx.beginPath(); ctx.arc(px, py, 4, 0, Math.PI * 2); ctx.fill()
 
+      const [offX, offY] = labelOffsets[idx] || [6, 3]
       ctx.fillStyle = '#666'; ctx.font = '8px sans-serif'; ctx.textAlign = 'left'
-      ctx.fillText(p.name, px + 6, py + 3)
+      ctx.fillText(p.name, px + offX, py + offY)
     })
 
     // 理论线
@@ -538,6 +550,7 @@ export default function KeplerLawsScene() {
 
   const handleReset = useCallback(() => {
     S.current.angle = 0
+    S.current.M = 0
     S.current.time = 0
     S.current.trail = []
     S.current.sweepPoints = []
@@ -610,7 +623,7 @@ export default function KeplerLawsScene() {
           <div style={styles.sep} />
           <label style={styles.controlLabel}>
             半长轴 a：
-            <input type="range" min="1" max="4" step="0.1"
+            <input type="range" min="0.3" max="4" step="0.1"
               value={a}
               onChange={(ev) => handleAChange(parseFloat(ev.target.value))}
               style={styles.slider} />
@@ -618,7 +631,7 @@ export default function KeplerLawsScene() {
           </label>
           <label style={styles.controlLabel}>
             偏心率 e：
-            <input type="range" min="0" max="0.5" step="0.01"
+            <input type="range" min="0" max="0.9" step="0.01"
               value={e}
               onChange={(ev) => handleEChange(parseFloat(ev.target.value))}
               style={styles.slider} />
