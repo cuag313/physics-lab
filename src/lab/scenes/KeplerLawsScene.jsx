@@ -32,9 +32,9 @@ export default function KeplerLawsScene() {
     planetR: 0.15,
 
     // 面积定律
-    sweepAngles: [],     // 扫过的角度区间
+    sweepPoints: [],     // 等时间间隔采样点 [{x,y,angle}]
     sweepTime: 0,
-    sweepDuration: 2,    // 每段扫过的时间
+    sweepDuration: 1.5,  // 每段扫过的时间（秒）
     sweepArea: 0,
 
     // 第三定律数据
@@ -148,13 +148,16 @@ export default function KeplerLawsScene() {
     s.trail.push({ x, y })
     if (s.trail.length > s.maxTrail) s.trail.shift()
 
-    // 面积扫过
+    // 面积扫过（等时间间隔采样）
     if (s.law === 2) {
       s.sweepTime += dt
-      if (s.sweepTime > s.sweepDuration) {
+      if (s.sweepTime >= s.sweepDuration) {
         s.sweepTime = 0
-        s.sweepAngles.push({ start: s.angle - 0.3, end: s.angle })
-        if (s.sweepAngles.length > 6) s.sweepAngles.shift()
+        // 记录当前位置
+        const x = s.a * Math.cos(s.angle)
+        const y = s.b * Math.sin(s.angle)
+        s.sweepPoints.push({ x, y, angle: s.angle })
+        if (s.sweepPoints.length > 8) s.sweepPoints.shift()
       }
     }
 
@@ -249,31 +252,46 @@ export default function KeplerLawsScene() {
     const [fx, fy] = R.w2s(-s.c, 0)
     drawSun(ctx, fx, fy)
 
-    // 扫过的面积（扇形）+ 面积值
-    const colors = ['rgba(255,152,0,0.15)', 'rgba(76,175,80,0.15)', 'rgba(79,195,247,0.15)']
+    // 扫过的面积（等时间间隔扇形）
+    const colors = ['rgba(255,152,0,0.18)', 'rgba(76,175,80,0.18)', 'rgba(79,195,247,0.18)', 'rgba(233,30,99,0.18)']
     const areaLabels = []
-    s.sweepAngles.forEach((sweep, i) => {
-      ctx.fillStyle = colors[i % colors.length]
-      ctx.beginPath()
-      ctx.moveTo(fx, fy)
-      for (let a = sweep.start; a <= sweep.end; a += 0.05) {
-        const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(a))
-        const [sx, sy] = R.w2s(r * Math.cos(a), r * Math.sin(a))
-        ctx.lineTo(sx, sy)
+    const pts = s.sweepPoints
+    if (pts.length >= 2) {
+      // 添加当前行星位置作为最后一个点
+      const curPt = { x: s.a * Math.cos(s.angle), y: s.b * Math.sin(s.angle), angle: s.angle }
+      const allPts = [...pts, curPt]
+
+      for (let i = 0; i < allPts.length - 1; i++) {
+        const p0 = allPts[i]
+        const p1 = allPts[i + 1]
+
+        // 画扇形
+        ctx.fillStyle = colors[i % colors.length]
+        ctx.beginPath()
+        ctx.moveTo(fx, fy)
+        // 从p0到p1沿椭圆弧
+        const steps = 20
+        for (let j = 0; j <= steps; j++) {
+          const t = j / steps
+          const a = p0.angle + t * (p1.angle - p0.angle)
+          const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(a))
+          const [sx, sy] = R.w2s(r * Math.cos(a), r * Math.sin(a))
+          ctx.lineTo(sx, sy)
+        }
+        ctx.closePath(); ctx.fill()
+
+        // 计算面积
+        const area = calcSweepArea(s.a, s.e, p0.angle, p1.angle)
+        areaLabels.push(area)
+
+        // 在扇形中心显示面积值
+        const midAngle = (p0.angle + p1.angle) / 2
+        const rMid = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(midAngle))
+        const [lx, ly] = R.w2s(rMid * Math.cos(midAngle) * 0.6, rMid * Math.sin(midAngle) * 0.6)
+        ctx.fillStyle = '#333'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
+        ctx.fillText(`A${i + 1}=${area.toFixed(1)}`, lx, ly)
       }
-      ctx.closePath(); ctx.fill()
-
-      // 计算并记录面积
-      const area = calcSweepArea(s.a, s.e, sweep.start, sweep.end)
-      areaLabels.push(area)
-
-      // 在扇形中心显示面积值
-      const midAngle = (sweep.start + sweep.end) / 2
-      const rMid = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(midAngle))
-      const [lx, ly] = R.w2s(rMid * Math.cos(midAngle) * 0.6, rMid * Math.sin(midAngle) * 0.6)
-      ctx.fillStyle = '#333'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText(`A${i + 1}=${area.toFixed(1)}`, lx, ly)
-    })
+    }
 
     // 面积对比提示
     if (areaLabels.length >= 2) {
@@ -502,7 +520,7 @@ export default function KeplerLawsScene() {
   const handleLawChange = useCallback((newLaw) => {
     S.current.law = newLaw
     S.current.trail = []
-    S.current.sweepAngles = []
+    S.current.sweepPoints = []
     setLaw(newLaw)
   }, [])
 
@@ -522,7 +540,7 @@ export default function KeplerLawsScene() {
     S.current.angle = 0
     S.current.time = 0
     S.current.trail = []
-    S.current.sweepAngles = []
+    S.current.sweepPoints = []
   }, [])
 
   // 行星预设
