@@ -394,12 +394,14 @@ export default function KeplerLawsScene() {
   // ========== 通用绘制 ==========
   /** 用参数方程绘制椭圆，保证与行星路径完全一致 */
   function drawOrbitByParam(ctx, R, a, b, c, color) {
+    const e = c / a  // 偏心率
     ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([8, 4])
     ctx.beginPath()
     for (let i = 0; i <= 360; i++) {
-      const E = (i / 360) * 2 * Math.PI
-      const x = a * Math.cos(E)  // 椭圆中心在原点
-      const y = b * Math.sin(E)
+      const θ = (i / 360) * 2 * Math.PI
+      const r = a * (1 - e * e) / (1 + e * Math.cos(θ))  // 极坐标方程，以太阳为极点
+      const x = -c + r * Math.cos(θ)  // 转为椭圆中心坐标系
+      const y = r * Math.sin(θ)
       const [sx, sy] = R.w2s(x, y)
       if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy)
     }
