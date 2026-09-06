@@ -418,7 +418,7 @@ export default function KeplerLawsScene() {
     })
 
     // 右上角：实时数据表
-    const tw = 320, th = 155
+    const tw = 320, th = 140
     const tx = R.W - tw - 16, ty = 16
     ctx.fillStyle = 'rgba(255,255,255,0.95)'
     ctx.beginPath(); ctx.roundRect(tx, ty, tw, th, 8); ctx.fill()
@@ -463,7 +463,7 @@ export default function KeplerLawsScene() {
     ctx.fillText('✓ T²/a³ = k（常数）≈ 1.000', tx + 12, ty + th - 12)
 
     // 右下角：T²-a³ 散点图
-    const gw = 320, gh = 165
+    const gw = 320, gh = 140
     const gx = R.W - gw - 16, gy = ty + th + 12
     ctx.fillStyle = 'rgba(255,255,255,0.95)'
     ctx.beginPath(); ctx.roundRect(gx, gy, gw, gh, 8); ctx.fill()
@@ -501,11 +501,11 @@ export default function KeplerLawsScene() {
     ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left'
     ctx.fillText('T²/a³ = k = 1.000（所有行星相同）', gx + 12, gy + gh - 10)
 
-    // 底部说明
-    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
-    ctx.fillText('定律三：T² ∝ a³', 20, R.H - 60)
+    // 底部说明（放在散点图下方，不重叠）
+    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('定律三：T² ∝ a³', 20, R.H - 50)
     ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'
-    ctx.fillText('离太阳越远，公转越慢 · 相同时间，内圈跑过的弧长更长', 20, R.H - 42)
+    ctx.fillText('离太阳越远，公转越慢 · 相同时间，内圈跑过的弧长更长', 20, R.H - 32)
   }
 
   // ========== 通用绘制 ==========
