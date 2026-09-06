@@ -35,7 +35,7 @@ export default function KeplerLawsScene() {
     planetX: 0,        // 行星世界坐标x（椭圆中心系）
     planetY: 0,        // 行星世界坐标y
     period: 0,
-    speed: 2.0,        // 动画速度倍率（弧度/秒基准）
+    speed: 0.8,        // 动画速度倍率（一圈约7-8秒，利于教学观察）
     sweepPoints: [],
     sweepTime: 0,
     sweepDuration: 0.4, // 每段扫过的时间（秒，加速后）
@@ -102,13 +102,20 @@ export default function KeplerLawsScene() {
       E = E - (E - state.e * Math.sin(E) - state.M) / (1 - state.e * Math.cos(E))
     }
     state.E = E
-    // E → θ
-    state.theta = 2 * Math.atan2(
+    // E → θ（真近点角，展开为连续递增）
+    const newTheta = 2 * Math.atan2(
       Math.sqrt(1 + state.e) * Math.sin(E / 2),
       Math.sqrt(1 - state.e) * Math.cos(E / 2)
     )
-    // 行星位置（椭圆中心系）：x = -c + a·cos(E), y = b·sin(E)
-    state.planetX = -state.c + state.a * Math.cos(E)
+    // 展开：如果 θ 回跳了（跨 0/2π 边界），加 2π 保持连续
+    if (newTheta < state.theta - Math.PI) {
+      state.theta = newTheta + 2 * Math.PI
+    } else {
+      state.theta = newTheta
+    }
+    // 行星位置（椭圆中心系）：x = a·cos(E), y = b·sin(E)
+    // 太阳在 (-c, 0)，行星到太阳距离 r = a(1-e·cosE)
+    state.planetX = state.a * Math.cos(E)
     state.planetY = state.b * Math.sin(E)
   }
 
@@ -140,10 +147,9 @@ export default function KeplerLawsScene() {
     const dt = 1 / 60
     s.time += dt
 
-    // 平近点角匀速增加（使用加速后的角速度）
+    // 平近点角匀速增加（不取模，保持连续递增）
     const baseOmega = (2 * Math.PI) / s.period
     s.M += baseOmega * s.speed * dt
-    if (s.M > 2 * Math.PI) s.M -= 2 * Math.PI
 
     solveKepler(s)
 
@@ -250,9 +256,9 @@ export default function KeplerLawsScene() {
     ctx.fillStyle = 'rgba(255,213,79,0.12)'
     ctx.beginPath(); ctx.moveTo(fx, fy)
     for (let E = 0; E <= s.E + 0.01; E += 0.05) {
-      const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(E))
+      const r = s.a * (1 - s.e * Math.cos(E))  // 正确的 r(E) 公式
       const θ = 2 * Math.atan2(Math.sqrt(1 + s.e) * Math.sin(E / 2), Math.sqrt(1 - s.e) * Math.cos(E / 2))
-      const [sx, sy] = R.w2s(-s.c + r * Math.cos(θ), r * Math.sin(θ))
+      const [sx, sy] = R.w2s(r * Math.cos(θ), r * Math.sin(θ))
       ctx.lineTo(sx, sy)
     }
     ctx.closePath(); ctx.fill()
@@ -273,7 +279,7 @@ export default function KeplerLawsScene() {
           const t = j / steps
           const θ = p0.theta + t * (p1.theta - p0.theta)
           const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(θ))
-          const [sx, sy] = R.w2s(-s.c + r * Math.cos(θ), r * Math.sin(θ))
+          const [sx, sy] = R.w2s(r * Math.cos(θ), r * Math.sin(θ))
           ctx.lineTo(sx, sy)
         }
         ctx.closePath(); ctx.fill()
@@ -284,7 +290,7 @@ export default function KeplerLawsScene() {
         // 面积标注
         const midθ = (p0.theta + p1.theta) / 2
         const midR = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(midθ))
-        const [lx, ly] = R.w2s(-s.c + midR * 0.5 * Math.cos(midθ), midR * 0.5 * Math.sin(midθ))
+        const [lx, ly] = R.w2s(midR * 0.5 * Math.cos(midθ), midR * 0.5 * Math.sin(midθ))
         ctx.fillStyle = '#333'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'
         ctx.fillText(`A${i + 1}=${area.toFixed(1)}`, lx, ly)
       }
@@ -323,7 +329,7 @@ export default function KeplerLawsScene() {
     const ctx = R.ctx, s = S.current
     const sc = 0.7
 
-    // 太阳（取地球焦点作为参考）
+    // 太阳在公共焦点位置（地球的焦点作为参考）
     const earthC = INNER_PLANETS[2].a * INNER_PLANETS[2].e
     const [sunX, sunY] = R.w2s(-earthC * sc, 0)
     drawSun(ctx, sunX, sunY)
@@ -332,21 +338,19 @@ export default function KeplerLawsScene() {
     s.law3Planets.forEach(p => {
       const b = p.a * Math.sqrt(1 - p.e * p.e)
       const cVal = p.a * p.e
-      // 椭圆中心
-      const [ecx, ecy] = R.w2s(-cVal * sc, 0)
-      ctx.strokeStyle = p.color; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.6
-      ctx.beginPath()
-      ctx.ellipse(ecx, ecy, p.a * R.scale * sc, b * R.scale * sc, 0, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.globalAlpha = 1
+
+      // 轨道（参数方程，椭圆中心在 (0,0)，太阳在 (-c,0)）
+      // 需要偏移使各行星的焦点对齐到太阳位置
+      const offsetX = (-earthC + cVal) * sc  // 使焦点对齐
+      drawOrbitByParam(ctx, R, p.a * sc, b * sc, cVal * sc, p.color)
 
       // 标签
       ctx.fillStyle = p.color; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
-      const [lx, ly] = R.w2s(-cVal * sc + p.a * sc + 0.15, 0)
+      const [lx, ly] = R.w2s(p.a * sc + 0.15, 0)
       ctx.fillText(p.name, lx, ly - 6)
 
-      // 运动行星
-      drawPlanet(ctx, R, p.planetX * sc, p.planetY * sc, p.color, 5)
+      // 运动行星（偏移使焦点对齐到太阳）
+      drawPlanet(ctx, R, (p.planetX + offsetX / sc) * sc, p.planetY * sc, p.color, 5)
     })
 
     // T²-a³ 图表
@@ -394,7 +398,7 @@ export default function KeplerLawsScene() {
     ctx.beginPath()
     for (let i = 0; i <= 360; i++) {
       const E = (i / 360) * 2 * Math.PI
-      const x = -c + a * Math.cos(E)
+      const x = a * Math.cos(E)  // 椭圆中心在原点
       const y = b * Math.sin(E)
       const [sx, sy] = R.w2s(x, y)
       if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy)
