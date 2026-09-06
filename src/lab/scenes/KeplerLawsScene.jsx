@@ -130,19 +130,21 @@ export default function KeplerLawsScene() {
     const dt = 1 / 60
     s.time += dt
 
-    // 开普勒第二定律：角速度不均匀，近地点快，远地点慢
-    // r = a(1-e²)/(1+e·cosθ)
-    // dA/dt = L/(2m) = 常数 → r²·dθ/dt = 常数
-    const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(s.angle))
-    const r0 = s.a * (1 - s.e) // 近地点
-    const omegaAtR = s.omega * (r0 * r0) / (r * r) // 角速度随r变化
+    // 定律二：面积定律 — 角速度不均匀，近地点快，远地点慢
+    // 用参数方程 x=a·cos(θ), y=b·sin(θ) 确保行星在椭圆上
+    // 角速度修正：dA/dt = 常数 → dθ/dt ∝ 1/r²
+    const x_now = s.a * Math.cos(s.angle)
+    const y_now = s.b * Math.sin(s.angle)
+    const r2 = x_now * x_now + y_now * y_now
+    const r0_2 = s.a * s.a * (1 - s.e) * (1 - s.e) // 近地点 r²
+    const omegaAtR = s.omega * r0_2 / r2
 
     s.angle += omegaAtR * dt
     if (s.angle > Math.PI * 2) s.angle -= Math.PI * 2
 
-    // 轨迹
-    const x = r * Math.cos(s.angle)
-    const y = r * Math.sin(s.angle)
+    // 轨迹（椭圆参数方程）
+    const x = s.a * Math.cos(s.angle)
+    const y = s.b * Math.sin(s.angle)
     s.trail.push({ x, y })
     if (s.trail.length > s.maxTrail) s.trail.shift()
 
@@ -197,10 +199,9 @@ export default function KeplerLawsScene() {
     ctx.fillStyle = '#999'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
     ctx.fillText('焦点F₂', fx2, fy2 + 14)
 
-    // 行星
-    const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(s.angle))
-    const px = r * Math.cos(s.angle)
-    const py = r * Math.sin(s.angle)
+    // 行星（椭圆参数方程）
+    const px = s.a * Math.cos(s.angle)
+    const py = s.b * Math.sin(s.angle)
     drawPlanet(ctx, R, px, py, '#4FC3F7', 8)
 
     // 行星标签
@@ -292,12 +293,11 @@ export default function KeplerLawsScene() {
     }
     ctx.closePath(); ctx.fill()
 
-    // 行星
-    const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(s.angle))
-    drawPlanet(ctx, R, r * Math.cos(s.angle), r * Math.sin(s.angle), '#4FC3F7', 8)
+    // 行星（椭圆参数方程）
+    drawPlanet(ctx, R, s.a * Math.cos(s.angle), s.b * Math.sin(s.angle), '#4FC3F7', 8)
 
     // 行星标签
-    const [plSx2, plSy2] = R.w2s(r * Math.cos(s.angle), r * Math.sin(s.angle))
+    const [plSx2, plSy2] = R.w2s(s.a * Math.cos(s.angle), s.b * Math.sin(s.angle))
     ctx.fillStyle = '#4FC3F7'
     ctx.font = 'bold 11px sans-serif'
     ctx.textAlign = 'center'
@@ -305,7 +305,7 @@ export default function KeplerLawsScene() {
 
     // 连线
     ctx.strokeStyle = 'rgba(100,100,100,0.3)'; ctx.lineWidth = 1
-    const [px, py] = R.w2s(r * Math.cos(s.angle), r * Math.sin(s.angle))
+    const [px, py] = R.w2s(s.a * Math.cos(s.angle), s.b * Math.sin(s.angle))
     ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(px, py); ctx.stroke()
 
     // 公式
