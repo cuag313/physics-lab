@@ -252,13 +252,15 @@ export default function KeplerLawsScene() {
     drawOrbitByParam(ctx, R, s.a, s.b, s.c, 'rgba(79,195,247,0.3)')
     drawSun(ctx, fx, fy)
 
-    // 已扫过区域（从0到当前θ）
+    // 已扫过区域（从0到当前θ，以太阳为中心翻转180度）
     ctx.fillStyle = 'rgba(255,213,79,0.12)'
     ctx.beginPath(); ctx.moveTo(fx, fy)
     for (let E = 0; E <= s.E + 0.01; E += 0.05) {
       const r = s.a * (1 - s.e * Math.cos(E))
       const θ = 2 * Math.atan2(Math.sqrt(1 + s.e) * Math.sin(E / 2), Math.sqrt(1 - s.e) * Math.cos(E / 2))
-      const [sx, sy] = R.w2s(-s.c + r * Math.cos(θ), r * Math.sin(θ))
+      const rawX = -s.c + r * Math.cos(θ)
+      const rawY = r * Math.sin(θ)
+      const [sx, sy] = R.w2s(-2 * s.c - rawX, -rawY)
       ctx.lineTo(sx, sy)
     }
     ctx.closePath(); ctx.fill()
@@ -279,7 +281,12 @@ export default function KeplerLawsScene() {
           const t = j / steps
           const θ = p0.theta + t * (p1.theta - p0.theta)
           const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(θ))
-          const [sx, sy] = R.w2s(-s.c + r * Math.cos(θ), r * Math.sin(θ))
+          // 以太阳为中心翻转180度
+          const rawX = -s.c + r * Math.cos(θ)
+          const rawY = r * Math.sin(θ)
+          const flipX = -2 * s.c - rawX
+          const flipY = -rawY
+          const [sx, sy] = R.w2s(flipX, flipY)
           ctx.lineTo(sx, sy)
         }
         ctx.closePath(); ctx.fill()
@@ -287,10 +294,12 @@ export default function KeplerLawsScene() {
         const area = calcSweepArea(s.a, s.e, p0.theta, p1.theta)
         areaLabels.push(area)
 
-        // 面积标注
+        // 面积标注（同样翻转）
         const midθ = (p0.theta + p1.theta) / 2
         const midR = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(midθ))
-        const [lx, ly] = R.w2s(midR * 0.5 * Math.cos(midθ), midR * 0.5 * Math.sin(midθ))
+        const rawLx = -s.c + midR * 0.5 * Math.cos(midθ)
+        const rawLy = midR * 0.5 * Math.sin(midθ)
+        const [lx, ly] = R.w2s(-2 * s.c - rawLx, -rawLy)
         ctx.fillStyle = '#333'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'
         ctx.fillText(`A${i + 1}=${area.toFixed(1)}`, lx, ly)
       }
@@ -303,16 +312,19 @@ export default function KeplerLawsScene() {
       ctx.fillText(text + '  (应相等)', 16, 70)
     }
 
-    // 轨迹
-    drawTrail(ctx, R, s.trail)
+    // 轨迹（翻转）
+    const flippedTrail = s.trail.map(p => ({ x: -2 * s.c - p.x, y: -p.y }))
+    drawTrail(ctx, R, flippedTrail)
 
-    // 行星 + 连线
-    drawPlanet(ctx, R, s.planetX, s.planetY, '#4FC3F7', 8)
-    const [plSx2, plSy2] = R.w2s(s.planetX, s.planetY)
+    // 行星（翻转） + 连线
+    const flipPlanetX = -2 * s.c - s.planetX
+    const flipPlanetY = -s.planetY
+    drawPlanet(ctx, R, flipPlanetX, flipPlanetY, '#4FC3F7', 8)
+    const [plSx2, plSy2] = R.w2s(flipPlanetX, flipPlanetY)
     ctx.fillStyle = '#4FC3F7'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'
     ctx.fillText('🌍 行星', plSx2, plSy2 - 18)
     ctx.strokeStyle = 'rgba(100,100,100,0.3)'; ctx.lineWidth = 1
-    const [px, py] = R.w2s(s.planetX, s.planetY)
+    const [px, py] = R.w2s(flipPlanetX, flipPlanetY)
     ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(px, py); ctx.stroke()
 
     // 公式
@@ -394,18 +406,30 @@ export default function KeplerLawsScene() {
   // ========== 通用绘制 ==========
   /** 用参数方程绘制椭圆，保证与行星路径完全一致 */
   function drawOrbitByParam(ctx, R, a, b, c, color) {
-    const e = c / a  // 偏心率
     ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([8, 4])
     ctx.beginPath()
     for (let i = 0; i <= 360; i++) {
-      const θ = (i / 360) * 2 * Math.PI
-      const r = a * (1 - e * e) / (1 + e * Math.cos(θ))  // 极坐标方程，以太阳为极点
-      const x = -c + r * Math.cos(θ)  // 转为椭圆中心坐标系
-      const y = r * Math.sin(θ)
+      const E = (i / 360) * 2 * Math.PI
+      const x = a * Math.cos(E)
+      const y = b * Math.sin(E)
       const [sx, sy] = R.w2s(x, y)
       if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy)
     }
     ctx.closePath(); ctx.stroke(); ctx.setLineDash([])
+  }
+
+  /** 用极坐标方程从太阳画轨道弧段（定律2扇形用） */
+  function drawOrbitArcFromSun(ctx, R, a, e, c, thetaStart, thetaEnd, color) {
+    ctx.strokeStyle = color; ctx.lineWidth = 1
+    ctx.beginPath()
+    const steps = 60
+    for (let i = 0; i <= steps; i++) {
+      const θ = thetaStart + (thetaEnd - thetaStart) * (i / steps)
+      const r = a * (1 - e * e) / (1 + e * Math.cos(θ))
+      const [sx, sy] = R.w2s(-c + r * Math.cos(θ), r * Math.sin(θ))
+      if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy)
+    }
+    ctx.stroke()
   }
 
   function drawTrail(ctx, R, trail) {
