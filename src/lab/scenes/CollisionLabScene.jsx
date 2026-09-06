@@ -34,8 +34,8 @@ function darken(h, p) { const n = parseInt(h.slice(1), 16); return `rgb(${Math.m
 //  主组件
 // ================================================================
 
-export default function CollisionLabScene() {
-  const [activeTab, setActiveTab] = useState('conservation') // 'conservation' | 'lab'
+export default function CollisionLabScene({ defaultTab }) {
+  const [activeTab, setActiveTab] = useState(defaultTab || 'conservation') // 'conservation' | 'lab'
 
   return (
     <div style={s.container}>

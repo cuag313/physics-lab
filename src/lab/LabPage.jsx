@@ -378,7 +378,9 @@ export default function LabPage({ onBack }) {
         ) : currentExperiment?.key === 'energyConservation' ? (
           <EnergyConservationScene />
         ) : currentExperiment?.key === 'collisionLab' ? (
-          <CollisionLabScene />
+          <CollisionLabScene defaultTab="lab" />
+        ) : currentExperiment?.key === 'momentumConservation' ? (
+          <CollisionLabScene defaultTab="conservation" />
         ) : currentExperiment?.key === 'newtonFirstLaw' ? (
           <NewtonFirstLawScene />
         ) : currentExperiment?.key === 'newtonThirdLaw' ? (
