@@ -43,7 +43,13 @@ export default function KeplerLawsScene() {
     maxTrail: 800,
     time: 0,
     running: true,
-    law3Planets: INNER_PLANETS.map(p => ({ ...p, M: Math.random() * 2 * Math.PI, E: 0, theta: 0, planetX: 0, planetY: 0 })),
+    law3Planets: INNER_PLANETS.map(p => ({
+      ...p,
+      angle: Math.random() * 2 * Math.PI,  // 当前角度
+      lapCount: 0,     // 已完成圈数
+      lapFlash: 0,     // 完成一圈时的闪烁计时
+      omega: (2 * Math.PI) / (p.a ** 1.5),  // 角速度（年^-1）
+    })),
   })
 
   const [law, setLaw] = useState(1)
@@ -121,9 +127,10 @@ export default function KeplerLawsScene() {
 
   function initLaw3() {
     S.current.law3Planets.forEach(p => {
-      p.b = p.a * Math.sqrt(1 - p.e * p.e)
-      p.c = p.a * p.e
-      solveKepler(p)
+      p.angle = Math.random() * 2 * Math.PI
+      p.lapCount = 0
+      p.lapFlash = 0
+      p.omega = (2 * Math.PI) / (p.a ** 1.5)
     })
   }
 
@@ -169,13 +176,18 @@ export default function KeplerLawsScene() {
       }
     }
 
-    // 定律3：4颗行星独立运动
+    // 定律3：4颗行星独立运动（简化圆轨道）
     if (s.law === 3) {
       s.law3Planets.forEach(p => {
-        const pOmega = (2 * Math.PI) / p.period
-        p.M += pOmega * s.speed * dt
-        if (p.M > 2 * Math.PI) p.M -= 2 * Math.PI
-        solveKepler(p)
+        const prevAngle = p.angle
+        p.angle += p.omega * s.speed * dt
+        // 检测是否完成一圈
+        if (prevAngle < 2 * Math.PI && p.angle >= 2 * Math.PI) {
+          p.lapCount++
+          p.lapFlash = 1.0  // 开始闪烁
+        }
+        if (p.angle >= 2 * Math.PI) p.angle -= 2 * Math.PI
+        if (p.lapFlash > 0) p.lapFlash -= dt * 2  // 闪烁衰减
       })
     }
 
@@ -334,70 +346,106 @@ export default function KeplerLawsScene() {
   function drawLaw3(R) {
     const ctx = R.ctx, s = S.current
 
-    // 缩放：让所有轨道都能放进画面
+    // 动态缩放：让最外圈轨道放进左半屏
     const maxA = Math.max(...s.law3Planets.map(p => p.a))
-    // 不用额外 sc 缩放，w2s 内部 scale=80 已足够
-    // 如果轨道太小或太大，调 w2s 的 scale
+    const orbitAreaW = R.W * 0.45
+    const orbitAreaH = R.H * 0.75
+    const pxPerAU = Math.min(orbitAreaW, orbitAreaH) / (maxA * 2.6)
 
-    // 太阳位置
-    const sunWx = 0
-    drawSun(ctx, ...R.w2s(sunWx, 0))
+    // 太阳位置（左半屏中心）
+    const sunSx = R.W * 0.27
+    const sunSy = R.H * 0.45
 
-    // 4颗行星轨道 + 运动
+    // 画同心圆轨道
     s.law3Planets.forEach(p => {
-      const b = p.a * Math.sqrt(1 - p.e * p.e)
-      const cVal = p.a * p.e
-      const cx = sunWx + cVal  // 椭圆中心 = 太阳 + c
-
-      // 轨道（直接用 w2s，不乘额外缩放）
-      ctx.strokeStyle = p.color; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.5
+      const orbitR = p.a * pxPerAU
+      ctx.strokeStyle = p.color
+      ctx.lineWidth = 1.5
+      ctx.globalAlpha = 0.35
+      ctx.setLineDash([6, 4])
       ctx.beginPath()
-      for (let i = 0; i <= 360; i++) {
-        const E = (i / 360) * 2 * Math.PI
-        const x = cx + p.a * Math.cos(E)
-        const y = b * Math.sin(E)
-        const [sx, sy] = R.w2s(x, y)
-        if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy)
-      }
-      ctx.closePath(); ctx.stroke(); ctx.globalAlpha = 1
-
-      // 标签
-      ctx.fillStyle = p.color; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'
-      const [lx, ly] = R.w2s(cx + p.a + 0.15, 0)
-      ctx.fillText(p.name, lx, ly - 6)
-
-      // 运动行星
-      drawPlanet(ctx, R, cx + p.planetX, p.planetY, p.color, 6)
+      ctx.arc(sunSx, sunSy, orbitR, 0, Math.PI * 2)
+      ctx.stroke()
+      ctx.setLineDash([])
+      ctx.globalAlpha = 1
+      // 轨道标签（右侧）
+      ctx.fillStyle = p.color
+      ctx.font = '10px sans-serif'
+      ctx.textAlign = 'left'
+      ctx.fillText(p.name, sunSx + orbitR + 8, sunSy + 4)
     })
 
-    // ========== 右上角：实时数据表 ==========
-    const tw = 340, th = 145
+    // 同时弧线：显示当前时刻各行星跑过的弧长（最近2秒）
+    const arcWindow = 2 / (s.speed || 0.8)  // 弧线对应的实际时间窗口
+    s.law3Planets.forEach(p => {
+      const orbitR = p.a * pxPerAU
+      const arcAngle = Math.min(p.omega * s.speed * arcWindow, Math.PI * 1.5)
+      if (arcAngle > 0.02) {
+        ctx.strokeStyle = p.color
+        ctx.lineWidth = 4
+        ctx.lineCap = 'round'
+        ctx.beginPath()
+        ctx.arc(sunSx, sunSy, orbitR, p.angle - arcAngle, p.angle)
+        ctx.stroke()
+        ctx.lineCap = 'butt'
+      }
+    })
+
+    // 太阳
+    drawSun(ctx, sunSx, sunSy)
+
+    // 运动行星 + 完成闪烁
+    s.law3Planets.forEach(p => {
+      const orbitR = p.a * pxPerAU
+      const px = sunSx + orbitR * Math.cos(p.angle)
+      const py = sunSy + orbitR * Math.sin(p.angle)
+      if (p.lapFlash > 0) {
+        ctx.strokeStyle = p.color
+        ctx.lineWidth = 3
+        ctx.globalAlpha = p.lapFlash
+        ctx.beginPath()
+        ctx.arc(px, py, 16, 0, Math.PI * 2)
+        ctx.stroke()
+        ctx.globalAlpha = 1
+      }
+      const grad = ctx.createRadialGradient(px - 2, py - 2, 1, px, py, 6)
+      grad.addColorStop(0, p.color)
+      grad.addColorStop(1, 'rgba(100,150,200,0.4)')
+      ctx.fillStyle = grad
+      ctx.beginPath()
+      ctx.arc(px, py, 6, 0, Math.PI * 2)
+      ctx.fill()
+    })
+
+    // 右上角：实时数据表
+    const tw = 320, th = 155
     const tx = R.W - tw - 16, ty = 16
     ctx.fillStyle = 'rgba(255,255,255,0.95)'
     ctx.beginPath(); ctx.roundRect(tx, ty, tw, th, 8); ctx.fill()
     ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1
     ctx.beginPath(); ctx.roundRect(tx, ty, tw, th, 8); ctx.stroke()
+    ctx.fillStyle = '#333'
+    ctx.font = 'bold 12px sans-serif'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    ctx.fillText('📊 开普勒第三定律验证', tx + 12, ty + 10)
 
-    ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('📊 开普勒第三定律验证', tx + 12, ty + 12)
-
-    // 表头
-    const cols = [tx + 12, tx + 70, tx + 125, tx + 180, tx + 235, tx + 285]
+    const cols = [tx + 12, tx + 68, tx + 118, tx + 168, tx + 218, tx + 268]
     const headers = ['行星', 'a(AU)', 'T(年)', 'T²', 'a³', 'T²/a³']
-    ctx.fillStyle = '#999'; ctx.font = 'bold 10px sans-serif'
-    headers.forEach((h, i) => ctx.fillText(h, cols[i], ty + 30))
-
+    ctx.fillStyle = '#999'
+    ctx.font = 'bold 10px sans-serif'
+    headers.forEach((h, i) => ctx.fillText(h, cols[i], ty + 28))
     ctx.strokeStyle = '#eee'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.moveTo(tx + 12, ty + 44); ctx.lineTo(tx + tw - 12, ty + 44); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(tx + 12, ty + 42); ctx.lineTo(tx + tw - 12, ty + 42); ctx.stroke()
 
-    // 数据行
     ctx.font = '11px sans-serif'
     s.law3Planets.forEach((p, idx) => {
-      const ry = ty + 50 + idx * 22
-      const a3 = p.a ** 3
-      const t2 = p.T ** 2
-      const k = t2 / a3
-
+      const ry = ty + 48 + idx * 22
+      const a3 = p.a ** 3, t2 = p.T ** 2, k = t2 / a3
+      if (p.lapFlash > 0.3) {
+        ctx.fillStyle = 'rgba(76,175,80,0.1)'
+        ctx.fillRect(tx + 8, ry - 3, tw - 16, 20)
+      }
       ctx.fillStyle = p.color
       ctx.beginPath(); ctx.arc(cols[0] + 4, ry + 5, 4, 0, Math.PI * 2); ctx.fill()
       ctx.fillStyle = '#333'
@@ -409,53 +457,47 @@ export default function KeplerLawsScene() {
       ctx.fillStyle = Math.abs(k - 1) < 0.05 ? '#4CAF50' : '#FF9800'
       ctx.fillText(k.toFixed(3), cols[5], ry)
     })
-
-    ctx.fillStyle = '#4CAF50'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'
+    ctx.fillStyle = '#4CAF50'
+    ctx.font = 'bold 11px sans-serif'
+    ctx.textAlign = 'left'
     ctx.fillText('✓ T²/a³ = k（常数）≈ 1.000', tx + 12, ty + th - 12)
 
-    // ========== 右下角：T²-a³ 散点图 ==========
-    const gw = 340, gh = 175
+    // 右下角：T²-a³ 散点图
+    const gw = 320, gh = 165
     const gx = R.W - gw - 16, gy = ty + th + 12
     ctx.fillStyle = 'rgba(255,255,255,0.95)'
     ctx.beginPath(); ctx.roundRect(gx, gy, gw, gh, 8); ctx.fill()
     ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1
     ctx.beginPath(); ctx.roundRect(gx, gy, gw, gh, 8); ctx.stroke()
-
     ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
     ctx.fillText('📈 T² - a³ 关系', gx + 12, gy + 10)
 
     const ox = gx + 50, oy = gy + gh - 28, w = gw - 68, h = gh - 48
     const maxA3 = Math.max(...INNER_PLANETS.map(p => p.a ** 3)) * 1.15
     const maxT2 = Math.max(...INNER_PLANETS.map(p => p.T ** 2)) * 1.15
-
     ctx.strokeStyle = '#999'; ctx.lineWidth = 1
     ctx.beginPath(); ctx.moveTo(ox, oy - h); ctx.lineTo(ox, oy); ctx.lineTo(ox + w, oy); ctx.stroke()
-
-    // 理论线
     ctx.strokeStyle = 'rgba(255,152,0,0.4)'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4])
     ctx.beginPath(); ctx.moveTo(ox, oy)
     const theoryEnd = Math.min(maxA3, maxT2)
     ctx.lineTo(ox + (theoryEnd / maxA3) * w, oy - (theoryEnd / maxT2) * h)
     ctx.stroke(); ctx.setLineDash([])
 
-    // 数据点
     const ptOffsets = [[8, -10], [8, 4], [8, -10], [8, 4]]
     INNER_PLANETS.forEach((p, idx) => {
-      const px = ox + (p.a ** 3 / maxA3) * w
-      const py = oy - (p.T ** 2 / maxT2) * h
-      ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.fill()
+      const dotX = ox + (p.a ** 3 / maxA3) * w
+      const dotY = oy - (p.T ** 2 / maxT2) * h
+      ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(dotX, dotY, 5, 0, Math.PI * 2); ctx.fill()
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.arc(px, py, 5, 0, Math.PI * 2); ctx.stroke()
+      ctx.beginPath(); ctx.arc(dotX, dotY, 5, 0, Math.PI * 2); ctx.stroke()
       const [offX, offY] = ptOffsets[idx]
       ctx.fillStyle = '#333'; ctx.font = '9px sans-serif'; ctx.textAlign = 'left'
-      ctx.fillText(p.name, px + offX, py + offY)
+      ctx.fillText(p.name, dotX + offX, dotY + offY)
     })
-
     ctx.fillStyle = '#999'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
     ctx.fillText('a³ (AU³)', ox + w / 2, oy + 14)
     ctx.save(); ctx.translate(gx + 14, oy - h / 2); ctx.rotate(-Math.PI / 2)
     ctx.fillText('T² (年²)', 0, 0); ctx.restore()
-
     ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left'
     ctx.fillText('T²/a³ = k = 1.000（所有行星相同）', gx + 12, gy + gh - 10)
 
@@ -463,7 +505,7 @@ export default function KeplerLawsScene() {
     ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
     ctx.fillText('定律三：T² ∝ a³', 20, R.H - 60)
     ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'
-    ctx.fillText('离太阳越远，公转周期越长 · T²/a³ = 常数', 20, R.H - 42)
+    ctx.fillText('离太阳越远，公转越慢 · 相同时间，内圈跑过的弧长更长', 20, R.H - 42)
   }
 
   // ========== 通用绘制 ==========
@@ -562,7 +604,7 @@ export default function KeplerLawsScene() {
   const handleEChange = useCallback((val) => { S.current.e = val; computeEllipse(); setE(val) }, [])
   const handleReset = useCallback(() => {
     const s = S.current; s.M = 0; s.E = 0; s.theta = 0; s.time = 0; s.trail = []; s.sweepPoints = []
-    s.law3Planets.forEach(p => { p.M = Math.random() * 2 * Math.PI })
+    s.law3Planets.forEach(p => { p.angle = Math.random() * 2 * Math.PI; p.lapCount = 0; p.lapFlash = 0 })
   }, [])
   const handlePreset = useCallback((pA, pE) => {
     S.current.a = pA; S.current.e = pE; computeEllipse(); setA(pA); setE(pE)
