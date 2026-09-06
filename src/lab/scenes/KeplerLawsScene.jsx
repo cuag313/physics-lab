@@ -162,8 +162,8 @@ export default function KeplerLawsScene() {
       if (s.sweepTime >= s.sweepDuration) {
         s.sweepTime = 0
         const prev = s.sweepPoints.length > 0 ? s.sweepPoints[s.sweepPoints.length - 1] : null
-        if (!prev || Math.abs(s.theta - prev.theta) < Math.PI) {
-          s.sweepPoints.push({ x: s.planetX, y: s.planetY, theta: s.theta })
+        if (!prev || Math.abs(s.E - prev.E) < Math.PI) {
+          s.sweepPoints.push({ x: s.planetX, y: s.planetY, E: s.E })
           if (s.sweepPoints.length > 8) s.sweepPoints.shift()
         }
       }
@@ -249,21 +249,18 @@ export default function KeplerLawsScene() {
     const ctx = R.ctx, s = S.current
     const [fx, fy] = R.w2s(-s.c, 0)
 
-    drawOrbitByParam(ctx, R, s.a, s.b, s.c, 'rgba(79,195,247,0.3)')
-    drawSun(ctx, fx, fy)
-
-    // 翻转后的轨道（极坐标从太阳画，翻转180度）
+    // 轨道（参数方程 + 以太阳为中心旋转180度）
     ctx.strokeStyle = 'rgba(79,195,247,0.3)'; ctx.lineWidth = 2; ctx.setLineDash([8, 4])
     ctx.beginPath()
     for (let i = 0; i <= 360; i++) {
-      const θ = (i / 360) * 2 * Math.PI
-      const r = s.a * (1 - s.e * s.e) / (1 + s.e * Math.cos(θ))
-      const rawX = -s.c + r * Math.cos(θ)
-      const rawY = r * Math.sin(θ)
-      const [sx, sy] = R.w2s(-2 * s.c - rawX, -rawY)
+      const E = (i / 360) * 2 * Math.PI
+      const x = -2 * s.c - s.a * Math.cos(E)
+      const y = -s.b * Math.sin(E)
+      const [sx, sy] = R.w2s(x, y)
       if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy)
     }
     ctx.closePath(); ctx.stroke(); ctx.setLineDash([])
+    drawSun(ctx, fx, fy)
 
     // 已扫过区域（从0到当前θ，以太阳为中心翻转180度）
     ctx.fillStyle = 'rgba(255,213,79,0.12)'
@@ -325,19 +322,19 @@ export default function KeplerLawsScene() {
       ctx.fillText(text + '  (应相等)', 16, 70)
     }
 
-    // 轨迹（翻转）
-    const flippedTrail = s.trail.map(p => ({ x: -2 * s.c - p.x, y: -p.y }))
-    drawTrail(ctx, R, flippedTrail)
+    // 轨迹（以太阳为中心旋转180度）
+    const rotatedTrail = s.trail.map(p => ({ x: -2 * s.c - p.x, y: -p.y }))
+    drawTrail(ctx, R, rotatedTrail)
 
-    // 行星（翻转） + 连线
-    const flipPlanetX = -2 * s.c - s.planetX
-    const flipPlanetY = -s.planetY
-    drawPlanet(ctx, R, flipPlanetX, flipPlanetY, '#4FC3F7', 8)
-    const [plSx2, plSy2] = R.w2s(flipPlanetX, flipPlanetY)
+    // 行星（以太阳为中心旋转180度） + 连线
+    const rotPlanetX = -2 * s.c - s.planetX
+    const rotPlanetY = -s.planetY
+    drawPlanet(ctx, R, rotPlanetX, rotPlanetY, '#4FC3F7', 8)
+    const [plSx2, plSy2] = R.w2s(rotPlanetX, rotPlanetY)
     ctx.fillStyle = '#4FC3F7'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'
     ctx.fillText('🌍 行星', plSx2, plSy2 - 18)
     ctx.strokeStyle = 'rgba(100,100,100,0.3)'; ctx.lineWidth = 1
-    const [px, py] = R.w2s(flipPlanetX, flipPlanetY)
+    const [px, py] = R.w2s(rotPlanetX, rotPlanetY)
     ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(px, py); ctx.stroke()
 
     // 公式
