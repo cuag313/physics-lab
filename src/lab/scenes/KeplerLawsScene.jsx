@@ -35,10 +35,10 @@ export default function KeplerLawsScene() {
     planetX: 0,        // 行星世界坐标x（椭圆中心系）
     planetY: 0,        // 行星世界坐标y
     period: 0,
-    speed: 0.3,        // 动画速度倍率（教学观察，慢速）
+    speed: 0.15,       // 动画速度（慢速，教学观察）
     sweepPoints: [],
     sweepTime: 0,
-    sweepDuration: 0.25, // 每段扫过的时间（秒，更多扇区）
+    sweepDuration: 3.0, // 每段扫过的时间（秒，约7个扇区/圈，形状差异大）
     trail: [],
     maxTrail: 800,
     time: 0,
@@ -195,7 +195,7 @@ export default function KeplerLawsScene() {
         const prev = s.sweepPoints.length > 0 ? s.sweepPoints[s.sweepPoints.length - 1] : null
         if (!prev || Math.abs(s.E - prev.E) < Math.PI) {
           s.sweepPoints.push({ x: s.planetX, y: s.planetY, E: s.E, theta: s.theta })
-          if (s.sweepPoints.length > 12) s.sweepPoints.shift()
+          if (s.sweepPoints.length > 10) s.sweepPoints.shift()
         }
       }
     }
@@ -330,19 +330,24 @@ export default function KeplerLawsScene() {
         const area = calcSweepArea(s.a, s.e, p0.E, p1.E)
         areaLabels.push(area)
 
-        // 面积标注（参数方程中点）
+        // 面积标注（参数方程中点，加背景框更清晰）
         const midE = (p0.E + p1.E) / 2
-        const [lx, ly] = R.w2s(s.a * Math.cos(midE) * 0.5 - s.c * 0.5, s.b * Math.sin(midE) * 0.5)
-        ctx.fillStyle = '#333'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'
-        ctx.fillText(`A${i + 1}=${area.toFixed(1)}`, lx, ly)
+        const midX = s.a * Math.cos(midE) * 0.55 - s.c * 0.45
+        const midY = s.b * Math.sin(midE) * 0.55
+        const [lx, ly] = R.w2s(midX, midY)
+        ctx.fillStyle = 'rgba(255,255,255,0.85)'
+        ctx.fillRect(lx - 24, ly - 8, 48, 16)
+        ctx.fillStyle = '#E65100'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'
+        ctx.fillText(`A=${area.toFixed(1)}`, lx, ly + 4)
       }
     }
 
-    // 面积对比
+    // 面积对比（大字突出“全部相等”）
     if (areaLabels.length >= 2) {
       const text = areaLabels.map((a, i) => `A${i + 1}:${a.toFixed(1)}`).join('  ')
-      ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'
-      ctx.fillText(text + '  (应相等)', 16, 70)
+      ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fillRect(10, 56, ctx.measureText(text).width + 140, 22)
+      ctx.fillStyle = '#E65100'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'
+      ctx.fillText(text + '  ✅ 全部相等', 16, 72)
     }
 
     // 轨迹
