@@ -53,7 +53,7 @@ export default function NewtonThirdLawScene() {
     magStr: 5,          // 磁力强度
     magPhase: 'idle',
     magForce: 0,
-    magContactDist: 0.8, // 接触距离
+    magContactDist: 1.5, // 接触距离（磁铁总宽100px / scale70 ≈ 1.43，留余量）
 
     // 通用
     time: 0,
@@ -713,6 +713,50 @@ export default function NewtonThirdLawScene() {
     ctx.fillStyle = '#4FC3F7'
     ctx.font = 'bold 13px serif'
     ctx.fillText('F₁ = -F₂', x + 280, y)
+
+    // 操作引导气泡
+    drawGuideBubble(ctx, R)
+  }
+
+  function drawGuideBubble(ctx, R) {
+    const s = S.current
+    let text = ''
+    let bx = R.W / 2, by = R.H * 0.72
+
+    if (s.mode === 'spring' && s.springForceA < 0.1) {
+      text = '👆 拖拽任一弹簧测力计，观察两力等大反向'
+    } else if (s.mode === 'cart' && s.cartPhase === 'idle') {
+      text = '▶ 点击「释放小车」观察碰撞时的相互作用力'
+    } else if (s.mode === 'magnet' && s.magPhase === 'idle' && s.magA_x <= -2.5) {
+      text = '👆 点击画面任意位置释放磁铁，观察引力等大反向'
+    }
+
+    if (!text) return
+
+    ctx.font = '13px sans-serif'
+    const tw = ctx.measureText(text).width + 24
+    const th = 32
+
+    // 气泡背景（浮动动画）
+    const float = Math.sin(Date.now() / 600) * 4
+    const ry = by + float
+
+    ctx.fillStyle = 'rgba(79, 195, 247, 0.15)'
+    ctx.beginPath()
+    ctx.roundRect(bx - tw / 2, ry - th / 2, tw, th, 16)
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(79, 195, 247, 0.4)'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.roundRect(bx - tw / 2, ry - th / 2, tw, th, 16)
+    ctx.stroke()
+
+    ctx.fillStyle = '#4FC3F7'
+    ctx.font = '13px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(text, bx, ry)
+    ctx.textBaseline = 'alphabetic'
   }
 
   // ========== 通用绘制 ==========
