@@ -27,6 +27,8 @@ export default function NewtonThirdLawScene() {
     springForceA: 0,    // 左弹簧读数
     springForceB: 0,    // 右弹簧读数
     springDragX: null,  // 拖拽位置
+    springNatural: 3,   // 自然长度（两弹簧间距）
+    springK: 5,         // 劲度系数
 
     // 小车碰撞模式
     cartA_x: -3,        // 左小车位置
@@ -38,15 +40,20 @@ export default function NewtonThirdLawScene() {
     cartPhase: 'idle',  // idle | moving | collided | separating
     collisionForce: 0,
     collisionTime: 0,
+    preCollisionV_A: 0, // 碰前速度
+    preCollisionV_B: 0,
 
     // 磁铁模式
     magA_x: -3,
     magB_x: 3,
     magA_v: 0,
     magB_v: 0,
+    magA_m: 1.0,        // 磁铁A质量
+    magB_m: 1.5,        // 磁铁B质量
     magStr: 5,          // 磁力强度
     magPhase: 'idle',
     magForce: 0,
+    magContactDist: 0.8, // 接触距离
 
     // 通用
     time: 0,
@@ -95,7 +102,7 @@ export default function NewtonThirdLawScene() {
         const rect = canvas.getBoundingClientRect()
         canvas.width = rect.width * devicePixelRatio
         canvas.height = rect.height * devicePixelRatio
-        this.ctx.scale(devicePixelRatio, devicePixelRatio)
+        this.ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0)
         this.W = rect.width
         this.H = rect.height
         this.ox = this.W * 0.5
@@ -136,6 +143,10 @@ export default function NewtonThirdLawScene() {
         s.cartPhase = 'collided'
         s.collisionTime = 0
 
+        // 保存碰前速度（用于计算碰撞力）
+        s.preCollisionV_A = s.cartA_v
+        s.preCollisionV_B = s.cartB_v
+
         // 弹性碰撞
         const m1 = s.cartA_m, m2 = s.cartB_m
         const v1 = s.cartA_v, v2 = s.cartB_v
@@ -144,14 +155,16 @@ export default function NewtonThirdLawScene() {
       }
     } else if (s.cartPhase === 'collided') {
       s.collisionTime += dt
-      // 碰撞持续0.1秒
-      if (s.collisionTime > 0.1) {
+      // 碰撞持续0.08秒，力呈半正弦分布
+      const collisionDuration = 0.08
+      if (s.collisionTime > collisionDuration) {
         s.cartPhase = 'moving'
         s.collisionForce = 0
       } else {
-        // 碰撞力（简化模型）
-        const dv = Math.abs(s.cartA_v - s.cartB_v)
-        s.collisionForce = s.cartA_m * dv / 0.1
+        // 用碰前速度差计算碰撞力，半正弦分布
+        const dv = Math.abs(s.preCollisionV_A - s.preCollisionV_B)
+        const peakForce = s.cartA_m * Math.abs(s.cartA_v - s.preCollisionV_A) / collisionDuration * 2
+        s.collisionForce = peakForce * Math.sin(Math.PI * s.collisionTime / collisionDuration)
       }
 
       s.cartA_x += s.cartA_v * dt
@@ -173,9 +186,16 @@ export default function NewtonThirdLawScene() {
     if (s.magPhase !== 'attracting') return
 
     const dist = s.magB_x - s.magA_x
-    if (dist < 0.8) {
+    // 接触停止（N-S相接，不能重叠）
+    if (dist <= s.magContactDist) {
       s.magPhase = 'idle'
       s.magForce = 0
+      s.magA_v = 0
+      s.magB_v = 0
+      // 调整位置确保不重叠
+      const mid = (s.magA_x + s.magB_x) / 2
+      s.magA_x = mid - s.magContactDist / 2
+      s.magB_x = mid + s.magContactDist / 2
       return
     }
 
@@ -183,9 +203,9 @@ export default function NewtonThirdLawScene() {
     const F = s.magStr / (dist * dist)
     s.magForce = F
 
-    // 加速度（牛顿第三定律：等大反向）
-    s.magA_v += (F / 1.0) * dt  // 质量1kg
-    s.magB_v -= (F / 1.0) * dt
+    // 加速度（牛顿第三定律：等大反向，但加速度不同！）
+    s.magA_v += (F / s.magA_m) * dt  // 质量小 → 加速度大
+    s.magB_v -= (F / s.magB_m) * dt  // 质量大 → 加速度小
 
     s.magA_x += s.magA_v * dt
     s.magB_x += s.magB_v * dt
@@ -481,29 +501,31 @@ export default function NewtonThirdLawScene() {
     const w = 50
     const h = 24
 
-    // N极
+    // 左半（N极，红色）
     ctx.fillStyle = '#F44336'
     ctx.beginPath()
     ctx.roundRect(sx - w, sy - h, w, h, [4, 0, 0, 4])
     ctx.fill()
     ctx.fillStyle = '#fff'
-    ctx.font = 'bold 10px sans-serif'
+    ctx.font = 'bold 12px sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText('N', sx - w / 2, sy - h / 2 + 3)
+    ctx.textBaseline = 'middle'
+    ctx.fillText('N', sx - w / 2, sy - h / 2)
 
-    // S极
+    // 右半（S极，蓝色）
     ctx.fillStyle = '#2196F3'
     ctx.beginPath()
     ctx.roundRect(sx, sy - h, w, h, [0, 4, 4, 0])
     ctx.fill()
     ctx.fillStyle = '#fff'
-    ctx.fillText('S', sx + w / 2, sy - h / 2 + 3)
+    ctx.fillText('S', sx + w / 2, sy - h / 2)
 
-    // 标签
+    // 质量标签
     ctx.fillStyle = '#c9d1d9'
     ctx.font = '11px sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText(`磁铁${label}`, sx, sy + 16)
+    ctx.textBaseline = 'alphabetic'
+    ctx.fillText(`磁铁${label} (${pole === 'N' ? S.current.magA_m.toFixed(1) : S.current.magB_m.toFixed(1)}kg)`, sx, sy + 16)
   }
 
   function drawMagneticField(ctx, R, xA, xB) {
@@ -659,6 +681,14 @@ export default function NewtonThirdLawScene() {
       ctx.fillText(`相互作用力: ${s.magForce.toFixed(3)} N`, px + 12, y); y += 18
       ctx.fillStyle = '#8b949e'
       ctx.fillText(`距离: ${(s.magB_x - s.magA_x).toFixed(2)} m`, px + 12, y); y += 18
+      ctx.fillStyle = '#4CAF50'
+      ctx.fillText(`a_A = ${(s.magForce / s.magA_m).toFixed(2)} m/s²`, px + 12, y); y += 18
+      ctx.fillStyle = '#F44336'
+      ctx.fillText(`a_B = ${(s.magForce / s.magB_m).toFixed(2)} m/s²`, px + 12, y); y += 18
+      if (s.magPhase === 'idle' && s.magA_v === 0 && s.magB_v === 0 && s.magForce === 0 && s.magA_x > -3.5) {
+        ctx.fillStyle = '#FFD54F'
+        ctx.fillText('✓ 已接触！力相等，加速度不同', px + 12, y); y += 18
+      }
     }
 
     ctx.fillStyle = '#FFD54F'
@@ -779,14 +809,14 @@ export default function NewtonThirdLawScene() {
       const [wx] = R.s2w(sx, cy)
 
       if (s.dragTarget === 'A') {
-        s.springA_x = Math.min(wx, s.springB_x - 1.5)
+        s.springA_x = Math.min(wx, s.springB_x - 0.5)
         const dist = s.springB_x - s.springA_x
-        s.springForceA = Math.max(0, (3 - dist) * 5)
+        s.springForceA = Math.abs(s.springNatural - dist) * s.springK
         s.springForceB = s.springForceA
       } else {
-        s.springB_x = Math.max(wx, s.springA_x + 1.5)
+        s.springB_x = Math.max(wx, s.springA_x + 0.5)
         const dist = s.springB_x - s.springA_x
-        s.springForceB = Math.max(0, (3 - dist) * 5)
+        s.springForceB = Math.abs(s.springNatural - dist) * s.springK
         s.springForceA = s.springForceB
       }
     }
@@ -820,11 +850,15 @@ export default function NewtonThirdLawScene() {
     s.cartA_v = 1.5
     s.cartB_v = -1.0
     s.cartPhase = 'idle'
+    s.collisionForce = 0
+    s.preCollisionV_A = 0
+    s.preCollisionV_B = 0
     s.magA_x = -3
     s.magB_x = 3
     s.magA_v = 0
     s.magB_v = 0
     s.magPhase = 'idle'
+    s.magForce = 0
     s.forceHistory = []
     setForceA(0)
     setForceB(0)
@@ -878,14 +912,32 @@ export default function NewtonThirdLawScene() {
             </>
           )}
           {mode === 'magnet' && (
-            <label style={styles.controlLabel}>
-              磁力强度：
-              <input type="range" min="1" max="15" step="0.5"
-                value={S.current.magStr}
-                onChange={(e) => { S.current.magStr = parseFloat(e.target.value); forceUpdate(n => n + 1) }}
-                style={styles.slider} />
-              <span style={styles.sliderVal}>{S.current.magStr.toFixed(1)}</span>
-            </label>
+            <>
+              <label style={styles.controlLabel}>
+                磁力强度：
+                <input type="range" min="1" max="15" step="0.5"
+                  value={S.current.magStr}
+                  onChange={(e) => { S.current.magStr = parseFloat(e.target.value); forceUpdate(n => n + 1) }}
+                  style={styles.slider} />
+                <span style={styles.sliderVal}>{S.current.magStr.toFixed(1)}</span>
+              </label>
+              <label style={styles.controlLabel}>
+                A质量：
+                <input type="range" min="0.5" max="3" step="0.1"
+                  value={S.current.magA_m}
+                  onChange={(e) => { S.current.magA_m = parseFloat(e.target.value); forceUpdate(n => n + 1) }}
+                  style={styles.slider} />
+                <span style={styles.sliderVal}>{S.current.magA_m.toFixed(1)}kg</span>
+              </label>
+              <label style={styles.controlLabel}>
+                B质量：
+                <input type="range" min="0.5" max="3" step="0.1"
+                  value={S.current.magB_m}
+                  onChange={(e) => { S.current.magB_m = parseFloat(e.target.value); forceUpdate(n => n + 1) }}
+                  style={styles.slider} />
+                <span style={styles.sliderVal}>{S.current.magB_m.toFixed(1)}kg</span>
+              </label>
+            </>
           )}
         </div>
       </div>
