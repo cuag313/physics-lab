@@ -557,11 +557,12 @@ export default function KeplerLawsScene() {
     ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left'
     ctx.fillText('T²/a³ = k = 1.000（所有行星相同）', gx + 12, gy + gh - 10)
 
-    // 底部说明（加大字号、拉开行距，放在散点图下方）
-    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('定律三：T² ∝ a³', 20, R.H - 60)
-    ctx.fillStyle = '#555'; ctx.font = '13px sans-serif'
-    ctx.fillText('离太阳越远，公转越慢 · 相同时间，内圈跑过的弧长更长', 20, R.H - 38)
+    // 底部说明（放在散点图下方，避免与左下角面板重叠）
+    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('定律三：T² ∝ a³', R.W - 336, gy + gh + 16)
+    ctx.fillStyle = '#555'; ctx.font = '12px sans-serif'
+    ctx.fillText('离太阳越远，公转越慢 · T²/a³ = 常数', R.W - 336, gy + gh + 36)
+    ctx.textBaseline = 'alphabetic'
   }
 
   // ========== 通用绘制 ==========
