@@ -53,7 +53,7 @@ export default function NewtonThirdLawScene() {
     magStr: 5,          // 磁力强度
     magPhase: 'idle',
     magForce: 0,
-    magContactDist: 1.5, // 接触距离（磁铁总宽100px / scale70 ≈ 1.43，留余量）
+    magContactDist: 1.0, // 接触距离（磁铁半宽50px×2=100px，100/70≈1.43，设1.0让N-S紧密贴合）
 
     // 通用
     time: 0,
@@ -721,7 +721,7 @@ export default function NewtonThirdLawScene() {
   function drawGuideBubble(ctx, R) {
     const s = S.current
     let text = ''
-    let bx = R.W / 2, by = R.H * 0.72
+    let bx = R.W / 2, by = R.H * 0.62
 
     if (s.mode === 'spring' && s.springForceA < 0.1) {
       text = '👆 拖拽任一弹簧测力计，观察两力等大反向'
