@@ -129,7 +129,7 @@ export default function KeplerLawsScene() {
     // 行星位置（椭圆中心系）：x = -a·cos(E), y = b·sin(E)
     // 太阳在 (-c, 0)，E=0为近日点（最近太阳），E=π为远日点
     state.planetX = -state.a * Math.cos(E)
-    state.planetY = state.b * Math.sin(E)
+    state.planetY = -state.b * Math.sin(E)
   }
 
   function initLaw3() {
@@ -153,7 +153,7 @@ export default function KeplerLawsScene() {
     p.E = E
     p.theta = 2 * Math.atan2(Math.sqrt(1 + p.e) * Math.sin(E / 2), Math.sqrt(1 - p.e) * Math.cos(E / 2))
     p.px = -p.a * Math.cos(E)  // 椭圆中心系
-    p.py = p.b * Math.sin(E)
+    p.py = -p.b * Math.sin(E)
   }
 
   // 多边形面积（鞋带公式，屏幕像素坐标）
@@ -295,7 +295,7 @@ export default function KeplerLawsScene() {
     ctx.beginPath(); ctx.moveTo(fx, fy)
     for (let E = 0; E <= s.E + 0.01; E += 0.05) {
       const x = -s.a * Math.cos(E)
-      const y = s.b * Math.sin(E)
+      const y = -s.b * Math.sin(E)
       const [sx, sy] = R.w2s(x, y)
       ctx.lineTo(sx, sy)
     }
@@ -321,7 +321,7 @@ export default function KeplerLawsScene() {
           const t = j / steps
           const E = p0.E + t * (p1.E - p0.E)
           const x = -s.a * Math.cos(E)
-          const y = s.b * Math.sin(E)
+          const y = -s.b * Math.sin(E)
           const [sx, sy] = R.w2s(x, y)
           ctx.lineTo(sx, sy)
           polyPoints.push({ x: sx, y: sy })
@@ -330,7 +330,7 @@ export default function KeplerLawsScene() {
 
         // 扇形边线（太阳到轨道的连线）
         ctx.strokeStyle = 'rgba(150,150,150,0.3)'; ctx.lineWidth = 1
-        const [x0s, y0s] = R.w2s(-s.a * Math.cos(p0.E), s.b * Math.sin(p0.E))
+        const [x0s, y0s] = R.w2s(-s.a * Math.cos(p0.E), -s.b * Math.sin(p0.E))
         ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(x0s, y0s); ctx.stroke()
 
         // 面积用鞋带公式（屏幕像素坐标，和视觉100%一致）
@@ -340,7 +340,7 @@ export default function KeplerLawsScene() {
 
       // 最后一条边线（当前行星位置）
       const lastPt = allPts[allPts.length - 1]
-      const [lsx, lsy] = R.w2s(-s.a * Math.cos(lastPt.E), s.b * Math.sin(lastPt.E))
+      const [lsx, lsy] = R.w2s(-s.a * Math.cos(lastPt.E), -s.b * Math.sin(lastPt.E))
       ctx.strokeStyle = 'rgba(150,150,150,0.3)'; ctx.lineWidth = 1
       ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(lsx, lsy); ctx.stroke()
     }
@@ -425,7 +425,7 @@ export default function KeplerLawsScene() {
       for (let i = 0; i <= 360; i++) {
         const E = (i / 360) * 2 * Math.PI
         const ox = sunSx + orbitC - orbitA * Math.cos(E)
-        const oy = sunSy + orbitB * Math.sin(E)
+        const oy = sunSy - orbitB * Math.sin(E)
         if (i === 0) ctx.moveTo(ox, oy); else ctx.lineTo(ox, oy)
       }
       ctx.closePath(); ctx.stroke()
@@ -437,7 +437,7 @@ export default function KeplerLawsScene() {
 
       // 行星位置（用开普勒方程解出的px,py）
       const plSx = sunSx + orbitC + p.px * pxPerAU
-      const plSy = sunSy + p.py * pxPerAU
+      const plSy = sunSy - p.py * pxPerAU
 
       // 弧线轨迹（最近1.5秒）
       const arcWindow = 1.5 / (s.speed || 0.3)
@@ -452,7 +452,7 @@ export default function KeplerLawsScene() {
           let eArc = mArc
           for (let k = 0; k < 8; k++) eArc = eArc - (eArc - p.e * Math.sin(eArc) - mArc) / (1 - p.e * Math.cos(eArc))
           const ax = sunSx + orbitC - p.a * Math.cos(eArc) * pxPerAU
-          const ay = sunSy + p.b * Math.sin(eArc) * pxPerAU
+          const ay = sunSy - p.b * Math.sin(eArc) * pxPerAU
           if (j === 0) ctx.moveTo(ax, ay); else ctx.lineTo(ax, ay)
         }
         ctx.stroke(); ctx.lineCap = 'butt'
@@ -573,7 +573,7 @@ export default function KeplerLawsScene() {
     for (let i = 0; i <= 360; i++) {
       const E = (i / 360) * 2 * Math.PI
       const x = -a * Math.cos(E)
-      const y = b * Math.sin(E)
+      const y = -b * Math.sin(E)
       const [sx, sy] = R.w2s(x, y)
       if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy)
     }
