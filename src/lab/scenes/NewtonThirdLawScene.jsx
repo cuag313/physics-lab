@@ -53,7 +53,7 @@ export default function NewtonThirdLawScene() {
     magStr: 5,          // 磁力强度
     magPhase: 'idle',
     magForce: 0,
-    magContactDist: 1.1, // 接触距离
+    magContactDist: 1.2, // 接触距离
 
     // 通用
     time: 0,
