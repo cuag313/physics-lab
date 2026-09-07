@@ -286,14 +286,14 @@ export default function KeplerLawsScene() {
     const ctx = R.ctx, s = S.current
     const [fx, fy] = R.w2s(-s.c, 0)
 
-    // 轨道（和定律1完全相同，参数方程）
+    // 轨道（参数方程）
     drawOrbitByParam(ctx, R, s.a, s.b, s.c, 'rgba(79,195,247,0.3)')
 
     // 太阳
     drawSun(ctx, fx, fy)
 
-    // 已扫过区域（参数方程E从0到当前E，从太阳画扇形）
-    ctx.fillStyle = 'rgba(255,213,79,0.12)'
+    // 已扫过区域（半透明底色）
+    ctx.fillStyle = 'rgba(255,213,79,0.08)'
     ctx.beginPath(); ctx.moveTo(fx, fy)
     for (let E = 0; E <= s.E + 0.01; E += 0.05) {
       const x = s.a * Math.cos(E)
@@ -303,19 +303,21 @@ export default function KeplerLawsScene() {
     }
     ctx.closePath(); ctx.fill()
 
-    // 等时间扇形（参数方程E画弧，和轨道完全重合）
+    // 等时间扇形：绘制 + 面积计算
     const areaLabels = []
     const pts = s.sweepPoints
-    if (pts.length >= 2) {
+    if (pts.length >= 1) {
       const curPt = { x: s.planetX, y: s.planetY, E: s.E, theta: s.theta }
       const allPts = [...pts, curPt]
 
       for (let i = 0; i < allPts.length - 1; i++) {
         const p0 = allPts[i], p1 = allPts[i + 1]
+        if (p1.E <= p0.E) continue
+
+        // 扇形填充
         ctx.fillStyle = SWEEP_COLORS[i % SWEEP_COLORS.length]
         ctx.beginPath(); ctx.moveTo(fx, fy)
-        // 弧线用参数方程E，和轨道100%重合
-        const steps = 30
+        const steps = 40
         for (let j = 0; j <= steps; j++) {
           const t = j / steps
           const E = p0.E + t * (p1.E - p0.E)
@@ -326,34 +328,57 @@ export default function KeplerLawsScene() {
         }
         ctx.closePath(); ctx.fill()
 
-        // 面积用参数方程E计算（和视觉扇形一致）
+        // 扇形边线（太阳到轨道的连线）
+        ctx.strokeStyle = 'rgba(150,150,150,0.3)'; ctx.lineWidth = 1
+        const [x0s, y0s] = R.w2s(s.a * Math.cos(p0.E), s.b * Math.sin(p0.E))
+        ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(x0s, y0s); ctx.stroke()
+
+        // 面积计算（参数方程E积分，和视觉完全一致）
         const area = calcSweepArea(s.a, s.e, p0.E, p1.E)
         areaLabels.push(area)
-
-        // 面积标注（参数方程中点，加背景框更清晰）
-        const midE = (p0.E + p1.E) / 2
-        const midX = s.a * Math.cos(midE) * 0.55 - s.c * 0.45
-        const midY = s.b * Math.sin(midE) * 0.55
-        const [lx, ly] = R.w2s(midX, midY)
-        ctx.fillStyle = 'rgba(255,255,255,0.85)'
-        ctx.fillRect(lx - 24, ly - 8, 48, 16)
-        ctx.fillStyle = '#E65100'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'
-        ctx.fillText(`A=${area.toFixed(1)}`, lx, ly + 4)
       }
+
+      // 最后一条边线（当前行星位置）
+      const lastPt = allPts[allPts.length - 1]
+      const [lsx, lsy] = R.w2s(s.a * Math.cos(lastPt.E), s.b * Math.sin(lastPt.E))
+      ctx.strokeStyle = 'rgba(150,150,150,0.3)'; ctx.lineWidth = 1
+      ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(lsx, lsy); ctx.stroke()
     }
 
-    // 面积对比（大字突出“全部相等”）
+    // ========== 面积验证面板（右上角） ==========
     if (areaLabels.length >= 2) {
-      const text = areaLabels.map((a, i) => `A${i + 1}:${a.toFixed(1)}`).join('  ')
-      ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.fillRect(10, 56, ctx.measureText(text).width + 140, 22)
-      ctx.fillStyle = '#E65100'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'
-      ctx.fillText(text + '  ✅ 全部相等', 16, 72)
+      const pw = 240, ph = 32 + areaLabels.length * 20 + 28
+      const px = R.W - pw - 16, py = 16
+      ctx.fillStyle = 'rgba(255,255,255,0.95)'
+      ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill()
+      ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1
+      ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.stroke()
+
+      ctx.fillStyle = '#333'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+      ctx.fillText('📊 相同时间 → 面积相等', px + 12, py + 10)
+
+      ctx.font = '12px sans-serif'
+      areaLabels.forEach((area, i) => {
+        const ry = py + 32 + i * 20
+        ctx.fillStyle = SWEEP_COLORS[i % SWEEP_COLORS.length].replace('0.20', '0.8')
+        ctx.fillRect(px + 12, ry + 2, 12, 12)
+        ctx.fillStyle = '#333'
+        ctx.fillText(`扇区${i + 1}  Δt = ${s.sweepDuration.toFixed(1)}s  →  A = ${area.toFixed(2)}`, px + 30, ry)
+      })
+
+      // 验证结论
+      const allEqual = areaLabels.every(a => Math.abs(a - areaLabels[0]) < areaLabels[0] * 0.05)
+      const vy = py + 32 + areaLabels.length * 20 + 4
+      ctx.font = 'bold 12px sans-serif'
+      ctx.fillStyle = allEqual ? '#4CAF50' : '#FF9800'
+      ctx.fillText(allEqual ? '✅ 所有扇形面积相等！' : '⏳ 等待更多数据...', px + 12, vy)
+      ctx.textBaseline = 'alphabetic'
     }
 
     // 轨迹
     drawTrail(ctx, R, s.trail)
 
-    // 行星（和定律1相同位置）
+    // 行星
     drawPlanet(ctx, R, s.planetX, s.planetY, '#4FC3F7', 8)
     const [plSx, plSy] = R.w2s(s.planetX, s.planetY)
     ctx.fillStyle = '#4FC3F7'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'
@@ -363,13 +388,12 @@ export default function KeplerLawsScene() {
     ctx.strokeStyle = 'rgba(100,100,100,0.3)'; ctx.lineWidth = 1
     ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(plSx, plSy); ctx.stroke()
 
-    // 公式
-    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
-    const [dx, dy] = R.w2s(-s.a - 0.5, s.b + 0.5)
-    ctx.fillText('定律二：面积定律', dx, dy)
-    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'
-    ctx.fillText('相等时间扫过相等面积', dx, dy + 18)
-    ctx.fillText('近地点快，远地点慢', dx, dy + 36)
+    // 底部说明
+    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('定律二：面积定律', 16, R.H - 55)
+    ctx.fillStyle = '#555'; ctx.font = '12px sans-serif'
+    ctx.fillText('相等时间扫过相等面积  ·  近太阳点快（扇形宽扁）  ·  远太阳点慢（扇形尖长）', 16, R.H - 35)
+    ctx.textBaseline = 'alphabetic'
   }
 
   // ========== 定律三：T²∝a³ ==========
