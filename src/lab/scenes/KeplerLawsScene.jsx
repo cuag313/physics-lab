@@ -156,19 +156,17 @@ export default function KeplerLawsScene() {
     p.py = p.b * Math.sin(E)
   }
 
-  // 扇形面积（参数方程E积分，以太阳(-c,0)为顶点）
-  // 正确公式：dA = ½·a·b·(1+e·cosE)·dE
-  // 由 r²dθ = a·b·(1+e·cosE)·dE 推导而来
-  function calcSweepArea(aVal, eVal, E1, E2) {
-    const bVal = aVal * Math.sqrt(1 - eVal * eVal)
-    const steps = 300
-    const dE = (E2 - E1) / steps
+  // 多边形面积（鞋带公式，屏幕像素坐标）
+  // 保证和视觉扇形面积100%一致
+  function calcPolygonArea(points) {
     let area = 0
-    for (let i = 0; i < steps; i++) {
-      const E = E1 + (i + 0.5) * dE
-      area += 0.5 * aVal * bVal * (1 + eVal * Math.cos(E)) * Math.abs(dE)
+    const n = points.length
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n
+      area += points[i].x * points[j].y
+      area -= points[j].x * points[i].y
     }
-    return area
+    return Math.abs(area) / 2
   }
 
   // ========== 物理更新 ==========
@@ -314,7 +312,8 @@ export default function KeplerLawsScene() {
         const p0 = allPts[i], p1 = allPts[i + 1]
         if (p1.E <= p0.E) continue
 
-        // 扇形填充
+        // 收集多边形屏幕坐标（从太阳到弧线）
+        const polyPoints = [{ x: fx, y: fy }]
         ctx.fillStyle = SWEEP_COLORS[i % SWEEP_COLORS.length]
         ctx.beginPath(); ctx.moveTo(fx, fy)
         const steps = 40
@@ -325,6 +324,7 @@ export default function KeplerLawsScene() {
           const y = s.b * Math.sin(E)
           const [sx, sy] = R.w2s(x, y)
           ctx.lineTo(sx, sy)
+          polyPoints.push({ x: sx, y: sy })
         }
         ctx.closePath(); ctx.fill()
 
@@ -333,8 +333,8 @@ export default function KeplerLawsScene() {
         const [x0s, y0s] = R.w2s(s.a * Math.cos(p0.E), s.b * Math.sin(p0.E))
         ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(x0s, y0s); ctx.stroke()
 
-        // 面积计算（参数方程E积分，和视觉完全一致）
-        const area = calcSweepArea(s.a, s.e, p0.E, p1.E)
+        // 面积用鞋带公式（屏幕像素坐标，和视觉100%一致）
+        const area = calcPolygonArea(polyPoints)
         areaLabels.push(area)
       }
 
