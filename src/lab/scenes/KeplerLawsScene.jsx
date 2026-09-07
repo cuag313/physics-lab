@@ -156,8 +156,9 @@ export default function KeplerLawsScene() {
     p.py = p.b * Math.sin(E)
   }
 
-  // 扇形面积（参数方程E积分，以太阳(-c,0)为顶点，和视觉扇形一致）
-  // dA = ½ · r · b · |sinE| · dE，其中 r = a(1-e·cosE)
+  // 扇形面积（参数方程E积分，以太阳(-c,0)为顶点）
+  // 正确公式：dA = ½·a·b·(1+e·cosE)·dE
+  // 由 r²dθ = a·b·(1+e·cosE)·dE 推导而来
   function calcSweepArea(aVal, eVal, E1, E2) {
     const bVal = aVal * Math.sqrt(1 - eVal * eVal)
     const steps = 300
@@ -165,8 +166,7 @@ export default function KeplerLawsScene() {
     let area = 0
     for (let i = 0; i < steps; i++) {
       const E = E1 + (i + 0.5) * dE
-      const r = aVal * (1 - eVal * Math.cos(E))
-      area += 0.5 * r * bVal * Math.abs(Math.sin(E)) * Math.abs(dE)
+      area += 0.5 * aVal * bVal * (1 + eVal * Math.cos(E)) * Math.abs(dE)
     }
     return area
   }
