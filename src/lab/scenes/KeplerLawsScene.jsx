@@ -35,21 +35,28 @@ export default function KeplerLawsScene() {
     planetX: 0,        // 行星世界坐标x（椭圆中心系）
     planetY: 0,        // 行星世界坐标y
     period: 0,
-    speed: 0.8,        // 动画速度倍率（一圈约7-8秒，利于教学观察）
+    speed: 0.3,        // 动画速度倍率（教学观察，慢速）
     sweepPoints: [],
     sweepTime: 0,
-    sweepDuration: 0.4, // 每段扫过的时间（秒，加速后）
+    sweepDuration: 0.25, // 每段扫过的时间（秒，更多扇区）
     trail: [],
     maxTrail: 800,
     time: 0,
     running: true,
-    law3Planets: INNER_PLANETS.map(p => ({
-      ...p,
-      angle: Math.random() * 2 * Math.PI,  // 当前角度
-      lapCount: 0,     // 已完成圈数
-      lapFlash: 0,     // 完成一圈时的闪烁计时
-      omega: (2 * Math.PI) / (p.a ** 1.5),  // 角速度（年^-1）
-    })),
+    law3Planets: INNER_PLANETS.map(p => {
+      const bb = p.a * Math.sqrt(1 - p.e * p.e)
+      const cc = p.a * p.e
+      return {
+        ...p,
+        b: bb, c: cc,
+        M: Math.random() * 2 * Math.PI,  // 平近点角
+        E: 0, theta: 0,
+        px: 0, py: 0,  // 世界坐标
+        lapCount: 0,
+        lapFlash: 0,
+        omega: (2 * Math.PI) / (p.a ** 1.5),
+      }
+    }),
   })
 
   const [law, setLaw] = useState(1)
@@ -126,23 +133,40 @@ export default function KeplerLawsScene() {
   }
 
   function initLaw3() {
-    S.current.law3Planets.forEach(p => {
-      p.angle = Math.random() * 2 * Math.PI
+    const fixedM = [0, Math.PI / 2, Math.PI, Math.PI * 1.5]
+    S.current.law3Planets.forEach((p, i) => {
+      p.M = fixedM[i] || 0
       p.lapCount = 0
       p.lapFlash = 0
       p.omega = (2 * Math.PI) / (p.a ** 1.5)
+      // 求解初始E和位置
+      solveLaw3Planet(p)
     })
   }
 
-  // 扇形面积（极坐标积分 A = ½∫r²dθ，以太阳为极点）
-  function calcSweepArea(aVal, eVal, theta1, theta2) {
+  // 为定律3单个行星求解开普勒方程
+  function solveLaw3Planet(p) {
+    let E = p.M
+    for (let k = 0; k < 10; k++) {
+      E = E - (E - p.e * Math.sin(E) - p.M) / (1 - p.e * Math.cos(E))
+    }
+    p.E = E
+    p.theta = 2 * Math.atan2(Math.sqrt(1 + p.e) * Math.sin(E / 2), Math.sqrt(1 - p.e) * Math.cos(E / 2))
+    p.px = p.a * Math.cos(E)  // 椭圆中心系
+    p.py = p.b * Math.sin(E)
+  }
+
+  // 扇形面积（参数方程E积分，以太阳(-c,0)为顶点，和视觉扇形一致）
+  // dA = ½ · r · b · |sinE| · dE，其中 r = a(1-e·cosE)
+  function calcSweepArea(aVal, eVal, E1, E2) {
+    const bVal = aVal * Math.sqrt(1 - eVal * eVal)
     const steps = 300
-    const dθ = (theta2 - theta1) / steps
+    const dE = (E2 - E1) / steps
     let area = 0
     for (let i = 0; i < steps; i++) {
-      const θ = theta1 + (i + 0.5) * dθ
-      const r = aVal * (1 - eVal * eVal) / (1 + eVal * Math.cos(θ))
-      area += 0.5 * r * r * Math.abs(dθ)
+      const E = E1 + (i + 0.5) * dE
+      const r = aVal * (1 - eVal * Math.cos(E))
+      area += 0.5 * r * bVal * Math.abs(Math.sin(E)) * Math.abs(dE)
     }
     return area
   }
@@ -171,23 +195,24 @@ export default function KeplerLawsScene() {
         const prev = s.sweepPoints.length > 0 ? s.sweepPoints[s.sweepPoints.length - 1] : null
         if (!prev || Math.abs(s.E - prev.E) < Math.PI) {
           s.sweepPoints.push({ x: s.planetX, y: s.planetY, E: s.E, theta: s.theta })
-          if (s.sweepPoints.length > 8) s.sweepPoints.shift()
+          if (s.sweepPoints.length > 12) s.sweepPoints.shift()
         }
       }
     }
 
-    // 定律3：4颗行星独立运动（简化圆轨道）
+    // 定律3：4颗行星独立运动（椭圆轨道，开普勒方程）
     if (s.law === 3) {
       s.law3Planets.forEach(p => {
-        const prevAngle = p.angle
-        p.angle += p.omega * s.speed * dt
-        // 检测是否完成一圈
-        if (prevAngle < 2 * Math.PI && p.angle >= 2 * Math.PI) {
+        const prevM = p.M
+        p.M += p.omega * s.speed * dt
+        solveLaw3Planet(p)
+        // 检测是否完成一圈（M跨2π）
+        if (prevM < 2 * Math.PI && p.M >= 2 * Math.PI) {
           p.lapCount++
-          p.lapFlash = 1.0  // 开始闪烁
+          p.lapFlash = 1.0
         }
-        if (p.angle >= 2 * Math.PI) p.angle -= 2 * Math.PI
-        if (p.lapFlash > 0) p.lapFlash -= dt * 2  // 闪烁衰减
+        if (p.M >= 2 * Math.PI) p.M -= 2 * Math.PI
+        if (p.lapFlash > 0) p.lapFlash -= dt * 2
       })
     }
 
@@ -301,8 +326,8 @@ export default function KeplerLawsScene() {
         }
         ctx.closePath(); ctx.fill()
 
-        // 面积用极坐标θ计算（数学正确）
-        const area = calcSweepArea(s.a, s.e, p0.theta, p1.theta)
+        // 面积用参数方程E计算（和视觉扇形一致）
+        const area = calcSweepArea(s.a, s.e, p0.E, p1.E)
         areaLabels.push(area)
 
         // 面积标注（参数方程中点）
@@ -356,66 +381,68 @@ export default function KeplerLawsScene() {
     const sunSx = R.W * 0.27
     const sunSy = R.H * 0.45
 
-    // 画同心圆轨道
+    // 画椭圆轨道 + 运动行星
     s.law3Planets.forEach(p => {
-      const orbitR = p.a * pxPerAU
+      const orbitA = p.a * pxPerAU
+      const orbitB = p.b * pxPerAU
+      const orbitC = p.c * pxPerAU
+
+      // 椭圆轨道（参数方程）
       ctx.strokeStyle = p.color
       ctx.lineWidth = 1.5
       ctx.globalAlpha = 0.35
       ctx.setLineDash([6, 4])
       ctx.beginPath()
-      ctx.arc(sunSx, sunSy, orbitR, 0, Math.PI * 2)
-      ctx.stroke()
-      ctx.setLineDash([])
-      ctx.globalAlpha = 1
-      // 轨道标签（右侧）
-      ctx.fillStyle = p.color
-      ctx.font = '10px sans-serif'
-      ctx.textAlign = 'left'
-      ctx.fillText(p.name, sunSx + orbitR + 8, sunSy + 4)
-    })
-
-    // 同时弧线：显示当前时刻各行星跑过的弧长（最近2秒）
-    const arcWindow = 2 / (s.speed || 0.8)  // 弧线对应的实际时间窗口
-    s.law3Planets.forEach(p => {
-      const orbitR = p.a * pxPerAU
-      const arcAngle = Math.min(p.omega * s.speed * arcWindow, Math.PI * 1.5)
-      if (arcAngle > 0.02) {
-        ctx.strokeStyle = p.color
-        ctx.lineWidth = 4
-        ctx.lineCap = 'round'
-        ctx.beginPath()
-        ctx.arc(sunSx, sunSy, orbitR, p.angle - arcAngle, p.angle)
-        ctx.stroke()
-        ctx.lineCap = 'butt'
+      for (let i = 0; i <= 360; i++) {
+        const E = (i / 360) * 2 * Math.PI
+        const ox = sunSx - orbitC + orbitA * Math.cos(E)
+        const oy = sunSy + orbitB * Math.sin(E)
+        if (i === 0) ctx.moveTo(ox, oy); else ctx.lineTo(ox, oy)
       }
-    })
+      ctx.closePath(); ctx.stroke()
+      ctx.setLineDash([]); ctx.globalAlpha = 1
 
-    // 太阳
-    drawSun(ctx, sunSx, sunSy)
+      // 轨道标签（远日点右侧）
+      ctx.fillStyle = p.color; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'
+      ctx.fillText(p.name, sunSx - orbitC + orbitA + 8, sunSy + 4)
 
-    // 运动行星 + 完成闪烁
-    s.law3Planets.forEach(p => {
-      const orbitR = p.a * pxPerAU
-      const px = sunSx + orbitR * Math.cos(p.angle)
-      const py = sunSy + orbitR * Math.sin(p.angle)
+      // 行星位置（用开普勒方程解出的px,py）
+      const plSx = sunSx - orbitC + p.px * pxPerAU
+      const plSy = sunSy + p.py * pxPerAU
+
+      // 弧线轨迹（最近1.5秒）
+      const arcWindow = 1.5 / (s.speed || 0.3)
+      const arcM = Math.min(p.omega * s.speed * arcWindow, Math.PI * 1.5)
+      if (arcM > 0.02) {
+        ctx.strokeStyle = p.color; ctx.lineWidth = 4; ctx.lineCap = 'round'
+        ctx.beginPath()
+        const arcSteps = 40
+        for (let j = 0; j <= arcSteps; j++) {
+          const t = j / arcSteps
+          const mArc = p.M - arcM + t * arcM
+          let eArc = mArc
+          for (let k = 0; k < 8; k++) eArc = eArc - (eArc - p.e * Math.sin(eArc) - mArc) / (1 - p.e * Math.cos(eArc))
+          const ax = sunSx - orbitC + p.a * Math.cos(eArc) * pxPerAU
+          const ay = sunSy + p.b * Math.sin(eArc) * pxPerAU
+          if (j === 0) ctx.moveTo(ax, ay); else ctx.lineTo(ax, ay)
+        }
+        ctx.stroke(); ctx.lineCap = 'butt'
+      }
+
+      // 完成闪烁
       if (p.lapFlash > 0) {
-        ctx.strokeStyle = p.color
-        ctx.lineWidth = 3
-        ctx.globalAlpha = p.lapFlash
-        ctx.beginPath()
-        ctx.arc(px, py, 16, 0, Math.PI * 2)
-        ctx.stroke()
-        ctx.globalAlpha = 1
+        ctx.strokeStyle = p.color; ctx.lineWidth = 3; ctx.globalAlpha = p.lapFlash
+        ctx.beginPath(); ctx.arc(plSx, plSy, 16, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1
       }
-      const grad = ctx.createRadialGradient(px - 2, py - 2, 1, px, py, 6)
-      grad.addColorStop(0, p.color)
-      grad.addColorStop(1, 'rgba(100,150,200,0.4)')
-      ctx.fillStyle = grad
-      ctx.beginPath()
-      ctx.arc(px, py, 6, 0, Math.PI * 2)
-      ctx.fill()
+
+      // 行星本体
+      const grad = ctx.createRadialGradient(plSx - 2, plSy - 2, 1, plSx, plSy, 6)
+      grad.addColorStop(0, p.color); grad.addColorStop(1, 'rgba(100,150,200,0.4)')
+      ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(plSx, plSy, 6, 0, Math.PI * 2); ctx.fill()
     })
+
+    // 太阳（画在行星上面）
+    drawSun(ctx, sunSx, sunSy)
 
     // 右上角：实时数据表
     const tw = 320, th = 140
@@ -501,11 +528,11 @@ export default function KeplerLawsScene() {
     ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left'
     ctx.fillText('T²/a³ = k = 1.000（所有行星相同）', gx + 12, gy + gh - 10)
 
-    // 底部说明（放在散点图下方，不重叠）
-    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('定律三：T² ∝ a³', 20, R.H - 50)
-    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'
-    ctx.fillText('离太阳越远，公转越慢 · 相同时间，内圈跑过的弧长更长', 20, R.H - 32)
+    // 底部说明（加大字号、拉开行距，放在散点图下方）
+    ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('定律三：T² ∝ a³', 20, R.H - 60)
+    ctx.fillStyle = '#555'; ctx.font = '13px sans-serif'
+    ctx.fillText('离太阳越远，公转越慢 · 相同时间，内圈跑过的弧长更长', 20, R.H - 38)
   }
 
   // ========== 通用绘制 ==========
@@ -523,19 +550,7 @@ export default function KeplerLawsScene() {
     ctx.closePath(); ctx.stroke(); ctx.setLineDash([])
   }
 
-  /** 用极坐标方程从太阳画轨道弧段（定律2扇形用） */
-  function drawOrbitArcFromSun(ctx, R, a, e, c, thetaStart, thetaEnd, color) {
-    ctx.strokeStyle = color; ctx.lineWidth = 1
-    ctx.beginPath()
-    const steps = 60
-    for (let i = 0; i <= steps; i++) {
-      const θ = thetaStart + (thetaEnd - thetaStart) * (i / steps)
-      const r = a * (1 - e * e) / (1 + e * Math.cos(θ))
-      const [sx, sy] = R.w2s(-c + r * Math.cos(θ), r * Math.sin(θ))
-      if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy)
-    }
-    ctx.stroke()
-  }
+
 
   function drawTrail(ctx, R, trail) {
     if (trail.length < 2) return
@@ -569,7 +584,10 @@ export default function KeplerLawsScene() {
 
   function drawInfoPanel(R) {
     const ctx = R.ctx, s = S.current
-    const pw = 220, ph = 160, px = R.W - pw - 16, py = R.H - ph - 16
+    // 定律3右下角有散点图，信息面板移到左下角避免重叠
+    const pw = 220, ph = 160
+    const px = s.law === 3 ? 16 : R.W - pw - 16
+    const py = R.H - ph - 16
     ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill()
     ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.stroke()
     ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
@@ -585,10 +603,14 @@ export default function KeplerLawsScene() {
     ctx.fillText(`T²/a³ = ${k.toFixed(3)}`, px + 12, y); y += 16
     ctx.fillStyle = '#FFD54F'; ctx.font = 'bold 10px sans-serif'
     ctx.fillText(s.law === 1 ? '椭圆定律' : s.law === 2 ? '面积定律' : '调和定律', px + 12, y)
+    ctx.textBaseline = 'alphabetic'
   }
 
   function drawDescription(R) {
-    const ctx = R.ctx, h = R.H, x = 16, y = h - 40
+    const ctx = R.ctx, s = S.current
+    // 定律3有自己的底部说明，这里只画定律1和2
+    if (s.law === 3) return
+    const h = R.H, x = 16, y = h - 40
     ctx.textBaseline = 'top'; ctx.textAlign = 'left'
     ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'
     ctx.fillText('开普勒三大定律', x, y)
@@ -598,13 +620,14 @@ export default function KeplerLawsScene() {
 
   // ========== 控制 ==========
   const handleLawChange = useCallback((newLaw) => {
-    S.current.law = newLaw; S.current.trail = []; S.current.sweepPoints = []; setLaw(newLaw)
+    S.current.law = newLaw; S.current.trail = []; S.current.sweepPoints = []; S.current.sweepTime = 0; setLaw(newLaw)
   }, [])
   const handleAChange = useCallback((val) => { S.current.a = val; computeEllipse(); setA(val) }, [])
   const handleEChange = useCallback((val) => { S.current.e = val; computeEllipse(); setE(val) }, [])
   const handleReset = useCallback(() => {
-    const s = S.current; s.M = 0; s.E = 0; s.theta = 0; s.time = 0; s.trail = []; s.sweepPoints = []
-    s.law3Planets.forEach(p => { p.angle = Math.random() * 2 * Math.PI; p.lapCount = 0; p.lapFlash = 0 })
+    const s = S.current; s.M = 0; s.E = 0; s.theta = 0; s.time = 0; s.trail = []; s.sweepPoints = []; s.sweepTime = 0
+    const fixedM = [0, Math.PI / 2, Math.PI, Math.PI * 1.5]
+    s.law3Planets.forEach((p, i) => { p.M = fixedM[i] || 0; p.lapCount = 0; p.lapFlash = 0; solveLaw3Planet(p) })
   }, [])
   const handlePreset = useCallback((pA, pE) => {
     S.current.a = pA; S.current.e = pE; computeEllipse(); setA(pA); setE(pE)
