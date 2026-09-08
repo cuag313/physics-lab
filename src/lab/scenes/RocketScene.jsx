@@ -50,7 +50,7 @@ function initState(key) {
   const p = PRESETS[key]
   return {
     p, key, stages: p.stages,
-    fuel: [...p.fuel], dry: [...p.dry], vEx: [...p.vEx], burn: [...p.burn],
+    fuel: [...p.fuel], dry: [...p.dryMass], vEx: [...p.vExhaust], burn: [...p.burnTime],
     cur: 0, h: 0, v: 0, a: 0, time: 0,
     thrust: 0, grav: 0, drag: 0, fuelUsed: 0,
     peakH: 0, peakV: 0, gravityLoss: 0,
