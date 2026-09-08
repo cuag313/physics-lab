@@ -40,6 +40,7 @@ import CircularMotionScene from './scenes/CircularMotionScene'
 import GalileoFreeFallScene from './scenes/GalileoFreeFallScene'
 import KeplerLawsScene from './scenes/KeplerLawsScene'
 import UniversalGravitationScene from './scenes/UniversalGravitationScene'
+import PendulumScene from './scenes/PendulumScene'
 import CosmicVelocityScene from './scenes/CosmicVelocityScene'
 import RocketScene from './scenes/RocketScene'
 import SoundWaveScene from './scenes/SoundWaveScene'
@@ -393,6 +394,8 @@ export default function LabPage({ onBack }) {
           <KeplerLawsScene />
         ) : currentExperiment?.key === 'universalGravitation' ? (
           <UniversalGravitationScene />
+        ) : currentExperiment?.key === 'pendulum' ? (
+          <PendulumScene />
         ) : currentExperiment?.key === 'cosmicVelocity' ? (
           <CosmicVelocityScene />
         ) : currentExperiment?.key === 'rocket' ? (
