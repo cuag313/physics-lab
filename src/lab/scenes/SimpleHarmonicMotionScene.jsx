@@ -133,29 +133,38 @@ export default function SimpleHarmonicMotionScene() {
     // 固定墙
     const [wallX, wallY] = R.w2s(-1.8, 0)
     ctx.fillStyle = '#90A4AE'
-    ctx.fillRect(wallX - 8, wallY - 35, 8, 70)
+    ctx.fillRect(wallX - 12, wallY - 35, 12, 70)
     // 墙面纹理
     ctx.strokeStyle = '#78909C'; ctx.lineWidth = 1
     for (let i = -30; i <= 30; i += 10) {
-      ctx.beginPath(); ctx.moveTo(wallX - 8, wallY + i); ctx.lineTo(wallX, wallY + i - 8); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(wallX - 12, wallY + i); ctx.lineTo(wallX - 4, wallY + i - 8); ctx.stroke()
     }
 
-    // 弹簧
+    // 弹簧（从墙到滑块，锯齿形）
     const [sx, sy] = R.w2s(-1.8, 0)
     const [mx, my] = R.w2s(curX, 0)
     const springLen = mx - sx
-    const coils = 15
-    const amp = 8
+    const coils = 18
+    const amp = 10
 
-    ctx.strokeStyle = '#78909C'; ctx.lineWidth = 2
+    ctx.strokeStyle = '#546E7A'; ctx.lineWidth = 2.5; ctx.lineJoin = 'round'
     ctx.beginPath(); ctx.moveTo(sx, sy)
-    for (let i = 0; i <= coils; i++) {
-      const t = i / coils
-      const px = sx + springLen * t
-      const offset = Math.sin(t * coils * Math.PI * 2) * amp
-      ctx.lineTo(px, sy + offset)
+    // 起始钩（连接墙）
+    ctx.lineTo(sx + 8, sy)
+    // 锯齿弹簧体
+    for (let i = 0; i < coils; i++) {
+      const t1 = (i + 0.5) / coils
+      const t2 = (i + 1) / coils
+      const px1 = sx + 8 + (springLen - 16) * t1
+      const px2 = sx + 8 + (springLen - 16) * t2
+      const dir = i % 2 === 0 ? 1 : -1
+      ctx.lineTo(px1, sy + dir * amp)
+      ctx.lineTo(px2, sy - dir * amp)
     }
-    ctx.lineTo(mx, my); ctx.stroke()
+    // 结束钩（连接滑块）
+    ctx.lineTo(mx - 4, sy)
+    ctx.lineTo(mx, my)
+    ctx.stroke(); ctx.lineJoin = 'miter'
 
     // 滑块（振子）
     const blockW = 40, blockH = 30
