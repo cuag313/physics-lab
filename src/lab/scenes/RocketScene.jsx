@@ -129,25 +129,21 @@ export default function RocketScene() {
       s.trail.push({ t: s.time, h: s.h, v: s.v })
 
     // 级间分离
-    if (s.fuel[i] <= 0 && i < s.stages - 1) {
-      const shellH = s.h
-      const shellV = s.v
+    if (s.fuel[i] <= 0 && i < s.stages - 1 && !s.fallen.some(f => f.stage === i)) {
       s.fallen.push({
-        stage: i, time: s.time, h: shellH, v: shellV * 0.3, // 壳体减速（分离后无推力）
-        x: 0,           // 水平偏移（像素）
-        vx: (i % 2 === 0 ? 1 : -1) * (40 + Math.random() * 30), // 向左或右飘
-        alpha: 1,
-        angle: s.orbitAngle - 0.05 * (i + 1), // 轨道视图角度偏移
+        stage: i, time: s.time, h: s.h, v: s.v * 0.2,
+        x: 0, vx: (i % 2 === 0 ? 1 : -1) * (150 + Math.random() * 50),
+        alpha: 1, angle: s.orbitAngle - 0.08 * (i + 1),
       })
       s.dry[i] = 0; s.cur++
-      s.msg = `🚀 第${i + 1}级箭体分离脱落！`
+      s.msg = `🚀 第${i + 1}级箭体分离脱落！第${i + 2}级点火！`
+      s._msgTime = s.time
     }
 
-    // 切换轨道视图（延迟切换，让用户看清分离动画）
-    if (s.h > KARMAN && s.view === 'ascent' && s.fallen.length > 0 && s.time - s.fallen[s.fallen.length - 1].time > 3) {
-      s.view = 'orbit'; s.msg = '🛰 已离开大气层'
-    } else if (s.h > KARMAN * 3 && s.view === 'ascent') {
-      s.view = 'orbit'; s.msg = '🛰 已离开大气层'
+    // 切换轨道视图（等分离动画播放完再切）
+    const lastSep = s.fallen.length > 0 ? s.fallen[s.fallen.length - 1].time : 0
+    if (s.h > KARMAN && s.view === 'ascent' && (s.time - lastSep > 5 || s.h > KARMAN * 3)) {
+      s.view = 'orbit'; s.msg = '🛰 已离开大气层，进入轨道飞行'
     }
 
     // 轨道角度
@@ -281,23 +277,36 @@ export default function RocketScene() {
     const rh = 60 * sc, rw = 16 * sc
     drawRocket(ctx, rocketX, w2sY(s.h), rw, rh, s)
 
-    // 掉落壳体
+    // 掉落壳体（大幅侧向飘走，旋转，持续可见）
     s.fallen.forEach(f => {
       if (f.alpha <= 0.05) return
       const fy = w2sY(Math.max(0, f.h))
       const fx = rocketX + f.x
-      if (fy < H && fy > -50) {
+      if (fy < H + 50 && fy > -100) {
         ctx.save()
-        ctx.globalAlpha = Math.max(0.2, f.alpha)
+        ctx.globalAlpha = Math.max(0.3, f.alpha)
         ctx.translate(fx, fy)
-        ctx.rotate((s.time - f.time) * 0.3)
-        ctx.fillStyle = '#9e9e9e'
-        ctx.fillRect(-rw * 0.4, -rh * 0.15, rw * 0.8, rh * 0.45)
+        ctx.rotate((s.time - f.time) * 0.4)
+        // 壳体矩形
+        ctx.fillStyle = '#b0bec5'
+        ctx.strokeStyle = '#78909c'
+        ctx.lineWidth = 1
+        ctx.fillRect(-rw * 0.5, -rh * 0.2, rw, rh * 0.45)
+        ctx.strokeRect(-rw * 0.5, -rh * 0.2, rw, rh * 0.45)
+        // 级号标签
         ctx.fillStyle = '#fff'
-        ctx.font = 'bold 9px sans-serif'
+        ctx.font = 'bold 10px sans-serif'
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
         ctx.fillText(`${f.stage + 1}级`, 0, 0)
+        // 向下的小箭头表示坠落
+        ctx.fillStyle = '#ff5252'
+        ctx.beginPath()
+        ctx.moveTo(0, rh * 0.3)
+        ctx.lineTo(-6, rh * 0.2)
+        ctx.lineTo(6, rh * 0.2)
+        ctx.closePath()
+        ctx.fill()
         ctx.restore()
       }
     })
@@ -368,8 +377,21 @@ export default function RocketScene() {
 
   function drawRocket(ctx, x, y, rw, rh, s) {
     ctx.save(); ctx.translate(x, y)
-    ctx.fillStyle = '#ddd'; ctx.beginPath(); ctx.moveTo(0, -rh * 1.3); ctx.lineTo(-rw * 0.5, -rh); ctx.lineTo(rw * 0.5, -rh); ctx.closePath(); ctx.fill()
-    let yOff = -rh; const stageH = rh / s.stages
+
+    // 计算剩余级数和火箭高度
+    const remainingStages = s.dry.filter(d => d > 0).length
+    const totalStages = s.stages
+    const bodyH = rh * (remainingStages / totalStages) // 分离后火箭变短
+    const bodyTop = -bodyH
+
+    // 整流罩
+    ctx.fillStyle = '#ddd'
+    ctx.beginPath(); ctx.moveTo(0, bodyTop - bodyH * 0.3)
+    ctx.lineTo(-rw * 0.5, bodyTop); ctx.lineTo(rw * 0.5, bodyTop); ctx.closePath(); ctx.fill()
+
+    // 各级箭体（只画未分离的）
+    const stageH = bodyH / remainingStages
+    let yOff = bodyTop
     for (let i = 0; i < s.stages; i++) {
       if (s.dry[i] <= 0) continue
       const isCur = i === s.cur
@@ -384,16 +406,31 @@ export default function RocketScene() {
       }
       yOff += stageH
     }
+
+    // 尾翼
     ctx.fillStyle = '#aaa'
-    ctx.beginPath(); ctx.moveTo(-rw * 0.5, 0); ctx.lineTo(-rw * 1.2, rh * 0.15); ctx.lineTo(-rw * 0.5, -rh * 0.1); ctx.closePath(); ctx.fill()
-    ctx.beginPath(); ctx.moveTo(rw * 0.5, 0); ctx.lineTo(rw * 1.2, rh * 0.15); ctx.lineTo(rw * 0.5, -rh * 0.1); ctx.closePath(); ctx.fill()
-    if (s.thrust > 0 && s.engineOn) {
-      const fh = rh * (0.5 + Math.random() * 0.3), fw = rw * 0.6
+    ctx.beginPath(); ctx.moveTo(-rw * 0.5, 0); ctx.lineTo(-rw * 1.2, rh * 0.12); ctx.lineTo(-rw * 0.5, -rh * 0.08); ctx.closePath(); ctx.fill()
+    ctx.beginPath(); ctx.moveTo(rw * 0.5, 0); ctx.lineTo(rw * 1.2, rh * 0.12); ctx.lineTo(rw * 0.5, -rh * 0.08); ctx.closePath(); ctx.fill()
+
+    // 推力火焰（仅当前级有燃料时）
+    if (s.thrust > 0 && s.engineOn && s.fuel[s.cur] > 0) {
+      const fh = rh * (0.4 + Math.random() * 0.3), fw = rw * 0.5
       const fg = ctx.createRadialGradient(0, 0, 0, 0, fh * 0.5, fh)
-      fg.addColorStop(0, 'rgba(255,200,50,0.9)'); fg.addColorStop(0.4, 'rgba(255,100,20,0.7)'); fg.addColorStop(1, 'rgba(255,50,10,0)')
-      ctx.fillStyle = fg; ctx.beginPath(); ctx.moveTo(-fw, 0); ctx.quadraticCurveTo(-fw * 0.3, fh * 0.6, 0, fh); ctx.quadraticCurveTo(fw * 0.3, fh * 0.6, fw, 0); ctx.closePath(); ctx.fill()
-      ctx.fillStyle = 'rgba(255,255,230,0.8)'; ctx.beginPath(); ctx.moveTo(-fw * 0.3, 0); ctx.quadraticCurveTo(0, fh * 0.4, 0, fh * 0.5); ctx.quadraticCurveTo(0, fh * 0.4, fw * 0.3, 0); ctx.closePath(); ctx.fill()
+      fg.addColorStop(0, 'rgba(255,200,50,0.9)')
+      fg.addColorStop(0.4, 'rgba(255,100,20,0.7)')
+      fg.addColorStop(1, 'rgba(255,50,10,0)')
+      ctx.fillStyle = fg
+      ctx.beginPath(); ctx.moveTo(-fw, 0)
+      ctx.quadraticCurveTo(-fw * 0.3, fh * 0.6, 0, fh)
+      ctx.quadraticCurveTo(fw * 0.3, fh * 0.6, fw, 0)
+      ctx.closePath(); ctx.fill()
+      ctx.fillStyle = 'rgba(255,255,230,0.8)'
+      ctx.beginPath(); ctx.moveTo(-fw * 0.3, 0)
+      ctx.quadraticCurveTo(0, fh * 0.4, 0, fh * 0.5)
+      ctx.quadraticCurveTo(0, fh * 0.4, fw * 0.3, 0)
+      ctx.closePath(); ctx.fill()
     }
+
     ctx.restore()
   }
 
@@ -442,12 +479,20 @@ export default function RocketScene() {
   }
 
   function drawMsg(ctx, W, H, s) {
-    ctx.font = 'bold 13px sans-serif'
-    const mw = ctx.measureText(s.msg).width + 30
-    ctx.fillStyle = 'rgba(15,25,45,0.9)'; ctx.beginPath(); rr(ctx, W / 2 - mw / 2, H - 50, mw, 32, 6); ctx.fill()
-    ctx.fillStyle = s.missionResult === 'success' ? '#44ff88' : s.missionResult ? '#ff4444' : '#ffaa33'
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText(s.msg, W / 2, H - 34); ctx.textBaseline = 'alphabetic'
+    if (!s.msg) return
+    ctx.font = 'bold 15px sans-serif'
+    const mw = ctx.measureText(s.msg).width + 40
+    const mh = 40
+    const mx = W / 2 - mw / 2
+    const my = 60
+    ctx.fillStyle = s.missionResult === 'success' ? 'rgba(76,175,80,0.95)' : s.missionResult ? 'rgba(244,67,54,0.95)' : 'rgba(255,152,0,0.95)'
+    ctx.beginPath(); ctx.roundRect ? ctx.roundRect(mx, my, mw, mh, 8) : rr(ctx, mx, my, mw, mh, 8)
+    ctx.fill()
+    ctx.fillStyle = '#fff'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(s.msg, W / 2, my + mh / 2)
+    ctx.textBaseline = 'alphabetic'
   }
 
   // 动画循环
