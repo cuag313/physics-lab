@@ -125,6 +125,7 @@ export default function GalileoFreeFallScene() {
 
     // 斜面对比
     if (s.mode === 'triangle' && s.triPhase === 'running') {
+      if (s.arcLen < 0.01) calcArc() // 确保弧线参数已计算
       let allDone = true
 
       // 垂直边：自由落体
