@@ -63,6 +63,15 @@ function initState(key) {
   }
 }
 
+// roundRect polyfill
+function rr(ctx, x, y, w, h, r) {
+  if (ctx.roundRect) { ctx.roundRect(x, y, w, h, r); return }
+  ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r)
+  ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+  ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r)
+  ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath()
+}
+
 export default function RocketScene() {
   const canvasRef = useRef(null)
   const S = useRef(null)
@@ -163,16 +172,18 @@ export default function RocketScene() {
 
   // ─── 渲染 ───
   function draw() {
-    const canvas = canvasRef.current; if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    const W = canvas.width, H = canvas.height
-    const s = S.current; if (!s) return
+    try {
+      const canvas = canvasRef.current; if (!canvas) return
+      const ctx = canvas.getContext('2d')
+      const W = canvas.width, H = canvas.height
+      const s = S.current; if (!s || W === 0 || H === 0) return
 
-    ctx.clearRect(0, 0, W, H)
-    if (s.view === 'ascent') drawAscent(ctx, W, H, s)
-    else drawOrbit(ctx, W, H, s)
-    drawInfoPanel(ctx, W, H, s)
-    if (s.msg) drawMsg(ctx, W, H, s)
+      ctx.clearRect(0, 0, W, H)
+      if (s.view === 'ascent') drawAscent(ctx, W, H, s)
+      else drawOrbit(ctx, W, H, s)
+      drawInfoPanel(ctx, W, H, s)
+      if (s.msg) drawMsg(ctx, W, H, s)
+    } catch (e) { console.error('draw error:', e) }
   }
 
   function drawAscent(ctx, W, H, s) {
@@ -340,7 +351,7 @@ export default function RocketScene() {
   function drawInfoPanel(ctx, W, H, s) {
     const pw = 200, px = W - pw - 10, py = 10
     ctx.fillStyle = 'rgba(15,25,45,0.9)'; ctx.strokeStyle = 'rgba(100,180,255,0.2)'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.roundRect(px, py, pw, 310, 8); ctx.fill(); ctx.stroke()
+    ctx.beginPath(); rr(ctx, px, py, pw, 310, 8); ctx.fill(); ctx.stroke()
     ctx.fillStyle = '#4a9eff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
     ctx.fillText('📡 飞行数据', px + 10, py + 18)
     ctx.font = '11px monospace'; let ry = py + 36
@@ -366,7 +377,7 @@ export default function RocketScene() {
     }
     // 齐奥尔科夫斯基
     const fpy = py + 320
-    ctx.fillStyle = 'rgba(15,25,45,0.9)'; ctx.beginPath(); ctx.roundRect(px, fpy, pw, 120, 8); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = 'rgba(15,25,45,0.9)'; ctx.beginPath(); rr(ctx, px, fpy, pw, 120, 8); ctx.fill(); ctx.stroke()
     ctx.fillStyle = '#4a9eff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'
     ctx.fillText('🚀 Δv = vₑ×ln(m₀/m₁)', px + 10, fpy + 18)
     ctx.font = '10px monospace'; ctx.fillStyle = '#ffaa33'; let dy = fpy + 36
@@ -384,7 +395,7 @@ export default function RocketScene() {
   function drawMsg(ctx, W, H, s) {
     ctx.font = 'bold 13px sans-serif'
     const mw = ctx.measureText(s.msg).width + 30
-    ctx.fillStyle = 'rgba(15,25,45,0.9)'; ctx.beginPath(); ctx.roundRect(W / 2 - mw / 2, H - 50, mw, 32, 6); ctx.fill()
+    ctx.fillStyle = 'rgba(15,25,45,0.9)'; ctx.beginPath(); rr(ctx, W / 2 - mw / 2, H - 50, mw, 32, 6); ctx.fill()
     ctx.fillStyle = s.missionResult === 'success' ? '#44ff88' : s.missionResult ? '#ff4444' : '#ffaa33'
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     ctx.fillText(s.msg, W / 2, H - 34); ctx.textBaseline = 'alphabetic'
