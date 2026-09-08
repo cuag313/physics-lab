@@ -106,7 +106,7 @@ export default function RocketScene() {
     let thrust = 0
 
     if (s.fuel[i] > 0 && s.engineOn) {
-      const massFlow = s.fuel[i] / s.burn[i]
+      const massFlow = s.p.fuel[i] / s.burn[i] // 恒定流量（用初始燃料计算）
       thrust = massFlow * s.vEx[i]
       const used = Math.min(massFlow * dt, s.fuel[i])
       s.fuel[i] -= used; s.fuelUsed += used
