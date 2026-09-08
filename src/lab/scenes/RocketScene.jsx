@@ -130,10 +130,14 @@ export default function RocketScene() {
 
     // 级间分离
     if (s.fuel[i] <= 0 && i < s.stages - 1) {
+      const shellH = s.h
+      const shellV = s.v
       s.fallen.push({
-        stage: i, time: s.time, h: s.h, v: s.v,
-        vx: (Math.random() - 0.5) * 40,
-        alpha: 1, phase: 'falling',
+        stage: i, time: s.time, h: shellH, v: shellV * 0.3, // 壳体减速（分离后无推力）
+        x: 0,           // 水平偏移（像素）
+        vx: (i % 2 === 0 ? 1 : -1) * (40 + Math.random() * 30), // 向左或右飘
+        alpha: 1,
+        angle: s.orbitAngle - 0.05 * (i + 1), // 轨道视图角度偏移
       })
       s.dry[i] = 0; s.cur++
       s.msg = `🚀 第${i + 1}级箭体分离脱落！`
@@ -183,13 +187,14 @@ export default function RocketScene() {
 
     // 掉落壳体物理
     s.fallen.forEach(f => {
-      f.v -= gravityAt(f.h) * dt
-      f.h += f.v * dt
+      if (f.h > 0) {
+        f.v -= gravityAt(f.h) * dt
+        f.h += f.v * dt
+      }
       f.x += f.vx * dt
-      f.vx *= 0.998
-      // 落地后停止运动，但保持可见
-      if (f.h <= 0) { f.h = 0; f.v = 0; f.vx *= 0.95 }
-      f.alpha = Math.max(0.1, f.alpha - dt * 0.03)
+      f.vx *= 0.995
+      if (f.h <= 0) { f.h = 0; f.v = 0 }
+      f.alpha = Math.max(0.15, f.alpha - dt * 0.02)
     })
 
     forceUpdate(n => n + 1)
@@ -276,16 +281,14 @@ export default function RocketScene() {
     s.fallen.forEach(f => {
       if (f.alpha <= 0.05) return
       const fy = w2sY(Math.max(0, f.h))
-      const fx = rocketX + (f.x || 0) * sc
-      if (fy < H && fy > 0) {
+      const fx = rocketX + f.x
+      if (fy < H && fy > -50) {
         ctx.save()
-        ctx.globalAlpha = Math.max(0.15, f.alpha)
-        // 壳体（比火箭窄，灰白色）
+        ctx.globalAlpha = Math.max(0.2, f.alpha)
         ctx.translate(fx, fy)
         ctx.rotate((s.time - f.time) * 0.3)
         ctx.fillStyle = '#9e9e9e'
-        ctx.fillRect(-rw * 0.4, -rh * 0.2, rw * 0.8, rh * 0.5)
-        // 级号标签
+        ctx.fillRect(-rw * 0.4, -rh * 0.15, rw * 0.8, rh * 0.45)
         ctx.fillStyle = '#fff'
         ctx.font = 'bold 9px sans-serif'
         ctx.textAlign = 'center'
@@ -345,12 +348,13 @@ export default function RocketScene() {
     s.fallen.forEach(f => {
       if (f.alpha <= 0.05) return
       const fr = (R_EARTH + Math.max(0, f.h)) * scale
-      const fx = cx + fr * Math.cos(s.orbitAngle - 0.1), fy = cy + fr * Math.sin(s.orbitAngle - 0.1)
-      ctx.globalAlpha = Math.max(0.15, f.alpha)
+      const fx = cx + fr * Math.cos(f.angle || s.orbitAngle - 0.1)
+      const fy = cy + fr * Math.sin(f.angle || s.orbitAngle - 0.1)
+      ctx.globalAlpha = Math.max(0.2, f.alpha)
       ctx.fillStyle = '#9e9e9e'
-      ctx.beginPath(); ctx.arc(fx, fy, 4, 0, Math.PI * 2); ctx.fill()
-      ctx.fillStyle = '#fff'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText(`${f.stage + 1}级`, fx, fy - 6)
+      ctx.beginPath(); ctx.arc(fx, fy, 5, 0, Math.PI * 2); ctx.fill()
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center'
+      ctx.fillText(`${f.stage + 1}级`, fx, fy - 8)
       ctx.globalAlpha = 1
     })
 
