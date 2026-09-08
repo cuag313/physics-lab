@@ -82,43 +82,12 @@ export default function GalileoFreeFallScene() {
     return R
   }
 
-  // 计算弧线参数（圆弧，向下凸）
+  // 计算弧线参数（向下凸的曲线 y = h·t^0.5）
   function calcArc() {
     const s = S.current
-    // 圆弧从 (0,0) 到 (triBase, triH)，向下凸
-    // 用三点定圆：起点、终点、中点偏下
-    const ax = 0, ay = 0
-    const bx = s.triBase, by = s.triH
-    const midX = (ax + bx) / 2, midY = (ay + by) / 2
-    // 控制点在中点偏下（向下凸）
-    const bulge = Math.min(s.triH, s.triBase) * 0.6
-    const cy = midY + bulge
+    s.arcP = 0.5 // p<1 使曲线向下凸（起点陡，末点缓）
 
-    // 求圆心（三点定圆）
-    const D = 2 * (ax * (midY - cy) + midX * (cy - ay) + bx * (ay - midY))
-    if (Math.abs(D) < 0.001) { s.arcR = 999; return }
-    const ux = ((ax * ax + ay * ay) * (midY - cy) + (midX * midX + cy * cy) * (cy - ay) + (bx * bx + by * by) * (ay - midY)) / D
-    const uy = ((ax * ax + ay * ay) * (cx - midX) + (midX * midX + cy * cy) * (ax - cx) + (bx * bx + by * by) * (midX - ax)) / D
-    // Hmm, let me use a simpler approach - circular arc with specified radius
-
-    // Simpler: use a circular arc centered below the midpoint
-    // Center at (midX, midY + R - bulge), radius = R
-    // The arc passes through (0,0) and (triBase, triH)
-    // Distance from center to (0,0): sqrt(midX² + (midY+R-bulge)²) = R
-    // midX² + (midY+R-bulge)² = R²
-    // midX² + midY² + 2*midY*(R-bulge) + (R-bulge)² = R²
-    // This is complex. Let me just use a quadratic bezier approximation for simulation.
-
-    // For simulation: parametrize arc as t ∈ [0,1]
-    // x = triBase * t, y = triH * t² (quadratic, starts steep then flattens)
-    // Actually that's a parabola, not an arc. But for the demo it works.
-    // The user said "向下凸" which means concave down from the path perspective.
-
-    // Let me use: y = triH * (t^p) where p < 1 makes it concave (starts steep)
-    // p = 0.5 gives y = triH * sqrt(t), which is concave
-    s.arcP = 0.5 // power for arc curve
-
-    // Arc length (numerical)
+    // 弧长（数值积分）
     let len = 0
     const steps = 200
     for (let i = 1; i <= steps; i++) {
