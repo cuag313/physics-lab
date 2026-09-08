@@ -26,17 +26,17 @@ const DT = 1 / 60
 const PRESETS = {
   single: {
     name: '单级火箭', stages: 1,
-    fuel: [95000], dryMass: [5000], vExhaust: [3200], burnTime: [180],
+    fuel: [15000], dryMass: [3000], vExhaust: [2800], burnTime: [80],
     hint: '⚠ 单级火箭无法抵达同步轨道（对比用）',
   },
   two: {
     name: '两级火箭', stages: 2,
-    fuel: [70000, 20000], dryMass: [4000, 1500], vExhaust: [3200, 3500], burnTime: [120, 90],
+    fuel: [12000, 6000], dryMass: [2500, 1200], vExhaust: [2800, 3200], burnTime: [50, 40],
     hint: '⭐ 推荐：可将卫星送入同步轨道',
   },
   three: {
     name: '三级火箭', stages: 3,
-    fuel: [55000, 25000, 8000], dryMass: [3500, 2000, 800], vExhaust: [3200, 3500, 4000], burnTime: [90, 60, 40],
+    fuel: [8000, 5000, 3000], dryMass: [2000, 1500, 800], vExhaust: [2800, 3200, 3500], burnTime: [35, 30, 25],
     hint: '🔷 拓展：更容易完成任务',
   },
 }
@@ -143,8 +143,12 @@ export default function RocketScene() {
       s.msg = `🚀 第${i + 1}级箭体分离脱落！`
     }
 
-    // 切换轨道视图
-    if (s.h > KARMAN && s.view === 'ascent') { s.view = 'orbit'; s.msg = '🛰 已离开大气层' }
+    // 切换轨道视图（延迟切换，让用户看清分离动画）
+    if (s.h > KARMAN && s.view === 'ascent' && s.fallen.length > 0 && s.time - s.fallen[s.fallen.length - 1].time > 3) {
+      s.view = 'orbit'; s.msg = '🛰 已离开大气层'
+    } else if (s.h > KARMAN * 3 && s.view === 'ascent') {
+      s.view = 'orbit'; s.msg = '🛰 已离开大气层'
+    }
 
     // 轨道角度
     if (s.view === 'orbit' && s.h > 1000) {
