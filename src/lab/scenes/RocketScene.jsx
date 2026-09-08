@@ -60,6 +60,8 @@ function initState(key) {
     orbitAngle: 0, orbitR: 0,
     missionResult: null,
     msg: '',
+    _successTime: 0,
+    _failTime: 0,
   }
 }
 
@@ -128,7 +130,11 @@ export default function RocketScene() {
 
     // 级间分离
     if (s.fuel[i] <= 0 && i < s.stages - 1) {
-      s.fallen.push({ stage: i, time: s.time, h: s.h, v: s.v, x: (Math.random() - 0.5) * 200, vx: (Math.random() - 0.5) * 30, alpha: 1 })
+      s.fallen.push({
+        stage: i, time: s.time, h: s.h, v: s.v,
+        vx: (Math.random() - 0.5) * 40,
+        alpha: 1, phase: 'falling',
+      })
       s.dry[i] = 0; s.cur++
       s.msg = `🚀 第${i + 1}级箭体分离脱落！`
     }
@@ -145,26 +151,45 @@ export default function RocketScene() {
     // 入轨判定
     if (s.h > 30000e3 && !s.missionResult) {
       if (Math.abs(s.h - GEO_ALT) / GEO_ALT < 0.15 && Math.abs(s.v - GEO_V) / GEO_V < 0.15) {
-        s.missionResult = 'success'; s.engineOn = false; setPhase('success')
-        s.msg = '🎉 卫星成功进入地球同步轨道！任务完成！'; setRunning(false)
+        s.missionResult = 'success'
+        s._successTime = s.time
+        s.msg = '🎉 卫星成功进入地球同步轨道！任务完成！'
+        // 不立即停止，让消息显示一段时间
       } else if (s.v > GEO_V * 1.5) {
-        s.missionResult = 'fail_escape'; setPhase('fail')
-        s.msg = '❌ 速度过大，卫星将逃离地球！'; setRunning(false)
+        s.missionResult = 'fail_escape'
+        s.msg = '❌ 速度过大，卫星将逃离地球！'
       }
     }
 
-    // 落回地面
+    // 燃料耗尽后判定失败
     const allEmpty = s.fuel.every(f => f <= 0)
     if (allEmpty && s.h <= 0 && s.time > 5 && !s.missionResult) {
-      s.missionResult = 'fail_gravity'; setPhase('fail')
-      s.msg = s.key === 'single' ? '❌ 单级火箭无法抵达同步轨道！这就是为什么需要多级火箭。' : '❌ 火箭落回地面，未能进入轨道。'
-      setRunning(false)
+      s.missionResult = 'fail_gravity'
+      s.msg = s.key === 'single'
+        ? '❌ 单级火箭无法抵达同步轨道！这就是为什么需要多级火箭。'
+        : '❌ 火箭落回地面，未能进入轨道。'
     }
 
-    // 掉落壳体
+    // 成功后继续运行几秒再停止
+    if (s.missionResult === 'success' && s.time > s._successTime + 3) {
+      setPhase('success'); setRunning(false)
+    }
+    if (s.missionResult && s.missionResult !== 'success' && !s._failTime) {
+      s._failTime = s.time
+    }
+    if (s._failTime && s.time > s._failTime + 2) {
+      setPhase('fail'); setRunning(false)
+    }
+
+    // 掉落壳体物理
     s.fallen.forEach(f => {
-      f.v -= gravityAt(f.h) * dt; f.h += f.v * dt; f.x += f.vx * dt; f.vx *= 0.995
-      f.alpha = Math.max(0, f.alpha - dt * 0.08)
+      f.v -= gravityAt(f.h) * dt
+      f.h += f.v * dt
+      f.x += f.vx * dt
+      f.vx *= 0.998
+      // 落地后停止运动，但保持可见
+      if (f.h <= 0) { f.h = 0; f.v = 0; f.vx *= 0.95 }
+      f.alpha = Math.max(0.1, f.alpha - dt * 0.03)
     })
 
     forceUpdate(n => n + 1)
@@ -249,12 +274,23 @@ export default function RocketScene() {
 
     // 掉落壳体
     s.fallen.forEach(f => {
-      if (f.alpha <= 0) return
+      if (f.alpha <= 0.05) return
       const fy = w2sY(Math.max(0, f.h))
+      const fx = rocketX + (f.x || 0) * sc
       if (fy < H && fy > 0) {
-        ctx.save(); ctx.globalAlpha = f.alpha
-        ctx.translate(rocketX + f.x * sc, fy); ctx.rotate((s.time - f.time) * 0.5)
-        ctx.fillStyle = '#888'; ctx.fillRect(-rw * 0.3, 0, rw * 0.6, rh * 0.4)
+        ctx.save()
+        ctx.globalAlpha = Math.max(0.15, f.alpha)
+        // 壳体（比火箭窄，灰白色）
+        ctx.translate(fx, fy)
+        ctx.rotate((s.time - f.time) * 0.3)
+        ctx.fillStyle = '#9e9e9e'
+        ctx.fillRect(-rw * 0.4, -rh * 0.2, rw * 0.8, rh * 0.5)
+        // 级号标签
+        ctx.fillStyle = '#fff'
+        ctx.font = 'bold 9px sans-serif'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(`${f.stage + 1}级`, 0, 0)
         ctx.restore()
       }
     })
@@ -307,10 +343,15 @@ export default function RocketScene() {
 
     // 掉落壳体
     s.fallen.forEach(f => {
-      if (f.alpha <= 0 || f.h <= 0) return
+      if (f.alpha <= 0.05) return
       const fr = (R_EARTH + Math.max(0, f.h)) * scale
       const fx = cx + fr * Math.cos(s.orbitAngle - 0.1), fy = cy + fr * Math.sin(s.orbitAngle - 0.1)
-      ctx.globalAlpha = f.alpha; ctx.fillStyle = '#888'; ctx.beginPath(); ctx.arc(fx, fy, 3, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1
+      ctx.globalAlpha = Math.max(0.15, f.alpha)
+      ctx.fillStyle = '#9e9e9e'
+      ctx.beginPath(); ctx.arc(fx, fy, 4, 0, Math.PI * 2); ctx.fill()
+      ctx.fillStyle = '#fff'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center'
+      ctx.fillText(`${f.stage + 1}级`, fx, fy - 6)
+      ctx.globalAlpha = 1
     })
 
     ctx.fillStyle = '#fff'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'
