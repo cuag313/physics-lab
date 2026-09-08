@@ -1,731 +1,538 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 
 /**
- * RocketScene — 运载火箭发射仿真（v4 教学版）
+ * RocketScene — 运载火箭发射仿真（v5 同步轨道版）
+ *
+ * 教学目标：把卫星送入地球同步轨道（高度35786km，速度3.07km/s）
  *
  * 物理模型：
- *   推力：F_thrust = (dm/dt) × v_exhaust
- *   阻力：F_drag = ½ρCdAv²
- *   运动：ma = F_thrust - mg - F_drag
- *   齐奥尔科夫斯基公式：Δv = vₑ × ln(m₀/m₁)
+ *   推力：F = (dm/dt) × vₑ
+ *   阻力：F_drag = ½ρCdAv²（仅大气层内）
+ *   重力：F_g = mg（随高度变化 g = GM/(R+h)²）
+ *   齐奥尔科夫斯基：Δv = vₑ × ln(m₀/m₁)
  *
- * 设计原则：通俗易懂，教学优先
+ * 两个视图：
+ *   1. 发射视图（侧面）：火箭竖直上升，大气层内
+ *   2. 轨道视图（俯视）：地球+同步轨道圆圈，火箭沿轨道飞行
  */
 
-// ─── 物理常量 ───
-const G = 9.8
-const RHO0 = 1.225        // 地面空气密度
-const H_SCALE = 8500       // 大气标高 (m)
-const CD = 0.35            // 阻力系数
-const A_REF = 1.13         // 参考面积 (m²)
-const DT = 1 / 60          // 仿真步长
+const G0 = 9.80665
+const GM_EARTH = 3.986e14      // m³/s²
+const R_EARTH = 6.371e6        // m
+const GEO_ALT = 35786e3        // 同步轨道高度 m
+const GEO_R = R_EARTH + GEO_ALT
+const GEO_V = 3074             // 同步轨道速度 m/s
+const KARMAN = 100e3            // 卡门线 100km
+const RHO0 = 1.225
+const H_SCALE = 8500
+const CD = 0.35
+const A_REF = 1.13
+const DT = 1 / 60
 
-// ─── 颜色 ───
-const C = {
-  bg: '#0a0e1a',
-  ground: '#2a3a2a',
-  panel: 'rgba(15,25,45,0.85)',
-  border: 'rgba(100,180,255,0.2)',
-  text: '#e0e8f0',
-  dim: '#7888a0',
-  accent: '#4a9eff',
-  warn: '#ffaa33',
-  danger: '#ff4444',
-  success: '#44ff88',
-  thrust: '#ff6622',
-  gravity: '#66aaff',
-  drag: '#ffcc44',
-}
-
-// ─── 预设方案 ───
+// 预设方案 — 调参使两级火箭可完成同步轨道
 const PRESETS = {
-  single: { name: '单级火箭', stages: 1, fuel: [8000], dryMass: [1500], vExhaust: [3200], burnTime: [120] },
-  two:    { name: '两级火箭', stages: 2, fuel: [6000, 2000], dryMass: [1200, 500], vExhaust: [3200, 3500], burnTime: [80, 60] },
-  three:  { name: '三级火箭', stages: 3, fuel: [5000, 2500, 800], dryMass: [1000, 600, 300], vExhaust: [3200, 3500, 3800], burnTime: [60, 45, 30] },
+  single: {
+    name: '单级火箭', stages: 1,
+    fuel: [95000], dryMass: [5000], vExhaust: [3200], burnTime: [180],
+    hint: '⚠ 单级火箭受火箭方程限制，无法抵达同步轨道（对比用）',
+  },
+  two: {
+    name: '两级火箭', stages: 2,
+    fuel: [70000, 20000], dryMass: [4000, 1500], vExhaust: [3200, 3500], burnTime: [120, 90],
+    hint: '⭐ 推荐：两级火箭可将卫星送入同步轨道',
+  },
+  three: {
+    name: '三级火箭', stages: 3,
+    fuel: [55000, 25000, 8000], dryMass: [3500, 2000, 800], vExhaust: [3200, 3500, 4000], burnTime: [90, 60, 40],
+    hint: '🔷 拓展：三级火箭更容易完成任务',
+  },
 }
 
-// ─── 物理工具 ───
-function airDensity(h) { return RHO0 * Math.exp(-h / H_SCALE) }
-function dragForce(v, h) { return 0.5 * airDensity(h) * CD * A_REF * v * v * Math.sign(v) }
-
-// ─── 齐奥尔科夫斯基公式计算 ───
-function calcDeltaV(vExhaust, m0, m1) {
-  if (m1 <= 0 || m0 <= m1) return 0
-  return vExhaust * Math.log(m0 / m1)
-}
+function airDensity(h) { return h > 80000 ? 0 : RHO0 * Math.exp(-h / H_SCALE) }
+function gravityAt(h) { return GM_EARTH / Math.pow(R_EARTH + h, 2) }
+function totalMass(s) { let m = 0; for (let i = 0; i < s.stages; i++) m += s.dry[i] + s.fuel[i]; return m }
+function calcDv(vEx, m0, m1) { return (m1 > 0 && m0 > m1) ? vEx * Math.log(m0 / m1) : 0 }
 
 export default function RocketScene() {
   const canvasRef = useRef(null)
-  const stateRef = useRef(null)
+  const S = useRef(null)
   const animRef = useRef(null)
   const [preset, setPreset] = useState('two')
   const [running, setRunning] = useState(false)
-  const [phase, setPhase] = useState('idle')  // idle | launching | coasting | done
+  const [phase, setPhase] = useState('idle') // idle | ascent | orbit | success | fail
   const [data, setData] = useState(null)
+  const [message, setMessage] = useState('')
 
-  // 初始化仿真状态
-  const initState = useCallback((presetKey) => {
-    const p = PRESETS[presetKey]
-    const stageFuel = [...p.fuel]
-    const stageDry = [...p.dryMass]
-    const stageVEx = [...p.vExhaust]
-    const stageBurn = [...p.burnTime]
-    const totalDry = stageDry.reduce((a, b) => a + b, 0)
-    const totalFuel = stageFuel.reduce((a, b) => a + b, 0)
-
+  // 初始化
+  const init = useCallback((key) => {
+    const p = PRESETS[key]
     return {
-      preset: p,
-      stages: p.stages,
-      stageFuel,        // 各级剩余燃料 (kg)
-      stageDry,         // 各级干重 (kg)
-      stageVEx,         // 各级排气速度 (m/s)
-      stageBurn,        // 各级燃烧时间 (s)
-      currentStage: 0,  // 当前级（0-indexed）
-      h: 0,             // 高度 (m)
-      v: 0,             // 速度 (m/s)
-      a: 0,             // 加速度 (m/s²)
-      time: 0,          // 飞行时间 (s)
-      totalDry,
-      totalFuel,
-      fuelBurned: 0,
-      thrust: 0,
-      gravity: 0,
-      drag: 0,
-      peakAlt: 0,
-      peakV: 0,
-      trail: [],        // 轨迹点 [{t, h, v}]
-      separated: [],    // 已分离级 [{stage, time, h}]
-      launched: false,
-      engineOn: true,
+      p, key, stages: p.stages,
+      fuel: [...p.fuel], dry: [...p.dry], vEx: [...p.vEx], burn: [...p.burn],
+      cur: 0, h: 0, v: 0, a: 0, time: 0,
+      thrust: 0, grav: 0, drag: 0, fuelUsed: 0,
+      peakH: 0, peakV: 0, gravityLoss: 0,
+      trail: [], fallen: [], // fallen = 已分离壳体
+      launched: false, engineOn: true,
+      view: 'ascent', // ascent | orbit
+      orbitAngle: 0, // 轨道视图中的角度
+      orbitR: 0,     // 当前轨道半径
+      missionResult: null, // 'success' | 'fail_gravity' | 'fail_escape'
     }
   }, [])
 
-  // 重置
   const reset = useCallback(() => {
-    const s = initState(preset)
-    stateRef.current = s
-    setPhase('idle')
-    setRunning(false)
-    setData(null)
-  }, [preset, initState])
+    S.current = init(preset); setPhase('idle'); setRunning(false); setData(null); setMessage('')
+  }, [preset, init])
 
-  // 发射
   const launch = useCallback(() => {
-    const s = stateRef.current
-    if (!s || s.launched) return
-    s.launched = true
-    setRunning(true)
-    setPhase('launching')
+    const s = S.current; if (!s || s.launched) return
+    s.launched = true; setRunning(true); setPhase('ascent'); setMessage('')
   }, [])
 
   // 物理步进
   const step = useCallback(() => {
-    const s = stateRef.current
-    if (!s || !s.launched) return
-
+    const s = S.current; if (!s || !s.launched) return
     const dt = DT
-    const stage = s.currentStage
 
-    // 当前级燃料
-    let fuel = s.stageFuel[stage]
-    let dryMass = 0
-    for (let i = stage; i < s.stages; i++) dryMass += s.stageDry[i]
-    let fuelMass = 0
-    for (let i = stage; i < s.stages; i++) fuelMass += s.stageFuel[i]
-    const m = dryMass + fuelMass
+    // 当前级参数
+    const i = s.cur
+    let m = totalMass(s)
+    let thrust = 0, massFlow = 0
 
-    // 推力计算
-    let thrust = 0
-    let massFlow = 0
-    if (fuel > 0 && s.engineOn) {
-      const burnTime = s.stageBurn[stage]
-      massFlow = s.stageFuel[stage] / burnTime  // kg/s
-      thrust = massFlow * s.stageVEx[stage]
-      // 消耗燃料
-      const fuelUsed = Math.min(massFlow * dt, fuel)
-      s.stageFuel[stage] -= fuelUsed
-      s.fuelBurned += fuelUsed
-      fuel = s.stageFuel[stage]
+    if (s.fuel[i] > 0 && s.engineOn) {
+      massFlow = s.fuel[i] / s.burn[i]
+      thrust = massFlow * s.vEx[i]
+      const used = Math.min(massFlow * dt, s.fuel[i])
+      s.fuel[i] -= used; s.fuelUsed += used
     }
 
     // 外力
-    const grav = m * G
-    const drag = h => dragForce(s.v, h)
-    const F_drag = drag(s.h)
+    const g = gravityAt(s.h)
+    const grav = m * g
+    const rho = airDensity(s.h)
+    const drag = 0.5 * rho * CD * A_REF * s.v * Math.abs(s.v) * Math.sign(s.v || 1)
 
-    // 合力与加速度
-    const F_net = thrust - grav - F_drag
-    s.a = F_net / m
-    s.thrust = thrust
-    s.gravity = grav
-    s.drag = F_drag
+    // 重力损失累积
+    s.gravityLoss += grav * dt / m
+
+    // 合力
+    const Fnet = thrust - grav - (s.h < 80000 ? drag : 0)
+    s.a = Fnet / m; s.thrust = thrust; s.grav = grav; s.drag = drag
 
     // 运动学
-    s.v += s.a * dt
-    s.h += s.v * dt
-    s.time += dt
-
-    // 防止穿过地面
-    if (s.h < 0) { s.h = 0; s.v = 0 }
-
-    // 记录峰值
-    if (s.h > s.peakAlt) s.peakAlt = s.h
+    s.v += s.a * dt; s.h += s.v * dt; s.time += dt
+    if (s.h < 0) { s.h = 0; s.v = Math.max(0, s.v) }
+    if (s.h > s.peakH) s.peakH = s.h
     if (s.v > s.peakV) s.peakV = s.v
 
-    // 轨迹采样（每0.5秒一个点）
-    const last = s.trail[s.trail.length - 1]
-    if (!last || s.time - last.t > 0.5) {
+    // 轨迹
+    if (s.trail.length === 0 || s.time - s.trail[s.trail.length - 1].t > 0.3)
       s.trail.push({ t: s.time, h: s.h, v: s.v })
+
+    // 级间分离 — 壳体变为独立掉落物体
+    if (s.fuel[i] <= 0 && i < s.stages - 1) {
+      const shellMass = s.dry[i]
+      s.fallen.push({
+        stage: i, time: s.time, h: s.h, v: s.v,
+        x: (Math.random() - 0.5) * 200, // 侧向偏移
+        vx: (Math.random() - 0.5) * 30,
+        mass: shellMass, alpha: 1,
+      })
+      s.dry[i] = 0 // 从火箭总质量中移除
+      s.cur++
+      setMessage(`🚀 第${i + 1}级箭体分离脱落！`)
     }
 
-    // 级间分离
-    if (fuel <= 0 && stage < s.stages - 1) {
-      s.separated.push({ stage, time: s.time, h: s.h })
-      s.currentStage++
+    // 切换到轨道视图
+    if (s.h > KARMAN && s.view === 'ascent') {
+      s.view = 'orbit'
+      setMessage('🛰 已离开大气层，进入轨道飞行阶段')
     }
 
-    // 发射结束条件：所有燃料用完且速度≤0且不在地面
-    const allEmpty = s.stageFuel.every(f => f <= 0)
-    if (allEmpty && s.v <= 0 && s.h > 0) {
-      // 继续受重力下落
+    // 轨道视图中的角度更新
+    if (s.view === 'orbit') {
+      s.orbitR = R_EARTH + s.h
+      if (s.h > 1000) {
+        const orbitalV = s.v > 100 ? s.v : 100
+        s.orbitAngle += (orbitalV / s.orbitR) * dt
+      }
     }
-    if (allEmpty && s.h <= 0 && s.time > 1) {
-      setPhase('done')
+
+    // 入轨判定（高度>30000km时检测）
+    if (s.h > 30000e3 && !s.missionResult) {
+      const altOk = Math.abs(s.h - GEO_ALT) / GEO_ALT < 0.15
+      const velOk = Math.abs(s.v - GEO_V) / GEO_V < 0.15
+      if (altOk && velOk) {
+        s.missionResult = 'success'
+        s.engineOn = false
+        setPhase('success')
+        setMessage('🎉 卫星成功进入地球同步轨道！任务完成！')
+        setRunning(false)
+      } else if (s.v > GEO_V * 1.5) {
+        s.missionResult = 'fail_escape'
+        setPhase('fail')
+        setMessage('❌ 速度过大，卫星将逃离地球引力！')
+        setRunning(false)
+      }
+    }
+
+    // 燃料耗尽后检查失败
+    const allEmpty = s.fuel.every(f => f <= 0)
+    if (allEmpty && s.h > KARMAN && !s.missionResult) {
+      if (s.h < 30000e3 && s.v < GEO_V * 0.5) {
+        // 还在上升中，等回落再判定
+      }
+    }
+    if (allEmpty && s.h <= 0 && s.time > 5 && !s.missionResult) {
+      s.missionResult = 'fail_gravity'
+      setPhase('fail')
+      setMessage(s.key === 'single'
+        ? '❌ 单级火箭无法抵达同步轨道！这就是为什么需要多级火箭。'
+        : '❌ 火箭落回地面，未能进入轨道。')
       setRunning(false)
     }
 
-    // 更新UI数据
+    // 掉落壳体物理
+    s.fallen.forEach(f => {
+      f.v -= gravityAt(f.h) * dt
+      f.h += f.v * dt
+      f.x += f.vx * dt
+      f.vx *= 0.995
+      f.alpha = Math.max(0, f.alpha - dt * 0.08)
+    })
+
     setData({
-      time: s.time,
-      h: s.h,
-      v: s.v,
-      a: s.a,
-      m: m,
-      thrust: s.thrust,
-      gravity: s.gravity,
-      drag: s.drag,
-      stage: s.currentStage,
-      fuel: s.stageFuel.reduce((a, b) => a + b, 0),
-      fuelBurned: s.fuelBurned,
-      peakAlt: s.peakAlt,
-      peakV: s.peakV,
-      engineOn: s.engineOn,
-      separated: s.separated,
+      time: s.time, h: s.h, v: s.v, a: s.a, m,
+      thrust: s.thrust, grav: s.grav, drag: s.drag,
+      stage: s.cur, stages: s.stages,
+      fuel: s.fuel.reduce((a, b) => a + b, 0),
+      fuelUsed: s.fuelUsed,
+      peakH: s.peakH, peakV: s.peakV,
+      gravityLoss: s.gravityLoss,
+      fallen: s.fallen, view: s.view,
+      missionResult: s.missionResult,
+      orbitAngle: s.orbitAngle,
     })
   }, [])
 
   // ─── 渲染 ───
   const draw = useCallback(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
+    const canvas = canvasRef.current; if (!canvas) return
     const ctx = canvas.getContext('2d')
-    const W = canvas.width
-    const H = canvas.height
-    const s = stateRef.current
-    if (!s) return
+    const W = canvas.width, H = canvas.height
+    const s = S.current; if (!s) return
 
-    // 清屏
-    ctx.fillStyle = C.bg
-    ctx.fillRect(0, 0, W, H)
+    ctx.clearRect(0, 0, W, H)
 
-    // 坐标系：世界坐标 → 屏幕坐标
-    const margin = { top: 60, bottom: 80, left: 60, right: 200 }
+    if (s.view === 'ascent') drawAscent(ctx, W, H, s)
+    else drawOrbit(ctx, W, H, s)
+
+    drawInfoPanel(ctx, W, H, s)
+    drawMessage(ctx, W, H)
+  }, [phase])
+
+  // ========== 发射视图（侧面） ==========
+  function drawAscent(ctx, W, H, s) {
+    const margin = { top: 50, bottom: 60, left: 50, right: 180 }
     const plotW = W - margin.left - margin.right
     const plotH = H - margin.top - margin.bottom
+    const maxH = Math.max(5000, s.peakH * 1.3, s.h * 1.5)
 
-    // 动态高度范围
-    const maxH = Math.max(2000, s.peakAlt * 1.3, s.h * 1.5)
-    const worldToScreen = (worldY) => margin.top + plotH - (worldY / maxH) * plotH
-    const worldToScreenX = (worldX) => margin.left + (worldX / 100) * plotW
+    const w2sY = (wy) => margin.top + plotH - (wy / maxH) * plotH
+    const rocketX = margin.left + plotW * 0.5
 
-    // ─── 天空渐变 ───
+    // 天空渐变
     const grad = ctx.createLinearGradient(0, 0, 0, H)
-    grad.addColorStop(0, '#000510')
-    grad.addColorStop(0.3, '#0a1628')
-    grad.addColorStop(0.7, '#1a2a48')
-    grad.addColorStop(1, '#2a3a5a')
-    ctx.fillStyle = grad
-    ctx.fillRect(0, 0, W, H)
+    grad.addColorStop(0, '#000510'); grad.addColorStop(0.3, '#0a1628')
+    grad.addColorStop(0.7, '#1a2a48'); grad.addColorStop(1, '#2a3a5a')
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H)
 
-    // ─── 星星 ───
-    ctx.fillStyle = '#ffffff'
+    // 星星
+    ctx.fillStyle = '#fff'
     for (let i = 0; i < 80; i++) {
-      const sx = (i * 137.508 + 23) % W
-      const sy = (i * 97.31 + 11) % (H * 0.6)
-      const sr = (i % 3 === 0) ? 1.5 : 0.8
       ctx.globalAlpha = 0.3 + (i % 5) * 0.12
-      ctx.beginPath()
-      ctx.arc(sx, sy, sr, 0, Math.PI * 2)
-      ctx.fill()
+      ctx.beginPath(); ctx.arc((i * 137.508 + 23) % W, (i * 97.31 + 11) % (H * 0.6), i % 3 === 0 ? 1.5 : 0.8, 0, Math.PI * 2); ctx.fill()
     }
     ctx.globalAlpha = 1
 
-    // ─── 地面 ───
-    const groundY = worldToScreen(0)
-    const groundGrad = ctx.createLinearGradient(0, groundY, 0, groundY + 40)
-    groundGrad.addColorStop(0, '#3a5a3a')
-    groundGrad.addColorStop(1, '#1a2a1a')
-    ctx.fillStyle = groundGrad
-    ctx.fillRect(0, groundY, W, H - groundY)
+    // 大气层指示
+    const karmanY = w2sY(KARMAN)
+    if (karmanY > margin.top) {
+      ctx.strokeStyle = 'rgba(100,180,255,0.2)'; ctx.lineWidth = 1; ctx.setLineDash([6, 4])
+      ctx.beginPath(); ctx.moveTo(margin.left, karmanY); ctx.lineTo(W - margin.right, karmanY); ctx.stroke(); ctx.setLineDash([])
+      ctx.fillStyle = 'rgba(100,180,255,0.4)'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'
+      ctx.fillText('卡门线 100km', margin.left + 4, karmanY - 4)
+    }
 
-    // 地面线
-    ctx.strokeStyle = '#5a8a5a'
-    ctx.lineWidth = 2
-    ctx.beginPath()
-    ctx.moveTo(0, groundY)
-    ctx.lineTo(W, groundY)
-    ctx.stroke()
+    // 地面
+    const groundY = w2sY(0)
+    const gGrad = ctx.createLinearGradient(0, groundY, 0, groundY + 40)
+    gGrad.addColorStop(0, '#3a5a3a'); gGrad.addColorStop(1, '#1a2a1a')
+    ctx.fillStyle = gGrad; ctx.fillRect(0, groundY, W, H - groundY)
+    ctx.strokeStyle = '#5a8a5a'; ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(0, groundY); ctx.lineTo(W, groundY); ctx.stroke()
 
-    // ─── 高度网格线 ───
-    ctx.strokeStyle = 'rgba(100,180,255,0.08)'
-    ctx.lineWidth = 1
-    ctx.setLineDash([4, 6])
+    // 高度网格
+    ctx.strokeStyle = 'rgba(100,180,255,0.08)'; ctx.lineWidth = 1; ctx.setLineDash([4, 6])
     const gridStep = maxH > 20000 ? 5000 : maxH > 5000 ? 1000 : 500
     for (let alt = gridStep; alt < maxH; alt += gridStep) {
-      const gy = worldToScreen(alt)
-      ctx.beginPath()
-      ctx.moveTo(margin.left, gy)
-      ctx.lineTo(W - margin.right, gy)
-      ctx.stroke()
-      // 标注
-      ctx.fillStyle = C.dim
-      ctx.font = '11px monospace'
-      ctx.textAlign = 'right'
-      ctx.fillText(`${(alt / 1000).toFixed(1)}km`, margin.left - 8, gy + 4)
+      const gy = w2sY(alt)
+      ctx.beginPath(); ctx.moveTo(margin.left, gy); ctx.lineTo(W - margin.right, gy); ctx.stroke()
+      ctx.fillStyle = '#7888a0'; ctx.font = '11px monospace'; ctx.textAlign = 'right'
+      ctx.fillText(`${(alt / 1000).toFixed(0)}km`, margin.left - 6, gy + 4)
     }
     ctx.setLineDash([])
 
-    // ─── 轨迹线 ───
+    // 轨迹
     if (s.trail.length > 1) {
-      ctx.lineWidth = 2
-      ctx.lineCap = 'round'
+      ctx.lineWidth = 2; ctx.lineCap = 'round'
       for (let i = 1; i < s.trail.length; i++) {
-        const t0 = s.trail[i - 1], t1 = s.trail[i]
-        const y0 = worldToScreen(t0.h), y1 = worldToScreen(t1.h)
-        const spd = t1.v / Math.max(1, s.peakV)
-        const r = Math.floor(40 + spd * 180)
-        const g = Math.floor(120 + (1 - spd) * 100)
-        ctx.strokeStyle = `rgba(${r},${g},255,0.5)`
-        ctx.beginPath()
-        ctx.moveTo(margin.left + plotW * 0.5, y0)
-        ctx.lineTo(margin.left + plotW * 0.5, y1)
-        ctx.stroke()
+        const y0 = w2sY(s.trail[i - 1].h), y1 = w2sY(s.trail[i].h)
+        const spd = s.trail[i].v / Math.max(1, s.peakV)
+        ctx.strokeStyle = `rgba(${Math.floor(40 + spd * 180)},${Math.floor(120 + (1 - spd) * 100)},255,0.5)`
+        ctx.beginPath(); ctx.moveTo(rocketX, y0); ctx.lineTo(rocketX, y1); ctx.stroke()
       }
     }
 
-    // ─── 火箭绘制 ───
-    if (s.h >= 0) {
-      const rocketX = margin.left + plotW * 0.5
-      const rocketY = worldToScreen(s.h)
-      const rocketScale = Math.max(0.4, Math.min(1, 400 / maxH * 2))
-      const rh = 60 * rocketScale  // 火箭高度
-      const rw = 16 * rocketScale  // 火箭宽度
+    // 火箭
+    const rocketY = w2sY(s.h)
+    const sc = Math.max(0.5, Math.min(1, 400 / maxH * 2))
+    const rh = 60 * sc, rw = 16 * sc
+    drawRocket(ctx, rocketX, rocketY, rw, rh, s)
 
-      ctx.save()
-      ctx.translate(rocketX, rocketY)
-
-      // 火箭主体（从底向上画）
-      const bodyTop = -rh
-      const bodyBot = 0
-
-      // 整流罩（尖头）
-      ctx.fillStyle = '#ddd'
-      ctx.beginPath()
-      ctx.moveTo(0, bodyTop - rh * 0.3)
-      ctx.lineTo(-rw * 0.5, bodyTop)
-      ctx.lineTo(rw * 0.5, bodyTop)
-      ctx.closePath()
-      ctx.fill()
-
-      // 主体
-      const stageColors = ['#e8e8e8', '#d0d0d0', '#b8b8b8']
-      let yOff = bodyTop
-      const stageH = (bodyBot - bodyTop) / s.stages
-      for (let i = 0; i < s.stages; i++) {
-        const isCurrent = i === s.currentStage
-        const isSeparated = s.separated.some(se => se.stage === i)
-        if (isSeparated) continue
-
-        ctx.fillStyle = isCurrent ? '#f0f0f0' : stageColors[i]
-        ctx.fillRect(-rw * 0.5, yOff, rw, stageH)
-
-        // 级间分隔线
-        if (i > 0 && !isSeparated) {
-          ctx.strokeStyle = '#666'
-          ctx.lineWidth = 1
-          ctx.beginPath()
-          ctx.moveTo(-rw * 0.5, yOff)
-          ctx.lineTo(rw * 0.5, yOff)
-          ctx.stroke()
-        }
-
-        // 燃料指示条
-        if (isCurrent && s.stageFuel[i] > 0) {
-          const fuelRatio = s.stageFuel[i] / s.preset.fuel[i]
-          const barH = stageH * 0.8
-          ctx.fillStyle = 'rgba(255,100,30,0.3)'
-          ctx.fillRect(-rw * 0.4, yOff + stageH * 0.1, rw * 0.8, barH)
-          ctx.fillStyle = fuelRatio > 0.3 ? '#ff8844' : '#ff4444'
-          ctx.fillRect(-rw * 0.4, yOff + stageH * 0.1 + barH * (1 - fuelRatio), rw * 0.8, barH * fuelRatio)
-        }
-
-        yOff += stageH
+    // 掉落壳体
+    s.fallen.forEach(f => {
+      if (f.alpha <= 0) return
+      const fy = w2sY(Math.max(0, f.h))
+      const fx = rocketX + f.x * sc
+      if (fy < H && fy > 0) {
+        ctx.save(); ctx.globalAlpha = f.alpha
+        ctx.translate(fx, fy); ctx.rotate((s.time - f.time) * 0.5)
+        ctx.fillStyle = '#888'; ctx.fillRect(-rw * 0.3, 0, rw * 0.6, rh * 0.4)
+        ctx.restore()
       }
+    })
+  }
 
-      // 尾翼
-      ctx.fillStyle = '#aaa'
-      ctx.beginPath()
-      ctx.moveTo(-rw * 0.5, bodyBot)
-      ctx.lineTo(-rw * 1.2, bodyBot + rh * 0.15)
-      ctx.lineTo(-rw * 0.5, bodyBot - rh * 0.1)
-      ctx.closePath()
-      ctx.fill()
-      ctx.beginPath()
-      ctx.moveTo(rw * 0.5, bodyBot)
-      ctx.lineTo(rw * 1.2, bodyBot + rh * 0.15)
-      ctx.lineTo(rw * 0.5, bodyBot - rh * 0.1)
-      ctx.closePath()
-      ctx.fill()
+  // ========== 轨道视图（俯视） ==========
+  function drawOrbit(ctx, W, H, s) {
+    const cx = W * 0.42, cy = H * 0.48
 
-      // ─── 推力火焰 ───
-      if (s.thrust > 0 && s.engineOn) {
-        const flameH = rh * (0.5 + Math.random() * 0.3)
-        const flameW = rw * 0.6
+    // 深空背景
+    ctx.fillStyle = '#000510'; ctx.fillRect(0, 0, W, H)
+    ctx.fillStyle = '#fff'
+    for (let i = 0; i < 120; i++) {
+      ctx.globalAlpha = 0.2 + (i % 5) * 0.1
+      ctx.beginPath(); ctx.arc((i * 137.508 + 23) % W, (i * 97.31 + 11) % H, i % 3 === 0 ? 1.5 : 0.8, 0, Math.PI * 2); ctx.fill()
+    }
+    ctx.globalAlpha = 1
 
-        // 外焰
-        const outerGrad = ctx.createRadialGradient(0, bodyBot, 0, 0, bodyBot + flameH * 0.5, flameH)
-        outerGrad.addColorStop(0, 'rgba(255,200,50,0.9)')
-        outerGrad.addColorStop(0.4, 'rgba(255,100,20,0.7)')
-        outerGrad.addColorStop(1, 'rgba(255,50,10,0)')
-        ctx.fillStyle = outerGrad
-        ctx.beginPath()
-        ctx.moveTo(-flameW, bodyBot)
-        ctx.quadraticCurveTo(-flameW * 0.3, bodyBot + flameH * 0.6, 0, bodyBot + flameH)
-        ctx.quadraticCurveTo(flameW * 0.3, bodyBot + flameH * 0.6, flameW, bodyBot)
-        ctx.closePath()
-        ctx.fill()
+    // 缩放：让同步轨道在画面内
+    const maxDisplayR = GEO_R * 1.3
+    const scale = Math.min(cx - 40, cy - 40) / maxDisplayR
 
-        // 内焰（白色核心）
-        ctx.fillStyle = 'rgba(255,255,230,0.8)'
-        ctx.beginPath()
-        ctx.moveTo(-flameW * 0.3, bodyBot)
-        ctx.quadraticCurveTo(0, bodyBot + flameH * 0.4, 0, bodyBot + flameH * 0.5)
-        ctx.quadraticCurveTo(0, bodyBot + flameH * 0.4, flameW * 0.3, bodyBot)
-        ctx.closePath()
-        ctx.fill()
+    // 地球
+    const earthR = R_EARTH * scale
+    const earthGrad = ctx.createRadialGradient(cx - earthR * 0.2, cy - earthR * 0.2, earthR * 0.1, cx, cy, earthR)
+    earthGrad.addColorStop(0, '#4488cc'); earthGrad.addColorStop(0.5, '#2266aa'); earthGrad.addColorStop(1, '#113366')
+    ctx.fillStyle = earthGrad; ctx.beginPath(); ctx.arc(cx, cy, earthR, 0, Math.PI * 2); ctx.fill()
 
-        // 尾烟粒子
-        ctx.fillStyle = 'rgba(200,200,200,0.15)'
-        for (let i = 0; i < 8; i++) {
-          const px = (Math.random() - 0.5) * flameW * 2
-          const py = bodyBot + flameH + Math.random() * 40 * rocketScale
-          const pr = 3 + Math.random() * 6
-          ctx.beginPath()
-          ctx.arc(px, py, pr, 0, Math.PI * 2)
-          ctx.fill()
-        }
-      }
+    // 大气层
+    ctx.strokeStyle = 'rgba(100,180,255,0.15)'; ctx.lineWidth = KARMAN * scale
+    ctx.beginPath(); ctx.arc(cx, cy, earthR + KARMAN * scale * 0.5, 0, Math.PI * 2); ctx.stroke()
 
-      // 已分离级（向下飘）
-      for (const sep of s.separated) {
-        const elapsed = s.time - sep.time
-        const sepY = worldToScreen(sep.h - elapsed * 50) // 向下飘
-        if (sepY > groundY && sepY < H) {
-          ctx.save()
-          ctx.globalAlpha = Math.max(0, 1 - elapsed * 0.1)
-          ctx.translate(rocketX + 60 + elapsed * 20, sepY)
-          ctx.rotate(elapsed * 0.5)
-          ctx.fillStyle = '#888'
-          ctx.fillRect(-rw * 0.3, 0, rw * 0.6, stageH * 0.8)
-          ctx.restore()
-        }
-      }
+    // 同步轨道虚线圆
+    const geoR = GEO_R * scale
+    ctx.strokeStyle = 'rgba(76,175,80,0.5)'; ctx.lineWidth = 2; ctx.setLineDash([8, 6])
+    ctx.beginPath(); ctx.arc(cx, cy, geoR, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([])
+    ctx.fillStyle = '#4CAF50'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'
+    ctx.fillText('同步轨道 35786km', cx, cy - geoR - 8)
 
-      ctx.restore()
+    // 当前轨道圆（如果在轨道上）
+    if (s.h > KARMAN) {
+      const curR = (R_EARTH + s.h) * scale
+      ctx.strokeStyle = 'rgba(79,195,247,0.4)'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4])
+      ctx.beginPath(); ctx.arc(cx, cy, curR, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([])
+
+      // 火箭位置
+      const rx = cx + curR * Math.cos(s.orbitAngle)
+      const ry = cy + curR * Math.sin(s.orbitAngle)
+      ctx.fillStyle = '#FF9800'; ctx.beginPath(); ctx.arc(rx, ry, 6, 0, Math.PI * 2); ctx.fill()
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'
+      ctx.fillText('🚀', rx, ry - 10)
+
+      // 轨迹弧
+      ctx.strokeStyle = 'rgba(255,152,0,0.3)'; ctx.lineWidth = 2
+      ctx.beginPath(); ctx.arc(cx, cy, curR, s.orbitAngle - 0.5, s.orbitAngle); ctx.stroke()
     }
 
-    // ─── 力的箭头（右侧） ───
-    if (s.h > 0 || s.launched) {
-      const arrowX = W - 120
-      const arrowBase = H * 0.5
-      const arrowScale = 0.03
+    // 掉落壳体
+    s.fallen.forEach(f => {
+      if (f.alpha <= 0 || f.h <= 0) return
+      const fr = (R_EARTH + Math.max(0, f.h)) * scale
+      const fx = cx + fr * Math.cos(s.orbitAngle - 0.1)
+      const fy = cy + fr * Math.sin(s.orbitAngle - 0.1)
+      ctx.globalAlpha = f.alpha; ctx.fillStyle = '#888'
+      ctx.beginPath(); ctx.arc(fx, fy, 3, 0, Math.PI * 2); ctx.fill()
+      ctx.globalAlpha = 1
+    })
 
-      // 推力（向上，橙色）
-      if (s.thrust > 0) {
-        const len = Math.min(120, s.thrust * arrowScale)
-        drawArrow(ctx, arrowX, arrowBase, 0, -len, C.thrust, `推力 ${(s.thrust / 1000).toFixed(1)}kN`, 3)
+    // 地球标签
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'
+    ctx.fillText('🌍 地球', cx, cy + earthR + 20)
+  }
+
+  // ========== 火箭绘制 ==========
+  function drawRocket(ctx, x, y, rw, rh, s) {
+    ctx.save(); ctx.translate(x, y)
+
+    // 整流罩
+    ctx.fillStyle = '#ddd'
+    ctx.beginPath(); ctx.moveTo(0, -rh * 1.3); ctx.lineTo(-rw * 0.5, -rh); ctx.lineTo(rw * 0.5, -rh); ctx.closePath(); ctx.fill()
+
+    // 各级箭体
+    let yOff = -rh
+    const stageH = rh / s.stages
+    for (let i = 0; i < s.stages; i++) {
+      if (s.dry[i] <= 0) continue // 已分离
+      const isCur = i === s.cur
+      ctx.fillStyle = isCur ? '#f0f0f0' : ['#e0e0e0', '#d0d0d0', '#c0c0c0'][i]
+      ctx.fillRect(-rw * 0.5, yOff, rw, stageH)
+      if (i > 0) { ctx.strokeStyle = '#666'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(-rw * 0.5, yOff); ctx.lineTo(rw * 0.5, yOff); ctx.stroke() }
+      // 燃料条
+      if (isCur && s.fuel[i] > 0) {
+        const ratio = s.fuel[i] / s.p.fuel[i]
+        const barH = stageH * 0.8
+        ctx.fillStyle = 'rgba(255,100,30,0.3)'; ctx.fillRect(-rw * 0.4, yOff + stageH * 0.1, rw * 0.8, barH)
+        ctx.fillStyle = ratio > 0.3 ? '#ff8844' : '#ff4444'
+        ctx.fillRect(-rw * 0.4, yOff + stageH * 0.1 + barH * (1 - ratio), rw * 0.8, barH * ratio)
       }
-
-      // 重力（向下，蓝色）
-      const gLen = Math.min(80, s.gravity * arrowScale)
-      drawArrow(ctx, arrowX, arrowBase, 0, gLen, C.gravity, `重力 ${(s.gravity / 1000).toFixed(1)}kN`, 3)
-
-      // 阻力（向下/向上取决于方向，黄色）
-      if (Math.abs(s.drag) > 10) {
-        const dLen = Math.min(60, Math.abs(s.drag) * arrowScale)
-        const dDir = s.drag > 0 ? -1 : 1
-        drawArrow(ctx, arrowX + 40, arrowBase, 0, dDir * dLen, C.drag, `阻力 ${(Math.abs(s.drag) / 1000).toFixed(2)}kN`, 2)
-      }
+      yOff += stageH
     }
 
-    // ─── 左侧数据面板 ───
-    drawPanel(ctx, 10, 10, 180, 280, s)
+    // 尾翼
+    ctx.fillStyle = '#aaa'
+    ctx.beginPath(); ctx.moveTo(-rw * 0.5, 0); ctx.lineTo(-rw * 1.2, rh * 0.15); ctx.lineTo(-rw * 0.5, -rh * 0.1); ctx.closePath(); ctx.fill()
+    ctx.beginPath(); ctx.moveTo(rw * 0.5, 0); ctx.lineTo(rw * 1.2, rh * 0.15); ctx.lineTo(rw * 0.5, -rh * 0.1); ctx.closePath(); ctx.fill()
 
-    // ─── 右侧齐奥尔科夫斯基公式 ───
-    drawFormulaPanel(ctx, W - 185, 10, 175, 140, s)
-
-    // ─── 底部提示 ───
-    ctx.fillStyle = C.dim
-    ctx.font = '12px sans-serif'
-    ctx.textAlign = 'center'
-    if (phase === 'idle') {
-      ctx.fillText('点击 [发射] 开始仿真', W / 2, H - 20)
-    } else if (phase === 'done') {
-      ctx.fillStyle = C.success
-      ctx.fillText(`发射完成 — 最大高度 ${(s.peakAlt / 1000).toFixed(1)}km · 最大速度 ${s.peakV.toFixed(0)}m/s`, W / 2, H - 20)
+    // 推力火焰
+    if (s.thrust > 0 && s.engineOn) {
+      const fh = rh * (0.5 + Math.random() * 0.3), fw = rw * 0.6
+      const fg = ctx.createRadialGradient(0, 0, 0, 0, fh * 0.5, fh)
+      fg.addColorStop(0, 'rgba(255,200,50,0.9)'); fg.addColorStop(0.4, 'rgba(255,100,20,0.7)'); fg.addColorStop(1, 'rgba(255,50,10,0)')
+      ctx.fillStyle = fg
+      ctx.beginPath(); ctx.moveTo(-fw, 0); ctx.quadraticCurveTo(-fw * 0.3, fh * 0.6, 0, fh); ctx.quadraticCurveTo(fw * 0.3, fh * 0.6, fw, 0); ctx.closePath(); ctx.fill()
+      ctx.fillStyle = 'rgba(255,255,230,0.8)'
+      ctx.beginPath(); ctx.moveTo(-fw * 0.3, 0); ctx.quadraticCurveTo(0, fh * 0.4, 0, fh * 0.5); ctx.quadraticCurveTo(0, fh * 0.4, fw * 0.3, 0); ctx.closePath(); ctx.fill()
     }
-  }, [phase])
 
-  // 箭头绘制
-  function drawArrow(ctx, x, y, dx, dy, color, label, lw = 2) {
-    const len = Math.sqrt(dx * dx + dy * dy)
-    if (len < 3) return
-    ctx.save()
-    ctx.strokeStyle = color
-    ctx.fillStyle = color
-    ctx.lineWidth = lw
-    ctx.beginPath()
-    ctx.moveTo(x, y)
-    ctx.lineTo(x + dx, y + dy)
-    ctx.stroke()
-    // 箭头尖
-    const a = Math.atan2(dy, dx)
-    const hl = Math.min(10, len * 0.3)
-    ctx.beginPath()
-    ctx.moveTo(x + dx, y + dy)
-    ctx.lineTo(x + dx - hl * Math.cos(a - 0.4), y + dy - hl * Math.sin(a - 0.4))
-    ctx.lineTo(x + dx - hl * Math.cos(a + 0.4), y + dy - hl * Math.sin(a + 0.4))
-    ctx.closePath()
-    ctx.fill()
-    // 标签
-    if (label) {
-      ctx.font = '11px monospace'
-      ctx.textAlign = 'left'
-      ctx.fillText(label, x + dx + 8, y + dy + 4)
-    }
     ctx.restore()
   }
 
-  // 数据面板
-  function drawPanel(ctx, x, y, w, h, s) {
-    // 背景
-    ctx.fillStyle = C.panel
-    ctx.strokeStyle = C.border
-    ctx.lineWidth = 1
-    roundRect(ctx, x, y, w, h, 8)
-    ctx.fill()
-    ctx.stroke()
+  // ========== 信息面板 ==========
+  function drawInfoPanel(ctx, W, H, s) {
+    const pw = 200, px = W - pw - 10, py = 10
+    ctx.fillStyle = 'rgba(15,25,45,0.9)'; ctx.strokeStyle = 'rgba(100,180,255,0.2)'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.roundRect(px, py, pw, 310, 8); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = '#4a9eff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'
+    ctx.fillText('📡 飞行数据', px + 10, py + 18)
+    ctx.font = '11px monospace'; let ry = py + 36
 
-    ctx.font = 'bold 13px sans-serif'
-    ctx.fillStyle = C.accent
-    ctx.textAlign = 'left'
-    ctx.fillText('📡 飞行数据', x + 12, y + 22)
-
-    ctx.font = '12px monospace'
     const rows = [
       ['时间', `${s.time.toFixed(1)}s`],
-      ['高度', s.h >= 1000 ? `${(s.h / 1000).toFixed(2)}km` : `${s.h.toFixed(0)}m`],
+      ['高度', s.h >= 1000 ? `${(s.h / 1000).toFixed(1)}km` : `${s.h.toFixed(0)}m`],
       ['速度', `${s.v.toFixed(1)} m/s`],
       ['加速度', `${s.a.toFixed(2)} m/s²`],
-      ['质量', `${(getTotalMass(s) / 1000).toFixed(2)} t`],
+      ['质量', `${(totalMass(s) / 1000).toFixed(2)} t`],
       ['', ''],
-      ['当前级', `第 ${s.currentStage + 1} 级 / ${s.stages} 级`],
-      ['剩余燃料', `${(s.stageFuel.reduce((a, b) => a + b, 0) / 1000).toFixed(2)} t`],
-      ['已燃燃料', `${(s.fuelBurned / 1000).toFixed(2)} t`],
+      ['当前级', `第${s.cur + 1}级 / ${s.stages}级`],
+      ['剩余燃料', `${(s.fuel.reduce((a, b) => a + b, 0) / 1000).toFixed(2)} t`],
+      ['重力损失', `${s.gravityLoss.toFixed(1)} m/s`],
       ['', ''],
-      ['最大高度', `${(s.peakAlt / 1000).toFixed(2)} km`],
-      ['最大速度', `${s.peakV.toFixed(1)} m/s`],
+      ['最大高度', `${(s.peakH / 1000).toFixed(1)} km`],
+      ['最大速度', `${s.peakV.toFixed(0)} m/s`],
     ]
-
-    let ry = y + 42
     for (const [label, value] of rows) {
-      if (!label && !value) { ry += 6; continue }
-      ctx.fillStyle = C.dim
-      ctx.textAlign = 'left'
-      ctx.fillText(label, x + 12, ry)
-      ctx.fillStyle = C.text
-      ctx.textAlign = 'right'
-      ctx.fillText(value, x + w - 12, ry)
-      ry += 20
-    }
-  }
-
-  // 齐奥尔科夫斯基公式面板
-  function drawFormulaPanel(ctx, x, y, w, h, s) {
-    ctx.fillStyle = C.panel
-    ctx.strokeStyle = C.border
-    ctx.lineWidth = 1
-    roundRect(ctx, x, y, w, h, 8)
-    ctx.fill()
-    ctx.stroke()
-
-    ctx.font = 'bold 12px sans-serif'
-    ctx.fillStyle = C.accent
-    ctx.textAlign = 'left'
-    ctx.fillText('🚀 齐奥尔科夫斯基公式', x + 10, y + 20)
-
-    ctx.font = '13px monospace'
-    ctx.fillStyle = C.text
-    ctx.textAlign = 'center'
-    ctx.fillText('Δv = vₑ × ln(m₀/m₁)', x + w / 2, y + 42)
-
-    ctx.font = '11px sans-serif'
-    ctx.fillStyle = C.dim
-    ctx.textAlign = 'left'
-    const lines = [
-      'vₑ = 排气速度',
-      'm₀ = 初始质量',
-      'm₁ = 最终质量',
-      '',
-    ]
-    let ly = y + 60
-    for (const line of lines) {
-      if (!line) { ly += 4; continue }
-      ctx.fillText(line, x + 10, ly)
-      ly += 16
+      if (!label) { ry += 6; continue }
+      ctx.fillStyle = '#7888a0'; ctx.textAlign = 'left'; ctx.fillText(label, px + 10, ry)
+      ctx.fillStyle = '#e0e8f0'; ctx.textAlign = 'right'; ctx.fillText(value, px + pw - 10, ry)
+      ry += 18
     }
 
-    // 各级Δv
-    ctx.font = '11px monospace'
-    ctx.fillStyle = C.warn
+    // 齐奥尔科夫斯基公式
+    const fpy = py + 320
+    ctx.fillStyle = 'rgba(15,25,45,0.9)'; ctx.beginPath(); ctx.roundRect(px, fpy, pw, 140, 8); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = '#4a9eff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'
+    ctx.fillText('🚀 齐奥尔科夫斯基公式', px + 10, fpy + 18)
+    ctx.fillStyle = '#e0e8f0'; ctx.font = '12px monospace'; ctx.textAlign = 'center'
+    ctx.fillText('Δv = vₑ × ln(m₀/m₁)', px + pw / 2, fpy + 38)
+    ctx.font = '10px monospace'; ctx.textAlign = 'left'; ctx.fillStyle = '#ffaa33'
+    let dy = fpy + 56
     for (let i = 0; i < s.stages; i++) {
       let m0 = 0, m1 = 0
-      for (let j = i; j < s.stages; j++) {
-        m0 += s.stageDry[j] + s.stageFuel[j]
-        m1 += s.stageDry[j] + (j === i ? 0 : s.stageFuel[j])
-      }
-      const dv = calcDeltaV(s.stageVEx[i], m0, m1)
-      ctx.fillText(`第${i + 1}级: Δv=${dv.toFixed(0)}m/s`, x + 10, ly)
-      ly += 16
+      for (let j = i; j < s.stages; j++) { m0 += s.dry[j] + s.fuel[j]; m1 += s.dry[j] + (j === i ? 0 : s.fuel[j]) }
+      const dv = calcDv(s.vEx[i], m0, m1)
+      ctx.fillText(`第${i + 1}级: Δv=${dv.toFixed(0)}m/s`, px + 10, dy); dy += 16
     }
   }
 
-  function getTotalMass(s) {
-    let m = 0
-    for (let i = 0; i < s.stages; i++) m += s.stageDry[i] + s.stageFuel[i]
-    return m
-  }
-
-  function roundRect(ctx, x, y, w, h, r) {
-    ctx.beginPath()
-    ctx.moveTo(x + r, y)
-    ctx.lineTo(x + w - r, y)
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r)
-    ctx.lineTo(x + w, y + h - r)
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
-    ctx.lineTo(x + r, y + h)
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r)
-    ctx.lineTo(x, y + r)
-    ctx.quadraticCurveTo(x, y, x + r, y)
-    ctx.closePath()
+  // ========== 消息 ==========
+  function drawMessage(ctx, W, H) {
+    if (!message) return
+    const mw = ctx.measureText(message).width + 30
+    ctx.fillStyle = 'rgba(15,25,45,0.9)'; ctx.beginPath(); ctx.roundRect(W / 2 - mw / 2, H - 50, mw, 32, 6); ctx.fill()
+    ctx.fillStyle = phase === 'success' ? '#44ff88' : phase === 'fail' ? '#ff4444' : '#ffaa33'
+    ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText(message, W / 2, H - 34)
+    ctx.textBaseline = 'alphabetic'
   }
 
   // ─── 生命周期 ───
-  useEffect(() => {
-    stateRef.current = initState(preset)
-  }, [preset, initState])
+  useEffect(() => { S.current = init(preset) }, [preset, init])
 
-  // 动画循环
   useEffect(() => {
     if (!running) return
-    let lastTime = 0
-    const loop = (timestamp) => {
-      if (!lastTime) lastTime = timestamp
-      const elapsed = (timestamp - lastTime) / 1000
-      lastTime = timestamp
-
-      // 按帧率步进
-      const steps = Math.min(4, Math.max(1, Math.round(elapsed / DT)))
-      for (let i = 0; i < steps; i++) step()
-
-      draw()
-      animRef.current = requestAnimationFrame(loop)
-    }
+    const loop = () => { step(); draw(); animRef.current = requestAnimationFrame(loop) }
     animRef.current = requestAnimationFrame(loop)
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current) }
   }, [running, step, draw])
 
-  // 初始绘制
-  useEffect(() => {
-    if (!running) draw()
-  }, [running, draw, phase])
+  useEffect(() => { if (!running) draw() }, [running, draw, phase])
 
-  // Canvas尺寸
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
+    const canvas = canvasRef.current; if (!canvas) return
     const resize = () => {
-      const parent = canvas.parentElement
-      const w = parent.clientWidth
-      const h = Math.max(500, parent.clientHeight)
-      canvas.width = w
-      canvas.height = h
-      canvas.style.width = w + 'px'
-      canvas.style.height = h + 'px'
+      const p = canvas.parentElement
+      canvas.width = p.clientWidth; canvas.height = Math.max(500, p.clientHeight)
       if (!running) draw()
     }
-    resize()
-    window.addEventListener('resize', resize)
+    resize(); window.addEventListener('resize', resize)
     return () => window.removeEventListener('resize', resize)
   }, [draw, running])
 
-  return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: C.bg }}>
-      {/* 控制栏 */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '8px 16px',
-        background: 'rgba(15,25,45,0.9)', borderBottom: `1px solid ${C.border}`,
-        flexWrap: 'wrap',
-      }}>
-        <span style={{ color: C.accent, fontWeight: 'bold', fontSize: 14 }}>🚀 火箭发射仿真</span>
+  const btn = (bg, color, label, onClick, disabled) => (
+    <button onClick={onClick} disabled={disabled}
+      style={{ padding: '6px 16px', borderRadius: 6, border: 'none', cursor: disabled ? 'default' : 'pointer', background: disabled ? 'rgba(100,100,100,0.3)' : bg, color: '#fff', fontWeight: 'bold', fontSize: 13 }}>{label}</button>
+  )
 
-        {/* 预设选择 */}
+  return (
+    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', background: '#0a0e1a' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 16px', background: 'rgba(15,25,45,0.9)', borderBottom: '1px solid rgba(100,180,255,0.2)', flexWrap: 'wrap' }}>
+        <span style={{ color: '#4a9eff', fontWeight: 'bold', fontSize: 14 }}>🚀 运载火箭仿真</span>
         <div style={{ display: 'flex', gap: 4 }}>
-          {Object.entries(PRESETS).map(([key, p]) => (
-            <button key={key} onClick={() => { setPreset(key) }}
-              style={{
-                padding: '4px 10px', borderRadius: 4, border: 'none', cursor: 'pointer',
-                background: preset === key ? C.accent : 'rgba(100,180,255,0.1)',
-                color: preset === key ? '#fff' : C.dim,
-                fontSize: 12, fontWeight: preset === key ? 'bold' : 'normal',
-              }}>
+          {Object.entries(PRESETS).map(([k, p]) => (
+            <button key={k} onClick={() => { setPreset(k); reset() }}
+              style={{ padding: '4px 10px', borderRadius: 4, border: 'none', cursor: 'pointer', background: preset === k ? '#4a9eff' : 'rgba(100,180,255,0.1)', color: preset === k ? '#fff' : '#7888a0', fontSize: 12, fontWeight: preset === k ? 'bold' : 'normal' }}>
               {p.name}
             </button>
           ))}
         </div>
-
+        <span style={{ color: '#7888a0', fontSize: 11 }}>{PRESETS[preset].hint}</span>
         <div style={{ flex: 1 }} />
-
-        {/* 发射/重置按钮 */}
-        <button onClick={launch} disabled={running || phase === 'done'}
-          style={{
-            padding: '6px 20px', borderRadius: 6, border: 'none', cursor: 'pointer',
-            background: (running || phase === 'done') ? 'rgba(100,100,100,0.3)' : '#ff4422',
-            color: '#fff', fontWeight: 'bold', fontSize: 13,
-          }}>
-          {phase === 'idle' ? '🔴 发射' : phase === 'done' ? '已完成' : '发射中...'}
-        </button>
-
-        <button onClick={reset}
-          style={{
-            padding: '6px 14px', borderRadius: 6, border: `1px solid ${C.border}`,
-            background: 'transparent', color: C.dim, cursor: 'pointer', fontSize: 12,
-          }}>
-          ↺ 重置
-        </button>
+        {btn('#ff4422', '#fff', phase === 'idle' ? '🔴 发射' : phase === 'done' ? '已完成' : '发射中...', launch, running || phase !== 'idle')}
+        <button onClick={reset} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid rgba(100,180,255,0.2)', background: 'transparent', color: '#7888a0', cursor: 'pointer', fontSize: 12 }}>↺ 重置</button>
       </div>
-
-      {/* Canvas */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         <canvas ref={canvasRef} style={{ display: 'block' }} />
       </div>
