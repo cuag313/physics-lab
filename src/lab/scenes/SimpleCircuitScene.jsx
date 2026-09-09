@@ -121,8 +121,8 @@ export default function SimpleCircuitScene() {
 
     // ─── 标注 ───
     ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('电源', battX, bottom + 16)
-    ctx.fillText(on ? '开关（闭合）' : '开关（断开）', swX, bottom + 16)
+    ctx.fillText('电源', battX, bottom + 20)
+    ctx.fillText(on ? '开关（闭合）' : '开关（断开）', swX, bottom + 20)
     ctx.fillText('灯泡', midX, top - 36)
 
     // 电流方向 I（红色短箭头，在电源长竖线左边电线上，向左）
@@ -199,7 +199,7 @@ export default function SimpleCircuitScene() {
     ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'
     ctx.fillText('−', x + 12, y - 11)
     ctx.fillStyle = '#888'; ctx.font = '9px sans-serif'; ctx.textBaseline = 'top'
-    ctx.fillText('12V', x, y + 22); ctx.textBaseline = 'alphabetic'
+    ctx.fillText('12V', x, y + 28); ctx.textBaseline = 'alphabetic'
   }
 
   // 标准开关符号：断开时两头无连接线
