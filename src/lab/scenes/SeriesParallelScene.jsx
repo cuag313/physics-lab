@@ -281,17 +281,21 @@ export default function SeriesParallelScene() {
     if (s.step === 1) {
       ctx.fillText('📖 伏特表与安培表的使用', px + 14, ky); ky += 28
       const items = [
-        { t: '安培表（A）', bold: true },
+        { t: '安培表 Ⓐ', bold: true },
         { t: '串联接入电路，测电流', color: '#E53935' },
         { t: '内阻极小，不影响电路', color: '#555' },
         { t: '' },
-        { t: '伏特表（V）', bold: true },
+        { t: '伏特表 Ⓥ', bold: true },
         { t: '并联在被测元件两端，测电压', color: '#4CAF50' },
         { t: '内阻极大，不分流', color: '#555' },
         { t: '' },
+        { t: '⚠ 千万别接错！', bold: true, color: '#F44336' },
+        { t: 'Ⓐ串联在灯泡前（或后）', color: '#E53935' },
+        { t: 'Ⓥ并联在灯泡两端', color: '#4CAF50' },
+        { t: '不要把Ⓐ串在Ⓥ的并联支路中！', color: '#F44336' },
+        { t: '' },
         { t: '测量电阻', bold: true },
         { t: 'R = U / I（欧姆定律）', color: '#333' },
-        { t: '读出V表和A表的值，即可算出电阻', color: '#555' },
       ]
       for (const item of items) {
         if (!item.t) { ky += 6; continue }
@@ -458,13 +462,17 @@ export default function SeriesParallelScene() {
     }
   }
 
+  // 仪表气泡（标准符号 Ⓥ Ⓐ）
   function drawMeterBubble(ctx, x, y, type, value, color) {
+    const r = 18
     ctx.fillStyle = '#fff'; ctx.strokeStyle = color; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = color; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText(type, x, y - 3)
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    // 符号
+    ctx.fillStyle = color; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText(type === 'V' || type === 'V₁' || type === 'V₂' ? 'Ⓥ' : 'Ⓐ', x, y - 2)
+    // 读数
     ctx.fillStyle = '#333'; ctx.font = '9px monospace'
-    ctx.fillText(value, x, y + 10); ctx.textBaseline = 'alphabetic'
+    ctx.fillText(value, x, y + 12); ctx.textBaseline = 'alphabetic'
   }
 
   function drawLine(ctx, x1, y1, x2, y2, color, w) {
