@@ -111,44 +111,71 @@ export default function SeriesParallelScene() {
     drawStepNav(ctx, W, H, s)
   }
 
-  // ─── Step1: 单灯泡 ───
+  // ─── Step1: 单灯泡（A表串联+V表并联，始终显示） ───
   function drawSingleBulb(ctx, left, right, top, bottom, midX, wc, on, s, U, I, U1, Rtotal) {
-    const battX = left + (right - left) * 0.2
-    const swX = left + (right - left) * 0.45
-    const bulbX = left + (right - left) * 0.75
+    const battX = left + (right - left) * 0.15
+    const swX = left + (right - left) * 0.35
+    const ammX = left + (right - left) * 0.52  // A表位置（串联在灯泡前）
+    const bulbX = left + (right - left) * 0.72 // 灯泡位置
 
-    // 导线
+    // ─── 导线：分段，中间插入A表 ───
     drawLine(ctx, left, top, right, top, wc, 2.5)
     drawLine(ctx, right, top, right, bottom, wc, 2.5)
     drawLine(ctx, left, bottom, battX - 12, bottom, wc, 2.5)
     drawLine(ctx, battX + 12, bottom, swX - 18, bottom, wc, 2.5)
-    drawLine(ctx, swX + 18, bottom, right, bottom, wc, 2.5)
+    // 开关→A表
+    drawLine(ctx, swX + 18, bottom, ammX - 20, bottom, wc, 2.5)
+    // A表→灯泡
+    drawLine(ctx, ammX + 20, bottom, bulbX - 16, bottom, wc, 2.5)
+    // 灯泡→右下角
+    drawLine(ctx, bulbX + 16, bottom, right, bottom, wc, 2.5)
     drawLine(ctx, left, top, left, bottom, wc, 2.5)
 
-    if (on) drawCurrentFlow(ctx, [
-      { x: battX + 12, y: bottom }, { x: swX, y: bottom }, { x: right, y: bottom },
-      { x: right, y: top }, { x: bulbX, y: top }, { x: left, y: top },
-      { x: left, y: bottom }, { x: battX - 12, y: bottom },
-    ], s.time, 0.5)
+    // V表并联线（从灯泡两端引出）
+    const volY = bottom + 45
+    const voltX = bulbX
+    // 从灯泡左端向下引线
+    drawLine(ctx, bulbX - 16, bottom, bulbX - 16, volY, wc, 2)
+    // 从灯泡右端向下引线
+    drawLine(ctx, bulbX + 16, bottom, bulbX + 16, volY, wc, 2)
+    // V表横线连接
+    drawLine(ctx, bulbX - 16, volY, voltX - 20, volY, wc, 2)
+    drawLine(ctx, voltX + 20, volY, bulbX + 16, volY, wc, 2)
 
+    // 电流流动
+    if (on) {
+      drawCurrentFlow(ctx, [
+        { x: battX + 12, y: bottom }, { x: swX, y: bottom }, { x: ammX, y: bottom },
+        { x: bulbX, y: bottom }, { x: right, y: bottom }, { x: right, y: top },
+        { x: left, y: top }, { x: left, y: bottom }, { x: battX - 12, y: bottom },
+      ], s.time, 0.5)
+    }
+
+    // 电源
     drawStdBattery(ctx, battX, bottom)
+    // 开关
     drawStdSwitch(ctx, swX, bottom, on, () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) })
-    drawStdBulb(ctx, bulbX, top, on ? 0.8 : 0)
+    // 灯泡
+    drawStdBulb(ctx, bulbX, bottom, on ? 0.8 : 0)
 
-    // V表（并联在灯泡两端）
-    if (on) drawMeterBubble(ctx, bulbX, top + 30, 'V', `${U1.toFixed(1)}V`, '#4CAF50')
-    // A表（串联在灯泡前）
-    if (on) drawMeterBubble(ctx, (swX + right) / 2, bottom - 20, 'A', `${I.toFixed(2)}A`, '#E53935')
+    // ─── Ⓐ 电流表（始终显示在电路中）───
+    drawMeterInCircuit(ctx, ammX, bottom, 'A', on ? `${I.toFixed(2)}A` : '', '#E53935')
+    // ─── Ⓥ 电压表（始终显示在电路中，跨灯泡两端）───
+    drawMeterInCircuit(ctx, voltX, volY, 'V', on ? `${U1.toFixed(1)}V` : '', '#4CAF50')
 
+    // 标注
     ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
     ctx.fillText('灯泡', bulbX, top - 20)
+    ctx.fillStyle = '#888'; ctx.font = '10px sans-serif'
+    ctx.fillText('Ⓐ串联', ammX, bottom - 18)
+    ctx.fillText('Ⓥ并联', voltX, volY + 24)
 
     // R=U/I 计算展示
     if (on) {
       ctx.fillStyle = '#333'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'
-      ctx.fillText('用 R = U / I 测电阻：', left, bottom + 40)
+      ctx.fillText('用 R = U / I 测电阻：', left, bottom + 80)
       ctx.fillStyle = '#E53935'; ctx.font = '13px monospace'
-      ctx.fillText(`R = ${U1.toFixed(1)}V / ${I.toFixed(2)}A = ${Rtotal.toFixed(1)} Ω`, left, bottom + 60)
+      ctx.fillText(`R = ${U1.toFixed(1)}V / ${I.toFixed(2)}A = ${Rtotal.toFixed(1)} Ω`, left, bottom + 100)
     }
     ctx.textBaseline = 'alphabetic'
   }
@@ -178,20 +205,16 @@ export default function SeriesParallelScene() {
 
     drawStdBattery(ctx, battX, bottom)
     drawStdSwitch(ctx, swX, bottom, on, () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) })
-    // 两个灯泡（串联时亮度降低）
-    const brightness = on ? 0.45 : 0  // 串联每个灯泡分压，亮度降低
+    const brightness = on ? 0.45 : 0
     drawStdBulb(ctx, bulb1X, bottom, brightness)
     drawStdBulb(ctx, bulb2X, bottom, brightness)
 
-    // 测量
-    if (on) {
-      // V1跨灯泡1
-      drawMeterBubble(ctx, bulb1X, bottom + 30, 'V₁', `${U1.toFixed(1)}V`, '#4CAF50')
-      // V2跨灯泡2
-      drawMeterBubble(ctx, bulb2X, bottom + 30, 'V₂', `${U2.toFixed(1)}V`, '#4CAF50')
-      // A表串联
-      drawMeterBubble(ctx, (swX + bulb1X) / 2, bottom - 20, 'A', `${I.toFixed(2)}A`, '#E53935')
-    }
+    // Ⓐ A表串联（始终显示）
+    drawMeterInCircuit(ctx, (swX + bulb1X) / 2, bottom - 28, 'A', on ? `${I.toFixed(2)}A` : '', '#E53935')
+    // Ⓥ V1跨R1（始终显示）
+    drawMeterInCircuit(ctx, bulb1X, bottom + 35, 'V', on ? `${U1.toFixed(1)}V` : '', '#4CAF50')
+    // Ⓥ V2跨R2（始终显示）
+    drawMeterInCircuit(ctx, bulb2X, bottom + 35, 'V', on ? `${U2.toFixed(1)}V` : '', '#4CAF50')
 
     ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
     ctx.fillText('R₁', bulb1X, bottom - 28)
@@ -240,17 +263,14 @@ export default function SeriesParallelScene() {
     drawStdBattery(ctx, battX, topY)
     drawStdSwitch(ctx, swX, topY, on, () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) })
 
-    // 测量
-    if (on) {
-      // A干路
-      drawMeterBubble(ctx, midX, topY - 22, 'A', `${I.toFixed(2)}A`, '#E53935')
-      // A1支路
-      drawMeterBubble(ctx, branchL + 22, (topY + botY) / 2, 'A₁', `${I1.toFixed(2)}A`, '#FF9800')
-      // A2支路
-      drawMeterBubble(ctx, branchR + 22, (topY + botY) / 2, 'A₂', `${I2.toFixed(2)}A`, '#FF9800')
-      // V跨两支路
-      drawMeterBubble(ctx, midX, botY + 22, 'V', `${U1.toFixed(1)}V`, '#4CAF50')
-    }
+    // Ⓐ A干路（始终显示）
+    drawMeterInCircuit(ctx, midX, topY - 24, 'A', on ? `${I.toFixed(2)}A` : '', '#E53935')
+    // Ⓐ A1支路（始终显示）
+    drawMeterInCircuit(ctx, branchL + 22, (topY + botY) / 2, 'A', on ? `${I1.toFixed(2)}A` : '', '#FF9800')
+    // Ⓐ A2支路（始终显示）
+    drawMeterInCircuit(ctx, branchR + 22, (topY + botY) / 2, 'A', on ? `${I2.toFixed(2)}A` : '', '#FF9800')
+    // Ⓥ V跨两支路（始终显示）
+    drawMeterInCircuit(ctx, midX, botY + 24, 'V', on ? `${U1.toFixed(1)}V` : '', '#4CAF50')
 
     ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
     ctx.fillText('R₁', branchL, botY + 14)
@@ -463,16 +483,18 @@ export default function SeriesParallelScene() {
   }
 
   // 仪表气泡（标准符号 Ⓥ Ⓐ）
-  function drawMeterBubble(ctx, x, y, type, value, color) {
+  // 仪表符号（始终画在电路中，读数只在闭合时显示）
+  function drawMeterInCircuit(ctx, x, y, type, reading, color) {
     const r = 18
     ctx.fillStyle = '#fff'; ctx.strokeStyle = color; ctx.lineWidth = 2
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    // 符号
     ctx.fillStyle = color; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText(type === 'V' || type === 'V₁' || type === 'V₂' ? 'Ⓥ' : 'Ⓐ', x, y - 2)
-    // 读数
-    ctx.fillStyle = '#333'; ctx.font = '9px monospace'
-    ctx.fillText(value, x, y + 12); ctx.textBaseline = 'alphabetic'
+    ctx.fillText(type === 'A' ? 'Ⓐ' : 'Ⓥ', x, y - 2)
+    if (reading) {
+      ctx.fillStyle = '#333'; ctx.font = 'bold 10px monospace'
+      ctx.fillText(reading, x, y + 12)
+    }
+    ctx.textBaseline = 'alphabetic'
   }
 
   function drawLine(ctx, x1, y1, x2, y2, color, w) {
