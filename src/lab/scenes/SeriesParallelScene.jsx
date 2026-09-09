@@ -131,17 +131,6 @@ export default function SeriesParallelScene() {
     drawLine(ctx, bulbX + 16, bottom, right, bottom, wc, 2.5)
     drawLine(ctx, left, top, left, bottom, wc, 2.5)
 
-    // V表并联线（从灯泡两端引出）
-    const volY = bottom + 45
-    const voltX = bulbX
-    // 从灯泡左端向下引线
-    drawLine(ctx, bulbX - 16, bottom, bulbX - 16, volY, wc, 2)
-    // 从灯泡右端向下引线
-    drawLine(ctx, bulbX + 16, bottom, bulbX + 16, volY, wc, 2)
-    // V表横线连接
-    drawLine(ctx, bulbX - 16, volY, voltX - 20, volY, wc, 2)
-    drawLine(ctx, voltX + 20, volY, bulbX + 16, volY, wc, 2)
-
     // 电流流动
     if (on) {
       drawCurrentFlow(ctx, [
@@ -174,7 +163,7 @@ export default function SeriesParallelScene() {
     ctx.fillText('灯泡', bulbX, top - 20)
     ctx.fillStyle = '#888'; ctx.font = '10px sans-serif'
     ctx.fillText('Ⓐ串联', ammX, bottom - 18)
-    ctx.fillText('Ⓥ并联', voltX, volY + 24)
+    ctx.fillText('Ⓥ并联', voltX, bottom - 28)
 
     // R=U/I 计算展示
     if (on) {
