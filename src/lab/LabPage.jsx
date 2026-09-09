@@ -79,6 +79,7 @@ import ElectricPotentialScene from './scenes/ElectricPotentialScene'
 import CapacitorChargeScene from './scenes/CapacitorChargeScene'
 import ClosedCircuitOhmScene from './scenes/ClosedCircuitOhmScene'
 import SimpleCircuitScene from './scenes/SimpleCircuitScene'
+import SeriesParallelScene from './scenes/SeriesParallelScene'
 import MeterConversionScene from './scenes/MeterConversionScene'
 import FaradayLawScene from './scenes/FaradayLawScene'
 import SelfInductionScene from './scenes/SelfInductionScene'
@@ -474,6 +475,8 @@ export default function LabPage({ onBack }) {
           <ClosedCircuitOhmScene />
         ) : currentExperiment?.key === 'simpleCircuit' ? (
           <SimpleCircuitScene />
+        ) : currentExperiment?.key === 'seriesParallel' ? (
+          <SeriesParallelScene />
         ) : currentExperiment?.key === 'meterConversion' ? (
           <MeterConversionScene />
         ) : currentExperiment?.key === 'faradayLaw' ? (
