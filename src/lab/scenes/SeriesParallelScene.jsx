@@ -20,8 +20,8 @@ export default function SeriesParallelScene() {
     tab: 1,
     step: 1,           // 1=单灯泡, 2=串联, 3=并联
     switchClosed: false,
-    R1: 10, R2: 10,    // 灯泡电阻
-    U: 12,             // 电源电压
+    R1: 10, R2: 10,
+    U: 6,              // 电源电压默认6V
     time: 0,
     // Tab2
     components: [],
@@ -224,6 +224,13 @@ export default function SeriesParallelScene() {
     drawLine(ctx, bulb2X - 16, volY2, bulb2X - 20, volY2, wc, 2)
     drawLine(ctx, bulb2X + 20, volY2, bulb2X + 16, volY2, wc, 2)
     drawMeterInCircuit(ctx, bulb2X, volY2, 'V', on ? `${U2.toFixed(1)}V` : '', '#4CAF50')
+    // Ⓥ总 跨电源两端（从电源正极和负极引线向下）
+    const volYTotal = bottom + 35
+    drawLine(ctx, battX - 12, bottom, battX - 12, volYTotal, wc, 2)
+    drawLine(ctx, battX + 12, bottom, battX + 12, volYTotal, wc, 2)
+    drawLine(ctx, battX - 12, volYTotal, battX - 16, volYTotal, wc, 2)
+    drawLine(ctx, battX + 16, volYTotal, battX + 12, volYTotal, wc, 2)
+    drawMeterInCircuit(ctx, battX, volYTotal, 'V', on ? `${U.toFixed(1)}V` : '', '#9C27B0')
 
     ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
     ctx.fillText('R₁', bulb1X, bottom - 28)
@@ -236,9 +243,11 @@ export default function SeriesParallelScene() {
       ctx.fillStyle = '#E53935'; ctx.font = '13px monospace'
       ctx.fillText(`R总 = R₁ + R₂ = ${s.R1} + ${s.R2} = ${Rtotal} Ω`, left, bottom + 70)
       ctx.fillStyle = '#4CAF50'
-      ctx.fillText(`验证：U₁+U₂ = ${U1.toFixed(1)}+${U2.toFixed(1)} = ${(U1+U2).toFixed(1)}V = U ✓`, left, bottom + 90)
+      ctx.fillText(`验证：U₁+U₂ = ${U1.toFixed(1)}+${U2.toFixed(1)} = ${(U1+U2).toFixed(1)}V = U总 ✓`, left, bottom + 90)
+      ctx.fillStyle = '#9C27B0'
+      ctx.fillText(`U总 = ${U.toFixed(1)}V（电源电压）`, left, bottom + 108)
       ctx.fillStyle = '#E53935'
-      ctx.fillText(`I₁ = I₂ = ${I.toFixed(2)}A ✓`, left, bottom + 108)
+      ctx.fillText(`I₁ = I₂ = ${I.toFixed(2)}A ✓`, left, bottom + 126)
     }
     ctx.textBaseline = 'alphabetic'
   }
@@ -330,6 +339,9 @@ export default function SeriesParallelScene() {
         { t: '' },
         { t: '测量电阻', bold: true },
         { t: 'R = U / I（欧姆定律）', color: '#333' },
+        { t: '' },
+        { t: '※ 本实验灯泡为定值电阻模型', bold: false, color: '#888' },
+        { t: '   不考虑灯丝温度变化对电阻的影响', bold: false, color: '#888' },
       ]
       for (const item of items) {
         if (!item.t) { ky += 6; continue }
@@ -353,6 +365,9 @@ export default function SeriesParallelScene() {
         { t: '' },
         { t: '类比理解', bold: true },
         { t: '串联像水管接长 → 阻力增大', color: '#555' },
+        { t: '' },
+        { t: '※ 本实验灯泡为定值电阻模型', bold: false, color: '#888' },
+        { t: '   不考虑灯丝温度变化对电阻的影响', bold: false, color: '#888' },
       ]
       for (const item of items) {
         if (!item.t) { ky += 6; continue }
@@ -880,6 +895,8 @@ export default function SeriesParallelScene() {
           <div style={styles.sep} />
           {tab === 1 && (
             <>
+              <label style={styles.lbl}>电源U：<input type="range" min="0" max="12" step="0.5" value={S.current.U}
+                onChange={(e) => { S.current.U = parseFloat(e.target.value); forceUpdate(n => n + 1) }} style={styles.slider} /><span style={styles.val}>{S.current.U.toFixed(1)}V</span></label>
               <label style={styles.lbl}>R₁：<input type="range" min="5" max="50" step="1" value={R1}
                 onChange={(e) => { const v = parseInt(e.target.value); S.current.R1 = v; setR1(v) }} style={styles.slider} /><span style={styles.val}>{R1}Ω</span></label>
               <label style={styles.lbl}>R₂：<input type="range" min="5" max="50" step="1" value={R2}
