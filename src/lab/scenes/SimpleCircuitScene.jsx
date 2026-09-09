@@ -456,11 +456,11 @@ export default function SimpleCircuitScene() {
       // 短线（负极板）
       ctx.lineWidth = 5
       ctx.beginPath(); ctx.moveTo(14, -8); ctx.lineTo(14, 8); ctx.stroke()
-      // + − 号写在接线柱上方
-      ctx.fillStyle = '#E53935'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-      ctx.fillText('+', -14, -24)
-      ctx.fillStyle = '#333'; ctx.font = 'bold 16px sans-serif'
-      ctx.fillText('−', 14, -16)
+      // + − 号写在左右接线柱圆框上方
+      ctx.fillStyle = '#E53935'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
+      ctx.fillText('+', -40, -24)
+      ctx.fillStyle = '#333'; ctx.font = 'bold 15px sans-serif'
+      ctx.fillText('−', 40, -16)
       ctx.textBaseline = 'alphabetic'
     } else if (type === 'bulb') {
       // 实物灯泡：闭合电路时亮
