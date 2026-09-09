@@ -526,20 +526,22 @@ export default function SimpleCircuitScene() {
     const tc = S.current.components.find(c => c.id === wire.to.compId)
     if (!fc || !tc) return
     const f = getTermPos(fc, wire.from.termIdx), t = getTermPos(tc, wire.to.termIdx)
-    const dx = t.x - f.x, dy = t.y - f.y
+    const ddx = t.x - f.x, ddy = t.y - f.y
     const color = wire.color || '#1565C0'
 
-    // 两个铆点（1/3 和 2/3 处）
-    const m1x = f.x + dx * 0.33, m1y = wire.mid1Y != null ? wire.mid1Y : f.y + dy * 0.33
-    const m2x = f.x + dx * 0.67, m2y = wire.mid2Y != null ? wire.mid2Y : f.y + dy * 0.67
+    // 两个铆点（自由位置，默认在1/3和2/3处）
+    const m1x = wire.mid1X != null ? wire.mid1X : f.x + ddx * 0.33
+    const m1y = wire.mid1Y != null ? wire.mid1Y : f.y + ddy * 0.33
+    const m2x = wire.mid2X != null ? wire.mid2X : f.x + ddx * 0.67
+    const m2y = wire.mid2Y != null ? wire.mid2Y : f.y + ddy * 0.67
 
-    ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
+    // 导线：起点 → 铆点1 → 铆点2 → 终点（折线）
+    ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
     ctx.beginPath(); ctx.moveTo(f.x, f.y)
-    ctx.lineTo(m1x, f.y); ctx.lineTo(m1x, m1y)
-    ctx.lineTo(m2x, m2y); ctx.lineTo(m2x, t.y)
+    ctx.lineTo(m1x, m1y); ctx.lineTo(m2x, m2y)
     ctx.lineTo(t.x, t.y); ctx.stroke()
 
-    // 铆点圆圈（可拖拽）
+    // 铆点圆圈（可拖拽拉出折角）
     ctx.fillStyle = color; ctx.beginPath(); ctx.arc(m1x, m1y, 5, 0, Math.PI * 2); ctx.fill()
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(m1x, m1y, 2.5, 0, Math.PI * 2); ctx.fill()
     ctx.fillStyle = color; ctx.beginPath(); ctx.arc(m2x, m2y, 5, 0, Math.PI * 2); ctx.fill()
@@ -559,7 +561,7 @@ export default function SimpleCircuitScene() {
     for (const comp of S.current.components) {
       const terms = getTerminals(comp)
       for (let i = 0; i < terms.length; i++) {
-        if ((mx - terms[i].x) ** 2 + (my - terms[i].y) ** 2 < 256) return { compId: comp.id, termIdx: i }
+        if ((mx - terms[i].x) ** 2 + (my - terms[i].y) ** 2 < 144) return { compId: comp.id, termIdx: i }
       }
     }
     return null
@@ -605,17 +607,19 @@ export default function SimpleCircuitScene() {
     const term = findTerm(x, y)
     if (term) { s.connecting = { ...term, mx: x, my: y }; forceUpdate(n => n + 1); return }
 
-    // 导线铆点拖拽
+    // 导线铆点拖拽（自由移动，可拉出折角）
     for (const wire of s.wires) {
       const fc = s.components.find(c => c.id === wire.from.compId)
       const tc = s.components.find(c => c.id === wire.to.compId)
       if (!fc || !tc) continue
       const f = getTermPos(fc, wire.from.termIdx), t = getTermPos(tc, wire.to.termIdx)
       const ddx = t.x - f.x, ddy = t.y - f.y
-      const m1x = f.x + ddx * 0.33, m1y = wire.mid1Y != null ? wire.mid1Y : f.y + ddy * 0.33
-      const m2x = f.x + ddx * 0.67, m2y = wire.mid2Y != null ? wire.mid2Y : f.y + ddy * 0.67
-      if ((x - m1x) ** 2 + (y - m1y) ** 2 < 100) { s.dragId = 'wire_' + wire.id + '_1'; forceUpdate(n => n + 1); return }
-      if ((x - m2x) ** 2 + (y - m2y) ** 2 < 100) { s.dragId = 'wire_' + wire.id + '_2'; forceUpdate(n => n + 1); return }
+      const m1x = wire.mid1X != null ? wire.mid1X : f.x + ddx * 0.33
+      const m1y = wire.mid1Y != null ? wire.mid1Y : f.y + ddy * 0.33
+      const m2x = wire.mid2X != null ? wire.mid2X : f.x + ddx * 0.67
+      const m2y = wire.mid2Y != null ? wire.mid2Y : f.y + ddy * 0.67
+      if ((x - m1x) ** 2 + (y - m1y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_1'; forceUpdate(n => n + 1); return }
+      if ((x - m2x) ** 2 + (y - m2y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_2'; forceUpdate(n => n + 1); return }
     }
 
     // 器材拖拽（包括开关）
@@ -627,28 +631,15 @@ export default function SimpleCircuitScene() {
     const s = S.current; const { x, y } = getPos(e)
     if (s.tab !== 2) return
     if (s.dragId) {
-      // 导线铆点拖拽（只能沿线滑动）
+      // 导线铆点拖拽（自由移动，可拉出折角）
       if (typeof s.dragId === 'string' && s.dragId.startsWith('wire_')) {
         const parts = s.dragId.split('_')
         const wireId = parseInt(parts[1])
         const rivetIdx = parseInt(parts[2])
         const wire = s.wires.find(w => w.id === wireId)
         if (wire) {
-          const fc = s.components.find(c => c.id === wire.from.compId)
-          const tc = s.components.find(c => c.id === wire.to.compId)
-          if (fc && tc) {
-            const f = getTermPos(fc, wire.from.termIdx), t = getTermPos(tc, wire.to.termIdx)
-            // 投影鼠标位置到 wire 的两点连线上
-            const dx = t.x - f.x, dy = t.y - f.y
-            const len2 = dx * dx + dy * dy
-            if (len2 > 0) {
-              let proj = ((x - f.x) * dx + (y - f.y) * dy) / len2
-              proj = Math.max(0.1, Math.min(0.9, proj))
-              const newY = f.y + proj * dy
-              if (rivetIdx === 1) wire.mid1Y = newY
-              else wire.mid2Y = newY
-            }
-          }
+          if (rivetIdx === 1) { wire.mid1X = x; wire.mid1Y = y }
+          else { wire.mid2X = x; wire.mid2Y = y }
           forceUpdate(n => n + 1)
         }
         return
@@ -676,7 +667,7 @@ export default function SimpleCircuitScene() {
         const dup = s.wires.some(w =>
           (w.from.compId === s.connecting.compId && w.from.termIdx === s.connecting.termIdx && w.to.compId === t.compId && w.to.termIdx === t.termIdx) ||
           (w.to.compId === s.connecting.compId && w.to.termIdx === s.connecting.termIdx && w.from.compId === t.compId && w.from.termIdx === t.termIdx))
-        if (!dup) s.wires.push({ id: s.nextId++, from: { compId: s.connecting.compId, termIdx: s.connecting.termIdx }, to: t, color: s.wireColor, mid1Y: null, mid2Y: null })
+        if (!dup) s.wires.push({ id: s.nextId++, from: { compId: s.connecting.compId, termIdx: s.connecting.termIdx }, to: t, color: s.wireColor, mid1X: null, mid1Y: null, mid2X: null, mid2Y: null })
       }
       s.connecting = null; s.hoverTerm = null; forceUpdate(n => n + 1)
     }
