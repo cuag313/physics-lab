@@ -25,6 +25,7 @@ export default function SimpleCircuitScene() {
     hoverTerm: null,
     nextId: 1,
     guideDismissed: false,
+    wireColor: '#F44336', // 默认红色导线
   })
 
   const [tab, setTab] = useState(1)
@@ -80,9 +81,15 @@ export default function SimpleCircuitScene() {
     ctx.beginPath(); ctx.moveTo(right, top); ctx.lineTo(left, top); ctx.stroke()       // 上
     ctx.beginPath(); ctx.moveTo(left, top); ctx.lineTo(left, bottom); ctx.stroke()     // 左
 
-    // 电流流动
+    // 电流流动（电子从负极→正极，电流方向与电子相反）
     if (on) {
-      const path = [{ x: left, y: bottom }, { x: right, y: bottom }, { x: right, y: top }, { x: left, y: top }, { x: left, y: bottom }]
+      const path = [
+        { x: left, y: bottom },   // 从负极出发（电子方向）
+        { x: right, y: bottom },
+        { x: right, y: top },
+        { x: left, y: top },
+        { x: left, y: bottom },   // 回到负极
+      ]
       drawCurrentFlow(ctx, path, s.time, 0.6)
     }
 
@@ -107,14 +114,19 @@ export default function SimpleCircuitScene() {
     ctx.fillText(on ? '开关（闭合）' : '开关（断开）', swX, bottom + 14)
     ctx.fillText('灯泡', midX, top - 36)
 
-    // 电流方向
+    // 电子方向箭头（−极→+极）+ 电流方向标注
     if (on) {
-      ctx.fillStyle = '#1565C0'; ctx.font = '13px sans-serif'
-      ctx.fillText('→', (left + battX) / 2, bottom - 10)
-      ctx.fillText('→', (swX + right) / 2, bottom - 10)
-      ctx.fillText('↑', right + 10, (top + bottom) / 2)
-      ctx.fillText('←', midX, top + 10)
-      ctx.fillText('↓', left - 10, (top + bottom) / 2)
+      ctx.fillStyle = '#1565C0'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center'
+      ctx.fillText('e⁻→', (left + battX) / 2, bottom - 10)
+      ctx.fillText('e⁻→', (swX + right) / 2, bottom - 10)
+      ctx.fillText('e⁻↑', right + 10, (top + bottom) / 2)
+      ctx.fillText('←e⁻', midX, top + 10)
+      ctx.fillText('e⁻↓', left - 14, (top + bottom) / 2)
+      // 电流方向说明
+      ctx.fillStyle = '#E53935'; ctx.font = '11px sans-serif'
+      ctx.fillText('电子方向：−极 → +极（图中箭头）', midX, bottom + 30)
+      ctx.fillStyle = '#333'
+      ctx.fillText('电流方向：+极 → −极（与电子方向相反）', midX, bottom + 48)
     }
 
     // ─── 知识点面板（右侧，不被遮挡）───
@@ -213,39 +225,56 @@ export default function SimpleCircuitScene() {
       iy += 50
     }
 
-    // 提示
-    if (!s.guideDismissed && s.components.length === 0) {
-      ctx.fillStyle = 'rgba(79,195,247,0.12)'; ctx.font = '13px sans-serif'
-      const txt = '点击右侧器材添加到画布 · 拖拽移动 · 右键删除'
-      const tw = ctx.measureText(txt).width + 24
-      const bx = cvX + cvW / 2, by = cvY + cvH / 2
-      const ry = by + Math.sin(Date.now() / 600) * 4
-      ctx.beginPath(); ctx.roundRect(bx - tw / 2, ry - 16, tw, 32, 16); ctx.fill()
-      ctx.strokeStyle = 'rgba(79,195,247,0.3)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(bx - tw / 2, ry - 16, tw, 32, 16); ctx.stroke()
-      ctx.fillStyle = '#0288D1'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText(txt, bx, ry); ctx.textBaseline = 'alphabetic'
+    // ─── 导线颜色选择 + 器材列表 ───
+    const colors = [
+      { color: '#F44336', name: '红线' },
+      { color: '#FFC107', name: '黄线' },
+      { color: '#4CAF50', name: '绿线' },
+    ]
+    ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('导线颜色：', palX + 10, iy); iy += 20
+    for (const c of colors) {
+      const isActive = s.wireColor === c.color
+      ctx.fillStyle = isActive ? '#e3f2fd' : '#fff'
+      ctx.beginPath(); ctx.roundRect(palX + 6, iy, paletteW - 12, 28, 4); ctx.fill()
+      if (isActive) { ctx.strokeStyle = c.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(palX + 6, iy, paletteW - 12, 28, 4); ctx.stroke() }
+      ctx.fillStyle = c.color; ctx.fillRect(palX + 14, iy + 9, 30, 10)
+      ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      ctx.fillText(c.name, palX + 52, iy + 14)
+      ctx.textBaseline = 'alphabetic'
+      canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: paletteW - 12, h: 28, action: 'color', color: c.color })
+      iy += 32
     }
+
+    iy += 10
+    ctx.fillStyle = '#888'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('提示：', palX + 10, iy); iy += 16
+    ctx.fillText('• 拖拽器材移动', palX + 10, iy); iy += 14
+    ctx.fillText('• 点击接线柱连线', palX + 10, iy); iy += 14
+    ctx.fillText('• 拖动线中点折线', palX + 10, iy); iy += 14
+    ctx.fillText('• 右键删除', palX + 10, iy)
+    ctx.textBaseline = 'alphabetic'
   }
 
   // ================================================================
   //  标准电路符号（Tab1用）
   // ================================================================
 
-  // 电源符号：长线（正极）+ 短粗线（负极）
+  // 电源符号：长线（正极）+ 短粗线（负极），两线之间不连线
   function drawStdBattery(ctx, x, y, emf) {
+    // 长线（正极板）
     ctx.strokeStyle = '#333'; ctx.lineWidth = 2
-    // 长线（正极）
-    ctx.beginPath(); ctx.moveTo(x - 8, y - 16); ctx.lineTo(x - 8, y + 16); ctx.stroke()
-    // 短粗线（负极，比长短一半）
-    ctx.lineWidth = 4
-    ctx.beginPath(); ctx.moveTo(x + 8, y - 8); ctx.lineTo(x + 8, y + 8); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(x - 12, y - 18); ctx.lineTo(x - 12, y + 18); ctx.stroke()
+    // 短粗线（负极板）—— 与长线不相连
+    ctx.lineWidth = 5
+    ctx.beginPath(); ctx.moveTo(x + 12, y - 9); ctx.lineTo(x + 12, y + 9); ctx.stroke()
     // +/- 标签
     ctx.fillStyle = '#E53935'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-    ctx.fillText('+', x - 8, y - 18)
-    ctx.fillStyle = '#333'; ctx.font = 'bold 13px sans-serif'
-    ctx.fillText('−', x + 8, y - 10)
+    ctx.fillText('+', x - 12, y - 20)
+    ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'
+    ctx.fillText('−', x + 12, y - 11)
     ctx.fillStyle = '#888'; ctx.font = '9px sans-serif'; ctx.textBaseline = 'top'
-    ctx.fillText(`${emf}V`, x, y + 20)
+    ctx.fillText(`${emf}V`, x, y + 22)
     ctx.textBaseline = 'alphabetic'
   }
 
@@ -270,18 +299,26 @@ export default function SimpleCircuitScene() {
     }
   }
 
-  // 开关符号
+  // 开关符号：断开时两头无线连接
   function drawStdSwitch(ctx, x, y, on, onClick) {
-    ctx.strokeStyle = '#666'; ctx.lineWidth = 1.5
-    ctx.beginPath(); ctx.arc(x - 18, y, 3.5, 0, Math.PI * 2); ctx.stroke()
-    ctx.beginPath(); ctx.arc(x + 18, y, 3.5, 0, Math.PI * 2); ctx.stroke()
-    ctx.strokeStyle = on ? '#4CAF50' : '#F44336'; ctx.lineWidth = 3; ctx.lineCap = 'round'
-    ctx.beginPath(); ctx.moveTo(x - 18, y)
-    if (on) ctx.lineTo(x + 18, y); else ctx.lineTo(x + 12, y - 16)
-    ctx.stroke(); ctx.lineCap = 'butt'
-    ctx.fillStyle = on ? '#4CAF50' : '#F44336'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    // 两个端点
+    ctx.fillStyle = '#666'
+    ctx.beginPath(); ctx.arc(x - 18, y, 3.5, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath(); ctx.arc(x + 18, y, 3.5, 0, Math.PI * 2); ctx.fill()
+    // 触片：闭合时连接两头，断开时只从一端伸出
+    if (on) {
+      ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 3; ctx.lineCap = 'round'
+      ctx.beginPath(); ctx.moveTo(x - 18, y); ctx.lineTo(x + 18, y); ctx.stroke()
+      ctx.lineCap = 'butt'
+    } else {
+      // 断开：触片从左端点向上翘起，不连接右端点
+      ctx.strokeStyle = '#F44336'; ctx.lineWidth = 3; ctx.lineCap = 'round'
+      ctx.beginPath(); ctx.moveTo(x - 18, y); ctx.lineTo(x + 10, y - 18); ctx.stroke()
+      ctx.lineCap = 'butt'
+    }
+    ctx.fillStyle = on ? '#4CAF50' : '#F44336'
+    ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
     ctx.fillText(on ? 'ON' : 'OFF', x, y + 8); ctx.textBaseline = 'alphabetic'
-    // 点击热区
     canvasRef.current._clickAreas = canvasRef.current._clickAreas || []
     canvasRef.current._clickAreas.push({ x: x - 25, y: y - 25, w: 50, h: 50, onClick })
   }
@@ -408,8 +445,12 @@ export default function SimpleCircuitScene() {
     if (!fc || !tc) return
     const f = getTermPos(fc, wire.from.termIdx), t = getTermPos(tc, wire.to.termIdx)
     const midX = (f.x + t.x) / 2
-    ctx.strokeStyle = '#1565C0'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-    ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(midX, f.y); ctx.lineTo(midX, t.y); ctx.lineTo(t.x, t.y); ctx.stroke()
+    const midY = wire.midY !== null && wire.midY !== undefined ? wire.midY : (f.y + t.y) / 2
+    const color = wire.color || '#1565C0'
+    ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
+    ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(midX, f.y); ctx.lineTo(midX, midY); ctx.lineTo(midX, t.y); ctx.lineTo(t.x, t.y); ctx.stroke()
+    // 中间折点（可拖拽）
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(midX, midY, 4, 0, Math.PI * 2); ctx.fill()
   }
 
   function getTerminals(comp) {
@@ -468,12 +509,17 @@ export default function SimpleCircuitScene() {
     // Tab2
     const { x, y } = getMousePos(e)
 
-    // 检查器材栏点击
+    // 检查器材栏点击（组件添加 + 颜色选择）
     for (const area of (canvasRef.current._palAreas || [])) {
       if (x >= area.x && x <= area.x + area.w && y >= area.y && y <= area.y + area.h) {
-        const id = s.nextId++
-        s.components.push({ id, type: area.type, x: 300 + Math.random() * 200, y: 200 + Math.random() * 150, rotation: 0, closed: true })
-        s.guideDismissed = true; forceUpdate(n => n + 1); return
+        if (area.action === 'color') {
+          s.wireColor = area.color; forceUpdate(n => n + 1); return
+        }
+        if (area.type) {
+          const id = s.nextId++
+          s.components.push({ id, type: area.type, x: 300 + Math.random() * 200, y: 200 + Math.random() * 150, rotation: 0, closed: true })
+          s.guideDismissed = true; forceUpdate(n => n + 1); return
+        }
       }
     }
 
@@ -524,7 +570,7 @@ export default function SimpleCircuitScene() {
         const exists = s.wires.some(w =>
           (w.from.compId === s.connecting.compId && w.from.termIdx === s.connecting.termIdx && w.to.compId === term.compId && w.to.termIdx === term.termIdx) ||
           (w.to.compId === s.connecting.compId && w.to.termIdx === s.connecting.termIdx && w.from.compId === term.compId && w.from.termIdx === term.termIdx))
-        if (!exists) s.wires.push({ id: s.nextId++, from: { compId: s.connecting.compId, termIdx: s.connecting.termIdx }, to: term })
+        if (!exists) s.wires.push({ id: s.nextId++, from: { compId: s.connecting.compId, termIdx: s.connecting.termIdx }, to: term, color: s.wireColor, midY: null })
       }
       s.connecting = null; s.hoverTerm = null; forceUpdate(n => n + 1)
     }
