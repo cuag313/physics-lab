@@ -121,8 +121,8 @@ export default function SimpleCircuitScene() {
 
     // ─── 标注 ───
     ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('电源', battX, bottom + 20)
-    ctx.fillText(on ? '开关（闭合）' : '开关（断开）', swX, bottom + 20)
+    ctx.fillText('电源', battX, bottom + 24)
+    ctx.fillText(on ? '开关（闭合）' : '开关（断开）', swX, bottom + 24)
     ctx.fillText('灯泡', midX, top - 36)
 
     // 电流方向 I（红色短箭头，在电源长竖线左边电线上，向左）
@@ -149,9 +149,9 @@ export default function SimpleCircuitScene() {
       ctx.fillText('e⁻↓', left - 12, (top + bottom) / 2)
 
       ctx.fillStyle = '#FFC107'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText('电子方向：−极 → +极（黄色标记）', midX, bottom + 36)
+      ctx.fillText('电子方向：−极 → +极（黄色标记）', midX, bottom + 70)
       ctx.fillStyle = '#E53935'
-      ctx.fillText('电流 I：+极 → −极（红色箭头，与电子方向相反）', midX, bottom + 54)
+      ctx.fillText('电流 I：+极 → −极（红色箭头，与电子方向相反）', midX, bottom + 88)
     }
 
     // ─── 知识面板（右侧）───
@@ -199,7 +199,7 @@ export default function SimpleCircuitScene() {
     ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'
     ctx.fillText('−', x + 12, y - 11)
     ctx.fillStyle = '#888'; ctx.font = '9px sans-serif'; ctx.textBaseline = 'top'
-    ctx.fillText('12V', x, y + 28); ctx.textBaseline = 'alphabetic'
+    ctx.fillText('12V', x, y + 36); ctx.textBaseline = 'alphabetic'
   }
 
   // 标准开关符号：断开时两头无连接线
