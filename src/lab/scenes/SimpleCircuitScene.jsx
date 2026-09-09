@@ -445,7 +445,7 @@ export default function SimpleCircuitScene() {
     if (dragging) ctx.globalAlpha = 0.6
 
     if (type === 'battery') {
-      // 实物电池：绿色外壳，长短线标志
+      // 电池实物：绿色外壳，长短线
       const grd = ctx.createLinearGradient(-35, -22, 35, 22)
       grd.addColorStop(0, '#A5D6A7'); grd.addColorStop(0.5, '#66BB6A'); grd.addColorStop(1, '#43A047')
       ctx.fillStyle = grd; ctx.strokeStyle = '#2E7D32'; ctx.lineWidth = 2
@@ -456,10 +456,12 @@ export default function SimpleCircuitScene() {
       // 短线（负极板）
       ctx.lineWidth = 5
       ctx.beginPath(); ctx.moveTo(14, -8); ctx.lineTo(14, 8); ctx.stroke()
-      // 标签
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('+', -14, -22); ctx.fillText('−', 14, -16)
-      ctx.font = 'bold 10px sans-serif'; ctx.fillText('12V', 0, 22)
+      // + − 号写在接线柱上方
+      ctx.fillStyle = '#E53935'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
+      ctx.fillText('+', -14, -24)
+      ctx.fillStyle = '#333'; ctx.font = 'bold 16px sans-serif'
+      ctx.fillText('−', 14, -16)
+      ctx.textBaseline = 'alphabetic'
     } else if (type === 'bulb') {
       // 实物灯泡：闭合电路时亮
       const brightness = isClosed ? 1.0 : 0
