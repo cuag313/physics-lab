@@ -12,7 +12,7 @@ export default function SimpleCircuitScene() {
 
   const S = useRef({
     tab: 1,
-    switchClosed: true,
+    switchClosed: false,
     time: 0,
     components: [],
     wires: [],
@@ -127,6 +127,7 @@ export default function SimpleCircuitScene() {
 
     // 电子方向 + 电流方向说明
     if (on) {
+      // 电子方向（蓝色小箭头）
       ctx.fillStyle = '#1565C0'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'
       ctx.fillText('e⁻→', (battX + 12 + swX) / 2, bottom - 10)
       ctx.fillText('e⁻→', (swX + right) / 2, bottom - 10)
@@ -134,10 +135,13 @@ export default function SimpleCircuitScene() {
       ctx.fillText('←e⁻', midX, top + 10)
       ctx.fillText('e⁻↓', left - 12, (top + bottom) / 2)
 
+      // 电流方向 I（红色箭头，与电子方向相反）
+      drawRedArrow(ctx, left + 12, (top + bottom) / 2, left + 12, (top + bottom) / 2 + 50, 'I')
+
       ctx.fillStyle = '#E53935'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText('电子方向：−极 → 开关 → 灯泡 → +极', midX, bottom + 36)
+      ctx.fillText('电子方向：−极 → +极', midX, bottom + 36)
       ctx.fillStyle = '#333'
-      ctx.fillText('电流方向与电子方向相反：+极 → 灯泡 → 开关 → −极', midX, bottom + 54)
+      ctx.fillText('电流方向 I：+极 → −极（与电子相反）', midX, bottom + 54)
     }
 
     // ─── 知识面板（右侧）───
@@ -228,6 +232,53 @@ export default function SimpleCircuitScene() {
     ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
   }
 
+  // 红色电流方向箭头
+  function drawRedArrow(ctx, x1, y1, x2, y2, label) {
+    const angle = Math.atan2(y2 - y1, x2 - x1)
+    ctx.strokeStyle = '#E53935'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.lineCap = 'butt'
+    const hl = 10
+    ctx.fillStyle = '#E53935'
+    ctx.beginPath(); ctx.moveTo(x2, y2)
+    ctx.lineTo(x2 - hl * Math.cos(angle - 0.35), y2 - hl * Math.sin(angle - 0.35))
+    ctx.lineTo(x2 - hl * Math.cos(angle + 0.35), y2 - hl * Math.sin(angle + 0.35))
+    ctx.closePath(); ctx.fill()
+    if (label) {
+      ctx.fillStyle = '#E53935'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'
+      ctx.fillText(label, (x1 + x2) / 2 + 14, (y1 + y2) / 2)
+    }
+  }
+
+  // 检查电路逻辑：找到电池、开关、灯泡，检查是否形成闭合回路
+  function checkCircuit() {
+    const s = S.current
+    const batteries = s.components.filter(c => c.type === 'battery')
+    const switches = s.components.filter(c => c.type === 'switch')
+    const bulbs = s.components.filter(c => c.type === 'bulb')
+
+    if (batteries.length === 0 || bulbs.length === 0) return { closed: false, reason: '需要电源和灯泡' }
+
+    // 检查是否有导线连接电池→开关→灯泡→电池形成回路
+    // 简化检测：统计每个器材的接线柱被连接的次数
+    const connCount = {}
+    for (const comp of s.components) connCount[comp.id] = 0
+    for (const wire of s.wires) {
+      connCount[wire.from.compId] = (connCount[wire.from.compId] || 0) + 1
+      connCount[wire.to.compId] = (connCount[wire.to.compId] || 0) + 1
+    }
+
+    // 基本检查：每个器材至少有2个连接（形成回路）
+    const allConnected = s.components.every(c => connCount[c.id] >= 2)
+    if (!allConnected) return { closed: false, reason: '电路未闭合（有器材未连接）' }
+
+    // 检查开关是否闭合
+    for (const sw of switches) {
+      if (sw.closed === false) return { closed: false, reason: '开关断开' }
+    }
+
+    return { closed: true, reason: '电路正常，灯泡亮' }
+  }
+
   function drawCurrentFlow(ctx, points, time, speed) {
     let totalLen = 0; const segs = []
     for (let i = 0; i < points.length - 1; i++) {
@@ -277,8 +328,14 @@ export default function SimpleCircuitScene() {
       }
     }
 
-    // 器材
-    for (const comp of s.components) drawBuilderComp(ctx, comp, s)
+    // 器材（传入电路状态）
+    const circuit = checkCircuit()
+    for (const comp of s.components) drawBuilderComp(ctx, comp, s, circuit)
+
+    // 电路状态提示
+    ctx.fillStyle = circuit.closed ? '#4CAF50' : '#F44336'
+    ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText(circuit.closed ? '✅ ' + circuit.reason : '❌ ' + circuit.reason, cvX + 12, cvY + cvH - 25)
 
     // ─── 器材栏 ───
     const palX = W - palW - 10
@@ -369,9 +426,10 @@ export default function SimpleCircuitScene() {
   }
 
   // ─── 画布上的实物风格器材 ───
-  function drawBuilderComp(ctx, comp, s) {
+  function drawBuilderComp(ctx, comp, s, circuit) {
     const { x, y, type, rotation } = comp
     const dragging = s.dragId === comp.id
+    const isClosed = circuit && circuit.closed
 
     ctx.save(); ctx.translate(x, y); ctx.rotate(rotation || 0)
     if (dragging) ctx.globalAlpha = 0.6
@@ -393,16 +451,22 @@ export default function SimpleCircuitScene() {
       ctx.fillText('+', -14, -22); ctx.fillText('−', 14, -16)
       ctx.font = 'bold 10px sans-serif'; ctx.fillText('12V', 0, 22)
     } else if (type === 'bulb') {
-      // 实物灯泡：玻璃球+灯丝+底座
-      ctx.fillStyle = '#FFFDE7'; ctx.strokeStyle = '#F9A825'; ctx.lineWidth = 2
+      // 实物灯泡：闭合电路时亮
+      const brightness = isClosed ? 1.0 : 0
+      ctx.fillStyle = brightness > 0.3 ? '#FFEB3B' : '#FFFDE7'
+      ctx.strokeStyle = brightness > 0.3 ? '#F9A825' : '#bbb'; ctx.lineWidth = 2
       ctx.beginPath(); ctx.arc(0, -6, 20, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      // 灯丝
-      ctx.strokeStyle = '#E65100'; ctx.lineWidth = 1.5
+      ctx.strokeStyle = brightness > 0.3 ? '#E65100' : '#999'; ctx.lineWidth = 1.5
       ctx.beginPath(); ctx.moveTo(-8, -14); ctx.lineTo(8, 2); ctx.stroke()
       ctx.beginPath(); ctx.moveTo(8, -14); ctx.lineTo(-8, 2); ctx.stroke()
-      // 底座
       ctx.fillStyle = '#9E9E9E'; ctx.strokeStyle = '#616161'; ctx.lineWidth = 1
       ctx.beginPath(); ctx.roundRect(-10, 14, 20, 10, 2); ctx.fill(); ctx.stroke()
+      // 发光效果
+      if (brightness > 0.3) {
+        const glow = ctx.createRadialGradient(0, -6, 15, 0, -6, 50)
+        glow.addColorStop(0, 'rgba(255,235,59,0.35)'); glow.addColorStop(1, 'rgba(255,235,59,0)')
+        ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, -6, 50, 0, Math.PI * 2); ctx.fill()
+      }
       ctx.fillStyle = '#F57F17'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
       ctx.fillText('灯泡', 0, 26)
     } else if (type === 'switch') {
@@ -452,11 +516,24 @@ export default function SimpleCircuitScene() {
     const tc = S.current.components.find(c => c.id === wire.to.compId)
     if (!fc || !tc) return
     const f = getTermPos(fc, wire.from.termIdx), t = getTermPos(tc, wire.to.termIdx)
-    const midX = (f.x + t.x) / 2
-    const midY = wire.midY != null ? wire.midY : (f.y + t.y) / 2
-    ctx.strokeStyle = wire.color || '#1565C0'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-    ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(midX, f.y); ctx.lineTo(midX, midY); ctx.lineTo(midX, t.y); ctx.lineTo(t.x, t.y); ctx.stroke()
-    ctx.fillStyle = wire.color || '#1565C0'; ctx.beginPath(); ctx.arc(midX, midY, 4, 0, Math.PI * 2); ctx.fill()
+    const dx = t.x - f.x, dy = t.y - f.y
+    const color = wire.color || '#1565C0'
+
+    // 两个铆点（1/3 和 2/3 处）
+    const m1x = f.x + dx * 0.33, m1y = wire.mid1Y != null ? wire.mid1Y : f.y + dy * 0.33
+    const m2x = f.x + dx * 0.67, m2y = wire.mid2Y != null ? wire.mid2Y : f.y + dy * 0.67
+
+    ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
+    ctx.beginPath(); ctx.moveTo(f.x, f.y)
+    ctx.lineTo(m1x, f.y); ctx.lineTo(m1x, m1y)
+    ctx.lineTo(m2x, m2y); ctx.lineTo(m2x, t.y)
+    ctx.lineTo(t.x, t.y); ctx.stroke()
+
+    // 铆点圆圈（可拖拽）
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(m1x, m1y, 5, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(m1x, m1y, 2.5, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(m2x, m2y, 5, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(m2x, m2y, 2.5, 0, Math.PI * 2); ctx.fill()
   }
 
   function getTerminals(comp) {
@@ -516,15 +593,48 @@ export default function SimpleCircuitScene() {
     const term = findTerm(x, y)
     if (term) { s.connecting = { ...term, mx: x, my: y }; forceUpdate(n => n + 1); return }
 
-    // 器材拖拽
+    // 导线铆点拖拽
+    for (const wire of s.wires) {
+      const fc = s.components.find(c => c.id === wire.from.compId)
+      const tc = s.components.find(c => c.id === wire.to.compId)
+      if (!fc || !tc) continue
+      const f = getTermPos(fc, wire.from.termIdx), t = getTermPos(tc, wire.to.termIdx)
+      const ddx = t.x - f.x
+      const m1x = f.x + ddx * 0.33, m1y = wire.mid1Y != null ? wire.mid1Y : f.y + (t.y - f.y) * 0.33
+      const m2x = f.x + ddx * 0.67, m2y = wire.mid2Y != null ? wire.mid2Y : f.y + (t.y - f.y) * 0.67
+      if ((x - m1x) ** 2 + (y - m1y) ** 2 < 100) { s.dragId = 'wire_' + wire.id + '_1'; forceUpdate(n => n + 1); return }
+      if ((x - m2x) ** 2 + (y - m2y) ** 2 < 100) { s.dragId = 'wire_' + wire.id + '_2'; forceUpdate(n => n + 1); return }
+    }
+
+    // 器材点击（开关切换 / 拖拽）
     const comp = findComp(x, y)
-    if (comp) { s.dragId = comp.id; s.dragOffX = x - comp.x; s.dragOffY = y - comp.y; forceUpdate(n => n + 1) }
+    if (comp) {
+      if (comp.type === 'switch') {
+        comp.closed = comp.closed === false ? true : false
+        forceUpdate(n => n + 1); return
+      }
+      s.dragId = comp.id; s.dragOffX = x - comp.x; s.dragOffY = y - comp.y; forceUpdate(n => n + 1)
+    }
   }, [])
 
   const handleMouseMove = useCallback((e) => {
     const s = S.current; const { x, y } = getPos(e)
     if (s.tab !== 2) return
     if (s.dragId) {
+      // 导线铆点拖拽
+      if (typeof s.dragId === 'string' && s.dragId.startsWith('wire_')) {
+        const parts = s.dragId.split('_')
+        const wireId = parseInt(parts[1])
+        const rivetIdx = parseInt(parts[2])
+        const wire = s.wires.find(w => w.id === wireId)
+        if (wire) {
+          if (rivetIdx === 1) wire.mid1Y = y
+          else wire.mid2Y = y
+          forceUpdate(n => n + 1)
+        }
+        return
+      }
+      // 器材拖拽
       const c = s.components.find(c => c.id === s.dragId)
       if (c) { c.x = x - s.dragOffX; c.y = y - s.dragOffY; forceUpdate(n => n + 1) }
       return
@@ -547,7 +657,7 @@ export default function SimpleCircuitScene() {
         const dup = s.wires.some(w =>
           (w.from.compId === s.connecting.compId && w.from.termIdx === s.connecting.termIdx && w.to.compId === t.compId && w.to.termIdx === t.termIdx) ||
           (w.to.compId === s.connecting.compId && w.to.termIdx === s.connecting.termIdx && w.from.compId === t.compId && w.from.termIdx === t.termIdx))
-        if (!dup) s.wires.push({ id: s.nextId++, from: { compId: s.connecting.compId, termIdx: s.connecting.termIdx }, to: t, color: s.wireColor, midY: null })
+        if (!dup) s.wires.push({ id: s.nextId++, from: { compId: s.connecting.compId, termIdx: s.connecting.termIdx }, to: t, color: s.wireColor, mid1Y: null, mid2Y: null })
       }
       s.connecting = null; s.hoverTerm = null; forceUpdate(n => n + 1)
     }
@@ -565,7 +675,7 @@ export default function SimpleCircuitScene() {
   }, [])
 
   const handleReset = useCallback(() => {
-    S.current.components = []; S.current.wires = []; S.current.switchClosed = true; S.current.dragId = null; S.current.connecting = null
+    S.current.components = []; S.current.wires = []; S.current.switchClosed = false; S.current.dragId = null; S.current.connecting = null
     forceUpdate(n => n + 1)
   }, [])
 
