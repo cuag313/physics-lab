@@ -125,21 +125,21 @@ export default function SimpleCircuitScene() {
     ctx.fillText(on ? '开关（闭合）' : '开关（断开）', swX, bottom + 16)
     ctx.fillText('灯泡', midX, top - 36)
 
-    // 电流方向 I（红色箭头，从+极出发，指向−极方向）
+    // 电流方向 I（红色箭头，在电源长竖线左边电线上，向左）
     if (on) {
-      // 在电源长竖端（+极）左侧画红色箭头向下
-      drawRedArrow(ctx, battX - 12, bottom - 22, battX - 12, bottom + 8, 'I')
+      const arrowY = bottom - 14
+      drawRedArrow(ctx, battX - 30, arrowY, left + 20, arrowY, 'I')
 
-      // 电子方向标记（蓝色，与电子颜色一致）
-      ctx.fillStyle = '#1565C0'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'
+      // 电子方向标记（黄色，与电子流动颜色一致）
+      ctx.fillStyle = '#FFC107'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'
       ctx.fillText('e⁻→', (battX + 12 + swX) / 2, bottom - 8)
       ctx.fillText('e⁻→', (swX + right) / 2, bottom - 8)
       ctx.fillText('e⁻↑', right + 8, (top + bottom) / 2)
       ctx.fillText('←e⁻', midX, top + 8)
       ctx.fillText('e⁻↓', left - 12, (top + bottom) / 2)
 
-      ctx.fillStyle = '#1565C0'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText('电子方向：−极 → +极（蓝色标记）', midX, bottom + 36)
+      ctx.fillStyle = '#FFC107'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'
+      ctx.fillText('电子方向：−极 → +极（黄色标记）', midX, bottom + 36)
       ctx.fillStyle = '#E53935'
       ctx.fillText('电流 I：+极 → −极（红色箭头，与电子方向相反）', midX, bottom + 54)
     }
