@@ -158,10 +158,16 @@ export default function SeriesParallelScene() {
     // 灯泡
     drawStdBulb(ctx, bulbX, bottom, on ? 0.8 : 0)
 
-    // ─── Ⓐ 电流表（始终显示在电路中）───
+    // Ⓥ 电压表（并联跨灯泡，从上边长线接到下边，跨过灯泡）
+    const voltX = bulbX
+    // 上引线：从上边长线（灯泡正上方）向下
+    drawLine(ctx, voltX, top, voltX, top + 25, wc, 2)
+    // 下引线：从灯泡底部向上
+    drawLine(ctx, voltX, bottom, voltX, bottom - 25, wc, 2)
+    // Ⓥ 画在中间
+    drawMeterInCircuit(ctx, voltX, (top + 25 + bottom - 25) / 2, 'V', on ? `${U1.toFixed(1)}V` : '', '#4CAF50')
+    // ─── Ⓐ 电流表（串联在灯泡前）───
     drawMeterInCircuit(ctx, ammX, bottom, 'A', on ? `${I.toFixed(2)}A` : '', '#E53935')
-    // ─── Ⓥ 电压表（始终显示在电路中，跨灯泡两端）───
-    drawMeterInCircuit(ctx, voltX, volY, 'V', on ? `${U1.toFixed(1)}V` : '', '#4CAF50')
 
     // 标注
     ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
@@ -211,10 +217,14 @@ export default function SeriesParallelScene() {
 
     // Ⓐ A表串联（始终显示）
     drawMeterInCircuit(ctx, (swX + bulb1X) / 2, bottom - 28, 'A', on ? `${I.toFixed(2)}A` : '', '#E53935')
-    // Ⓥ V1跨R1（始终显示）
-    drawMeterInCircuit(ctx, bulb1X, bottom + 35, 'V', on ? `${U1.toFixed(1)}V` : '', '#4CAF50')
-    // Ⓥ V2跨R2（始终显示）
-    drawMeterInCircuit(ctx, bulb2X, bottom + 35, 'V', on ? `${U2.toFixed(1)}V` : '', '#4CAF50')
+    // Ⓥ V1跨R1（从上边接到下边，跨过灯泡）
+    drawLine(ctx, bulb1X, top, bulb1X, top + 25, wc, 2)
+    drawLine(ctx, bulb1X, bottom, bulb1X, bottom - 25, wc, 2)
+    drawMeterInCircuit(ctx, bulb1X, (top + 25 + bottom - 25) / 2, 'V', on ? `${U1.toFixed(1)}V` : '', '#4CAF50')
+    // Ⓥ V2跨R2（从上边接到下边，跨过灯泡）
+    drawLine(ctx, bulb2X, top, bulb2X, top + 25, wc, 2)
+    drawLine(ctx, bulb2X, bottom, bulb2X, bottom - 25, wc, 2)
+    drawMeterInCircuit(ctx, bulb2X, (top + 25 + bottom - 25) / 2, 'V', on ? `${U2.toFixed(1)}V` : '', '#4CAF50')
 
     ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
     ctx.fillText('R₁', bulb1X, bottom - 28)
@@ -269,8 +279,10 @@ export default function SeriesParallelScene() {
     drawMeterInCircuit(ctx, branchL + 22, (topY + botY) / 2, 'A', on ? `${I1.toFixed(2)}A` : '', '#FF9800')
     // Ⓐ A2支路（始终显示）
     drawMeterInCircuit(ctx, branchR + 22, (topY + botY) / 2, 'A', on ? `${I2.toFixed(2)}A` : '', '#FF9800')
-    // Ⓥ V跨两支路（始终显示）
-    drawMeterInCircuit(ctx, midX, botY + 24, 'V', on ? `${U1.toFixed(1)}V` : '', '#4CAF50')
+    // Ⓥ V跨两支路（从上边接到下边）
+    drawLine(ctx, midX, topY, midX, topY + 22, wc, 2)
+    drawLine(ctx, midX, botY, midX, botY - 22, wc, 2)
+    drawMeterInCircuit(ctx, midX, (topY + 22 + botY - 22) / 2, 'V', on ? `${U1.toFixed(1)}V` : '', '#4CAF50')
 
     ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
     ctx.fillText('R₁', branchL, botY + 14)
