@@ -125,23 +125,23 @@ export default function SimpleCircuitScene() {
     ctx.fillText(on ? '开关（闭合）' : '开关（断开）', swX, bottom + 16)
     ctx.fillText('灯泡', midX, top - 36)
 
-    // 电子方向 + 电流方向说明
+    // 电流方向 I（红色箭头，从+极出发，指向−极方向）
     if (on) {
-      // 电子方向（蓝色小箭头）
-      ctx.fillStyle = '#1565C0'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText('e⁻→', (battX + 12 + swX) / 2, bottom - 10)
-      ctx.fillText('e⁻→', (swX + right) / 2, bottom - 10)
+      // 在电源长竖端（+极）左侧画红色箭头向下
+      drawRedArrow(ctx, battX - 12, bottom - 22, battX - 12, bottom + 8, 'I')
+
+      // 电子方向标记（蓝色，与电子颜色一致）
+      ctx.fillStyle = '#1565C0'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'
+      ctx.fillText('e⁻→', (battX + 12 + swX) / 2, bottom - 8)
+      ctx.fillText('e⁻→', (swX + right) / 2, bottom - 8)
       ctx.fillText('e⁻↑', right + 8, (top + bottom) / 2)
-      ctx.fillText('←e⁻', midX, top + 10)
+      ctx.fillText('←e⁻', midX, top + 8)
       ctx.fillText('e⁻↓', left - 12, (top + bottom) / 2)
 
-      // 电流方向 I（红色箭头，与电子方向相反）
-      drawRedArrow(ctx, left + 12, (top + bottom) / 2, left + 12, (top + bottom) / 2 + 50, 'I')
-
-      ctx.fillStyle = '#E53935'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText('电子方向：−极 → +极', midX, bottom + 36)
-      ctx.fillStyle = '#333'
-      ctx.fillText('电流方向 I：+极 → −极（与电子相反）', midX, bottom + 54)
+      ctx.fillStyle = '#1565C0'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'
+      ctx.fillText('电子方向：−极 → +极（蓝色标记）', midX, bottom + 36)
+      ctx.fillStyle = '#E53935'
+      ctx.fillText('电流 I：+极 → −极（红色箭头，与电子方向相反）', midX, bottom + 54)
     }
 
     // ─── 知识面板（右侧）───
@@ -578,13 +578,15 @@ export default function SimpleCircuitScene() {
       return
     }
 
-    // Tab2：器材栏
+    // Tab2：器材栏 —— 拖拽添加（点击并拖到画布）
     for (const a of canvasRef.current._palAreas) {
       if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) {
         if (a.action === 'color') { s.wireColor = a.color; forceUpdate(n => n + 1); return }
         if (a.type) {
-          s.components.push({ id: s.nextId++, type: a.type, x: 300 + Math.random() * 200, y: 200 + Math.random() * 150, rotation: 0, closed: true })
-          forceUpdate(n => n + 1); return
+          const id = s.nextId++
+          s.components.push({ id, type: a.type, x: x, y: y, rotation: 0, closed: true })
+          s.dragId = id; s.dragOffX = 0; s.dragOffY = 0
+          s.guideDismissed = true; forceUpdate(n => n + 1); return
         }
       }
     }
@@ -599,37 +601,44 @@ export default function SimpleCircuitScene() {
       const tc = s.components.find(c => c.id === wire.to.compId)
       if (!fc || !tc) continue
       const f = getTermPos(fc, wire.from.termIdx), t = getTermPos(tc, wire.to.termIdx)
-      const ddx = t.x - f.x
-      const m1x = f.x + ddx * 0.33, m1y = wire.mid1Y != null ? wire.mid1Y : f.y + (t.y - f.y) * 0.33
-      const m2x = f.x + ddx * 0.67, m2y = wire.mid2Y != null ? wire.mid2Y : f.y + (t.y - f.y) * 0.67
+      const ddx = t.x - f.x, ddy = t.y - f.y
+      const m1x = f.x + ddx * 0.33, m1y = wire.mid1Y != null ? wire.mid1Y : f.y + ddy * 0.33
+      const m2x = f.x + ddx * 0.67, m2y = wire.mid2Y != null ? wire.mid2Y : f.y + ddy * 0.67
       if ((x - m1x) ** 2 + (y - m1y) ** 2 < 100) { s.dragId = 'wire_' + wire.id + '_1'; forceUpdate(n => n + 1); return }
       if ((x - m2x) ** 2 + (y - m2y) ** 2 < 100) { s.dragId = 'wire_' + wire.id + '_2'; forceUpdate(n => n + 1); return }
     }
 
-    // 器材点击（开关切换 / 拖拽）
+    // 器材拖拽（包括开关）
     const comp = findComp(x, y)
-    if (comp) {
-      if (comp.type === 'switch') {
-        comp.closed = comp.closed === false ? true : false
-        forceUpdate(n => n + 1); return
-      }
-      s.dragId = comp.id; s.dragOffX = x - comp.x; s.dragOffY = y - comp.y; forceUpdate(n => n + 1)
-    }
+    if (comp) { s.dragId = comp.id; s.dragOffX = x - comp.x; s.dragOffY = y - comp.y; forceUpdate(n => n + 1) }
   }, [])
 
   const handleMouseMove = useCallback((e) => {
     const s = S.current; const { x, y } = getPos(e)
     if (s.tab !== 2) return
     if (s.dragId) {
-      // 导线铆点拖拽
+      // 导线铆点拖拽（只能沿线滑动）
       if (typeof s.dragId === 'string' && s.dragId.startsWith('wire_')) {
         const parts = s.dragId.split('_')
         const wireId = parseInt(parts[1])
         const rivetIdx = parseInt(parts[2])
         const wire = s.wires.find(w => w.id === wireId)
         if (wire) {
-          if (rivetIdx === 1) wire.mid1Y = y
-          else wire.mid2Y = y
+          const fc = s.components.find(c => c.id === wire.from.compId)
+          const tc = s.components.find(c => c.id === wire.to.compId)
+          if (fc && tc) {
+            const f = getTermPos(fc, wire.from.termIdx), t = getTermPos(tc, wire.to.termIdx)
+            // 投影鼠标位置到 wire 的两点连线上
+            const dx = t.x - f.x, dy = t.y - f.y
+            const len2 = dx * dx + dy * dy
+            if (len2 > 0) {
+              let proj = ((x - f.x) * dx + (y - f.y) * dy) / len2
+              proj = Math.max(0.1, Math.min(0.9, proj))
+              const newY = f.y + proj * dy
+              if (rivetIdx === 1) wire.mid1Y = newY
+              else wire.mid2Y = newY
+            }
+          }
           forceUpdate(n => n + 1)
         }
         return
@@ -674,6 +683,16 @@ export default function SimpleCircuitScene() {
     forceUpdate(n => n + 1)
   }, [])
 
+  const handleDoubleClick = useCallback((e) => {
+    if (S.current.tab !== 2) return
+    const { x, y } = getPos(e)
+    const comp = findComp(x, y)
+    if (comp && comp.type === 'switch') {
+      comp.closed = comp.closed === false ? true : false
+      forceUpdate(n => n + 1)
+    }
+  }, [])
+
   const handleReset = useCallback(() => {
     S.current.components = []; S.current.wires = []; S.current.switchClosed = false; S.current.dragId = null; S.current.connecting = null
     forceUpdate(n => n + 1)
@@ -694,7 +713,7 @@ export default function SimpleCircuitScene() {
         <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }}
           onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
-          onContextMenu={handleContextMenu} />
+          onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} />
       </div>
       <div style={styles.desc}>
         <b>简单电路</b>
