@@ -125,10 +125,20 @@ export default function SimpleCircuitScene() {
     ctx.fillText(on ? '开关（闭合）' : '开关（断开）', swX, bottom + 16)
     ctx.fillText('灯泡', midX, top - 36)
 
-    // 电流方向 I（红色箭头，在电源长竖线左边电线上，向左）
+    // 电流方向 I（红色短箭头，在电源长竖线左边电线上，向左）
     if (on) {
       const arrowY = bottom - 14
-      drawRedArrow(ctx, battX - 30, arrowY, left + 20, arrowY, 'I')
+      // 短箭头
+      ctx.strokeStyle = '#E53935'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
+      ctx.beginPath(); ctx.moveTo(battX - 20, arrowY); ctx.lineTo(left + 40, arrowY); ctx.stroke(); ctx.lineCap = 'butt'
+      // 箭头尖
+      ctx.fillStyle = '#E53935'
+      ctx.beginPath(); ctx.moveTo(left + 40, arrowY)
+      ctx.lineTo(left + 50, arrowY - 5); ctx.lineTo(left + 50, arrowY + 5); ctx.closePath(); ctx.fill()
+      // I 标签在箭头上方
+      ctx.fillStyle = '#E53935'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
+      ctx.fillText('电流 I', (battX - 20 + left + 40) / 2, arrowY - 6)
+      ctx.textBaseline = 'alphabetic'
 
       // 电子方向标记（黄色，与电子流动颜色一致）
       ctx.fillStyle = '#FFC107'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'
