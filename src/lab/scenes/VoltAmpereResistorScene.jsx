@@ -68,6 +68,7 @@ export default function VoltAmpereResistorScene() {
 
   function render(R) {
     const { ctx, W, H } = R; ctx.clearRect(0, 0, W, H); ctx.fillStyle = '#f0f4f8'; ctx.fillRect(0, 0, W, H)
+    const cv = canvasRef.current; if (!cv) return
     cv._clickAreas = []; cv._palAreas = []
     if (tabRef.current === 1) renderDemo(ctx, W, H, demo.current)
     else renderDIY(ctx, W, H, diy.current)
@@ -205,23 +206,22 @@ export default function VoltAmpereResistorScene() {
   function exportCSV(s) { if (s.data.length === 0) return; const csv = '#,U(V),I(A),R(Ω)\n' + s.data.map((d, i) => (i + 1) + ',' + d.U.toFixed(4) + ',' + d.I.toFixed(5) + ',' + d.R.toFixed(2)).join('\n'); const blob = new Blob([csv], { type: 'text/csv' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'volt_ampere_' + Date.now() + '.csv'; a.click(); URL.revokeObjectURL(url) }
 
   // ─── 交互 ───
-  const cv = canvasRef.current
-  const getPos = (e) => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top } }
-  const handleMouseDown = useCallback((e) => { if (e.button !== 0) return; const { x, y } = getPos(e)
-    if (tabRef.current === 1) { for (const a of cv._clickAreas || []) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(); return } }; return }
+  const getPos = (e) => { const r = canvasRef.current.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top } }
+  const handleMouseDown = useCallback((e) => { if (e.button !== 0) return; const el = canvasRef.current; if (!el) return; const { x, y } = getPos(e)
+    if (tabRef.current === 1) { for (const a of el._clickAreas || []) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(); return } }; return }
     const s = diy.current
-    for (const a of cv._palAreas || []) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { if (a.type) { saveUndo(s); const id = s.nextId++; s.components.push({ id, type: a.type, x, y }); s.dragId = id; s.dragOffX = 0; s.dragOffY = 0; forceUpdate(n => n + 1); return } } }
+    for (const a of el._palAreas || []) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { if (a.type) { saveUndo(s); const id = s.nextId++; s.components.push({ id, type: a.type, x, y }); s.dragId = id; s.dragOffX = 0; s.dragOffY = 0; forceUpdate(n => n + 1); return } } }
     const term = findTerm(x, y); if (term) { if (s.connecting) { if (term.compId !== s.connecting.compId || term.termIdx !== s.connecting.termIdx) { const dup = s.wires.some(w => (w.from.compId === s.connecting.compId && w.from.termIdx === s.connecting.termIdx && w.to.compId === term.compId && w.to.termIdx === term.termIdx) || (w.to.compId === s.connecting.compId && w.to.termIdx === s.connecting.termIdx && w.from.compId === term.compId && w.from.termIdx === term.termIdx)); if (!dup) { saveUndo(s); s.wires.push({ id: s.nextId++, from: { ...s.connecting }, to: term }) } }; s.connecting = null; s.hoverTerm = null } else { s.connecting = { ...term, mx: x, my: y } }; forceUpdate(n => n + 1); return }
     const comp = findComp(x, y); if (comp) { s.dragId = comp.id; s.dragOffX = x - comp.x; s.dragOffY = y - comp.y; forceUpdate(n => n + 1) }
   }, [])
-  const handleMouseMove = useCallback((e) => { if (tabRef.current !== 2) return; const { x, y } = getPos(e), s = diy.current
+  const handleMouseMove = useCallback((e) => { if (tabRef.current !== 2) return; const el = canvasRef.current; if (!el) return; const { x, y } = getPos(e), s = diy.current
     if (s.dragId) { const c = s.components.find(c => c.id === s.dragId); if (c) { c.x = x - s.dragOffX; c.y = y - s.dragOffY; forceUpdate(n => n + 1) }; return }
     if (s.connecting) { s.connecting.mx = x; s.connecting.my = y; const t = findTerm(x, y); s.hoverTerm = t && (t.compId !== s.connecting.compId || t.termIdx !== s.connecting.termIdx) ? t : null; forceUpdate(n => n + 1); return }
-    s.hoverTerm = findTerm(x, y); cv.style.cursor = s.hoverTerm ? 'crosshair' : findComp(x, y) ? 'grab' : 'default'
+    s.hoverTerm = findTerm(x, y); el.style.cursor = s.hoverTerm ? 'crosshair' : findComp(x, y) ? 'grab' : 'default'
   }, [])
   const handleMouseUp = useCallback(() => { if (tabRef.current !== 2) return; const s = diy.current; if (s.dragId) { s.dragId = null; forceUpdate(n => n + 1) } }, [])
-  const handleContextMenu = useCallback((e) => { if (tabRef.current !== 2) return; e.preventDefault(); const { x, y } = getPos(e), s = diy.current; const comp = findComp(x, y); if (comp) { saveUndo(s); s.components = s.components.filter(c => c.id !== comp.id); s.wires = s.wires.filter(w => w.from.compId !== comp.id && w.to.compId !== comp.id) }; forceUpdate(n => n + 1) }, [])
-  const handleDoubleClick = useCallback((e) => { if (tabRef.current !== 2) return; const { x, y } = getPos(e), s = diy.current; const comp = findComp(x, y); if (comp && comp.type === 'switch') { comp.closed = !comp.closed; s.switchClosed = comp.closed; forceUpdate(n => n + 1) } }, [])
+  const handleContextMenu = useCallback((e) => { if (tabRef.current !== 2) return; e.preventDefault(); const el = canvasRef.current; if (!el) return; const { x, y } = getPos(e), s = diy.current; const comp = findComp(x, y); if (comp) { saveUndo(s); s.components = s.components.filter(c => c.id !== comp.id); s.wires = s.wires.filter(w => w.from.compId !== comp.id && w.to.compId !== comp.id) }; forceUpdate(n => n + 1) }, [])
+  const handleDoubleClick = useCallback((e) => { if (tabRef.current !== 2) return; const el = canvasRef.current; if (!el) return; const { x, y } = getPos(e), s = diy.current; const comp = findComp(x, y); if (comp && comp.type === 'switch') { comp.closed = !comp.closed; s.switchClosed = comp.closed; forceUpdate(n => n + 1) } }, [])
   const switchTab = useCallback((newTab) => { if (newTab === tabRef.current) return; const old = tabRef.current === 1 ? demo.current : diy.current; old.switchClosed = false; old.data = []; tabRef.current = newTab; setTab(newTab); forceUpdate(n => n + 1) }, [])
   const updateParam = useCallback((key, val) => { demo.current[key] = val; diy.current[key] = val; forceUpdate(n => n + 1) }, [])
 
