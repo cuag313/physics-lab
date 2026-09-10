@@ -94,21 +94,28 @@ export default function VoltAmpereResistorScene() {
     const Rtot = s.R_true + s.sliderR, I = on && Rtot > 0 ? s.U_source / Rtot : 0, UR = I * s.R_true
     const brightness = on ? Math.min(1, (I * I * s.R_true) / 3.6) : 0
 
-    // 电路区域（左侧横向长方形，足够宽包含所有元件）
-    const areaL = 20, areaR = W * 0.63, areaT = 90, areaB = H - 80
-    const leftX = areaL + 30, rightX = areaR - 30  // 边距小，矩形更宽
-    // 压缩上下高度，横向为长边
-    const centerY = (areaT + areaB) / 2
-    const halfH = Math.min((areaB - areaT) * 0.2, 70)  // 上下更扁
-    const btmY = centerY + halfH, topY = centerY - halfH
-    const span = rightX - leftX
+    // 电路区域（左侧横向长方形）
+    // 第一步：先定元件位置（上边3个在中间，下边2个在中间）
+    const cvCenterX = W * 0.31  // 画布左半区中心
+    const compSpan = W * 0.42   // 元件分布宽度
+    const compL = cvCenterX - compSpan / 2
 
-    // 元件位置：上边3个放在四等分的中间3个分割点
-    const batX = leftX + span / 3           // 下边 1/3
-    const swX = leftX + 2 * span / 3       // 下边 2/3
-    const bulbX = leftX + span * 1 / 4     // 上边 1/4 点
-    const ammX = leftX + span * 2 / 4      // 上边 中间
-    const rheoX = leftX + span * 3 / 4     // 上边 3/4 点
+    // 元件X坐标
+    const bulbX = compL + compSpan * 1 / 4     // 灯泡：1/4点
+    const ammX  = compL + compSpan * 2 / 4     // 安培表：中间
+    const rheoX = compL + compSpan * 3 / 4     // 滑线变阻器：3/4点
+    const batX  = compL + compSpan * 1 / 3     // 电源：下边1/3
+    const swX   = compL + compSpan * 2 / 3     // 开关：下边2/3
+
+    // 第二步：矩形边框 = 元件区域 + 左右各扩60px，元件不在角上
+    const leftX  = compL - 60
+    const rightX = compL + compSpan + 60
+
+    // 上下高度（横向为长边，压缩上下）
+    const centerY = (140 + H - 100) / 2
+    const halfH = 70
+    const topY = centerY - halfH
+    const btmY = centerY + halfH
 
     // 缓存坐标供鼠标事件用
     s._rheoX = rheoX; s._topY = topY; s._leftX = leftX; s._rightX = rightX
