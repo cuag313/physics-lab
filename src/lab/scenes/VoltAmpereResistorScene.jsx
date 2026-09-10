@@ -30,6 +30,25 @@ const COMP = {
 export default function VoltAmpereResistorScene() {
   const canvasRef = useRef(null)
   const animRef = useRef(null)
+  const imageCache = useRef({})
+
+  // 预加载器材图片
+  useEffect(() => {
+    const imgs = {
+      ammeter: '/assets/equipment/ammeter.png',
+      voltmeter: '/assets/equipment/voltmeter.png',
+      battery: '/assets/equipment/battery.png',
+      switch: '/assets/equipment/switch.png',
+      rheostat: '/assets/equipment/rheostat.png',
+      resistor: '/assets/equipment/resistor.png',
+      bulb_on: '/assets/equipment/bulb_on.png',
+    }
+    for (const [key, src] of Object.entries(imgs)) {
+      const img = new Image()
+      img.src = src
+      img.onload = () => { imageCache.current[key] = img; forceUpdate(n => n + 1) }
+    }
+  }, [])
 
   // ── 双模式完全隔离状态 ──
   const demoRef = useRef({
@@ -596,17 +615,52 @@ export default function VoltAmpereResistorScene() {
     if (s.dragId === comp.id) ctx.globalAlpha = 0.6
 
     if (type === 'battery') {
-      drawRealBattery(ctx, s.U_source)
+      const img = imageCache.current.battery
+      if (img) {
+        ctx.drawImage(img, -45, -28, 90, 56)
+      } else {
+        drawRealBattery(ctx, s.U_source)
+      }
     } else if (type === 'switch') {
-      drawRealSwitch(ctx, comp.closed !== false)
+      const img = imageCache.current.switch
+      if (img) {
+        ctx.drawImage(img, -40, -20, 80, 40)
+        // 通断状态叠加色
+        ctx.fillStyle = comp.closed !== false ? 'rgba(76,175,80,0.12)' : 'rgba(244,67,54,0.08)'
+        ctx.beginPath(); ctx.arc(0, 0, 25, 0, Math.PI * 2); ctx.fill()
+      } else {
+        drawRealSwitch(ctx, comp.closed !== false)
+      }
     } else if (type === 'ammeter') {
-      drawRealMeter(ctx, 'A', s.needleA, s.overRangeA, on ? `${I.toFixed(3)}A` : '', '#E53935')
+      const img = imageCache.current.ammeter
+      if (img) {
+        ctx.drawImage(img, -32, -32, 64, 64)
+        drawMeterNeedle(ctx, s.needleA, s.overRangeA, on ? `${I.toFixed(3)}A` : '', '#E53935', 30)
+      } else {
+        drawRealMeter(ctx, 'A', s.needleA, s.overRangeA, on ? `${I.toFixed(3)}A` : '', '#E53935')
+      }
     } else if (type === 'voltmeter') {
-      drawRealMeter(ctx, 'V', s.needleV, s.overRangeV, on ? `${U_R.toFixed(2)}V` : '', '#4CAF50')
+      const img = imageCache.current.voltmeter
+      if (img) {
+        ctx.drawImage(img, -32, -32, 64, 64)
+        drawMeterNeedle(ctx, s.needleV, s.overRangeV, on ? `${U_R.toFixed(2)}V` : '', '#4CAF50', 30)
+      } else {
+        drawRealMeter(ctx, 'V', s.needleV, s.overRangeV, on ? `${U_R.toFixed(2)}V` : '', '#4CAF50')
+      }
     } else if (type === 'rheostat') {
-      drawRealRheostat(ctx, s.sliderR, 50)
+      const img = imageCache.current.rheostat
+      if (img) {
+        ctx.drawImage(img, -50, -25, 100, 50)
+      } else {
+        drawRealRheostat(ctx, s.sliderR, 50)
+      }
     } else if (type === 'resistor') {
-      drawRealResistor(ctx, s.R_true)
+      const img = imageCache.current.resistor
+      if (img) {
+        ctx.drawImage(img, -35, -22, 70, 44)
+      } else {
+        drawRealResistor(ctx, s.R_true)
+      }
     }
 
     ctx.globalAlpha = 1; ctx.restore()
@@ -767,10 +821,41 @@ export default function VoltAmpereResistorScene() {
     return bands.slice(0, 4)
   }
 
+  // ─── 指针动画叠加层（用于真实图片模式）───
+  function drawMeterNeedle(ctx, needleAngle, overRange, reading, color, r) {
+    // 超量程闪烁
+    if (overRange) {
+      const flash = Math.sin(Date.now() / 150) > 0
+      ctx.fillStyle = flash ? 'rgba(244,67,54,0.25)' : 'rgba(244,67,54,0.08)'
+      ctx.beginPath(); ctx.arc(0, 0, r + 6, 0, Math.PI * 2); ctx.fill()
+    }
+    // 指针（在图片上方绘制）
+    const angle = -Math.PI * 0.6 + Math.min(needleAngle, 1.5) * Math.PI * 1.2
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.lineCap = 'round'
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(angle) * (r - 6), Math.sin(angle) * (r - 6)); ctx.stroke()
+    ctx.lineCap = 'butt'
+    ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill()
+    // 读数
+    if (reading) {
+      ctx.fillStyle = overRange ? '#F44336' : '#fff'
+      ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+      ctx.fillText(reading, 0, r - 4)
+    }
+    if (overRange) {
+      ctx.fillStyle = '#F44336'; ctx.font = 'bold 9px sans-serif'
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+      ctx.fillText('超量程!', 0, r + 10)
+    }
+    ctx.textBaseline = 'alphabetic'
+  }
+
   // ─── 实物器材小图标（器材栏用）───
   function drawRealisticIcon(ctx, x, y, type) {
     ctx.save(); ctx.translate(x, y)
-    if (type === 'battery') {
+    const img = imageCache.current[type]
+    if (img) {
+      ctx.drawImage(img, -12, -10, 24, 20)
+    } else if (type === 'battery') {
       ctx.fillStyle = '#81C784'; ctx.strokeStyle = '#388E3C'; ctx.lineWidth = 1
       ctx.beginPath(); ctx.roundRect(-12, -8, 24, 16, 3); ctx.fill(); ctx.stroke()
       ctx.fillStyle = '#fff'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
