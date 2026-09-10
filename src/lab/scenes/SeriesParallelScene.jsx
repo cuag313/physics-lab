@@ -204,7 +204,7 @@ export default function SeriesParallelScene() {
 
     drawStdBattery(ctx, battX, bottom)
     drawStdSwitch(ctx, swX, bottom, on, () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) })
-    const brightness = on ? 0.45 : 0
+    const brightness = on ? 0.25 : 0
     drawStdBulb(ctx, bulb1X, bottom, brightness)
     drawStdBulb(ctx, bulb2X, bottom, brightness)
 
@@ -408,7 +408,7 @@ export default function SeriesParallelScene() {
       ctx.fillText('📊 实测数据', px + 14, ky); ky += 20
       ctx.font = '11px monospace'; ctx.fillStyle = '#555'
       ctx.fillText(`电源 U = ${U} V`, px + 14, ky); ky += 18
-      ctx.fillText(`总电流 I = ${I.toFixed(3)} A`, px + 14, ky); y += 18
+      ctx.fillText(`总电流 I = ${I.toFixed(3)} A`, px + 14, ky); ky += 18
       ctx.fillStyle = '#E53935'
       ctx.fillText(`总电阻 R = ${Rtotal.toFixed(1)} Ω`, px + 14, ky); ky += 22
       ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'
@@ -895,7 +895,7 @@ export default function SeriesParallelScene() {
           <div style={styles.sep} />
           {tab === 1 && (
             <>
-              <label style={styles.lbl}>电源U：<input type="range" min="0" max="12" step="0.5" value={S.current.U}
+              <label style={styles.lbl}>电源U：<input type="range" min="1" max="12" step="0.5" value={S.current.U}
                 onChange={(e) => { S.current.U = parseFloat(e.target.value); forceUpdate(n => n + 1) }} style={styles.slider} /><span style={styles.val}>{S.current.U.toFixed(1)}V</span></label>
               <label style={styles.lbl}>R₁：<input type="range" min="5" max="50" step="1" value={R1}
                 onChange={(e) => { const v = parseInt(e.target.value); S.current.R1 = v; setR1(v) }} style={styles.slider} /><span style={styles.val}>{R1}Ω</span></label>

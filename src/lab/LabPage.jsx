@@ -65,6 +65,8 @@ import ElectronDoubleSlitScene from './scenes/ElectronDoubleSlitScene'
 import NuclearReactionScene from './scenes/NuclearReactionScene'
 import RelativityScene from './scenes/RelativityScene'
 import ComptonScene from './scenes/ComptonScene'
+import OhmsLawScene from './scenes/OhmsLawScene'
+import VoltAmpereResistorScene from './scenes/VoltAmpereResistorScene'
 import BrownianMotionScene from './scenes/BrownianMotionScene'
 import GasLawsScene from './scenes/GasLawsScene'
 import ThermodynamicsFirstScene from './scenes/ThermodynamicsFirstScene'
@@ -495,6 +497,10 @@ export default function LabPage({ onBack }) {
           <ElectromagnetScene />
         ) : currentExperiment?.key === 'emfInternalResistance' ? (
           <EmfInternalResistanceScene />
+        ) : currentExperiment?.key === 'ohmsLaw' ? (
+          <OhmsLawScene />
+        ) : currentExperiment?.key === 'voltAmpereResistor' ? (
+          <VoltAmpereResistorScene />
         ) : currentExperiment?.key === 'multimeter' ? (
           <MultimeterScene />
         ) : currentExperiment?.key === 'ampereForce' ? (
