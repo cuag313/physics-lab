@@ -35,13 +35,13 @@ export default function VoltAmpereResistorScene() {
   // 预加载器材图片
   useEffect(() => {
     const imgs = {
-      ammeter: '/assets/equipment/ammeter.png',
-      voltmeter: '/assets/equipment/voltmeter.png',
-      battery: '/assets/equipment/battery.png',
-      switch: '/assets/equipment/switch.png',
-      rheostat: '/assets/equipment/rheostat.png',
-      resistor: '/assets/equipment/resistor.png',
-      bulb_on: '/assets/equipment/bulb_on.png',
+      ammeter: './assets/equipment/ammeter.png',
+      voltmeter: './assets/equipment/voltmeter.png',
+      battery: './assets/equipment/battery.png',
+      switch: './assets/equipment/switch.png',
+      rheostat: './assets/equipment/rheostat.png',
+      resistor: './assets/equipment/resistor.png',
+      bulb_on: './assets/equipment/bulb_on.png',
     }
     for (const [key, src] of Object.entries(imgs)) {
       const img = new Image()
