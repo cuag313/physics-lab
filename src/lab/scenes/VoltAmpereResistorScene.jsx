@@ -94,10 +94,13 @@ export default function VoltAmpereResistorScene() {
     const Rtot = s.R_true + s.sliderR, I = on && Rtot > 0 ? s.U_source / Rtot : 0, UR = I * s.R_true
     const brightness = on ? Math.min(1, (I * I * s.R_true) / 3.6) : 0
 
-    // 电路区域
-    const areaL = 30, areaR = W * 0.56, areaT = 70, areaB = H - 60
-    const leftX = areaL + 80, rightX = areaR - 80
-    const btmY = areaB - 30, topY = areaT + 40
+    // 电路区域（左侧横向长方形）
+    const areaL = 30, areaR = W * 0.63, areaT = 90, areaB = H - 80
+    const leftX = areaL + 60, rightX = areaR - 60
+    // 压缩上下高度，横向为长边
+    const centerY = (areaT + areaB) / 2
+    const halfH = Math.min((areaB - areaT) * 0.25, 80)  // 上下压缩
+    const btmY = centerY + halfH, topY = centerY - halfH
     const span = rightX - leftX
 
     // 元件位置（用户指定比例）
@@ -166,11 +169,11 @@ export default function VoltAmpereResistorScene() {
     ctx.fillText('灯泡', bulbX, topY - 28)
     ctx.fillStyle = '#888'; ctx.font = '9px sans-serif'
     ctx.fillText('Ⓐ串联', ammX, topY - 28)
-    ctx.fillText('Ⓥ并联', bulbX, volY + 24)
+    ctx.fillText('Ⓥ并联', bulbX, btmY + 22)
     ctx.textBaseline = 'alphabetic'
 
-    // ─── 右侧面板 ───
-    const px = W * 0.58, py = 50, pw = W * 0.40, ph = H - 120
+    // ─── 右侧面板（只占1/3屏幕）───
+    const px = W * 0.65, py = 50, pw = W * 0.33, ph = H - 120
     ctx.fillStyle = 'rgba(255,255,255,0.97)'; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill()
     ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.stroke()
 
