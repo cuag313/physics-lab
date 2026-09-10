@@ -94,10 +94,13 @@ export default function VoltAmpereResistorScene() {
     const Rtot = s.R_true + s.sliderR, I = on && Rtot > 0 ? s.U_source / Rtot : 0, UR = I * s.R_true
     const brightness = on ? Math.min(1, (I * I * s.R_true) / 3.6) : 0
 
-    // 电路区域：横向大长方形，占满左侧画布
+    // 电路区域：横向长方形，占满左侧画布
     const leftX = 60, rightX = W * 0.60
-    const topY = 100, btmY = H - 120
     const span = rightX - leftX
+    const rectH = 180  // 压缩高度，横向为长边
+    const centerY = H * 0.48
+    const topY = centerY - rectH / 2
+    const btmY = centerY + rectH / 2
 
     // 元件放在矩形边上的分割点（不在角上！）
     // 上边：3个元件在四等分的中间3个点
