@@ -94,14 +94,18 @@ export default function VoltAmpereResistorScene() {
     const Rtot = s.R_true + s.sliderR, I = on && Rtot > 0 ? s.U_source / Rtot : 0, UR = I * s.R_true
     const brightness = on ? Math.min(1, (I * I * s.R_true) / 3.6) : 0
 
-    // 画布分区：左侧电路(65%) + 右侧面板(33%)
+    // 画布分区：左侧电路(63%) + 右侧面板(33%)
     const circuitW = W * 0.63
-    // 矩形回路：横向长方形，居中
+
+    // 矩形回路：横向长方形，直接画4条边
     const rectL = 50, rectR = circuitW - 30
-    const rectTop = 120, rectBtm = H - 140
+    const rectH = 160
+    const centerY = H * 0.45
+    const topY = centerY - rectH / 2
+    const btmY = centerY + rectH / 2
     const span = rectR - rectL
 
-    // 元件位置（严格按手绘图）
+    // 元件在矩形边上的分割点
     // 上边：滑线变阻器(1/4) — 安培表(2/4) — 灯泡(3/4)
     const rheoX = rectL + span * 1 / 4
     const ammX  = rectL + span * 2 / 4
@@ -111,68 +115,56 @@ export default function VoltAmpereResistorScene() {
     const swX  = rectL + span * 2 / 3
 
     // 缓存坐标供鼠标事件用
-    s._rheoX = rheoX; s._topY = rectTop; s._leftX = rectL; s._rightX = rectR
+    s._rheoX = rheoX; s._topY = topY; s._leftX = rectL; s._rightX = rectR
 
     const wc = on ? '#1565C0' : '#999'
-    const lw = 2.5
 
-    // ─── 矩形回路导线（严格按手绘图连接）───
-    // 下边：电源(+) → 开关(-)
-    drawLn(ctx, batX + 14, rectBtm, swX - 18, rectBtm, wc, lw)
-    // 左边竖线：电源上方 → 滑线变阻器
-    drawLn(ctx, batX, rectBtm, batX, rectTop, wc, lw)
-    drawLn(ctx, batX, rectTop, rheoX - 24, rectTop, wc, lw)
-    // 上边：滑线变阻器 → 安培表 → 灯泡
-    drawLn(ctx, rheoX + 24, rectTop, ammX - 18, rectTop, wc, lw)
-    drawLn(ctx, ammX + 18, rectTop, bulbX - 14, rectTop, wc, lw)
-    // 右边竖线：灯泡 → 开关
-    drawLn(ctx, bulbX, rectTop, bulbX, rectBtm, wc, lw)
-    drawLn(ctx, bulbX, rectBtm, swX + 18, rectBtm, wc, lw)
+    // ─── 画完整矩形（4条边）───
+    drawLn(ctx, rectL, btmY, rectR, btmY, wc, 2.5)  // 下边
+    drawLn(ctx, rectR, btmY, rectR, topY, wc, 2.5)   // 右边
+    drawLn(ctx, rectR, topY, rectL, topY, wc, 2.5)    // 上边
+    drawLn(ctx, rectL, topY, rectL, btmY, wc, 2.5)    // 左边
 
-    // Ⓥ 伏特表并联在灯泡下方（手绘图中在灯泡正下方）
-    const volY = rectBtm + 40
-    drawLn(ctx, bulbX - 14, rectTop, bulbX - 14, volY, wc, 2)
-    drawLn(ctx, bulbX + 14, rectTop, bulbX + 14, volY, wc, 2)
+    // Ⓥ 伏特表并联在灯泡下方
+    const volY = btmY + 45
+    drawLn(ctx, bulbX - 14, topY, bulbX - 14, volY, wc, 2)
+    drawLn(ctx, bulbX + 14, topY, bulbX + 14, volY, wc, 2)
     drawLn(ctx, bulbX - 14, volY, bulbX - 18, volY, wc, 2)
     drawLn(ctx, bulbX + 18, volY, bulbX + 14, volY, wc, 2)
 
-    // 电流流动动画
+    // 电流流动（沿矩形路径）
     if (on) {
       drawFlow(ctx, [
-        { x: batX, y: rectBtm }, { x: swX, y: rectBtm },
-        { x: swX, y: rectTop }, { x: bulbX, y: rectTop },
-        { x: ammX, y: rectTop }, { x: rheoX, y: rectTop },
-        { x: batX, y: rectTop }, { x: batX, y: rectBtm },
+        { x: rectL, y: btmY }, { x: rectR, y: btmY },
+        { x: rectR, y: topY }, { x: rectL, y: topY },
+        { x: rectL, y: btmY },
       ], s.time)
       // 导线高亮
       ctx.strokeStyle = 'rgba(21,101,225,0.15)'; ctx.lineWidth = 8
       ctx.beginPath()
-      ctx.moveTo(batX, rectBtm); ctx.lineTo(swX, rectBtm)
-      ctx.lineTo(swX, rectTop); ctx.lineTo(bulbX, rectTop)
-      ctx.lineTo(ammX, rectTop); ctx.lineTo(rheoX, rectTop)
-      ctx.lineTo(batX, rectTop); ctx.lineTo(batX, rectBtm)
+      ctx.rect(rectL, topY, rectR - rectL, btmY - topY)
       ctx.stroke()
     }
 
-    // ─── 元件符号 ───
-    drawBat(ctx, batX, rectBtm)
-    drawSw(ctx, swX, rectBtm, on, () => { s.switchClosed = !s.switchClosed; forceUpdate(n => n + 1) })
-    drawRheoSym(ctx, rheoX, rectTop, s.sliderR, 50, s.rheoDragging)
-    drawMeterSym(ctx, ammX, rectTop, 'A', s.needleA, s.overRangeA, on ? I.toFixed(3) + 'A' : '')
-    drawBulbSym(ctx, bulbX, rectTop, brightness)
+    // ─── 元件符号（画在矩形边上）───
+    drawBat(ctx, batX, btmY)
+    drawSw(ctx, swX, btmY, on, () => { s.switchClosed = !s.switchClosed; forceUpdate(n => n + 1) })
+    drawRheoSym(ctx, rheoX, topY, s.sliderR, 50, s.rheoDragging)
+    drawMeterSym(ctx, ammX, topY, 'A', s.needleA, s.overRangeA, on ? I.toFixed(3) + 'A' : '')
+    drawBulbSym(ctx, bulbX, topY, brightness)
     drawMeterSym(ctx, bulbX, volY, 'V', s.needleV, s.overRangeV, on ? UR.toFixed(2) + 'V' : '')
 
     // 标注
     ctx.fillStyle = '#555'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('电源', batX, rectBtm + 22)
-    ctx.fillText('开关', swX, rectBtm + 22)
-    ctx.fillText('滑线变阻器', rheoX, rectTop - 28)
-    ctx.fillText('安培表', ammX, rectTop - 28)
-    ctx.fillText('灯泡', bulbX, rectTop - 28)
+    ctx.fillText('电源', batX, btmY + 22)
+    ctx.fillText('开关', swX, btmY + 22)
+    ctx.fillText('滑线变阻器', rheoX, topY - 28)
+    ctx.fillText('安培表', ammX, topY - 28)
+    ctx.fillText('灯泡', bulbX, topY - 28)
     ctx.fillText('伏特表', bulbX, volY + 24)
     ctx.textBaseline = 'alphabetic'
 
-    // ─── 右侧面板（严格占1/3宽度）───
+    // ─── 右侧面板（占1/3宽度）───
     const px = W * 0.66, py = 50, pw = W * 0.32, ph = H - 120
     ctx.fillStyle = 'rgba(255,255,255,0.97)'; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill()
     ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.stroke()
