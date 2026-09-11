@@ -12,7 +12,7 @@ const TERM_OFF = {
   ammeter: [{ x: -30, y: 0 }, { x: 30, y: 0 }],
   voltmeter: [{ x: -30, y: 0 }, { x: 30, y: 0 }],
   rheostat: [{ x: -40, y: 0 }, { x: 40, y: 0 }],
-  bulb: [{ x: 0, y: -36 }, { x: 0, y: 36 }],
+  bulb: [{ x: -30, y: 0 }, { x: 30, y: 0 }],
 }
 
 export default function VoltAmpereResistorScene() {
@@ -417,7 +417,14 @@ export default function VoltAmpereResistorScene() {
     ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5; ctx.lineCap = 'round'
     ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * (r - 5), Math.sin(a) * (r - 5)); ctx.stroke(); ctx.lineCap = 'butt'
     ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI * 2); ctx.fill()
-    if (reading) { ctx.fillStyle = '#333'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(reading, 0, r - 3) }
+    // 数字读数框（LCD风格）
+    if (reading) {
+      const boxW = 48, boxH = 14
+      ctx.fillStyle = '#1a1a1a'; ctx.strokeStyle = '#555'; ctx.lineWidth = 1
+      ctx.beginPath(); ctx.roundRect(-boxW / 2, r + 4, boxW, boxH, 3); ctx.fill(); ctx.stroke()
+      ctx.fillStyle = '#0f0'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText(reading, 0, r + 4 + boxH / 2)
+    }
     ctx.fillStyle = '#E53935'; ctx.beginPath(); ctx.arc(-r - 5, 0, 3.5, 0, Math.PI * 2); ctx.fill()
     ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(r + 5, 0, 3.5, 0, Math.PI * 2); ctx.fill()
   }
@@ -452,9 +459,10 @@ export default function VoltAmpereResistorScene() {
       glow.addColorStop(0, 'rgba(255,235,59,' + (lv.glow * 0.5) + ')'); glow.addColorStop(1, 'rgba(255,235,59,0)')
       ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, -4, r * 2.5, 0, Math.PI * 2); ctx.fill()
     }
+    // 引线（左右）
     ctx.strokeStyle = '#999'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.moveTo(0, -4 - r); ctx.lineTo(0, -36); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(0, -4 + r + 10); ctx.lineTo(0, 36); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(-r - 4, -4); ctx.lineTo(-30, 0); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(r + 4, -4); ctx.lineTo(30, 0); ctx.stroke()
     ctx.fillStyle = lv.bg; ctx.beginPath(); ctx.arc(0, -4, r, 0, Math.PI * 2); ctx.fill()
     ctx.strokeStyle = lv.fg; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, -4, r, 0, Math.PI * 2); ctx.stroke()
     ctx.strokeStyle = lv.fg; ctx.lineWidth = 1.5; const s = r * 0.5
@@ -633,6 +641,16 @@ export default function VoltAmpereResistorScene() {
       if ((x - m1x) ** 2 + (y - m1y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_1'; forceUpdate(n => n + 1); return }
       if ((x - m2x) ** 2 + (y - m2y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_2'; forceUpdate(n => n + 1); return }
     }
+    // 滑线变阻器滑块拖拽
+    for (const comp of s.components) {
+      if (comp.type === 'rheostat') {
+        const sliderX = comp.x + (-30 + s.sliderR / 50 * 60)
+        const sliderY = comp.y - 18
+        if (Math.abs(x - sliderX) < 15 && Math.abs(y - sliderY) < 15) {
+          s.dragId = 'rheo_' + comp.id; forceUpdate(n => n + 1); return
+        }
+      }
+    }
     // 接线柱连线
     const term = findTerm(x, y)
     if (term) {
@@ -668,10 +686,23 @@ export default function VoltAmpereResistorScene() {
     // Tab2
     const s = diy.current
     if (s.dragId) {
+      // 导线铆点拖拽
       if (typeof s.dragId === 'string' && s.dragId.startsWith('wire_')) {
         const parts = s.dragId.split('_'), wireId = parseInt(parts[1]), rivetIdx = parseInt(parts[2])
         const wire = s.wires.find(w => w.id === wireId)
         if (wire) { if (rivetIdx === 1) { wire.mid1X = x; wire.mid1Y = y } else { wire.mid2X = x; wire.mid2Y = y }; forceUpdate(n => n + 1) }
+        return
+      }
+      // 滑线变阻器滑块拖拽
+      if (typeof s.dragId === 'string' && s.dragId.startsWith('rheo_')) {
+        const compId = parseInt(s.dragId.split('_')[1])
+        const comp = s.components.find(c => c.id === compId)
+        if (comp) {
+          const minX = comp.x - 30, maxX = comp.x + 30
+          const newX = Math.max(minX, Math.min(maxX, x))
+          s.sliderR = Math.round(((newX - minX) / (maxX - minX)) * 50)
+          forceUpdate(n => n + 1)
+        }
         return
       }
       const c = s.components.find(c => c.id === s.dragId); if (c) { c.x = x - s.dragOffX; c.y = y - s.dragOffY; forceUpdate(n => n + 1) }; return
