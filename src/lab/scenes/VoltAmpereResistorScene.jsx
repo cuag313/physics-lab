@@ -87,17 +87,18 @@ export default function VoltAmpereResistorScene() {
   }
 
   // ═══════════════════════════════════════════
-  //  Tab1：实验演示 — 严格按手绘图复刻
+  //  Tab1：实验演示 — 按手绘图复刻
   // ═══════════════════════════════════════════
   function renderDemo(ctx, W, H, s) {
     const on = s.switchClosed
     const Rtot = s.R_true + s.sliderR, I = on && Rtot > 0 ? s.U_source / Rtot : 0, UR = I * s.R_true
-    const brightness = on ? Math.min(1, (I * I * s.R_true) / 3.6) : 0
+    // 灯泡亮度：sliderR=0最亮，sliderR=50最暗，用功率比
+    const Pnow = I * I * s.R_true
+    const Pmax = (s.U_source / s.R_true) ** 2 * s.R_true
+    const brightness = on ? Math.max(0.08, Pnow / Pmax) : 0
 
-    // 画布分区：左侧电路(63%) + 右侧面板(33%)
+    // 画布分区
     const circuitW = W * 0.63
-
-    // 矩形回路：横向长方形，直接画4条边
     const rectL = 50, rectR = circuitW - 30
     const rectH = 160
     const centerY = H * 0.45
@@ -105,54 +106,67 @@ export default function VoltAmpereResistorScene() {
     const btmY = centerY + rectH / 2
     const span = rectR - rectL
 
-    // 元件在矩形边上的分割点
-    // 上边：滑线变阻器(1/4) — 安培表(2/4) — 灯泡(3/4)
+    // 元件分割点
     const rheoX = rectL + span * 1 / 4
     const ammX  = rectL + span * 2 / 4
     const bulbX = rectL + span * 3 / 4
-    // 下边：电源(1/3) — 开关(2/3)
-    const batX = rectL + span * 1 / 3
-    const swX  = rectL + span * 2 / 3
+    const batX  = rectL + span * 1 / 3
+    const swX   = rectL + span * 2 / 3
 
-    // 缓存坐标供鼠标事件用
     s._rheoX = rheoX; s._topY = topY; s._leftX = rectL; s._rightX = rectR
 
     const wc = on ? '#1565C0' : '#999'
 
-    // ─── 画完整矩形（4条边）───
-    drawLn(ctx, rectL, btmY, rectR, btmY, wc, 2.5)  // 下边
-    drawLn(ctx, rectR, btmY, rectR, topY, wc, 2.5)   // 右边
-    drawLn(ctx, rectR, topY, rectL, topY, wc, 2.5)    // 上边
-    drawLn(ctx, rectL, topY, rectL, btmY, wc, 2.5)    // 左边
+    // ─── 矩形回路（下边电源与开关之间不画线）───
+    drawLn(ctx, rectL, btmY, batX - 14, btmY, wc, 2.5)    // 下边左段（左角→电源）
+    drawLn(ctx, swX + 18, btmY, rectR, btmY, wc, 2.5)     // 下边右段（开关→右角）
+    drawLn(ctx, rectR, btmY, rectR, topY, wc, 2.5)         // 右边
+    drawLn(ctx, rectR, topY, rectL, topY, wc, 2.5)          // 上边
+    drawLn(ctx, rectL, topY, rectL, btmY, wc, 2.5)          // 左边
 
-    // Ⓥ 伏特表并联在灯泡下方
-    const volY = btmY + 45
-    drawLn(ctx, bulbX - 14, topY, bulbX - 14, volY, wc, 2)
-    drawLn(ctx, bulbX + 14, topY, bulbX + 14, volY, wc, 2)
-    drawLn(ctx, bulbX - 14, volY, bulbX - 18, volY, wc, 2)
-    drawLn(ctx, bulbX + 18, volY, bulbX + 14, volY, wc, 2)
+    // ─── 灯泡与伏特表组成小长方形 ───
+    const volH = 50  // 小长方形高度
+    const volY = topY + volH
+    drawLn(ctx, bulbX - 14, topY, bulbX - 14, volY, wc, 2)  // 左竖线
+    drawLn(ctx, bulbX + 14, topY, bulbX + 14, volY, wc, 2)  // 右竖线
+    drawLn(ctx, bulbX - 14, volY, bulbX + 14, volY, wc, 2)   // 下横线（伏特表在此）
 
-    // 电流流动（沿矩形路径）
+    // 电流流动
     if (on) {
       drawFlow(ctx, [
-        { x: rectL, y: btmY }, { x: rectR, y: btmY },
-        { x: rectR, y: topY }, { x: rectL, y: topY },
-        { x: rectL, y: btmY },
+        { x: rectL, y: btmY }, { x: rectL, y: topY },
+        { x: rheoX, y: topY }, { x: ammX, y: topY }, { x: bulbX, y: topY },
+        { x: rectR, y: topY }, { x: rectR, y: btmY },
       ], s.time)
-      // 导线高亮
-      ctx.strokeStyle = 'rgba(21,101,225,0.15)'; ctx.lineWidth = 8
+      ctx.strokeStyle = 'rgba(21,101,225,0.12)'; ctx.lineWidth = 6
       ctx.beginPath()
-      ctx.rect(rectL, topY, rectR - rectL, btmY - topY)
+      ctx.moveTo(rectL, btmY); ctx.lineTo(rectL, topY)
+      ctx.lineTo(rectR, topY); ctx.lineTo(rectR, btmY)
       ctx.stroke()
     }
 
-    // ─── 元件符号（画在矩形边上）───
+    // ─── 元件符号 ───
     drawBat(ctx, batX, btmY)
     drawSw(ctx, swX, btmY, on, () => { s.switchClosed = !s.switchClosed; forceUpdate(n => n + 1) })
     drawRheoSym(ctx, rheoX, topY, s.sliderR, 50, s.rheoDragging)
-    drawMeterSym(ctx, ammX, topY, 'A', s.needleA, s.overRangeA, on ? I.toFixed(3) + 'A' : '')
+    drawMeterSym(ctx, ammX, topY, 'A', s.needleA, false, on ? I.toFixed(3) + 'A' : '')
     drawBulbSym(ctx, bulbX, topY, brightness)
-    drawMeterSym(ctx, bulbX, volY, 'V', s.needleV, s.overRangeV, on ? UR.toFixed(2) + 'V' : '')
+    drawMeterSym(ctx, bulbX, volY, 'V', s.needleV, false, on ? UR.toFixed(2) + 'V' : '')
+
+    // 滑线变阻器浮动气泡
+    if (on) {
+      if (s.sliderR <= 3) {
+        ctx.fillStyle = 'rgba(76,175,80,0.92)'
+        ctx.beginPath(); ctx.roundRect(rheoX - 65, topY - 48, 130, 24, 6); ctx.fill()
+        ctx.fillStyle = '#fff'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.fillText('← 电阻最小，灯最亮', rheoX, topY - 36)
+      } else if (s.sliderR >= 47) {
+        ctx.fillStyle = 'rgba(255,152,0,0.92)'
+        ctx.beginPath(); ctx.roundRect(rheoX - 65, topY - 48, 130, 24, 6); ctx.fill()
+        ctx.fillStyle = '#fff'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.fillText('电阻最大，灯最暗 →', rheoX, topY - 36)
+      }
+    }
 
     // 标注
     ctx.fillStyle = '#555'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
@@ -161,59 +175,75 @@ export default function VoltAmpereResistorScene() {
     ctx.fillText('滑线变阻器', rheoX, topY - 28)
     ctx.fillText('安培表', ammX, topY - 28)
     ctx.fillText('灯泡', bulbX, topY - 28)
-    ctx.fillText('伏特表', bulbX, volY + 24)
+    ctx.fillText('伏特表', bulbX, volY + 6)
     ctx.textBaseline = 'alphabetic'
 
-    // ─── 右侧面板（占1/3宽度）───
+    // ─── 右侧面板（实验目的+数据）───
     const px = W * 0.66, py = 50, pw = W * 0.32, ph = H - 120
     ctx.fillStyle = 'rgba(255,255,255,0.97)'; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill()
     ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.stroke()
 
     ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
     let ky = py + 12
-    ctx.fillText('📖 伏安法测电阻', px + 14, ky); ky += 26
+    ctx.fillText('📖 实验目的', px + 14, ky); ky += 24
     ctx.font = '12px sans-serif'; ctx.fillStyle = '#555'
-    ctx.fillText('原理：R = U / I', px + 14, ky); ky += 18
-    ctx.fillText('拖拽滑线变阻器箭头 → 改变电阻', px + 14, ky); ky += 16
-    ctx.fillText('→ 电流变化 → 灯泡亮度变化', px + 14, ky); ky += 16
-    ctx.fillText('（灯泡电阻保持不变）', px + 14, ky); ky += 24
+    ctx.fillText('学会电流表与电压表的使用方法', px + 14, ky); ky += 20
+
+    ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'
+    ctx.fillText('电流表 Ⓐ', px + 14, ky); ky += 16
+    ctx.font = '11px sans-serif'; ctx.fillStyle = '#555'
+    ctx.fillText('串联在电路中，测量电流I', px + 14, ky); ky += 14
+
+    ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'
+    ctx.fillText('电压表 Ⓥ', px + 14, ky); ky += 16
+    ctx.font = '11px sans-serif'; ctx.fillStyle = '#555'
+    ctx.fillText('并联在灯泡两端，测电压U', px + 14, ky); ky += 14
+
+    ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'
+    ctx.fillText('计算电阻', px + 14, ky); ky += 16
+    ctx.font = '11px sans-serif'; ctx.fillStyle = '#555'
+    ctx.fillText('R = U / I', px + 14, ky); ky += 20
+
+    ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'
+    ctx.fillText('操作方法', px + 14, ky); ky += 16
+    ctx.font = '11px sans-serif'; ctx.fillStyle = '#555'
+    ctx.fillText('拖拽变阻器箭头改变电阻', px + 14, ky); ky += 14
+    ctx.fillText('观察灯泡亮度和电表变化', px + 14, ky); ky += 20
 
     if (on) {
-      ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.fillText('📊 实时读数', px + 14, ky); ky += 18
+      ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.fillText('📊 实时数据', px + 14, ky); ky += 18
       ctx.font = '12px monospace'; ctx.fillStyle = '#555'
-      ctx.fillText('滑动变阻器 = ' + s.sliderR + ' Ω', px + 14, ky); ky += 16
-      ctx.fillText('灯泡电阻 = ' + s.R_true + ' Ω', px + 14, ky); ky += 16
+      ctx.fillText('变阻器 = ' + s.sliderR + ' Ω', px + 14, ky); ky += 16
+      ctx.fillText('灯泡R = ' + s.R_true + ' Ω', px + 14, ky); ky += 16
       ctx.fillStyle = '#E53935'; ctx.font = 'bold 12px monospace'
-      ctx.fillText('电流 I = ' + I.toFixed(3) + ' A', px + 14, ky); ky += 16
+      ctx.fillText('I = ' + I.toFixed(3) + ' A', px + 14, ky); ky += 16
       ctx.fillStyle = '#4CAF50'; ctx.font = 'bold 12px monospace'
-      ctx.fillText('灯泡电压 U = ' + UR.toFixed(2) + ' V', px + 14, ky); ky += 16
+      ctx.fillText('U = ' + UR.toFixed(2) + ' V', px + 14, ky); ky += 16
       ctx.fillStyle = '#4A90D9'; ctx.font = 'bold 12px monospace'
-      ctx.fillText('R = U/I = ' + (I > 0.001 ? (UR / I).toFixed(1) : '—') + ' Ω', px + 14, ky); ky += 20
-      const P = I * I * s.R_true
+      ctx.fillText('R = ' + (I > 0.001 ? (UR / I).toFixed(1) : '—') + ' Ω', px + 14, ky); ky += 16
       ctx.fillStyle = '#FF9800'; ctx.font = '11px sans-serif'
-      ctx.fillText('功率 P = I²R = ' + P.toFixed(2) + ' W → 灯泡' + (P > 2 ? '亮' : P > 0.5 ? '较暗' : '暗'), px + 14, ky); ky += 20
+      ctx.fillText('P = ' + Pnow.toFixed(2) + ' W', px + 14, ky); ky += 20
     }
 
     if (s.data.length > 0) {
-      ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.fillText('📝 实验数据', px + 14, ky); ky += 18
+      ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.fillText('📝 记录数据', px + 14, ky); ky += 18
       ctx.font = '10px monospace'; ctx.fillStyle = '#555'
-      ctx.fillText('#  R滑(Ω)  U(V)    I(A)    R灯(Ω)', px + 14, ky); ky += 14
+      ctx.fillText('# R滑  U(V)  I(A)  R灯', px + 14, ky); ky += 14
       for (let i = 0; i < s.data.length; i++) {
         const d = s.data[i]; ctx.fillStyle = '#555'
-        ctx.fillText((i+1).toString().padStart(2) + '  ' + d.sliderR.toString().padStart(5) + '  ' + d.U.toFixed(2).padStart(5) + '  ' + d.I.toFixed(3).padStart(6) + '  ' + d.R.toFixed(1).padStart(6), px + 14, ky)
+        ctx.fillText((i+1) + ' ' + String(d.sliderR).padStart(3) + '  ' + d.U.toFixed(2).padStart(5) + ' ' + d.I.toFixed(3).padStart(6) + ' ' + d.R.toFixed(1).padStart(5), px + 14, ky)
         ctx.fillStyle = '#F44336'; ctx.font = '9px sans-serif'; ctx.fillText('✕', px + pw - 30, ky)
         canvasRef.current._clickAreas.push({ x: px + pw - 36, y: ky - 8, w: 16, h: 14, onClick: ((idx) => () => { s.data.splice(idx, 1); forceUpdate(n => n + 1) })(i) })
         ctx.font = '10px monospace'; ky += 13
       }
-      if (s.data.length >= 3) { ky += 6; const avgR = s.data.reduce((a, d) => a + d.R, 0) / s.data.length; ctx.fillStyle = '#E53935'; ctx.font = 'bold 12px sans-serif'; ctx.fillText('R̄ = ' + avgR.toFixed(1) + ' Ω', px + 14, ky); ky += 16; const err = Math.abs(avgR - s.R_true) / s.R_true * 100; ctx.fillStyle = err < 5 ? '#4CAF50' : '#FF9800'; ctx.font = '11px sans-serif'; ctx.fillText('误差: ' + err.toFixed(1) + '%', px + 14, ky) }
-    } else {
-      ctx.fillStyle = '#888'; ctx.font = '11px sans-serif'
-      ctx.fillText('操作步骤：', px + 14, ky); ky += 16
-      ctx.fillText('1. 闭合开关', px + 14, ky); ky += 14
-      ctx.fillText('2. 拖拽滑线变阻器箭头改变电阻', px + 14, ky); ky += 14
-      ctx.fillText('3. 观察灯泡亮度和电表变化', px + 14, ky); ky += 14
-      ctx.fillText('4. 点"记录"保存数据', px + 14, ky); ky += 14
-      ctx.fillText('5. 至少3组求平均值', px + 14, ky)
+      if (s.data.length >= 3) {
+        ky += 4; const avgR = s.data.reduce((a, d) => a + d.R, 0) / s.data.length
+        ctx.fillStyle = '#E53935'; ctx.font = 'bold 12px sans-serif'
+        ctx.fillText('R̄ = ' + avgR.toFixed(1) + ' Ω', px + 14, ky); ky += 14
+        const err = Math.abs(avgR - s.R_true) / s.R_true * 100
+        ctx.fillStyle = err < 5 ? '#4CAF50' : '#FF9800'; ctx.font = '11px sans-serif'
+        ctx.fillText('误差 ' + err.toFixed(1) + '%', px + 14, ky)
+      }
     }
     ctx.textBaseline = 'alphabetic'
 
@@ -222,13 +252,15 @@ export default function VoltAmpereResistorScene() {
     const recOk = s.switchClosed
     ctx.fillStyle = recOk ? '#4CAF50' : '#bdbdbd'; ctx.beginPath(); ctx.roundRect(20, nY, 90, 30, 6); ctx.fill()
     ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('📝 记录', 65, nY + 15)
-    if (recOk) canvasRef.current._clickAreas.push({ x: 20, y: nY, w: 90, h: 30, onClick: () => { const Rtot2 = s.R_true + s.sliderR, Iv = Rtot2 > 0 ? s.U_source / Rtot2 : 0, URv = Iv * s.R_true; s.data.push({ sliderR: s.sliderR, U: URv, I: Iv, R: Iv > 0 ? URv / Iv : 0 }); forceUpdate(n => n + 1) } })
+    if (recOk) canvasRef.current._clickAreas.push({ x: 20, y: nY, w: 90, h: 30, onClick: () => {
+      s.data.push({ sliderR: s.sliderR, U: UR, I: I, R: I > 0 ? UR / I : 0 }); forceUpdate(n => n + 1)
+    }})
     ctx.fillStyle = '#f0f0f0'; ctx.beginPath(); ctx.roundRect(120, nY, 70, 30, 6); ctx.fill(); ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(120, nY, 70, 30, 6); ctx.stroke(); ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.fillText('清除', 155, nY + 15)
     canvasRef.current._clickAreas.push({ x: 120, y: nY, w: 70, h: 30, onClick: () => { s.data = []; forceUpdate(n => n + 1) } })
-    ctx.fillStyle = '#f0f0f0'; ctx.beginPath(); ctx.roundRect(200, nY, 90, 30, 6); ctx.fill(); ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(200, nY, 90, 30, 6); ctx.stroke(); ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.fillText('📥 CSV', 245, nY + 15)
-    canvasRef.current._clickAreas.push({ x: 200, y: nY, w: 90, h: 30, onClick: () => exportCSV(s) })
-    ctx.fillStyle = '#f0f0f0'; ctx.beginPath(); ctx.roundRect(300, nY, 80, 30, 6); ctx.fill(); ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(300, nY, 80, 30, 6); ctx.stroke(); ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.fillText('↺ 重置', 340, nY + 15)
-    canvasRef.current._clickAreas.push({ x: 300, y: nY, w: 80, h: 30, onClick: () => { s.U_source = DEFAULTS.U_source; s.R_true = DEFAULTS.R_true; s.sliderR = DEFAULTS.sliderR; s.data = []; s.switchClosed = false; forceUpdate(n => n + 1) } })
+    ctx.fillStyle = '#f0f0f0'; ctx.beginPath(); ctx.roundRect(200, nY, 80, 30, 6); ctx.fill(); ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(200, nY, 80, 30, 6); ctx.stroke(); ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.fillText('📥 CSV', 240, nY + 15)
+    canvasRef.current._clickAreas.push({ x: 200, y: nY, w: 80, h: 30, onClick: () => exportCSV(s) })
+    ctx.fillStyle = '#f0f0f0'; ctx.beginPath(); ctx.roundRect(290, nY, 80, 30, 6); ctx.fill(); ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(290, nY, 80, 30, 6); ctx.stroke(); ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.fillText('↺ 重置', 330, nY + 15)
+    canvasRef.current._clickAreas.push({ x: 290, y: nY, w: 80, h: 30, onClick: () => { s.U_source = DEFAULTS.U_source; s.R_true = DEFAULTS.R_true; s.sliderR = DEFAULTS.sliderR; s.data = []; s.switchClosed = false; forceUpdate(n => n + 1) } })
     ctx.textBaseline = 'alphabetic'
   }
 
