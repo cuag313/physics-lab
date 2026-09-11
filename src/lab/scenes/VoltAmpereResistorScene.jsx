@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 
 const AMMETER_MAX = 0.6
-const VOLTMETER_MAX = 3
+const VOLTMETER_MAX = 12
 const DEFAULTS = { U_source: 6, R_true: 15, sliderR: 10 }
 const SNAP_DIST = 22
 
@@ -133,19 +133,40 @@ export default function VoltAmpereResistorScene() {
     drawLn(ctx, bulbX + volW, topY, bulbX + volW, volY, wc, 2)
     drawLn(ctx, bulbX - volW, volY, bulbX + volW, volY, wc, 2)
 
-    // 电流流动（逆时针：电子从负极出发到正极）
+    // 电流流动（逆时针：电子从电源负极→正极，完整回路）
     if (on) {
       drawFlow(ctx, [
-        { x: swX, y: btmY },
-        { x: rectR, y: btmY }, { x: rectR, y: topY },
-        { x: bulbX, y: topY }, { x: ammX, y: topY }, { x: rheoX, y: topY },
-        { x: rectL, y: topY }, { x: rectL, y: btmY },
+        { x: batX + 14, y: btmY },  // 电源负极
+        { x: swX, y: btmY },         // 开关
+        { x: rectR, y: btmY },       // 右下角
+        { x: rectR, y: topY },       // 右上角
+        { x: bulbX, y: topY },       // 灯泡
+        { x: ammX, y: topY },        // 安培表
+        { x: rheoX, y: topY },       // 滑线变阻器
+        { x: rectL, y: topY },       // 左上角
+        { x: rectL, y: btmY },       // 左下角
+        { x: batX - 14, y: btmY },   // 电源正极
+        { x: batX + 14, y: btmY },   // 电源内部→负极（回到起点）
       ], s.time)
       ctx.strokeStyle = 'rgba(21,101,225,0.12)'; ctx.lineWidth = 6
       ctx.beginPath()
       ctx.moveTo(rectL, btmY); ctx.lineTo(rectL, topY)
       ctx.lineTo(rectR, topY); ctx.lineTo(rectR, btmY)
       ctx.stroke()
+
+      // 标出电流方向箭头（常规电流：正极→负极）
+      ctx.fillStyle = '#FF9800'
+      const drawArrow = (ax, ay, angle) => {
+        ctx.save(); ctx.translate(ax, ay); ctx.rotate(angle)
+        ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-6, -4); ctx.lineTo(-6, 4); ctx.closePath(); ctx.fill()
+        ctx.restore()
+      }
+      drawArrow(rectL, (topY + btmY) / 2, -Math.PI / 2)    // 左边向上
+      drawArrow((rheoX + ammX) / 2, topY, 0)                // 上边向右
+      drawArrow((ammX + bulbX) / 2, topY, 0)                // 上边向右
+      drawArrow(rectR, (topY + btmY) / 2, Math.PI / 2)      // 右边向下
+      drawArrow((rectL + batX) / 2, btmY, Math.PI)          // 下边向左
+      drawArrow((batX + swX) / 2, btmY, Math.PI)            // 下边向左
     }
 
     // ─── 元件符号 ───
@@ -442,7 +463,7 @@ export default function VoltAmpereResistorScene() {
     ctx.beginPath(); ctx.moveTo(tipX, tipY); ctx.lineTo(tipX - 7, tipY + 2); ctx.lineTo(tipX - 2, tipY + 7); ctx.closePath(); ctx.fill()
     ctx.fillStyle = '#333'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(R + 'Ω', x, y + 12); ctx.textBaseline = 'alphabetic'
   }
-  function drawMeterSym(ctx, x, y, type, angle, over, reading) { const r = 22, color = type === 'A' ? '#E53935' : '#4CAF50'; if (over) { const f = Math.sin(Date.now() / 150) > 0; ctx.fillStyle = f ? 'rgba(244,67,54,0.2)' : 'rgba(244,67,54,0.06)'; ctx.beginPath(); ctx.arc(x, y, r + 6, 0, Math.PI * 2); ctx.fill() }; ctx.fillStyle = '#fff'; ctx.strokeStyle = over ? '#F44336' : color; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = color; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(type, x, y - 4); const a = (210 + Math.min(Math.max(angle, 0), 1) * 120) * Math.PI / 180; ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * (r - 6), y + Math.sin(a) * (r - 6)); ctx.stroke(); ctx.lineCap = 'butt'; if (reading) { ctx.fillStyle = over ? '#F44336' : '#333'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(reading, x, y + 10) }; if (over) { ctx.fillStyle = '#F44336'; ctx.font = 'bold 9px sans-serif'; ctx.fillText('超量程!', x, y + r + 12) }; ctx.textBaseline = 'alphabetic' }
+  function drawMeterSym(ctx, x, y, type, angle, over, reading) { const r = 22, color = type === 'A' ? '#E53935' : '#4CAF50'; if (over) { const f = Math.sin(Date.now() / 150) > 0; ctx.fillStyle = f ? 'rgba(244,67,54,0.2)' : 'rgba(244,67,54,0.06)'; ctx.beginPath(); ctx.arc(x, y, r + 6, 0, Math.PI * 2); ctx.fill() }; ctx.fillStyle = '#fff'; ctx.strokeStyle = over ? '#F44336' : color; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = color; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(type, x, y + 8); const a = (210 + Math.min(Math.max(angle, 0), 1) * 120) * Math.PI / 180; ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * (r - 6), y + Math.sin(a) * (r - 6)); ctx.stroke(); ctx.lineCap = 'butt'; if (reading) { ctx.fillStyle = over ? '#F44336' : '#333'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(reading, x, y + 10) }; if (over) { ctx.fillStyle = '#F44336'; ctx.font = 'bold 9px sans-serif'; ctx.fillText('超量程!', x, y + r + 12) }; ctx.textBaseline = 'alphabetic' }
   function drawBulbSym(ctx, x, y, brightness) {
     const r = 14
     // 多级亮度：5档渐变
