@@ -382,31 +382,47 @@ export default function VoltAmpereResistorScene() {
       } else { ctx.fillStyle = '#ECEFF1'; ctx.strokeStyle = '#78909C'; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(-38, -18, 76, 36, 6); ctx.fill(); ctx.stroke() }
       ctx.fillStyle = closed ? '#4CAF50' : '#F44336'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(closed ? 'ON' : 'OFF', 0, 24)
     } else if (type === 'ammeter') {
-      const img = imgCache.current.ammeter; if (img) { drawImgFit(ctx, img, 0, 0, 64, 64); drawNeedle(ctx, s.needleA, s.overRangeA, on ? I.toFixed(3) + 'A' : '', '#E53935', 30) }
-      else { ctx.fillStyle = '#FFEBEE'; ctx.strokeStyle = '#E53935'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI * 2); ctx.fill(); ctx.stroke() }
+      const img = imgCache.current.ammeter
+      if (img) {
+        drawImgFit(ctx, img, 0, 0, 64, 64)
+        // 盖住图片指针，只留黑色动画指针
+        ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(0, -2, 18, 0, Math.PI * 2); ctx.fill()
+        drawNeedle(ctx, s.needleA, false, on ? I.toFixed(3) + 'A' : '', '#333', 28)
+      } else { ctx.fillStyle = '#FFEBEE'; ctx.strokeStyle = '#E53935'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI * 2); ctx.fill(); ctx.stroke() }
     } else if (type === 'voltmeter') {
-      const img = imgCache.current.voltmeter; if (img) { drawImgFit(ctx, img, 0, 0, 64, 64); drawNeedle(ctx, s.needleV, s.overRangeV, on ? UR.toFixed(2) + 'V' : '', '#4CAF50', 30) }
-      else { ctx.fillStyle = '#E8F5E9'; ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI * 2); ctx.fill(); ctx.stroke() }
+      const img = imgCache.current.voltmeter
+      if (img) {
+        drawImgFit(ctx, img, 0, 0, 64, 64)
+        ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.beginPath(); ctx.arc(0, -2, 18, 0, Math.PI * 2); ctx.fill()
+        drawNeedle(ctx, s.needleV, false, on ? UR.toFixed(2) + 'V' : '', '#333', 28)
+      } else { ctx.fillStyle = '#E8F5E9'; ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI * 2); ctx.fill(); ctx.stroke() }
     } else if (type === 'rheostat') {
-      const img = imgCache.current.rheostat; if (img) drawImgFit(ctx, img, 0, 0, 110, 56)
-      else { ctx.fillStyle = '#EFEBE9'; ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(-45, -22, 90, 44, 6); ctx.fill(); ctx.stroke() }
+      const img = imgCache.current.rheostat
+      if (img) {
+        drawImgFit(ctx, img, 0, 0, 110, 56)
+        // 可拖拽箭头（与Tab1相同逻辑）
+        const ratio = s.sliderR / 50, baseX = -40 + ratio * 80, baseY = -22
+        const tipX = baseX + 12, tipY = baseY - 12
+        ctx.strokeStyle = '#546E7A'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
+        ctx.beginPath(); ctx.moveTo(baseX, baseY); ctx.lineTo(tipX, tipY); ctx.stroke(); ctx.lineCap = 'butt'
+        ctx.fillStyle = '#546E7A'
+        ctx.beginPath(); ctx.moveTo(tipX, tipY); ctx.lineTo(tipX - 6, tipY + 2); ctx.lineTo(tipX - 2, tipY + 6); ctx.closePath(); ctx.fill()
+      } else { ctx.fillStyle = '#EFEBE9'; ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(-45, -22, 90, 44, 6); ctx.fill(); ctx.stroke() }
     } else if (type === 'bulb') {
-      const brightness = on ? Math.min(1, (I * I * s.R_true) / 3.6) : 0
-      const img = brightness > 0.1 ? imgCache.current.bulb : imgCache.current.bulb_off
-      if (img) { drawImgFit(ctx, img, 0, 0, 60, 72); if (brightness > 0.1) { const glow = ctx.createRadialGradient(0, -10, 8, 0, -10, 40); glow.addColorStop(0, 'rgba(255,235,59,' + (brightness * 0.4) + ')'); glow.addColorStop(1, 'rgba(255,235,59,0)'); ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, -10, 40, 0, Math.PI * 2); ctx.fill() } }
+      const brightness = on ? Math.max(0.08, (I * I * s.R_true) / ((s.U_source / s.R_true) ** 2 * s.R_true)) : 0
+      const img = brightness > 0.15 ? imgCache.current.bulb : imgCache.current.bulb_off
+      if (img) { drawImgFit(ctx, img, 0, 0, 60, 72); if (brightness > 0.15) { const glow = ctx.createRadialGradient(0, -10, 8, 0, -10, 40); glow.addColorStop(0, 'rgba(255,235,59,' + (brightness * 0.4) + ')'); glow.addColorStop(1, 'rgba(255,235,59,0)'); ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, -10, 40, 0, Math.PI * 2); ctx.fill() } }
       else { ctx.fillStyle = brightness > 0.3 ? '#FFEB3B' : '#FFFDE7'; ctx.strokeStyle = brightness > 0.3 ? '#F9A825' : '#bbb'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, -6, 20, 0, Math.PI * 2); ctx.fill(); ctx.stroke() }
     }
 
-    // 接线柱（画在器材边缘上，不单独弄）
+    // 接线柱热点（不画圆圈，用鼠标悬停高亮提示）
     const offsets = TERM_OFF[type] || [{ x: -30, y: 0 }, { x: 30, y: 0 }]
     for (let i = 0; i < offsets.length; i++) {
       const off = offsets[i]
       const hov = s.hoverTerm && s.hoverTerm.compId === comp.id && s.hoverTerm.termIdx === i
       const snap = s.connecting && hov
-      ctx.fillStyle = snap ? '#4CAF50' : hov ? '#FF9800' : 'rgba(255,255,255,0.9)'
-      ctx.strokeStyle = snap ? '#2E7D32' : hov ? '#E65100' : '#888'
-      ctx.lineWidth = snap ? 3 : 1.5
-      ctx.beginPath(); ctx.arc(off.x, off.y, snap ? 7 : 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+      if (snap) { ctx.fillStyle = 'rgba(76,175,80,0.3)'; ctx.beginPath(); ctx.arc(off.x, off.y, 12, 0, Math.PI * 2); ctx.fill() }
+      else if (hov) { ctx.fillStyle = 'rgba(255,152,0,0.25)'; ctx.beginPath(); ctx.arc(off.x, off.y, 10, 0, Math.PI * 2); ctx.fill() }
     }
 
     ctx.globalAlpha = 1; ctx.restore()
@@ -443,8 +459,7 @@ export default function VoltAmpereResistorScene() {
     const a = (210 + clamped * 120) * Math.PI / 180
     ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * (r - 6), Math.sin(a) * (r - 6)); ctx.stroke(); ctx.lineCap = 'butt'
     ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill()
-    if (reading) { ctx.fillStyle = over ? '#F44336' : '#fff'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(reading, 0, r - 4) }
-    if (over) { ctx.fillStyle = '#F44336'; ctx.font = 'bold 9px sans-serif'; ctx.fillText('超量程!', 0, r + 10) }
+    if (reading) { ctx.fillStyle = '#333'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(reading, 0, r - 4) }
     ctx.textBaseline = 'alphabetic'
   }
   function drawBat(ctx, x, y) { ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 12, y - 18); ctx.lineTo(x - 12, y + 18); ctx.stroke(); ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(x + 12, y - 9); ctx.lineTo(x + 12, y + 9); ctx.stroke(); ctx.fillStyle = '#E53935'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText('+', x - 12, y - 20); ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'; ctx.fillText('−', x + 12, y - 11); ctx.textBaseline = 'alphabetic' }
