@@ -117,26 +117,29 @@ export default function VoltAmpereResistorScene() {
 
     const wc = on ? '#1565C0' : '#999'
 
-    // ─── 矩形回路（下边电源与开关之间不画线）───
-    drawLn(ctx, rectL, btmY, batX - 14, btmY, wc, 2.5)    // 下边左段（左角→电源）
-    drawLn(ctx, swX + 18, btmY, rectR, btmY, wc, 2.5)     // 下边右段（开关→右角）
-    drawLn(ctx, rectR, btmY, rectR, topY, wc, 2.5)         // 右边
-    drawLn(ctx, rectR, topY, rectL, topY, wc, 2.5)          // 上边
-    drawLn(ctx, rectL, topY, rectL, btmY, wc, 2.5)          // 左边
+    // ─── 矩形回路（下边电源负极到开关有线段）───
+    drawLn(ctx, rectL, btmY, batX - 14, btmY, wc, 2.5)      // 左角→电源正极
+    drawLn(ctx, batX + 14, btmY, swX - 18, btmY, wc, 2.5)   // 电源负极→开关
+    drawLn(ctx, swX + 18, btmY, rectR, btmY, wc, 2.5)       // 开关→右角
+    drawLn(ctx, rectR, btmY, rectR, topY, wc, 2.5)
+    drawLn(ctx, rectR, topY, rectL, topY, wc, 2.5)
+    drawLn(ctx, rectL, topY, rectL, btmY, wc, 2.5)
 
-    // ─── 灯泡与伏特表组成小长方形 ───
-    const volH = 50  // 小长方形高度
+    // ─── 灯泡与伏特表组成小长方形（左右展开）───
+    const volH = 50
     const volY = topY + volH
-    drawLn(ctx, bulbX - 14, topY, bulbX - 14, volY, wc, 2)  // 左竖线
-    drawLn(ctx, bulbX + 14, topY, bulbX + 14, volY, wc, 2)  // 右竖线
-    drawLn(ctx, bulbX - 14, volY, bulbX + 14, volY, wc, 2)   // 下横线（伏特表在此）
+    const volW = 30  // 左右展开
+    drawLn(ctx, bulbX - volW, topY, bulbX - volW, volY, wc, 2)
+    drawLn(ctx, bulbX + volW, topY, bulbX + volW, volY, wc, 2)
+    drawLn(ctx, bulbX - volW, volY, bulbX + volW, volY, wc, 2)
 
-    // 电流流动
+    // 电流流动（逆时针：电子从负极出发到正极）
     if (on) {
       drawFlow(ctx, [
-        { x: rectL, y: btmY }, { x: rectL, y: topY },
-        { x: rheoX, y: topY }, { x: ammX, y: topY }, { x: bulbX, y: topY },
-        { x: rectR, y: topY }, { x: rectR, y: btmY },
+        { x: swX, y: btmY },
+        { x: rectR, y: btmY }, { x: rectR, y: topY },
+        { x: bulbX, y: topY }, { x: ammX, y: topY }, { x: rheoX, y: topY },
+        { x: rectL, y: topY }, { x: rectL, y: btmY },
       ], s.time)
       ctx.strokeStyle = 'rgba(21,101,225,0.12)'; ctx.lineWidth = 6
       ctx.beginPath()
@@ -414,7 +417,9 @@ export default function VoltAmpereResistorScene() {
   function drawImgFit(ctx, img, cx, cy, maxW, maxH) { const r = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight); const w = img.naturalWidth * r, h = img.naturalHeight * r; ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h) }
   function drawNeedle(ctx, angle, over, reading, color, r) {
     if (over) { const f = Math.sin(Date.now() / 150) > 0; ctx.fillStyle = f ? 'rgba(244,67,54,0.25)' : 'rgba(244,67,54,0.08)'; ctx.beginPath(); ctx.arc(0, 0, r + 6, 0, Math.PI * 2); ctx.fill() }
-    const a = -Math.PI * 0.6 + Math.min(angle, 1.5) * Math.PI * 1.2
+    // 指针：160°（左）→ 20°（右），逆时针转140°
+    const clamped = Math.min(Math.max(angle, 0), 1)
+    const a = (160 - clamped * 140) * Math.PI / 180
     ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * (r - 6), Math.sin(a) * (r - 6)); ctx.stroke(); ctx.lineCap = 'butt'
     ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill()
     if (reading) { ctx.fillStyle = over ? '#F44336' : '#fff'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(reading, 0, r - 4) }
