@@ -12,7 +12,7 @@ const TERM_OFF = {
   ammeter: [{ x: -30, y: 0 }, { x: 30, y: 0 }],
   voltmeter: [{ x: -30, y: 0 }, { x: 30, y: 0 }],
   rheostat: [{ x: -40, y: 0 }, { x: 40, y: 0 }],
-  bulb: [{ x: -30, y: 0 }, { x: 30, y: 0 }],
+  bulb: [{ x: -20, y: 20 }, { x: 20, y: 20 }],
 }
 
 export default function VoltAmpereResistorScene() {
@@ -39,7 +39,7 @@ export default function VoltAmpereResistorScene() {
     dragId: null, dragOffX: 0, dragOffY: 0,
     connecting: null, hoverTerm: null,
     nextId: 1, wireErrors: [], circuitStatus: { ok: false, reason: '' },
-    undoStack: [], redoStack: [], showGuide: true,
+    undoStack: [], redoStack: [], showGuide: true, wireColorPicker: null,
     needleA: 0, needleV: 0, overRangeA: false, overRangeV: false,
   })
 
@@ -312,6 +312,23 @@ export default function VoltAmpereResistorScene() {
 
     // 导线（带铆点折线）
     for (const wire of s.wires) drawDIYWire(ctx, wire, s)
+    // 电线颜色选盘
+    if (s.wireColorPicker) {
+      const { wireId, x: wx, y: wy } = s.wireColorPicker
+      const colors = ['#F44336', '#FF9800', '#FFEB3B', '#4CAF50', '#2196F3', '#9C27B0', '#333', '#fff']
+      const palX = Math.min(wx + 10, W - colors.length * 20 - 20), palY = wy - 20
+      ctx.fillStyle = 'rgba(30,30,30,0.9)'; ctx.beginPath(); ctx.roundRect(palX - 4, palY - 4, colors.length * 20 + 8, 28, 6); ctx.fill()
+      for (let i = 0; i < colors.length; i++) {
+        const cx = palX + i * 20 + 10, cy = palY + 10
+        ctx.fillStyle = colors[i]; ctx.strokeStyle = '#888'; ctx.lineWidth = 1
+        ctx.beginPath(); ctx.arc(cx, cy, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+        canvasRef.current._clickAreas.push({ x: cx - 8, y: cy - 8, w: 16, h: 16, onClick: ((c) => () => {
+          const wire = s.wires.find(w => w.id === wireId)
+          if (wire) wire.color = c
+          s.wireColorPicker = null; forceUpdate(n => n + 1)
+        })(colors[i]) })
+      }
+    }
     if (s.connecting) {
       const fc = s.components.find(c => c.id === s.connecting.compId)
       if (fc) { const ft = termPos(fc, s.connecting.termIdx); ctx.strokeStyle = '#1976D2'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.moveTo(ft.x, ft.y); ctx.lineTo(s.connecting.mx, s.connecting.my); ctx.stroke(); ctx.setLineDash([]) }
@@ -459,10 +476,10 @@ export default function VoltAmpereResistorScene() {
       glow.addColorStop(0, 'rgba(255,235,59,' + (lv.glow * 0.5) + ')'); glow.addColorStop(1, 'rgba(255,235,59,0)')
       ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, -4, r * 2.5, 0, Math.PI * 2); ctx.fill()
     }
-    // 引线（左右）
+    // 引线（从底座两边引出）
     ctx.strokeStyle = '#999'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.moveTo(-r - 4, -4); ctx.lineTo(-30, 0); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(r + 4, -4); ctx.lineTo(30, 0); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(-10, -4 + r + 10); ctx.lineTo(-20, 20); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(10, -4 + r + 10); ctx.lineTo(20, 20); ctx.stroke()
     ctx.fillStyle = lv.bg; ctx.beginPath(); ctx.arc(0, -4, r, 0, Math.PI * 2); ctx.fill()
     ctx.strokeStyle = lv.fg; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, -4, r, 0, Math.PI * 2); ctx.stroke()
     ctx.strokeStyle = lv.fg; ctx.lineWidth = 1.5; const s = r * 0.5
@@ -507,7 +524,7 @@ export default function VoltAmpereResistorScene() {
     const f = termPos(fc, wire.from.termIdx), t = termPos(tc, wire.to.termIdx)
     const ddx = t.x - f.x, ddy = t.y - f.y
     const err = s.wireErrors.some(e => e.wireId === wire.id), on = s.switchClosed
-    const color = err ? '#F44336' : on ? '#1565C0' : '#999'
+    const color = wire.color || (err ? '#F44336' : on ? '#1565C0' : '#999')
     const m1x = wire.mid1X != null ? wire.mid1X : f.x + ddx * 0.33, m1y = wire.mid1Y != null ? wire.mid1Y : f.y + ddy * 0.33
     const m2x = wire.mid2X != null ? wire.mid2X : f.x + ddx * 0.67, m2y = wire.mid2Y != null ? wire.mid2Y : f.y + ddy * 0.67
     if (on && !err) { ctx.strokeStyle = 'rgba(21,101,225,0.2)'; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(m1x, m1y); ctx.lineTo(m2x, m2y); ctx.lineTo(t.x, t.y); ctx.stroke() }
@@ -596,6 +613,40 @@ export default function VoltAmpereResistorScene() {
     if (!comps.some(c => c.type === 'bulb')) { s.circuitStatus = { ok: false, reason: '缺少灯泡' }; return }
     const unconn = comps.filter(c => !adj[c.id] || adj[c.id].size === 0)
     if (unconn.length > 0) { s.circuitStatus = { ok: false, reason: unconn.map(c => c.type).join('、') + '未连接' }; return }
+    const bat = comps.find(c => c.type === 'battery'), vis = new Set(); let hasLoop = false
+    ;(function dfs(n, d) { if (d > 0 && n === bat.id) { hasLoop = true; return }; if (vis.has(n) || d > comps.length + 2) return; vis.add(n); for (const nx of adj[n] || []) dfs(nx, d + 1) })(bat.id, 0)
+    if (!hasLoop) { s.circuitStatus = { ok: false, reason: '断路：未形成闭合回路' }; return }
+    for (const w of wires) { if (w.from.compId === bat.id && w.to.compId === bat.id) { s.wireErrors.push({ wireId: w.id }); s.circuitStatus = { ok: false, reason: '短路！' }; return } }
+
+    // 伏特表串联检测：去掉伏特表后回路断开→断路
+    const voltmeter = comps.find(c => c.type === 'voltmeter')
+    if (voltmeter && adj[voltmeter.id]?.size > 0) {
+      const adj2 = {}; for (const c of comps) adj2[c.id] = new Set()
+      for (const w of wires) { if (w.from.compId === voltmeter.id || w.to.compId === voltmeter.id) continue; adj2[w.from.compId]?.add(w.to.compId); adj2[w.to.compId]?.add(w.from.compId) }
+      const vis2 = new Set(); let loop2 = false
+      ;(function dfs(n, d) { if (d > 0 && n === bat.id) { loop2 = true; return }; if (vis2.has(n) || d > comps.length + 2) return; vis2.add(n); for (const nx of adj2[n] || []) dfs(nx, d + 1) })(bat.id, 0)
+      if (!loop2) { s.circuitStatus = { ok: false, reason: '伏特表串联→断路（应并联在灯泡两端）' }; return }
+    }
+
+    // 安培表并联检测：去掉安培表后两邻接元件仍连通→短路
+    const ammeter = comps.find(c => c.type === 'ammeter')
+    if (ammeter && adj[ammeter.id]?.size >= 2) {
+      const adj3 = {}; for (const c of comps) adj3[c.id] = new Set()
+      for (const w of wires) { if (w.from.compId === ammeter.id || w.to.compId === ammeter.id) continue; adj3[w.from.compId]?.add(w.to.compId); adj3[w.to.compId]?.add(w.from.compId) }
+      const nb = [...adj[ammeter.id]], vis3 = new Set(); let found = false
+      ;(function dfs(n) { if (found || n === nb[1]) { found = true; return }; if (vis3.has(n)) return; vis3.add(n); for (const nx of adj3[n] || []) dfs(nx) })(nb[0])
+      if (found) { s.circuitStatus = { ok: false, reason: '安培表并联→短路（应串联在电路中）' }; return }
+    }
+
+    s.circuitStatus = { ok: true, reason: '电路正常，可以实验' }
+  } function checkCircuit(s) {
+    s.wireErrors = []; const comps = s.components, wires = s.wires, adj = {}
+    for (const c of comps) adj[c.id] = new Set()
+    for (const w of wires) { adj[w.from.compId]?.add(w.to.compId); adj[w.to.compId]?.add(w.from.compId) }
+    if (!comps.some(c => c.type === 'battery')) { s.circuitStatus = { ok: false, reason: '缺少电源' }; return }
+    if (!comps.some(c => c.type === 'bulb')) { s.circuitStatus = { ok: false, reason: '缺少灯泡' }; return }
+    const unconn = comps.filter(c => !adj[c.id] || adj[c.id].size === 0)
+    if (unconn.length > 0) { s.circuitStatus = { ok: false, reason: unconn.map(c => c.type).join('、') + '未连接' }; return }
     const bat = comps.find(c => c.type === 'battery'), vis = new Set(); let loop = false
     ;(function dfs(n, d) { if (d > 0 && n === bat.id) { loop = true; return }; if (vis.has(n) || d > comps.length + 2) return; vis.add(n); for (const nx of adj[n] || []) dfs(nx, d + 1) })(bat.id, 0)
     if (!loop) { s.circuitStatus = { ok: false, reason: '断路：未形成闭合回路' }; return }
@@ -649,6 +700,20 @@ export default function VoltAmpereResistorScene() {
         if (Math.abs(x - sliderX) < 15 && Math.abs(y - sliderY) < 15) {
           s.dragId = 'rheo_' + comp.id; forceUpdate(n => n + 1); return
         }
+      }
+    }
+    // 电线点击选色
+    if (s.wireColorPicker) { s.wireColorPicker = null; forceUpdate(n => n + 1) }
+    for (const wire of s.wires) {
+      const fc = s.components.find(c => c.id === wire.from.compId), tc = s.components.find(c => c.id === wire.to.compId)
+      if (!fc || !tc) continue
+      const f = termPos(fc, wire.from.termIdx), t = termPos(tc, wire.to.termIdx)
+      const dx = t.x - f.x, dy = t.y - f.y, len2 = dx * dx + dy * dy
+      if (len2 === 0) continue
+      const tp = Math.max(0, Math.min(1, ((x - f.x) * dx + (y - f.y) * dy) / len2))
+      const px = f.x + tp * dx, py = f.y + tp * dy
+      if ((x - px) ** 2 + (y - py) ** 2 < 100) {
+        s.wireColorPicker = { wireId: wire.id, x, y }; forceUpdate(n => n + 1); return
       }
     }
     // 接线柱连线
