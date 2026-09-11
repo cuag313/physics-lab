@@ -417,9 +417,9 @@ export default function VoltAmpereResistorScene() {
   function drawImgFit(ctx, img, cx, cy, maxW, maxH) { const r = Math.min(maxW / img.naturalWidth, maxH / img.naturalHeight); const w = img.naturalWidth * r, h = img.naturalHeight * r; ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h) }
   function drawNeedle(ctx, angle, over, reading, color, r) {
     if (over) { const f = Math.sin(Date.now() / 150) > 0; ctx.fillStyle = f ? 'rgba(244,67,54,0.25)' : 'rgba(244,67,54,0.08)'; ctx.beginPath(); ctx.arc(0, 0, r + 6, 0, Math.PI * 2); ctx.fill() }
-    // 指针：160°（左）→ 20°（右），逆时针转140°
+    // 指针：上半圆，210°（左上）→ 330°（右上），顺时针120°
     const clamped = Math.min(Math.max(angle, 0), 1)
-    const a = (160 - clamped * 140) * Math.PI / 180
+    const a = (210 + clamped * 120) * Math.PI / 180
     ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a) * (r - 6), Math.sin(a) * (r - 6)); ctx.stroke(); ctx.lineCap = 'butt'
     ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill()
     if (reading) { ctx.fillStyle = over ? '#F44336' : '#fff'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(reading, 0, r - 4) }
@@ -442,8 +442,39 @@ export default function VoltAmpereResistorScene() {
     ctx.beginPath(); ctx.moveTo(tipX, tipY); ctx.lineTo(tipX - 7, tipY + 2); ctx.lineTo(tipX - 2, tipY + 7); ctx.closePath(); ctx.fill()
     ctx.fillStyle = '#333'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(R + 'Ω', x, y + 12); ctx.textBaseline = 'alphabetic'
   }
-  function drawMeterSym(ctx, x, y, type, angle, over, reading) { const r = 22, color = type === 'A' ? '#E53935' : '#4CAF50'; if (over) { const f = Math.sin(Date.now() / 150) > 0; ctx.fillStyle = f ? 'rgba(244,67,54,0.2)' : 'rgba(244,67,54,0.06)'; ctx.beginPath(); ctx.arc(x, y, r + 6, 0, Math.PI * 2); ctx.fill() }; ctx.fillStyle = '#fff'; ctx.strokeStyle = over ? '#F44336' : color; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = color; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(type, x, y - 4); const a = -Math.PI * 0.6 + Math.min(angle, 1.5) * Math.PI * 1.2; ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * (r - 6), y + Math.sin(a) * (r - 6)); ctx.stroke(); ctx.lineCap = 'butt'; if (reading) { ctx.fillStyle = over ? '#F44336' : '#333'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(reading, x, y + 10) }; if (over) { ctx.fillStyle = '#F44336'; ctx.font = 'bold 9px sans-serif'; ctx.fillText('超量程!', x, y + r + 12) }; ctx.textBaseline = 'alphabetic' }
-  function drawBulbSym(ctx, x, y, brightness) { const r = 14; ctx.fillStyle = brightness > 0.3 ? '#FFEB3B' : '#f5f5f5'; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = brightness > 0.3 ? '#F9A825' : '#999'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke(); ctx.strokeStyle = brightness > 0.3 ? '#E65100' : '#999'; const s2 = r * 0.55; ctx.beginPath(); ctx.moveTo(x - s2, y - s2); ctx.lineTo(x + s2, y + s2); ctx.stroke(); ctx.beginPath(); ctx.moveTo(x + s2, y - s2); ctx.lineTo(x - s2, y + s2); ctx.stroke(); if (brightness > 0.3) { const glow = ctx.createRadialGradient(x, y, r, x, y, r * 3); glow.addColorStop(0, 'rgba(255,235,59,' + (brightness * 0.3) + ')'); glow.addColorStop(1, 'rgba(255,235,59,0)'); ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, r * 3, 0, Math.PI * 2); ctx.fill() }; ctx.fillStyle = '#9E9E9E'; ctx.strokeStyle = '#616161'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(x - 8, y + r, 16, 8, 2); ctx.fill(); ctx.stroke() }
+  function drawMeterSym(ctx, x, y, type, angle, over, reading) { const r = 22, color = type === 'A' ? '#E53935' : '#4CAF50'; if (over) { const f = Math.sin(Date.now() / 150) > 0; ctx.fillStyle = f ? 'rgba(244,67,54,0.2)' : 'rgba(244,67,54,0.06)'; ctx.beginPath(); ctx.arc(x, y, r + 6, 0, Math.PI * 2); ctx.fill() }; ctx.fillStyle = '#fff'; ctx.strokeStyle = over ? '#F44336' : color; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = color; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(type, x, y - 4); const a = (210 + Math.min(Math.max(angle, 0), 1) * 120) * Math.PI / 180; ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * (r - 6), y + Math.sin(a) * (r - 6)); ctx.stroke(); ctx.lineCap = 'butt'; if (reading) { ctx.fillStyle = over ? '#F44336' : '#333'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillText(reading, x, y + 10) }; if (over) { ctx.fillStyle = '#F44336'; ctx.font = 'bold 9px sans-serif'; ctx.fillText('超量程!', x, y + r + 12) }; ctx.textBaseline = 'alphabetic' }
+  function drawBulbSym(ctx, x, y, brightness) {
+    const r = 14
+    // 多级亮度：5档渐变
+    const levels = [
+      { min: 0,    bg: '#f0f0f0', fg: '#bbb',    glow: 0 },
+      { min: 0.15, bg: '#FFFDE7', fg: '#E0C860', glow: 0.12 },
+      { min: 0.3,  bg: '#FFF9C4', fg: '#D4A800', glow: 0.25 },
+      { min: 0.5,  bg: '#FFF59D', fg: '#C68A00', glow: 0.45 },
+      { min: 0.7,  bg: '#FFEE58', fg: '#B76000', glow: 0.65 },
+      { min: 0.85, bg: '#FFEB3B', fg: '#E65100', glow: 0.85 },
+    ]
+    let lv = levels[0]
+    for (const l of levels) { if (brightness >= l.min) lv = l }
+
+    // 发光晕圈
+    if (lv.glow > 0) {
+      const glow = ctx.createRadialGradient(x, y, r * 0.5, x, y, r * 3)
+      glow.addColorStop(0, 'rgba(255,235,59,' + (lv.glow * 0.5) + ')')
+      glow.addColorStop(1, 'rgba(255,235,59,0)')
+      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, r * 3, 0, Math.PI * 2); ctx.fill()
+    }
+    // 灯泡圆
+    ctx.fillStyle = lv.bg; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = lv.fg; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke()
+    // × 灯丝
+    ctx.strokeStyle = lv.fg; ctx.lineWidth = 1.5
+    const s2 = r * 0.55; ctx.beginPath(); ctx.moveTo(x - s2, y - s2); ctx.lineTo(x + s2, y + s2); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(x + s2, y - s2); ctx.lineTo(x - s2, y + s2); ctx.stroke()
+    // 底座
+    ctx.fillStyle = '#9E9E9E'; ctx.strokeStyle = '#616161'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.roundRect(x - 8, y + r, 16, 8, 2); ctx.fill(); ctx.stroke()
+  }
   function drawLn(ctx, x1, y1, x2, y2, c, w) { ctx.strokeStyle = c || '#999'; ctx.lineWidth = w || 2.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.lineCap = 'butt' }
   function drawFlow(ctx, pts, t) { let len = 0; const segs = []; for (let i = 0; i < pts.length - 1; i++) { const dx = pts[i+1].x - pts[i].x, dy = pts[i+1].y - pts[i].y, l = Math.sqrt(dx*dx+dy*dy); segs.push({ ...pts[i], ex: pts[i+1].x, ey: pts[i+1].y, l }); len += l }; ctx.fillStyle = '#FFEB3B'; const n = Math.max(5, Math.floor(len / 45)); for (let d = 0; d < n; d++) { let pos = ((t * 50 + d * (len / n)) % len); for (const seg of segs) { if (pos <= seg.l) { const r = pos / seg.l; ctx.beginPath(); ctx.arc(seg.x + (seg.ex - seg.x) * r, seg.y + (seg.ey - seg.y) * r, 3, 0, Math.PI * 2); ctx.fill(); break }; pos -= seg.l } } }
   function drawIcon(ctx, x, y, type) { ctx.save(); ctx.translate(x, y); const img = imgCache.current[type]; if (img) ctx.drawImage(img, -12, -10, 24, 20); else { ctx.fillStyle = '#ddd'; ctx.beginPath(); ctx.roundRect(-12, -10, 24, 20, 3); ctx.fill(); ctx.fillStyle = '#999'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(type[0].toUpperCase(), 0, 0) }; ctx.restore() }
