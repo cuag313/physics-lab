@@ -36,7 +36,7 @@ export function solveCircuit(components, wires, voltage, bulbR, rheostatR) {
     if (c.type === 'bulb') props.resistance = bulbR
     if (c.type === 'rheostat') props.resistance = rheostatR
     if (c.type === 'switch') props.closed = c.closed !== false
-    graph.addComponent(c.type, c.x, c.y, props)
+    graph.addComponent(c.type, c.x, c.y, props, c.id)
   }
 
   for (const w of wires) {

@@ -92,7 +92,7 @@ export default function VoltAmpereResistorScene() {
         closed: c.type === 'switch' ? (c.closed !== false) : undefined,
       }
     }))
-    const wires = s.wires.map(w => ({ from: w.from, to: w.to }))
+    const wires = s.wires.map(w => ({ from: { componentId: w.from.compId, portIndex: w.from.termIdx }, to: { componentId: w.to.compId, portIndex: w.to.termIdx } }))
     const result = solveCircuit(comps, wires, s.U_source, s.R_true, s.sliderR)
     if (result.ok) {
       s.circuitStatus = { ok: true, reason: result.reason }

@@ -42,8 +42,9 @@ export class CircuitGraph {
   }
 
   // ─── 元件管理 ───
-  addComponent(type, x, y, props = {}) {
-    const id = this._nextId++
+  addComponent(type, x, y, props = {}, useId = null) {
+    const id = useId != null ? useId : this._nextId++
+    if (useId != null && useId >= this._nextId) this._nextId = useId + 1
     const defs = PORT_DEFS[type] || [{ x: -30, y: 0 }, { x: 30, y: 0 }]
     const comp = {
       id, type, x, y,
