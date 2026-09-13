@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { solveCircuit } from '../engine/index.js'
 
 const AMMETER_MAX = 0.6
 const VOLTMETER_MAX = 12
 const DEFAULTS = { U_source: 6, R_true: 15, sliderR: 10 }
-const SNAP_DIST = 22
+const SNAP_DIST = 45
 
 // 接线柱偏移（画在器材边缘上）
 const TERM_OFF = {
@@ -64,18 +65,51 @@ export default function VoltAmpereResistorScene() {
       resize() { const r = cv.getBoundingClientRect(); cv.width = r.width * devicePixelRatio; cv.height = r.height * devicePixelRatio; this.ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0); this.W = r.width; this.H = r.height },
     }
     R.resize(); cv._R = R
-    const loop = () => { S().time += 1 / 60; updatePhysics(S()); render(R); animRef.current = requestAnimationFrame(loop) }
+    const loop = () => { S().time += 1 / 60; try { updatePhysics(S()) } catch(e) { console.error('updatePhysics error:', e) }; try { render(R) } catch(e) { console.error('render error:', e) }; animRef.current = requestAnimationFrame(loop) }
     animRef.current = requestAnimationFrame(loop)
     window.addEventListener('resize', R.resize.bind(R))
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current) }
   }, [])
 
   function updatePhysics(s) {
-    if (!s.switchClosed) { s.needleA += (0 - s.needleA) * 0.15; s.needleV += (0 - s.needleV) * 0.15; s.overRangeA = false; s.overRangeV = false; return }
-    const Rtot = s.R_true + s.sliderR, I = Rtot > 0 ? s.U_source / Rtot : 0, UR = I * s.R_true
-    s.needleA += ((I / AMMETER_MAX) * 1.2 - s.needleA) * 0.12
-    s.needleV += ((UR / VOLTMETER_MAX) * 1.2 - s.needleV) * 0.12
-    s.overRangeA = I > AMMETER_MAX; s.overRangeV = UR > VOLTMETER_MAX
+    const isTab2 = Array.isArray(s.wires)
+    if (!isTab2) {
+      // Tab1：预置电路，简单计算
+      const Rtot = s.R_true + s.sliderR
+      const I = s.switchClosed && Rtot > 0 ? s.U_source / Rtot : 0
+      const UR = I * s.R_true
+      s.needleA += ((I / AMMETER_MAX) * 1.2 - s.needleA) * 0.12
+      s.needleV += ((UR / VOLTMETER_MAX) * 1.2 - s.needleV) * 0.12
+      s.overRangeA = I > AMMETER_MAX; s.overRangeV = UR > VOLTMETER_MAX
+      return
+    }
+    // Tab2：MNA引擎求解
+    const comps = s.components.map(c => ({
+      id: c.id, type: c.type, x: c.x, y: c.y,
+      props: {
+        voltage: c.type === 'battery' ? s.U_source : undefined,
+        resistance: c.type === 'bulb' ? s.R_true : c.type === 'rheostat' ? s.sliderR : undefined,
+        closed: c.type === 'switch' ? (c.closed !== false) : undefined,
+      }
+    }))
+    const wires = s.wires.map(w => ({ from: w.from, to: w.to }))
+    const result = solveCircuit(comps, wires, s.U_source, s.R_true, s.sliderR)
+    if (result.ok) {
+      s.circuitStatus = { ok: true, reason: result.reason }
+      const amm = s.components.find(c => c.type === 'ammeter')
+      const vol = s.components.find(c => c.type === 'voltmeter')
+      const ammR = amm ? result.results.get(amm.id) : null
+      const volR = vol ? result.results.get(vol.id) : null
+      if (ammR) { const I = Math.abs(ammR.current); s.needleA += ((I / AMMETER_MAX) * 1.2 - s.needleA) * 0.12; s.overRangeA = I > AMMETER_MAX }
+      else { s.needleA += (0 - s.needleA) * 0.15; s.overRangeA = false }
+      if (volR) { const U = Math.abs(volR.voltage); s.needleV += ((U / VOLTMETER_MAX) * 1.2 - s.needleV) * 0.12; s.overRangeV = U > VOLTMETER_MAX }
+      else { s.needleV += (0 - s.needleV) * 0.15; s.overRangeV = false }
+      s._bulbBrightness = result.bulbBrightness
+    } else {
+      s.circuitStatus = { ok: false, reason: result.reason }
+      s.needleA += (0 - s.needleA) * 0.15; s.needleV += (0 - s.needleV) * 0.15
+      s.overRangeA = false; s.overRangeV = false; s._bulbBrightness = 0
+    }
   }
 
   function render(R) {
@@ -308,7 +342,11 @@ export default function VoltAmpereResistorScene() {
       ctx.textBaseline = 'alphabetic'
     }
 
-    checkCircuit(s)
+    // 电路验证由updatePhysics中的引擎处理
+    // 计算I和UR供drawComp使用
+    const Rtotal = s.R_true + s.sliderR
+    const I_val = s.switchClosed && s.circuitStatus?.ok && Rtotal > 0 ? s.U_source / Rtotal : 0
+    const UR_val = I_val * s.R_true
 
     // 导线（带铆点折线）
     for (const wire of s.wires) drawDIYWire(ctx, wire, s)
@@ -336,7 +374,7 @@ export default function VoltAmpereResistorScene() {
 
     // 实物器材（接线柱画在器材上）
     const on = s.switchClosed, Rtot = s.R_true + s.sliderR, I = on && Rtot > 0 ? s.U_source / Rtot : 0, UR = I * s.R_true
-    for (const comp of s.components) drawComp(ctx, comp, s, I, UR)
+    for (const comp of s.components) drawComp(ctx, comp, s, I_val, UR_val)
 
     if (s.components.length > 0) {
       ctx.fillStyle = s.circuitStatus.ok ? '#4CAF50' : '#F44336'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
@@ -500,41 +538,50 @@ export default function VoltAmpereResistorScene() {
     else if (type === 'voltmeter') drawMeter2D(ctx, 'V', s.needleV, on ? UR.toFixed(2) + 'V' : '', '#4CAF50')
     else if (type === 'rheostat') drawRheostat2D(ctx, s.sliderR, 50)
     else if (type === 'bulb') {
-      const brightness = on ? Math.max(0.08, (I * I * s.R_true) / ((s.U_source / s.R_true) ** 2 * s.R_true)) : 0
+      const brightness = s._bulbBrightness ?? (on ? Math.max(0.08, (I * I * s.R_true) / ((s.U_source / s.R_true) ** 2 * s.R_true)) : 0)
       drawBulb2D(ctx, brightness)
     }
 
     ctx.globalAlpha = 1; ctx.restore()
 
-    // 接线柱热点（悬停高亮）
+    // 接线柱热点（显示连接数量）
     const offsets = TERM_OFF[type] || [{ x: -30, y: 0 }, { x: 30, y: 0 }]
     for (let i = 0; i < offsets.length; i++) {
       const off = offsets[i]
       const hov = s.hoverTerm && s.hoverTerm.compId === comp.id && s.hoverTerm.termIdx === i
       const snap = s.connecting && hov
+      // 计算该端子已接线数
+      const connCount = (s.wires || []).filter(w => (w.from.compId === comp.id && w.from.termIdx === i) || (w.to.compId === comp.id && w.to.termIdx === i)).length
       if (snap) { ctx.fillStyle = 'rgba(76,175,80,0.3)'; ctx.beginPath(); ctx.arc(x + off.x, y + off.y, 12, 0, Math.PI * 2); ctx.fill() }
       else if (hov) { ctx.fillStyle = 'rgba(255,152,0,0.25)'; ctx.beginPath(); ctx.arc(x + off.x, y + off.y, 10, 0, Math.PI * 2); ctx.fill() }
+      // 已连接数量标记
+      if (connCount > 0) {
+        ctx.fillStyle = '#1976D2'; ctx.beginPath(); ctx.arc(x + off.x + 8, y + off.y - 8, 6, 0, Math.PI * 2); ctx.fill()
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.fillText(connCount, x + off.x + 8, y + off.y - 8)
+      }
     }
   }
 
-  // ─── 导线（两个铆点可拉折角）───
+  // ─── 导线（NB风格：细线直连端子，可选拐点）───
   function drawDIYWire(ctx, wire, s) {
     const fc = s.components.find(c => c.id === wire.from.compId), tc = s.components.find(c => c.id === wire.to.compId)
     if (!fc || !tc) return
     const f = termPos(fc, wire.from.termIdx), t = termPos(tc, wire.to.termIdx)
-    const ddx = t.x - f.x, ddy = t.y - f.y
     const err = s.wireErrors.some(e => e.wireId === wire.id), on = s.switchClosed
-    const color = wire.color || (err ? '#F44336' : on ? '#1565C0' : '#999')
-    const m1x = wire.mid1X != null ? wire.mid1X : f.x + ddx * 0.33, m1y = wire.mid1Y != null ? wire.mid1Y : f.y + ddy * 0.33
-    const m2x = wire.mid2X != null ? wire.mid2X : f.x + ddx * 0.67, m2y = wire.mid2Y != null ? wire.mid2Y : f.y + ddy * 0.67
-    if (on && !err) { ctx.strokeStyle = 'rgba(21,101,225,0.2)'; ctx.lineWidth = 8; ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(m1x, m1y); ctx.lineTo(m2x, m2y); ctx.lineTo(t.x, t.y); ctx.stroke() }
-    ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
-    ctx.beginPath(); ctx.moveTo(f.x, f.y); ctx.lineTo(m1x, m1y); ctx.lineTo(m2x, m2y); ctx.lineTo(t.x, t.y); ctx.stroke()
+    const color = wire.color || (err ? '#F44336' : on ? '#1565C0' : '#666')
+    // NB风格：默认直线，有拐点时走折线
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+    ctx.beginPath(); ctx.moveTo(f.x, f.y)
+    if (wire.mid1X != null) ctx.lineTo(wire.mid1X, wire.mid1Y)
+    if (wire.mid2X != null) ctx.lineTo(wire.mid2X, wire.mid2Y)
+    ctx.lineTo(t.x, t.y); ctx.stroke()
     ctx.lineCap = 'butt'; ctx.lineJoin = 'miter'
-    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(m1x, m1y, 5, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(m1x, m1y, 2.5, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(m2x, m2y, 5, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(m2x, m2y, 2.5, 0, Math.PI * 2); ctx.fill()
+    // 铆点（小圆点）
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(m1x, m1y, 3.5, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(m1x, m1y, 1.5, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(m2x, m2y, 3.5, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(m2x, m2y, 1.5, 0, Math.PI * 2); ctx.fill()
   }
 
   // ═══════════════════════════════════════════
@@ -604,56 +651,6 @@ export default function VoltAmpereResistorScene() {
   function drawFlow(ctx, pts, t) { let len = 0; const segs = []; for (let i = 0; i < pts.length - 1; i++) { const dx = pts[i+1].x - pts[i].x, dy = pts[i+1].y - pts[i].y, l = Math.sqrt(dx*dx+dy*dy); segs.push({ ...pts[i], ex: pts[i+1].x, ey: pts[i+1].y, l }); len += l }; ctx.fillStyle = '#FFEB3B'; const n = Math.max(5, Math.floor(len / 45)); for (let d = 0; d < n; d++) { let pos = ((t * 50 + d * (len / n)) % len); for (const seg of segs) { if (pos <= seg.l) { const r = pos / seg.l; ctx.beginPath(); ctx.arc(seg.x + (seg.ex - seg.x) * r, seg.y + (seg.ey - seg.y) * r, 3, 0, Math.PI * 2); ctx.fill(); break }; pos -= seg.l } } }
   function drawIcon(ctx, x, y, type) { ctx.save(); ctx.translate(x, y); const img = imgCache.current[type]; if (img) ctx.drawImage(img, -12, -10, 24, 20); else { ctx.fillStyle = '#ddd'; ctx.beginPath(); ctx.roundRect(-12, -10, 24, 20, 3); ctx.fill(); ctx.fillStyle = '#999'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(type[0].toUpperCase(), 0, 0) }; ctx.restore() }
 
-  // ─── 电路自检 ───
-  function checkCircuit(s) {
-    s.wireErrors = []; const comps = s.components, wires = s.wires, adj = {}
-    for (const c of comps) adj[c.id] = new Set()
-    for (const w of wires) { adj[w.from.compId]?.add(w.to.compId); adj[w.to.compId]?.add(w.from.compId) }
-    if (!comps.some(c => c.type === 'battery')) { s.circuitStatus = { ok: false, reason: '缺少电源' }; return }
-    if (!comps.some(c => c.type === 'bulb')) { s.circuitStatus = { ok: false, reason: '缺少灯泡' }; return }
-    const unconn = comps.filter(c => !adj[c.id] || adj[c.id].size === 0)
-    if (unconn.length > 0) { s.circuitStatus = { ok: false, reason: unconn.map(c => c.type).join('、') + '未连接' }; return }
-    const bat = comps.find(c => c.type === 'battery'), vis = new Set(); let hasLoop = false
-    ;(function dfs(n, d) { if (d > 0 && n === bat.id) { hasLoop = true; return }; if (vis.has(n) || d > comps.length + 2) return; vis.add(n); for (const nx of adj[n] || []) dfs(nx, d + 1) })(bat.id, 0)
-    if (!hasLoop) { s.circuitStatus = { ok: false, reason: '断路：未形成闭合回路' }; return }
-    for (const w of wires) { if (w.from.compId === bat.id && w.to.compId === bat.id) { s.wireErrors.push({ wireId: w.id }); s.circuitStatus = { ok: false, reason: '短路！' }; return } }
-
-    // 伏特表串联检测：去掉伏特表后回路断开→断路
-    const voltmeter = comps.find(c => c.type === 'voltmeter')
-    if (voltmeter && adj[voltmeter.id]?.size > 0) {
-      const adj2 = {}; for (const c of comps) adj2[c.id] = new Set()
-      for (const w of wires) { if (w.from.compId === voltmeter.id || w.to.compId === voltmeter.id) continue; adj2[w.from.compId]?.add(w.to.compId); adj2[w.to.compId]?.add(w.from.compId) }
-      const vis2 = new Set(); let loop2 = false
-      ;(function dfs(n, d) { if (d > 0 && n === bat.id) { loop2 = true; return }; if (vis2.has(n) || d > comps.length + 2) return; vis2.add(n); for (const nx of adj2[n] || []) dfs(nx, d + 1) })(bat.id, 0)
-      if (!loop2) { s.circuitStatus = { ok: false, reason: '伏特表串联→断路（应并联在灯泡两端）' }; return }
-    }
-
-    // 安培表并联检测：去掉安培表后两邻接元件仍连通→短路
-    const ammeter = comps.find(c => c.type === 'ammeter')
-    if (ammeter && adj[ammeter.id]?.size >= 2) {
-      const adj3 = {}; for (const c of comps) adj3[c.id] = new Set()
-      for (const w of wires) { if (w.from.compId === ammeter.id || w.to.compId === ammeter.id) continue; adj3[w.from.compId]?.add(w.to.compId); adj3[w.to.compId]?.add(w.from.compId) }
-      const nb = [...adj[ammeter.id]], vis3 = new Set(); let found = false
-      ;(function dfs(n) { if (found || n === nb[1]) { found = true; return }; if (vis3.has(n)) return; vis3.add(n); for (const nx of adj3[n] || []) dfs(nx) })(nb[0])
-      if (found) { s.circuitStatus = { ok: false, reason: '安培表并联→短路（应串联在电路中）' }; return }
-    }
-
-    s.circuitStatus = { ok: true, reason: '电路正常，可以实验' }
-  } function checkCircuit(s) {
-    s.wireErrors = []; const comps = s.components, wires = s.wires, adj = {}
-    for (const c of comps) adj[c.id] = new Set()
-    for (const w of wires) { adj[w.from.compId]?.add(w.to.compId); adj[w.to.compId]?.add(w.from.compId) }
-    if (!comps.some(c => c.type === 'battery')) { s.circuitStatus = { ok: false, reason: '缺少电源' }; return }
-    if (!comps.some(c => c.type === 'bulb')) { s.circuitStatus = { ok: false, reason: '缺少灯泡' }; return }
-    const unconn = comps.filter(c => !adj[c.id] || adj[c.id].size === 0)
-    if (unconn.length > 0) { s.circuitStatus = { ok: false, reason: unconn.map(c => c.type).join('、') + '未连接' }; return }
-    const bat = comps.find(c => c.type === 'battery'), vis = new Set(); let loop = false
-    ;(function dfs(n, d) { if (d > 0 && n === bat.id) { loop = true; return }; if (vis.has(n) || d > comps.length + 2) return; vis.add(n); for (const nx of adj[n] || []) dfs(nx, d + 1) })(bat.id, 0)
-    if (!loop) { s.circuitStatus = { ok: false, reason: '断路：未形成闭合回路' }; return }
-    for (const w of wires) { if (w.from.compId === bat.id && w.to.compId === bat.id) { s.wireErrors.push({ wireId: w.id }); s.circuitStatus = { ok: false, reason: '短路！' }; return } }
-    s.circuitStatus = { ok: true, reason: '电路正常，可以实验' }
-  }
-
   function getTerms(comp) { return (TERM_OFF[comp.type] || [{ x: -30, y: 0 }, { x: 30, y: 0 }]).map(o => ({ x: comp.x + o.x, y: comp.y + o.y })) }
   function termPos(comp, idx) { return getTerms(comp)[idx] }
   function findTerm(mx, my) { let best = null, bd = SNAP_DIST * SNAP_DIST; for (const c of S().components) { const ts = getTerms(c); for (let i = 0; i < ts.length; i++) { const d = (mx - ts[i].x) ** 2 + (my - ts[i].y) ** 2; if (d < bd) { bd = d; best = { compId: c.id, termIdx: i } } } }; return best }
@@ -683,15 +680,6 @@ export default function VoltAmpereResistorScene() {
     const s = diy.current
     // 器材栏拖拽
     for (const a of el._palAreas || []) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { if (a.type) { saveUndo(s); const id = s.nextId++; s.components.push({ id, type: a.type, x, y, closed: a.type === 'switch' ? false : undefined }); s.dragId = id; s.dragOffX = 0; s.dragOffY = 0; forceUpdate(n => n + 1); return } } }
-    // 导线铆点拖拽
-    for (const wire of s.wires) {
-      const fc = s.components.find(c => c.id === wire.from.compId), tc = s.components.find(c => c.id === wire.to.compId)
-      if (!fc || !tc) continue; const f = termPos(fc, wire.from.termIdx), t = termPos(tc, wire.to.termIdx), ddx = t.x - f.x, ddy = t.y - f.y
-      const m1x = wire.mid1X != null ? wire.mid1X : f.x + ddx * 0.33, m1y = wire.mid1Y != null ? wire.mid1Y : f.y + ddy * 0.33
-      const m2x = wire.mid2X != null ? wire.mid2X : f.x + ddx * 0.67, m2y = wire.mid2Y != null ? wire.mid2Y : f.y + ddy * 0.67
-      if ((x - m1x) ** 2 + (y - m1y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_1'; forceUpdate(n => n + 1); return }
-      if ((x - m2x) ** 2 + (y - m2y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_2'; forceUpdate(n => n + 1); return }
-    }
     // 滑线变阻器滑块拖拽
     for (const comp of s.components) {
       if (comp.type === 'rheostat') {
@@ -751,13 +739,6 @@ export default function VoltAmpereResistorScene() {
     // Tab2
     const s = diy.current
     if (s.dragId) {
-      // 导线铆点拖拽
-      if (typeof s.dragId === 'string' && s.dragId.startsWith('wire_')) {
-        const parts = s.dragId.split('_'), wireId = parseInt(parts[1]), rivetIdx = parseInt(parts[2])
-        const wire = s.wires.find(w => w.id === wireId)
-        if (wire) { if (rivetIdx === 1) { wire.mid1X = x; wire.mid1Y = y } else { wire.mid2X = x; wire.mid2Y = y }; forceUpdate(n => n + 1) }
-        return
-      }
       // 滑线变阻器滑块拖拽
       if (typeof s.dragId === 'string' && s.dragId.startsWith('rheo_')) {
         const compId = parseInt(s.dragId.split('_')[1])
