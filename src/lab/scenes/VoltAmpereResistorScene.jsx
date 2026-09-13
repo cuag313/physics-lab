@@ -88,7 +88,7 @@ export default function VoltAmpereResistorScene() {
       id: c.id, type: c.type, x: c.x, y: c.y,
       props: {
         voltage: c.type === 'battery' ? s.U_source : undefined,
-        resistance: c.type === 'bulb' ? s.R_true : c.type === 'rheostat' ? s.sliderR : undefined,
+        resistance: c.type === 'bulb' ? s.R_true : c.type === 'rheostat' ? s.sliderR : c.type === 'switch' ? (c.closed !== false ? 0.001 : 1e9) : undefined,
         closed: c.type === 'switch' ? (c.closed !== false) : undefined,
       }
     }))
@@ -708,7 +708,7 @@ export default function VoltAmpereResistorScene() {
           const dup = s.wires.some(w => (w.from.compId === s.connecting.compId && w.from.termIdx === s.connecting.termIdx && w.to.compId === term.compId && w.to.termIdx === term.termIdx) || (w.to.compId === s.connecting.compId && w.to.termIdx === s.connecting.termIdx && w.from.compId === term.compId && w.from.termIdx === term.termIdx))
           if (!dup) { saveUndo(s); s.wires.push({ id: s.nextId++, from: { ...s.connecting }, to: term }) }
         }
-        s.connecting = null; s.hoverTerm = null
+        s.connecting = null; s.hoverTerm = null; el.style.cursor = 'default'
       } else { s.connecting = { ...term, mx: x, my: y } }
       forceUpdate(n => n + 1); return
     }
