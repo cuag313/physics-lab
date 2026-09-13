@@ -374,7 +374,7 @@ export default function VoltAmpereResistorScene() {
 
     // 实物器材（接线柱画在器材上）
     const on = s.switchClosed, Rtot = s.R_true + s.sliderR, I = on && Rtot > 0 ? s.U_source / Rtot : 0, UR = I * s.R_true
-    for (const comp of s.components) drawComp(ctx, comp, s, I_val, UR_val)
+    for (const comp of s.components) { try { drawComp(ctx, comp, s, I_val, UR_val) } catch(e) { console.error('drawComp error:', comp.type, e) } }
 
     if (s.components.length > 0) {
       ctx.fillStyle = s.circuitStatus.ok ? '#4CAF50' : '#F44336'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
@@ -529,6 +529,7 @@ export default function VoltAmpereResistorScene() {
 
   // ─── 实物器材绘制（Canvas2D版本）───
   function drawComp(ctx, comp, s, I, UR) {
+    I = Number(I) || 0; UR = Number(UR) || 0
     const { x, y, type } = comp, on = s.switchClosed
     ctx.save(); ctx.translate(x, y); if (s.dragId === comp.id) ctx.globalAlpha = 0.6
 
@@ -577,11 +578,6 @@ export default function VoltAmpereResistorScene() {
     if (wire.mid2X != null) ctx.lineTo(wire.mid2X, wire.mid2Y)
     ctx.lineTo(t.x, t.y); ctx.stroke()
     ctx.lineCap = 'butt'; ctx.lineJoin = 'miter'
-    // 铆点（小圆点）
-    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(m1x, m1y, 3.5, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(m1x, m1y, 1.5, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(m2x, m2y, 3.5, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(m2x, m2y, 1.5, 0, Math.PI * 2); ctx.fill()
   }
 
   // ═══════════════════════════════════════════
