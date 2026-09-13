@@ -189,12 +189,18 @@ export class CircuitGraph {
         return { ok: false, reason: '伏特表串联→断路（应并联在灯泡两端）' }
     }
 
-    // 安培表不能并联（去掉后两邻接节点仍连通→并联错误）
+    // 安培表不能并联（有另一个元件直接接在同一对节点上→短路）
     const am = this.components.find(c => c.type === 'ammeter')
     if (am && wired.has(am.id)) {
-      const pair = this.getNodePair(am)
-      if (pair && this.hasPath(pair[0], pair[1], am.id))
-        return { ok: false, reason: '安培表并联→短路（应串联在电路中）' }
+      const amPair = this.getNodePair(am)
+      if (amPair) {
+        const directParallel = this.components.find(c => {
+          if (c.id === am.id) return false
+          const p = this.getNodePair(c); if (!p) return false
+          return (p[0] === amPair[0] && p[1] === amPair[1]) || (p[0] === amPair[1] && p[1] === amPair[0])
+        })
+        if (directParallel) return { ok: false, reason: '安培表并联→短路（应串联在电路中）' }
+      }
     }
 
     return { ok: true, reason: '电路正常，可以实验' }
