@@ -182,11 +182,18 @@ export class CircuitGraph {
         return { ok: false, reason: '短路！' }
     }
 
-    // 伏特表不能串联（去掉后回路断开→串联错误）
+    // 伏特表必须并联（与某个元件共享同一对节点）
     const vm = this.components.find(c => c.type === 'voltmeter')
     if (vm && wired.has(vm.id)) {
-      if (!this.hasPath(batN1, batN0, vm.id))
-        return { ok: false, reason: '伏特表串联→断路（应并联在灯泡两端）' }
+      const vmPair = this.getNodePair(vm)
+      if (vmPair) {
+        const hasParallelTarget = this.components.find(c => {
+          if (c.id === vm.id || c.type === 'battery') return false  // 不和电源比
+          const p = this.getNodePair(c); if (!p) return false
+          return (p[0] === vmPair[0] && p[1] === vmPair[1]) || (p[0] === vmPair[1] && p[1] === vmPair[0])
+        })
+        if (!hasParallelTarget) return { ok: false, reason: '伏特表串联→断路（应并联在灯泡两端）' }
+      }
     }
 
     // 安培表不能并联（有另一个元件直接接在同一对节点上→短路）

@@ -342,6 +342,33 @@ export default function VoltAmpereResistorScene() {
       ctx.textBaseline = 'alphabetic'
     }
 
+    // 操作说明浮动气泡
+    if (s.showGuide) {
+      const bx = cvX + cvW - 220, by = cvY + 10, bw = 210, bh = s._guideExpanded ? 160 : 28
+      ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.strokeStyle = '#1976D2'; ctx.lineWidth = 1
+      ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6); ctx.fill(); ctx.stroke()
+      ctx.fillStyle = '#1976D2'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+      ctx.fillText('📖 操作说明', bx + 8, by + 7)
+      ctx.fillStyle = '#1976D2'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right'
+      ctx.fillText(s._guideExpanded ? '收起 ▲' : '展开 ▼', bx + bw - 8, by + 8)
+      // 注册点击区域
+      canvasRef.current._clickAreas.push({ x: bx, y: by, w: bw, h: 28, onClick: () => { s._guideExpanded = !s._guideExpanded; forceUpdate(n => n + 1) } })
+      if (s._guideExpanded) {
+        ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'
+        const lines = [
+          '🔌 拖拽器材到画布',
+          '🔵 点击端子开始连线',
+          '🔵 点击另一端子完成连线',
+          '🔄 双击开关切换通断',
+          '🎨 点击电线选颜色',
+          '❌ 右键删除电线/器材',
+          '↩️ Ctrl+Z 撤销',
+          '⚡ 连好电路后自动求解',
+        ]
+        for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], bx + 12, by + 30 + i * 16)
+      }
+    }
+
     // 电路验证由updatePhysics中的引擎处理
     // 计算I和UR供drawComp使用
     const Rtotal = s.R_true + s.sliderR
@@ -564,20 +591,39 @@ export default function VoltAmpereResistorScene() {
     }
   }
 
-  // ─── 导线（NB风格：细线直连端子，可选拐点）───
+  // ─── 导线（NB风格：水平出发，自然下垂，水平到达）───
   function drawDIYWire(ctx, wire, s) {
     const fc = s.components.find(c => c.id === wire.from.compId), tc = s.components.find(c => c.id === wire.to.compId)
     if (!fc || !tc) return
     const f = termPos(fc, wire.from.termIdx), t = termPos(tc, wire.to.termIdx)
     const err = s.wireErrors.some(e => e.wireId === wire.id), on = s.switchClosed
     const color = wire.color || (err ? '#F44336' : on ? '#1565C0' : '#666')
-    // NB风格：默认直线，有拐点时走折线
-    ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+    const dx = t.x - f.x, dy = t.y - f.y
+    const dist = Math.sqrt(dx * dx + dy * dy)
+    // 水平延伸距离（越远延伸越长）
+    const ext = Math.min(Math.abs(dx) * 0.5, 80)
+    // 下垂量（距离越远下垂越大）
+    const sag = Math.max(20, dist * 0.15)
+    // 判断端子朝向（左端子向左延伸，右端子向右延伸）
+    const fDir = f.x < t.x ? -1 : 1  // 出发方向
+    const tDir = f.x < t.x ? 1 : -1  // 到达方向
+    // 控制点：从端子水平出发，中间自然下垂
+    const cp1x = f.x + fDir * ext
+    const cp1y = f.y
+    const cp2x = t.x + tDir * ext
+    const cp2y = t.y
+    ctx.strokeStyle = color; ctx.lineWidth = 1.8; ctx.lineCap = 'round'
     ctx.beginPath(); ctx.moveTo(f.x, f.y)
-    if (wire.mid1X != null) ctx.lineTo(wire.mid1X, wire.mid1Y)
-    if (wire.mid2X != null) ctx.lineTo(wire.mid2X, wire.mid2Y)
-    ctx.lineTo(t.x, t.y); ctx.stroke()
-    ctx.lineCap = 'butt'; ctx.lineJoin = 'miter'
+    if (wire.mid1X != null) {
+      ctx.lineTo(wire.mid1X, wire.mid1Y)
+      if (wire.mid2X != null) ctx.lineTo(wire.mid2X, wire.mid2Y)
+      ctx.lineTo(t.x, t.y)
+    } else {
+      // 三次贝塞尔：水平出发→自然下垂→水平到达
+      ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, t.x, t.y)
+    }
+    ctx.stroke()
+    ctx.lineCap = 'butt'
   }
 
   // ═══════════════════════════════════════════
@@ -674,6 +720,8 @@ export default function VoltAmpereResistorScene() {
 
     // ── Tab2 ──
     const s = diy.current
+    // 点击区域处理（操作说明气泡等）
+    for (const a of el._clickAreas || []) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(); return } }
     // 器材栏拖拽
     for (const a of el._palAreas || []) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { if (a.type) { saveUndo(s); const id = s.nextId++; s.components.push({ id, type: a.type, x, y, closed: a.type === 'switch' ? false : undefined }); s.dragId = id; s.dragOffX = 0; s.dragOffY = 0; forceUpdate(n => n + 1); return } } }
     // 滑线变阻器滑块拖拽
@@ -749,8 +797,10 @@ export default function VoltAmpereResistorScene() {
       }
       const c = s.components.find(c => c.id === s.dragId); if (c) { c.x = x - s.dragOffX; c.y = y - s.dragOffY; forceUpdate(n => n + 1) }; return
     }
-    if (s.connecting) { s.connecting.mx = x; s.connecting.my = y; const t = findTerm(x, y); s.hoverTerm = t && (t.compId !== s.connecting.compId || t.termIdx !== s.connecting.termIdx) ? t : null; forceUpdate(n => n + 1); return }
-    s.hoverTerm = findTerm(x, y); el.style.cursor = s.hoverTerm ? 'crosshair' : findComp(x, y) ? 'grab' : 'default'
+    if (s.connecting) { s.connecting.mx = x; s.connecting.my = y; const t = findTerm(x, y); s.hoverTerm = t && (t.compId !== s.connecting.compId || t.termIdx !== s.connecting.termIdx) ? t : null; el.style.cursor = s.hoverTerm ? 'crosshair' : 'default'; forceUpdate(n => n + 1); return }
+    const hoverTerm = findTerm(x, y), hoverComp = findComp(x, y)
+    s.hoverTerm = hoverTerm
+    el.style.cursor = hoverComp ? 'grab' : hoverTerm ? 'pointer' : 'default'
   }, [])
 
   const handleMouseUp = useCallback(() => {
