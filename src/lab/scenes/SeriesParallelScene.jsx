@@ -255,62 +255,86 @@ export default function SeriesParallelScene() {
     ctx.textBaseline = 'alphabetic'
   }
 
-  // ─── Step3: 两灯泡并联 ───
+  // ─── Step3: 两灯泡并联（NB风格：水平双路径） ───
   function drawParallelTwo(ctx, left, right, top, bottom, midX, wc, on, s, U, I, I1, I2, U1, U2, Rtotal) {
-    const battX = left + (right - left) * 0.1
-    const swX = left + (right - left) * 0.22
-    const branchL = left + (right - left) * 0.48
-    const branchR = left + (right - left) * 0.75
-    const topY = top + 20, botY = bottom
+    const battX = left + (right - left) * 0.25
+    const swX = left + (right - left) * 0.65
+    const ammX = left + (right - left) * 0.12
+    const nodeAx = left + (right - left) * 0.32
+    const bulbX = left + (right - left) * 0.52
+    const nodeBx = left + (right - left) * 0.72
+    const midY = (top + bottom) / 2 + 10
 
-    // 主干导线
-    drawLine(ctx, left, topY, battX - 12, topY, wc, 2.5)
-    drawLine(ctx, battX + 12, topY, swX - 18, topY, wc, 2.5)
-    drawLine(ctx, swX + 18, topY, branchL, topY, wc, 2.5)
-    drawLine(ctx, branchR, topY, right, topY, wc, 2.5)
-    drawLine(ctx, right, topY, right, botY, wc, 2.5)
-    drawLine(ctx, left, botY, left, topY, wc, 2.5)
-    drawLine(ctx, left, botY, branchL, botY, wc, 2.5)
-    drawLine(ctx, branchR, botY, right, botY, wc, 2.5)
+    // 下边：电源→开关
+    drawLine(ctx, left, bottom, battX - 30, bottom, wc, 2.5)
+    drawLine(ctx, battX + 30, bottom, swX - 18, bottom, wc, 2.5)
+    drawLine(ctx, swX + 18, bottom, right, bottom, wc, 2.5)
+    // 右边
+    drawLine(ctx, right, bottom, right, top, wc, 2.5)
+    // 上边：节点B→安培表→左上角
+    drawLine(ctx, right, top, nodeBx, top, wc, 2.5)
+    drawLine(ctx, nodeAx, top, ammX + 20, top, wc, 2.5)
+    drawLine(ctx, ammX - 20, top, left, top, wc, 2.5)
+    // 左边
+    drawLine(ctx, left, top, left, bottom, wc, 2.5)
 
-    // 分支竖线
-    drawLine(ctx, branchL, topY, branchL, botY, wc, 2)
-    drawLine(ctx, branchR, topY, branchR, botY, wc, 2)
+    // 并联上路：节点A→灯泡1→节点B（y=top）
+    drawLine(ctx, nodeAx, top, bulbX - 16, top, wc, 2)
+    drawLine(ctx, bulbX + 16, top, nodeBx, top, wc, 2)
+    // 并联下路：节点A→下→灯泡2→上→节点B（y=midY）
+    drawLine(ctx, nodeAx, top, nodeAx, midY, wc, 2)
+    drawLine(ctx, nodeAx, midY, bulbX - 16, midY, wc, 2)
+    drawLine(ctx, bulbX + 16, midY, nodeBx, midY, wc, 2)
+    drawLine(ctx, nodeBx, midY, nodeBx, top, wc, 2)
 
-    // 灯泡（并联时每个灯泡亮度正常）
-    drawStdBulbV(ctx, branchL, (topY + botY) / 2, on ? 0.9 : 0)
-    drawStdBulbV(ctx, branchR, (topY + botY) / 2, on ? 0.9 : 0)
+    // 节点标记（小圆点）
+    ctx.fillStyle = '#333'
+    ctx.beginPath(); ctx.arc(nodeAx, top, 4, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath(); ctx.arc(nodeBx, top, 4, 0, Math.PI * 2); ctx.fill()
 
-    drawStdBattery(ctx, battX, topY)
-    drawStdSwitch(ctx, swX, topY, on, () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) })
+    // 电流流动
+    if (on) drawCurrentFlow(ctx, [
+      { x: battX - 30, y: bottom }, { x: swX, y: bottom }, { x: right, y: bottom },
+      { x: right, y: top }, { x: nodeBx, y: top },
+      // 上路
+      { x: bulbX, y: top }, { x: nodeAx, y: top }, { x: ammX, y: top },
+      { x: left, y: top }, { x: left, y: bottom }, { x: battX + 30, y: bottom },
+    ], s.time, 0.5)
 
-    // Ⓐ A干路（始终显示）
-    drawMeterInCircuit(ctx, midX, topY - 24, 'A', on ? `${I.toFixed(2)}A` : '', '#E53935')
-    // Ⓐ A1支路（始终显示）
-    drawMeterInCircuit(ctx, branchL + 22, (topY + botY) / 2, 'A', on ? `${I1.toFixed(2)}A` : '', '#FF9800')
-    // Ⓐ A2支路（始终显示）
-    drawMeterInCircuit(ctx, branchR + 22, (topY + botY) / 2, 'A', on ? `${I2.toFixed(2)}A` : '', '#FF9800')
-    // Ⓥ V跨两支路（从两支路下端引线向下）
-    const volY = botY + 30
-    drawLine(ctx, branchL, botY, branchL, volY, wc, 2)
-    drawLine(ctx, branchR, botY, branchR, volY, wc, 2)
-    drawLine(ctx, branchL, volY, midX - 20, volY, wc, 2)
-    drawLine(ctx, midX + 20, volY, branchR, volY, wc, 2)
+    // 下边：电源 + 开关
+    drawStdBattery(ctx, battX, bottom)
+    drawStdSwitch(ctx, swX, bottom, on, () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) })
+
+    // 上边：安培表（干路）
+    drawMeterInCircuit(ctx, ammX, top, 'A', on ? `${I.toFixed(2)}A` : '', '#E53935')
+    // 上路灯泡1
+    drawStdBulb(ctx, bulbX, top, on ? 0.9 : 0)
+    // 下路灯泡2
+    drawStdBulb(ctx, bulbX, midY, on ? 0.9 : 0)
+
+    // Ⓐ A1支路（灯泡2旁）
+    drawMeterInCircuit(ctx, bulbX + 30, midY, 'A', on ? `${I2.toFixed(2)}A` : '', '#FF9800')
+    // Ⓥ V跨两支路
+    const volY = bottom + 35
+    drawLine(ctx, nodeAx, bottom, nodeAx, volY, wc, 2)
+    drawLine(ctx, nodeBx, bottom, nodeBx, volY, wc, 2)
+    drawLine(ctx, nodeAx, volY, midX - 20, volY, wc, 2)
+    drawLine(ctx, midX + 20, volY, nodeBx, volY, wc, 2)
     drawMeterInCircuit(ctx, midX, volY, 'V', on ? `${U1.toFixed(1)}V` : '', '#4CAF50')
 
     ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('R₁', branchL, botY + 14)
-    ctx.fillText('R₂', branchR, botY + 14)
+    ctx.fillText('R₁', bulbX, top - 20)
+    ctx.fillText('R₂', bulbX, midY + 20)
 
     if (on) {
-      ctx.fillStyle = '#333'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'
-      ctx.fillText('并联测总电阻：', left, bottom + 35)
+      ctx.fillStyle = '#333'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+      ctx.fillText('并联测总电阻：', left, bottom + 55)
       ctx.fillStyle = '#E53935'; ctx.font = '13px monospace'
-      ctx.fillText(`1/R总 = 1/R₁ + 1/R₂ = 1/${s.R1} + 1/${s.R2}`, left, bottom + 55)
-      ctx.fillText(`R总 = ${Rtotal.toFixed(1)} Ω`, left, bottom + 73)
+      ctx.fillText(`1/R总 = 1/R₁ + 1/R₂ = 1/${s.R1} + 1/${s.R2}`, left, bottom + 75)
+      ctx.fillText(`R总 = ${Rtotal.toFixed(1)} Ω`, left, bottom + 93)
       ctx.fillStyle = '#4CAF50'
-      ctx.fillText(`验证：U₁ = U₂ = ${U1.toFixed(1)}V ✓`, left, bottom + 93)
-      ctx.fillText(`I₁+I₂ = ${I1.toFixed(2)}+${I2.toFixed(2)} = ${(I1+I2).toFixed(2)}A = I ✓`, left, bottom + 111)
+      ctx.fillText(`验证：U₁ = U₂ = ${U1.toFixed(1)}V ✓`, left, bottom + 113)
+      ctx.fillText(`I₁+I₂ = ${I1.toFixed(2)}+${I2.toFixed(2)} = ${(I1+I2).toFixed(2)}A = I ✓`, left, bottom + 131)
     }
     ctx.textBaseline = 'alphabetic'
   }
