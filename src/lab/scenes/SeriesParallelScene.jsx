@@ -22,7 +22,8 @@ export default function SeriesParallelScene() {
     step: 1,           // 1=单灯泡, 2=串联, 3=并联
     switchClosed: false,
     R1: 10, R2: 10,
-    U: 6,              // 电源电压默认6V
+    U: 6,
+    sliderR: 20, rheoDragging: false,              // 电源电压默认6V
     time: 0,
     // Tab2
     components: [],
@@ -142,7 +143,8 @@ export default function SeriesParallelScene() {
     drawStdBattery(ctx, battX, bottom)
     drawStdSwitch(ctx, swX, bottom, on, () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) })
     // 上边：滑线变阻器 → 安培表 → 灯泡
-    drawRheoSym(ctx, rheoX, top)
+    s._rheoX = rheoX; s._topY = top
+    drawRheoSym(ctx, rheoX, top, s.sliderR)
     drawMeterInCircuit(ctx, ammX, top, 'A', on ? `${I.toFixed(2)}A` : '', '#E53935')
     drawStdBulb(ctx, bulbX, top, on ? 0.8 : 0)
     // 伏特表（只跨灯泡）
@@ -203,7 +205,7 @@ export default function SeriesParallelScene() {
     drawStdBattery(ctx, battX, bottom)
     drawStdSwitch(ctx, swX, bottom, on, () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) })
     // 上边：变阻器 → 安培表 → 灯泡R₁ → 灯泡R₂
-    drawRheoSym(ctx, rheoX, top)
+    drawRheoSym(ctx, rheoX, top, s.sliderR)
     drawMeterInCircuit(ctx, ammX, top, 'A', on ? `${I.toFixed(2)}A` : '', '#E53935')
     const brightness = on ? 0.25 : 0
     drawStdBulb(ctx, bulb1X, top, brightness)
@@ -530,9 +532,10 @@ export default function SeriesParallelScene() {
     }
   }
 
-  // 滑线变阻器符号
-  function drawRheoSym(ctx, x, y) {
-    const w = 70, h = 22
+  // 滑线变阻器符号（箭头可移动）
+  function drawRheoSym(ctx, x, y, sliderR) {
+    const w = 70, h = 22, maxR = 50
+    const sr = sliderR != null ? sliderR : 20
     ctx.fillStyle = '#EFEBE9'; ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 2
     ctx.beginPath(); ctx.roundRect(x - w / 2, y - h / 2, w, h, 4); ctx.fill(); ctx.stroke()
     // 绕线（锯齿）
@@ -543,14 +546,19 @@ export default function SeriesParallelScene() {
       if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
     }
     ctx.stroke()
-    // 滑片箭头
+    // 滑片箭头（位置随sliderR变化）
+    const sliderX = x - w / 2 + 8 + (sr / maxR) * (w - 16)
     ctx.fillStyle = '#E65100'; ctx.beginPath()
-    ctx.moveTo(x, y - h / 2 - 8); ctx.lineTo(x - 4, y - h / 2 - 2); ctx.lineTo(x + 4, y - h / 2 - 2)
+    ctx.moveTo(sliderX, y - h / 2 - 8); ctx.lineTo(sliderX - 4, y - h / 2 - 2); ctx.lineTo(sliderX + 4, y - h / 2 - 2)
     ctx.closePath(); ctx.fill()
     // 两端接线柱
     ctx.fillStyle = '#fff'; ctx.strokeStyle = '#666'; ctx.lineWidth = 2
     ctx.beginPath(); ctx.arc(x - w / 2, y, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
     ctx.beginPath(); ctx.arc(x + w / 2, y, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    // 电阻值标注
+    ctx.fillStyle = '#E65100'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText(`${sr}Ω`, x, y + h / 2 + 3)
+    ctx.textBaseline = 'alphabetic'
   }
 
   // 竖直灯泡（并联用）
@@ -927,6 +935,11 @@ export default function SeriesParallelScene() {
     const s = S.current; const { x, y } = getPos(e)
     if (s.tab === 1) {
       for (const a of canvasRef.current._clickAreas) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(); return } }
+      // 变阻器箭头拖拽
+      if (s._rheoX != null) {
+        const sliderX = s._rheoX - 27 + (s.sliderR / 50) * 54
+        if (Math.abs(x - sliderX) < 12 && Math.abs(y - s._topY) < 18) { s.rheoDragging = true; return }
+      }
       return
     }
     // Tab2 点击区域处理
@@ -962,6 +975,14 @@ export default function SeriesParallelScene() {
 
   const handleMouseMove = useCallback((e) => {
     const s = S.current; const { x, y } = getPos(e)
+    // Tab1变阻器拖拽
+    if (s.tab === 1 && s.rheoDragging && s._rheoX != null) {
+      const minX = s._rheoX - 27, maxX = s._rheoX + 27
+      const newX = Math.max(minX, Math.min(maxX, x))
+      s.sliderR = Math.round(((newX - minX) / (maxX - minX)) * 50)
+      forceUpdate(n => n + 1)
+      return
+    }
     if (s.tab !== 2) return
     if (s.dragId) {
       if (typeof s.dragId === 'string' && s.dragId.startsWith('wire_')) {
@@ -991,6 +1012,7 @@ export default function SeriesParallelScene() {
 
   const handleMouseUp = useCallback(() => {
     const s = S.current
+    if (s.rheoDragging) { s.rheoDragging = false; forceUpdate(n => n + 1); return }
     if (s.dragId) { s.dragId = null; forceUpdate(n => n + 1); return }
     if (s.connecting) {
       const t = s.hoverTerm
