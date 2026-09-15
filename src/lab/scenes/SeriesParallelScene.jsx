@@ -170,78 +170,90 @@ export default function SeriesParallelScene() {
   }
 
   // ─── Step2: 两灯泡串联 ───
+  // ─── Step2: 两灯泡串联（NB标准：变阻器+A表+R₁+R₂在上边） ───
   function drawSeriesTwo(ctx, left, right, top, bottom, midX, wc, on, s, U, I, U1, U2, Rtotal) {
     const battX = left + (right - left) * 0.25
     const swX = left + (right - left) * 0.65
-    const ammX = left + (right - left) * 0.15
-    const bulb1X = left + (right - left) * 0.4
-    const bulb2X = left + (right - left) * 0.7
+    const rheoX = left + (right - left) * 0.15
+    const ammX = left + (right - left) * 0.32
+    const bulb1X = left + (right - left) * 0.52
+    const bulb2X = left + (right - left) * 0.75
 
-    // 下边：电源→开关
+    // 矩形回路
     drawLine(ctx, left, bottom, battX - 30, bottom, wc, 2.5)
     drawLine(ctx, battX + 30, bottom, swX - 18, bottom, wc, 2.5)
     drawLine(ctx, swX + 18, bottom, right, bottom, wc, 2.5)
-    // 右边
     drawLine(ctx, right, bottom, right, top, wc, 2.5)
-    // 上边：灯泡2←→灯泡1←→安培表
     drawLine(ctx, right, top, bulb2X + 16, top, wc, 2.5)
     drawLine(ctx, bulb2X - 16, top, bulb1X + 16, top, wc, 2.5)
     drawLine(ctx, bulb1X - 16, top, ammX + 20, top, wc, 2.5)
-    drawLine(ctx, ammX - 20, top, left, top, wc, 2.5)
-    // 左边
+    drawLine(ctx, ammX - 20, top, rheoX + 35, top, wc, 2.5)
+    drawLine(ctx, rheoX - 35, top, left, top, wc, 2.5)
     drawLine(ctx, left, top, left, bottom, wc, 2.5)
 
+    // 电流流动
     if (on) drawCurrentFlow(ctx, [
       { x: battX - 30, y: bottom }, { x: swX, y: bottom }, { x: right, y: bottom },
       { x: right, y: top }, { x: bulb2X, y: top }, { x: bulb1X, y: top },
-      { x: ammX, y: top }, { x: left, y: top }, { x: left, y: bottom },
-      { x: battX + 30, y: bottom },
+      { x: ammX, y: top }, { x: rheoX, y: top },
+      { x: left, y: top }, { x: left, y: bottom }, { x: battX + 30, y: bottom },
     ], s.time, 0.5)
 
     // 下边：电源 + 开关
     drawStdBattery(ctx, battX, bottom)
     drawStdSwitch(ctx, swX, bottom, on, () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) })
-
-    // 上边：安培表 + 两个灯泡（串联）
+    // 上边：变阻器 → 安培表 → 灯泡R₁ → 灯泡R₂
+    drawRheoSym(ctx, rheoX, top)
     drawMeterInCircuit(ctx, ammX, top, 'A', on ? `${I.toFixed(2)}A` : '', '#E53935')
     const brightness = on ? 0.25 : 0
     drawStdBulb(ctx, bulb1X, top, brightness)
     drawStdBulb(ctx, bulb2X, top, brightness)
+
     // V1跨R1（灯泡1下方）
-    const volY1 = (top + bottom) / 2 + 20
+    const volY1 = top + 50
     drawLine(ctx, bulb1X - 16, top, bulb1X - 16, volY1, wc, 2)
     drawLine(ctx, bulb1X + 16, top, bulb1X + 16, volY1, wc, 2)
     drawLine(ctx, bulb1X - 16, volY1, bulb1X - 20, volY1, wc, 2)
     drawLine(ctx, bulb1X + 20, volY1, bulb1X + 16, volY1, wc, 2)
     drawMeterInCircuit(ctx, bulb1X, volY1, 'V', on ? `${U1.toFixed(1)}V` : '', '#4CAF50')
     // V2跨R2（灯泡2下方）
-    const volY2 = (top + bottom) / 2 + 20
+    const volY2 = top + 50
     drawLine(ctx, bulb2X - 16, top, bulb2X - 16, volY2, wc, 2)
     drawLine(ctx, bulb2X + 16, top, bulb2X + 16, volY2, wc, 2)
     drawLine(ctx, bulb2X - 16, volY2, bulb2X - 20, volY2, wc, 2)
     drawLine(ctx, bulb2X + 20, volY2, bulb2X + 16, volY2, wc, 2)
     drawMeterInCircuit(ctx, bulb2X, volY2, 'V', on ? `${U2.toFixed(1)}V` : '', '#4CAF50')
-    // V总跨电源（电源下方）
-    const volYT = bottom + 35
-    drawLine(ctx, battX - 30, bottom, battX - 30, volYT, wc, 2)
-    drawLine(ctx, battX + 30, bottom, battX + 30, volYT, wc, 2)
-    drawLine(ctx, battX - 30, volYT, battX - 34, volYT, wc, 2)
-    drawLine(ctx, battX + 34, volYT, battX + 30, volYT, wc, 2)
-    drawMeterInCircuit(ctx, battX, volYT, 'V', on ? `${U.toFixed(1)}V` : '', '#9C27B0')
+    // V总跨两灯泡（V=V1+V2）
+    const volYT = top + 80
+    drawLine(ctx, bulb1X - 16, top, bulb1X - 16, volYT, wc, 2)
+    drawLine(ctx, bulb2X + 16, top, bulb2X + 16, volYT, wc, 2)
+    drawLine(ctx, bulb1X - 16, volYT, midX - 20, volYT, wc, 2)
+    drawLine(ctx, midX + 20, volYT, bulb2X + 16, volYT, wc, 2)
+    drawMeterInCircuit(ctx, midX, volYT, 'V', on ? `${(U1+U2).toFixed(1)}V` : '', '#9C27B0')
 
+    // 标注：电流I，I1，I2，R1，R2
     ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('R₁', bulb1X, top - 20)
-    ctx.fillText('R₂', bulb2X, top - 20)
+    ctx.fillText('I', ammX, top - 28)
+    ctx.fillText('I₁', bulb1X, top - 28)
+    ctx.fillText('I₂', bulb2X, top - 28)
+    ctx.fillText('R₁', bulb1X, top + 20)
+    ctx.fillText('R₂', bulb2X, top + 20)
+    ctx.fillText('V₁', bulb1X, volY1 + 28)
+    ctx.fillText('V₂', bulb2X, volY2 + 28)
+    ctx.fillText('V=V₁+V₂', midX, volYT + 28)
 
+    // 公式
     if (on) {
       ctx.fillStyle = '#333'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-      ctx.fillText('串联测总电阻：', left, bottom + 50)
+      ctx.fillText('串联电路规律：', left, bottom + 30)
       ctx.fillStyle = '#E53935'; ctx.font = '13px monospace'
-      ctx.fillText(`R总 = R₁ + R₂ = ${s.R1} + ${s.R2} = ${Rtotal} Ω`, left, bottom + 70)
+      ctx.fillText(`I = I₁ = I₂ = ${I.toFixed(2)}A`, left, bottom + 50)
       ctx.fillStyle = '#4CAF50'
-      ctx.fillText(`验证：U₁+U₂ = ${U1.toFixed(1)}+${U2.toFixed(1)} = ${(U1+U2).toFixed(1)}V = U总 ✓`, left, bottom + 90)
-      ctx.fillStyle = '#E53935'
-      ctx.fillText(`I₁ = I₂ = ${I.toFixed(2)}A ✓`, left, bottom + 108)
+      ctx.fillText(`V = V₁ + V₂ = ${U1.toFixed(1)} + ${U2.toFixed(1)} = ${(U1+U2).toFixed(1)}V`, left, bottom + 68)
+      ctx.fillStyle = '#9C27B0'
+      ctx.fillText(`R = R₁ + R₂ = ${s.R1} + ${s.R2} = ${Rtotal} Ω`, left, bottom + 86)
+      ctx.fillStyle = '#333'
+      ctx.fillText(`U/I = ${(U1+U2).toFixed(1)}/${I.toFixed(2)} = ${Rtotal} Ω = R ✓`, left, bottom + 104)
     }
     ctx.textBaseline = 'alphabetic'
   }
