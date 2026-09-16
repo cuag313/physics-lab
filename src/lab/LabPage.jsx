@@ -509,6 +509,8 @@ export default function LabPage({ onBack }) {
           <EmfInternalResistanceScene />
         ) : currentExperiment?.key === 'ohmsLaw' ? (
           <OhmsLawScene />
+        ) : currentExperiment?.key === 'bulbPower' ? (
+          <VoltAmpereResistorScene />
         ) : currentExperiment?.key === 'voltAmpereResistor' ? (
           <VoltAmpereResistorScene />
         ) : currentExperiment?.key === 'multimeter' ? (
