@@ -5,7 +5,7 @@
  * 点击目录中的实验卡片直接进入对应实验
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import ExperimentBench from './ui/ExperimentBench'
 import ConvexLensImaging from './scenes/ConvexLensImaging'
 import ConcaveLensImaging from './scenes/ConcaveLensImaging'
@@ -114,6 +114,16 @@ export default function LabPage({ onBack }) {
     setShowCatalog(true)
     setCurrentExperiment(null)
   }, [])
+
+  // 进入实验时给 body 加 class，触发横屏小提示
+  useEffect(() => {
+    if (currentExperiment && !showCatalog) {
+      document.body.classList.add('in-experiment')
+    } else {
+      document.body.classList.remove('in-experiment')
+    }
+    return () => document.body.classList.remove('in-experiment')
+  }, [currentExperiment, showCatalog])
 
   // 获取当前实验的预设
   const getPreset = useCallback(() => {
