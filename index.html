@@ -1,13 +1,40 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>physics-lab</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>物理仿真实验室</title>
+    <style>
+      * { -webkit-tap-highlight-color: transparent; }
+      html, body { margin: 0; padding: 0; overscroll-behavior: none; touch-action: manipulation; }
+      /* 竖屏时提示旋转 */
+      @media (orientation: portrait) and (max-width: 820px) {
+        #rotate-hint {
+          display: flex !important;
+        }
+      }
+      #rotate-hint {
+        display: none;
+        position: fixed; inset: 0; z-index: 9999;
+        background: #0d1117; color: #c9d1d9;
+        align-items: center; justify-content: center;
+        flex-direction: column; gap: 16px;
+        font-family: -apple-system, sans-serif;
+        font-size: 18px;
+      }
+      #rotate-hint .phone { font-size: 64px; animation: rotate 2s ease-in-out infinite; }
+      @keyframes rotate { 0%,100% { transform: rotate(0); } 50% { transform: rotate(90deg); } }
+    </style>
   </head>
   <body>
     <div id="root"></div>
+    <div id="rotate-hint">
+      <div class="phone">📱</div>
+      <div>请旋转手机，横屏使用</div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
