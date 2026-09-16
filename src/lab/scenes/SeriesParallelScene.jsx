@@ -78,16 +78,21 @@ export default function SeriesParallelScene() {
     const on = s.switchClosed
     const U = s.U
 
-    // 计算
-    let I = 0, U1 = 0, U2 = 0, Rtotal = 0, I1 = 0, I2 = 0
+    // 计算（变阻器 sliderR 串入 Step1/Step2，Step3 无变阻器）
+    let I = 0, U1 = 0, U2 = 0, Rtotal = 0, I1 = 0, I2 = 0, Rlamp = 0
     if (on) {
       if (s.step === 1) {
-        Rtotal = s.R1; I = U / Rtotal; U1 = U
+        Rtotal = s.R1 + s.sliderR; I = U / Rtotal
+        U1 = I * s.R1            // 灯泡两端电压（V表读数）
+        Rlamp = U1 / I           // 伏安法测得的灯泡电阻，恒等于 R1
       } else if (s.step === 2) {
-        Rtotal = s.R1 + s.R2; I = U / Rtotal; U1 = I * s.R1; U2 = I * s.R2
+        Rtotal = s.R1 + s.R2 + s.sliderR; I = U / Rtotal
+        U1 = I * s.R1; U2 = I * s.R2
       } else {
-        Rtotal = 1 / (1 / s.R1 + 1 / s.R2); I = U / Rtotal
-        U1 = U; U2 = U; I1 = U / s.R1; I2 = U / s.R2
+        // Step3：干路串可变电阻器，R并 = 1/(1/R₁+1/R₂)，R总 = R并 + R滑
+        const Rp = 1 / (1 / s.R1 + 1 / s.R2)
+        Rtotal = Rp + s.sliderR; I = U / Rtotal
+        U1 = I * Rp; U2 = U1; I1 = U1 / s.R1; I2 = U1 / s.R2
       }
     }
 
@@ -98,7 +103,7 @@ export default function SeriesParallelScene() {
 
     // 电路区域
     const left = W * 0.08, right = W * 0.52
-    const top = 65, bottom = H - 140
+    const top = 65, bottom = H - 180
     const midX = (left + right) / 2
     const wc = on ? '#1565C0' : '#999'
 
@@ -146,27 +151,34 @@ export default function SeriesParallelScene() {
     s._rheoX = rheoX; s._topY = top
     drawRheoSym(ctx, rheoX, top, s.sliderR)
     drawMeterInCircuit(ctx, ammX, top, 'A', on ? `${I.toFixed(2)}A` : '', '#E53935')
-    drawStdBulb(ctx, bulbX, top, on ? 0.8 : 0)
+    drawStdBulb(ctx, bulbX, top, on ? Math.max(0.15, Math.min(1, I * 1.1)) : 0)
     // 伏特表（只跨灯泡）
-    const voltX = bulbX, volY = top + 50
+    const voltX = bulbX, volY = top + 45
     drawLine(ctx, bulbX - 16, top, bulbX - 16, volY, wc, 2)
     drawLine(ctx, bulbX + 16, top, bulbX + 16, volY, wc, 2)
     drawLine(ctx, bulbX - 16, volY, voltX - 20, volY, wc, 2)
     drawLine(ctx, voltX + 20, volY, bulbX + 16, volY, wc, 2)
     drawMeterInCircuit(ctx, voltX, volY, 'V', on ? `${U1.toFixed(1)}V` : '', '#4CAF50')
 
-    // 标注
-    ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('变阻器', rheoX, top - 20)
-    ctx.fillText('安培表', ammX, top - 20)
-    ctx.fillText('灯泡', bulbX, top - 20)
-    ctx.fillText('伏特表', voltX, volY + 28)
-    // R=U/I 计算
+    // 电流符号：标在A表与灯泡之间的导线上方
+    ctx.fillStyle = '#1565C0'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText('I', (ammX + bulbX) / 2, top - 12)
+
+    // 元件名标签：统一在元件正上方（与Step2/Step3一致）
+    ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
+    ctx.fillText('变阻器', rheoX, top - 22)
+    ctx.fillText('A', ammX, top - 22)
+    ctx.fillText('L₁', bulbX, top - 22)
+    ctx.fillStyle = '#4CAF50'; ctx.font = '10px sans-serif'
+    ctx.fillText('V', voltX, volY - 22)
+    // R=U/I 计算（变阻器串入不影响 R灯=U₁/I）
     if (on) {
       ctx.fillStyle = '#333'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-      ctx.fillText('用 R = U / I 测电阻：', left, bottom + 30)
+      ctx.fillText('伏安法测灯泡电阻（变阻器限流）：', left, bottom + 28)
       ctx.fillStyle = '#E53935'; ctx.font = '13px monospace'
-      ctx.fillText(`R = ${U1.toFixed(1)}V / ${I.toFixed(2)}A = ${Rtotal.toFixed(1)} Ω`, left, bottom + 50)
+      ctx.fillText(`R灯 = U₁ / I = ${U1.toFixed(1)}V / ${I.toFixed(2)}A = ${Rlamp.toFixed(1)} Ω`, left, bottom + 48)
+      ctx.fillStyle = '#888'; ctx.font = '11px monospace'
+      ctx.fillText(`（总电阻 ${Rtotal.toFixed(1)}Ω = R灯 ${s.R1}Ω + 变阻器 ${s.sliderR}Ω）`, left, bottom + 66)
     }
     ctx.textBaseline = 'alphabetic'
   }
@@ -204,142 +216,188 @@ export default function SeriesParallelScene() {
     // 下边：电源 + 开关
     drawStdBattery(ctx, battX, bottom)
     drawStdSwitch(ctx, swX, bottom, on, () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) })
-    // 上边：变阻器 → 安培表 → 灯泡R₁ → 灯泡R₂
+    // 上边：变阻器 → 安培表 → 灯泡L₁ → 灯泡L₂
+    s._rheoX = rheoX; s._topY = top
     drawRheoSym(ctx, rheoX, top, s.sliderR)
     drawMeterInCircuit(ctx, ammX, top, 'A', on ? `${I.toFixed(2)}A` : '', '#E53935')
-    const brightness = on ? 0.25 : 0
+    const brightness = on ? Math.max(0.1, Math.min(1, I * 1.1)) : 0
     drawStdBulb(ctx, bulb1X, top, brightness)
     drawStdBulb(ctx, bulb2X, top, brightness)
 
-    // V1跨R1（灯泡1下方）
-    const volY1 = top + 50
+    // V1跨L1（表在L1正下方，垂直线从L1两端直下）
+    const volY1 = top + 45
     drawLine(ctx, bulb1X - 16, top, bulb1X - 16, volY1, wc, 2)
     drawLine(ctx, bulb1X + 16, top, bulb1X + 16, volY1, wc, 2)
     drawLine(ctx, bulb1X - 16, volY1, bulb1X - 20, volY1, wc, 2)
     drawLine(ctx, bulb1X + 20, volY1, bulb1X + 16, volY1, wc, 2)
     drawMeterInCircuit(ctx, bulb1X, volY1, 'V', on ? `${U1.toFixed(1)}V` : '', '#4CAF50')
-    // V2跨R2（灯泡2下方）
-    const volY2 = top + 50
+    // V2跨L2（表在L2正下方，垂直线从L2两端直下）
+    const volY2 = top + 45
     drawLine(ctx, bulb2X - 16, top, bulb2X - 16, volY2, wc, 2)
     drawLine(ctx, bulb2X + 16, top, bulb2X + 16, volY2, wc, 2)
     drawLine(ctx, bulb2X - 16, volY2, bulb2X - 20, volY2, wc, 2)
     drawLine(ctx, bulb2X + 20, volY2, bulb2X + 16, volY2, wc, 2)
     drawMeterInCircuit(ctx, bulb2X, volY2, 'V', on ? `${U2.toFixed(1)}V` : '', '#4CAF50')
-    // V总跨两灯泡（V=V1+V2）
-    const volYT = top + 80
-    drawLine(ctx, bulb1X - 16, top, bulb1X - 16, volYT, wc, 2)
-    drawLine(ctx, bulb2X + 16, top, bulb2X + 16, volYT, wc, 2)
-    drawLine(ctx, bulb1X - 16, volYT, midX - 20, volYT, wc, 2)
-    drawLine(ctx, midX + 20, volYT, bulb2X + 16, volYT, wc, 2)
-    drawMeterInCircuit(ctx, midX, volYT, 'V', on ? `${(U1+U2).toFixed(1)}V` : '', '#9C27B0')
+    // V总跨灯泡组：左右垂直线独立，接在L1左边、L2右边的上边导线上（与V1/V2不共用边）
+    const xL = (ammX + bulb1X) / 2      // A表与L1之间上边导线中点
+    const xR = (bulb2X + right) / 2    // L2与右竖线之间上边导线中点
+    const vTotalX = (xL + xR) / 2      // V总表圆心：左右引线正中间
+    const volYT = top + 85
+    drawLine(ctx, xL, top, xL, volYT, wc, 2)
+    drawLine(ctx, xR, top, xR, volYT, wc, 2)
+    drawLine(ctx, xL, volYT, vTotalX - 20, volYT, wc, 2)
+    drawLine(ctx, vTotalX + 20, volYT, xR, volYT, wc, 2)
+    drawMeterInCircuit(ctx, vTotalX, volYT, 'V', on ? `${(U1+U2).toFixed(1)}V` : '', '#9C27B0')
 
-    // 标注：电流I，I1，I2，R1，R2
-    ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('I', ammX, top - 28)
-    ctx.fillText('I₁', bulb1X, top - 28)
-    ctx.fillText('I₂', bulb2X, top - 28)
-    ctx.fillText('R₁', bulb1X, top + 20)
-    ctx.fillText('R₂', bulb2X, top + 20)
-    ctx.fillText('V₁', bulb1X, volY1 + 28)
-    ctx.fillText('V₂', bulb2X, volY2 + 28)
-    ctx.fillText('V=V₁+V₂', midX, volYT + 28)
+    // 电流符号：串联电流处处相等，只标一个 I（上边导线中间上方）
+    ctx.fillStyle = '#1565C0'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText('I', (ammX + bulb1X) / 2, top - 12)
+
+    // 元件名标签：统一在元件正上方
+    ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
+    ctx.fillText('变阻器', rheoX, top - 22)
+    ctx.fillText('A', ammX, top - 22)
+    ctx.fillText('L₁', bulb1X, top - 22)
+    ctx.fillText('L₂', bulb2X, top - 22)
+    // V表标签：V1/V2 在表上方，V总在表下方
+    ctx.fillStyle = '#4CAF50'; ctx.font = '10px sans-serif'
+    ctx.fillText('V₁', bulb1X, volY1 - 22)
+    ctx.fillText('V₂', bulb2X, volY2 - 22)
+    ctx.fillStyle = '#9C27B0'
+    ctx.fillText('V总=V₁+V₂', vTotalX, volYT + 30)
 
     // 公式
     if (on) {
       ctx.fillStyle = '#333'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-      ctx.fillText('串联电路规律：', left, bottom + 30)
+      ctx.fillText('串联电路规律：', left, bottom + 28)
       ctx.fillStyle = '#E53935'; ctx.font = '13px monospace'
-      ctx.fillText(`I = I₁ = I₂ = ${I.toFixed(2)}A`, left, bottom + 50)
+      ctx.fillText(`I = I₁ = I₂ = ${I.toFixed(2)}A`, left, bottom + 48)
       ctx.fillStyle = '#4CAF50'
-      ctx.fillText(`V = V₁ + V₂ = ${U1.toFixed(1)} + ${U2.toFixed(1)} = ${(U1+U2).toFixed(1)}V`, left, bottom + 68)
+      ctx.fillText(`V₁+V₂ = ${U1.toFixed(1)} + ${U2.toFixed(1)} = ${(U1+U2).toFixed(1)}V（灯泡组）`, left, bottom + 66)
       ctx.fillStyle = '#9C27B0'
-      ctx.fillText(`R = R₁ + R₂ = ${s.R1} + ${s.R2} = ${Rtotal} Ω`, left, bottom + 86)
+      ctx.fillText(`R总 = R₁+R₂+R滑 = ${s.R1}+${s.R2}+${s.sliderR} = ${Rtotal} Ω`, left, bottom + 84)
       ctx.fillStyle = '#333'
-      ctx.fillText(`U/I = ${(U1+U2).toFixed(1)}/${I.toFixed(2)} = ${Rtotal} Ω = R ✓`, left, bottom + 104)
+      ctx.fillText(`(V₁+V₂)/I = ${(U1+U2).toFixed(1)}/${I.toFixed(2)} = ${((U1+U2)/I).toFixed(1)} Ω = R₁+R₂ ✓`, left, bottom + 102)
     }
     ctx.textBaseline = 'alphabetic'
   }
 
-  // ─── Step3: 两灯泡并联（NB风格：水平双路径） ───
-  // ─── Step3: 两灯泡并联（NB风格：上边两条水平路径，A干路在左侧） ───
+  // ─── Step3: 两灯泡并联（NB风格：上、下两条支路，干路A表在左） ───
   function drawParallelTwo(ctx, left, right, top, bottom, midX, wc, on, s, U, I, I1, I2, U1, U2, Rtotal) {
     const battX = left + (right - left) * 0.25
     const swX = left + (right - left) * 0.65
-    const ammX = left + (right - left) * 0.12
-    const nodeAx = left + (right - left) * 0.32
-    const bulbX = left + (right - left) * 0.55
-    const nodeBx = left + (right - left) * 0.75
+    const rheoX = left + (right - left) * 0.10
+    const ammX = left + (right - left) * 0.25
+    const nodeAx = left + (right - left) * 0.40
+    const nodeBx = left + (right - left) * 0.78
+    const bulb1X = left + (right - left) * 0.55
+    const a1X = left + (right - left) * 0.68
+    const bulb2X = bulb1X
+    const a2X = a1X
     const topY = top + 10
     const midY = (top + bottom) / 2 + 10
+    const vY = (topY + midY) / 2
 
-    // 矩形主回路
+    // 主回路下边（电源+开关）
     drawLine(ctx, left, bottom, battX - 30, bottom, wc, 2.5)
     drawLine(ctx, battX + 30, bottom, swX - 18, bottom, wc, 2.5)
     drawLine(ctx, swX + 18, bottom, right, bottom, wc, 2.5)
+    // 右竖线 + 右节点水平段
     drawLine(ctx, right, bottom, right, midY, wc, 2.5)
     drawLine(ctx, right, midY, nodeBx, midY, wc, 2.5)
-    drawLine(ctx, nodeAx, midY, ammX + 20, midY, wc, 2.5)
-    drawLine(ctx, ammX - 20, midY, left, midY, wc, 2.5)
+    // 左干路：left → 变阻器 → 干路A表 → nodeA
+    drawLine(ctx, left, midY, rheoX - 35, midY, wc, 2.5)
+    drawLine(ctx, rheoX + 35, midY, ammX - 20, midY, wc, 2.5)
+    drawLine(ctx, ammX + 20, midY, nodeAx, midY, wc, 2.5)
+    // 左竖线
     drawLine(ctx, left, midY, left, bottom, wc, 2.5)
 
-    // 并联上路：nodeA → R₁ → nodeB（y=topY）
-    drawLine(ctx, nodeAx, midY, nodeAx, topY, wc, 2)
-    drawLine(ctx, nodeAx, topY, bulbX - 16, topY, wc, 2)
-    drawLine(ctx, bulbX + 16, topY, nodeBx, topY, wc, 2)
-    drawLine(ctx, nodeBx, topY, nodeBx, midY, wc, 2)
+    // 下支路（midY）：nodeA → R₂ → A₂ → nodeB
+    drawLine(ctx, nodeAx, midY, bulb2X - 14, midY, wc, 2)
+    drawLine(ctx, bulb2X + 14, midY, a2X - 18, midY, wc, 2)
+    drawLine(ctx, a2X + 18, midY, nodeBx, midY, wc, 2)
 
-    // 节点标记
+    // 上下支路的连接竖线
+    drawLine(ctx, nodeAx, midY, nodeAx, topY, wc, 2)
+    drawLine(ctx, nodeBx, topY, nodeBx, midY, wc, 2)
+    // 上支路（topY）：nodeA → R₁ → A₁ → nodeB
+    drawLine(ctx, nodeAx, topY, bulb1X - 14, topY, wc, 2)
+    drawLine(ctx, bulb1X + 14, topY, a1X - 18, topY, wc, 2)
+    drawLine(ctx, a1X + 18, topY, nodeBx, topY, wc, 2)
+
+    // 节点黑点
     ctx.fillStyle = '#333'
     ctx.beginPath(); ctx.arc(nodeAx, midY, 4, 0, Math.PI * 2); ctx.fill()
     ctx.beginPath(); ctx.arc(nodeBx, midY, 4, 0, Math.PI * 2); ctx.fill()
 
-    // 电流流动
-    if (on) drawCurrentFlow(ctx, [
-      { x: battX - 30, y: bottom }, { x: swX, y: bottom }, { x: right, y: bottom },
-      { x: right, y: midY }, { x: nodeBx, y: midY },
-      { x: bulbX, y: topY }, { x: nodeAx, y: topY }, { x: nodeAx, y: midY },
-      { x: ammX, y: midY }, { x: left, y: midY }, { x: left, y: bottom },
-      { x: battX + 30, y: bottom },
-    ], s.time, 0.5)
-
     // 元件
     drawStdBattery(ctx, battX, bottom)
     drawStdSwitch(ctx, swX, bottom, on, () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) })
-    drawMeterInCircuit(ctx, ammX, midY, 'A', on ? `${I.toFixed(2)}A` : '', '#E53935')
-    drawStdBulb(ctx, bulbX, topY, on ? 0.9 : 0)
-    drawStdBulb(ctx, bulbX, midY, on ? 0.9 : 0)
-    // A1支路
-    drawMeterInCircuit(ctx, bulbX + 30, topY, 'A', on ? `${I1.toFixed(2)}A` : '', '#FF9800')
-    // A2支路
-    drawMeterInCircuit(ctx, bulbX + 30, midY, 'A', on ? `${I2.toFixed(2)}A` : '', '#FF9800')
-    // V总
-    const volY = bottom + 35
-    drawLine(ctx, nodeAx, bottom, nodeAx, volY, wc, 2)
-    drawLine(ctx, nodeBx, bottom, nodeBx, volY, wc, 2)
-    drawLine(ctx, nodeAx, volY, midX - 20, volY, wc, 2)
-    drawLine(ctx, midX + 20, volY, nodeBx, volY, wc, 2)
-    drawMeterInCircuit(ctx, midX, volY, 'V', on ? `${U1.toFixed(1)}V` : '', '#4CAF50')
+    s._rheoX = rheoX; s._topY = midY
+    drawRheoSym(ctx, rheoX, midY, s.sliderR)
+    drawMeterInCircuit(ctx, ammX, midY, 'A', on ? `干路 ${I.toFixed(2)}A` : '', '#E53935')
+    drawStdBulb(ctx, bulb1X, topY, on ? 0.9 : 0)
+    drawStdBulb(ctx, bulb2X, midY, on ? 0.9 : 0)
+    drawMeterInCircuit(ctx, a1X, topY, 'A', on ? `A₁ ${I1.toFixed(2)}A` : '', '#FF9800')
+    drawMeterInCircuit(ctx, a2X, midY, 'A', on ? `A₂ ${I2.toFixed(2)}A` : '', '#FF9800')
 
-    ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('R₁', bulbX, topY - 20)
-    ctx.fillText('R₂', bulbX, midY + 20)
+    // V表：并在 nodeA/nodeB 之间，圆心放在两根引线的水平中点（vY 为上下支路正中）
+    const vX = (nodeAx + nodeBx) / 2
+    drawLine(ctx, nodeAx, vY, vX - 20, vY, wc, 2)
+    drawLine(ctx, vX + 20, vY, nodeBx, vY, wc, 2)
+    drawMeterInCircuit(ctx, vX, vY, 'V', on ? `V ${U1.toFixed(1)}V` : '', '#4CAF50')
 
+    // 电流方向符号：统一标在对应导线段中间上方
+    ctx.fillStyle = '#1565C0'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText('I', (rheoX + ammX) / 2, midY - 12)
+    ctx.fillText('I₁', (bulb1X + a1X) / 2, topY - 12)
+    ctx.fillText('I₂', (bulb2X + a2X) / 2, midY - 12)
+
+    // 元件名标签：统一标在元件正上方
+    ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
+    ctx.fillText('A', ammX, midY - 22)
+    ctx.fillText('L₁', bulb1X, topY - 22)
+    ctx.fillText('A₁', a1X, topY - 22)
+    ctx.fillText('L₂', bulb2X, midY - 22)
+    ctx.fillText('A₂', a2X, midY - 22)
+    ctx.fillStyle = '#8D6E63'; ctx.font = '10px sans-serif'
+    ctx.fillText('变阻器', rheoX, midY + 28)
+
+    // 电流分流动画：干路+下支路绕一圈，上支路单独循环
+    if (on) {
+      drawCurrentFlow(ctx, [
+        { x: battX - 30, y: bottom }, { x: swX, y: bottom }, { x: right, y: bottom },
+        { x: right, y: midY }, { x: nodeBx, y: midY },
+        { x: a2X, y: midY }, { x: bulb2X, y: midY },
+        { x: nodeAx, y: midY }, { x: ammX, y: midY }, { x: rheoX, y: midY },
+        { x: left, y: midY }, { x: left, y: bottom }, { x: battX + 30, y: bottom },
+      ], s.time, 0.5)
+      drawCurrentFlow(ctx, [
+        { x: nodeBx, y: midY }, { x: nodeBx, y: topY },
+        { x: a1X, y: topY }, { x: bulb1X, y: topY },
+        { x: nodeAx, y: topY }, { x: nodeAx, y: midY },
+      ], s.time, 0.5)
+    }
+
+    // 公式
+    const Rp = 1 / (1 / s.R1 + 1 / s.R2)
     if (on) {
       ctx.fillStyle = '#333'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-      ctx.fillText('并联测总电阻：', left, bottom + 55)
+      ctx.fillText('并联测总电阻：', left, bottom + 28)
       ctx.fillStyle = '#E53935'; ctx.font = '13px monospace'
-      ctx.fillText(`1/R总 = 1/R₁ + 1/R₂ = 1/${s.R1} + 1/${s.R2}`, left, bottom + 75)
-      ctx.fillText(`R总 = ${Rtotal.toFixed(1)} Ω`, left, bottom + 93)
+      ctx.fillText(`1/R并 = 1/R₁+1/R₂ = 1/${s.R1}+1/${s.R2}  →  R并 = ${Rp.toFixed(1)} Ω`, left, bottom + 48)
       ctx.fillStyle = '#4CAF50'
-      ctx.fillText(`验证：U₁ = U₂ = ${U1.toFixed(1)}V ✓`, left, bottom + 113)
-      ctx.fillText(`I₁+I₂ = ${I1.toFixed(2)}+${I2.toFixed(2)} = ${(I1+I2).toFixed(2)}A = I ✓`, left, bottom + 131)
+      ctx.fillText(`V表 = U并 = U₁ = U₂ = ${U1.toFixed(1)}V ✓`, left, bottom + 68)
+      ctx.fillText(`I₁+I₂ = ${I1.toFixed(2)}+${I2.toFixed(2)} = ${(I1+I2).toFixed(2)}A = I ✓`, left, bottom + 86)
+      ctx.fillStyle = '#9C27B0'
+      ctx.fillText(`R总 = R并+R滑 = ${Rp.toFixed(1)}+${s.sliderR} = ${Rtotal.toFixed(1)} Ω`, left, bottom + 104)
     }
     ctx.textBaseline = 'alphabetic'
   }
 
   // ─── 教学说明面板 ───
   function drawTeachingPanel(ctx, W, H, s, on, U, I, U1, U2, I1, I2, Rtotal) {
-    const pw = W * 0.38, ph = H - 140, px = W * 0.58, py = 45
+    const pw = W * 0.38, ph = H - 180, px = W * 0.58, py = 45
     ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill()
     ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.stroke()
 
@@ -363,7 +421,9 @@ export default function SeriesParallelScene() {
         { t: '不要把Ⓐ串在Ⓥ的并联支路中！', color: '#F44336' },
         { t: '' },
         { t: '测量电阻', bold: true },
-        { t: 'R = U / I（欧姆定律）', color: '#333' },
+        { t: 'R灯 = U₁ / I（欧姆定律）', color: '#333' },
+        { t: '变阻器用来改变电流，', color: '#555' },
+        { t: '拖动滑片可多次测量，R灯不变', color: '#555' },
         { t: '' },
         { t: '※ 本实验灯泡为定值电阻模型', bold: false, color: '#888' },
         { t: '   不考虑灯丝温度变化对电阻的影响', bold: false, color: '#888' },
@@ -382,7 +442,8 @@ export default function SeriesParallelScene() {
         { t: '总电压 = 各分电压之和' },
         { t: '' },
         { t: '总电阻', bold: true },
-        { t: 'R总 = R₁ + R₂（电阻变大！）', color: '#E53935' },
+        { t: 'R总 = R₁ + R₂ + R滑', color: '#E53935' },
+        { t: 'R₁+R₂ 仍比单灯大（电阻变大！）', color: '#E53935' },
         { t: '' },
         { t: '灯泡亮度观察', bold: true },
         { t: '串联后每个灯泡分到的电压变小', color: '#555' },
@@ -404,16 +465,16 @@ export default function SeriesParallelScene() {
       ctx.fillText('📖 并联电路电阻规律', px + 14, ky); ky += 28
       const items = [
         { t: '并联特点', bold: true },
-        { t: '各支路电压相等：U₁ = U₂ = U' },
-        { t: '总电流 = 各支路电流之和' },
+        { t: '各支路电压相等：U₁ = U₂ = U并' },
+        { t: '总电流 = 各支路电流之和 I = I₁+I₂' },
         { t: '' },
-        { t: '总电阻', bold: true },
-        { t: '1/R总 = 1/R₁ + 1/R₂', color: '#4CAF50' },
-        { t: 'R总 < R₁ 且 R总 < R₂（电阻变小！）', color: '#4CAF50' },
+        { t: '并联总电阻', bold: true },
+        { t: '1/R并 = 1/R₁ + 1/R₂', color: '#4CAF50' },
+        { t: 'R并 < R₁ 且 R并 < R₂（电阻变小！）', color: '#4CAF50' },
         { t: '' },
         { t: '灯泡亮度观察', bold: true },
-        { t: '并联后每个灯泡两端电压不变', color: '#555' },
-        { t: '→ 灯泡亮度正常 → 说明总电阻变小了', color: '#4CAF50' },
+        { t: '并联后两灯同时亮，亮度与单灯相同', color: '#555' },
+        { t: '→ 干路变阻器可调总电流与亮度', color: '#4CAF50' },
         { t: '' },
         { t: '类比理解', bold: true },
         { t: '并联像水管加粗 → 阻力减小', color: '#555' },
@@ -437,9 +498,9 @@ export default function SeriesParallelScene() {
       ctx.fillStyle = '#E53935'
       ctx.fillText(`总电阻 R = ${Rtotal.toFixed(1)} Ω`, px + 14, ky); ky += 22
       ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'
-      if (s.step === 1) ctx.fillText(`单灯泡电阻：${Rtotal.toFixed(1)} Ω`, px + 14, ky)
-      else if (s.step === 2) ctx.fillText(`串联：R总 = ${s.R1}+${s.R2} = ${Rtotal} Ω > R₁`, px + 14, ky)
-      else ctx.fillText(`并联：R总 = ${Rtotal.toFixed(1)} Ω < R₁ 且 < R₂`, px + 14, ky)
+      if (s.step === 1) ctx.fillText(`灯泡电阻 R灯 = ${Rlamp.toFixed(1)} Ω（不随变阻器变）`, px + 14, ky)
+      else if (s.step === 2) ctx.fillText(`串联：R总 = R₁+R₂+R滑 = ${Rtotal} Ω > R₁`, px + 14, ky)
+      else ctx.fillText(`并联：R并=${(1/(1/s.R1+1/s.R2)).toFixed(1)}Ω，R总=${Rtotal.toFixed(1)}Ω（含R滑）`, px + 14, ky)
     }
     ctx.textBaseline = 'alphabetic'
   }
@@ -579,17 +640,16 @@ export default function SeriesParallelScene() {
     }
   }
 
-  // 仪表气泡（标准符号 Ⓥ Ⓐ）
-  // 仪表符号（始终画在电路中，读数只在闭合时显示）
+  // 仪表符号（表盘内：字母居中，读数在圆内下方，不顶圆边）
   function drawMeterInCircuit(ctx, x, y, type, reading, color) {
     const r = 18
     ctx.fillStyle = '#fff'; ctx.strokeStyle = color; ctx.lineWidth = 2
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
     ctx.fillStyle = color; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText(type === 'A' ? 'Ⓐ' : 'Ⓥ', x, y - 2)
+    ctx.fillText(type === 'A' ? 'A' : 'V', x, y - 4)
     if (reading) {
-      ctx.fillStyle = '#333'; ctx.font = 'bold 10px monospace'
-      ctx.fillText(reading, x, y + 12)
+      ctx.fillStyle = '#333'; ctx.font = 'bold 9px monospace'
+      ctx.fillText(reading, x, y + 9)
     }
     ctx.textBaseline = 'alphabetic'
   }
@@ -649,6 +709,20 @@ export default function SeriesParallelScene() {
     const circuit = checkCircuit()
     const engineResult = solveSceneCircuit()
     for (const comp of s.components) drawBuilderComp(ctx, comp, s, circuit, engineResult)
+
+    // 标出所有未连线的元件（红色虚线框+提示），方便用户找到并删除
+    const wiredIds = new Set()
+    for (const w of s.wires) { wiredIds.add(w.from.compId); wiredIds.add(w.to.compId) }
+    ctx.strokeStyle = '#F44336'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3])
+    for (const comp of s.components) {
+      if (wiredIds.has(comp.id)) continue
+      ctx.strokeRect(comp.x - 45, comp.y - 35, 90, 70)
+      ctx.setLineDash([])
+      ctx.fillStyle = '#F44336'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
+      ctx.fillText('未连线', comp.x, comp.y - 38)
+      ctx.setLineDash([4, 3])
+    }
+    ctx.setLineDash([])
     ctx.fillStyle = engineResult.ok ? '#4CAF50' : '#F44336'
     ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
     ctx.fillText(engineResult.ok ? '✅ ' + engineResult.reason : '❌ ' + (engineResult.reason || circuit.reason), cvX + 12, cvY + cvH - 25)
@@ -674,16 +748,26 @@ export default function SeriesParallelScene() {
     ctx.fillStyle = '#333'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
     ctx.fillText('🧰 电学器材', palX + 10, cvY + 10)
 
-    const items = [{ type: 'battery', name: '电源' }, { type: 'bulb', name: '灯泡' }, { type: 'switch', name: '开关' }, { type: 'resistor', name: '电阻' }, { type: 'ammeter', name: '电流表 Ⓐ' }, { type: 'voltmeter', name: '电压表 Ⓥ' }]
+    const items = [
+      { type: 'battery', name: '电源' },
+      { type: 'bulb', name: '灯泡' },
+      { type: 'switch', name: '开关' },
+      { type: 'resistor', name: '电阻' },
+      { type: 'rheostat', name: '滑线变阻器' },
+      { type: 'inductor', name: '电感' },
+      { type: 'capacitor', name: '电容' },
+      { type: 'ammeter', name: '电流表 Ⓐ' },
+      { type: 'voltmeter', name: '电压表 Ⓥ' },
+    ]
     let iy = cvY + 35
     for (const item of items) {
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 44, 6); ctx.fill()
-      ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 44, 6); ctx.stroke()
-      drawRealisticIcon(ctx, palX + 30, iy + 22, item.type)
-      ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(item.name, palX + 52, iy + 22); ctx.textBaseline = 'alphabetic'
-      canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: 44, type: item.type })
-      iy += 50
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 38, 6); ctx.fill()
+      ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 38, 6); ctx.stroke()
+      drawRealisticIcon(ctx, palX + 28, iy + 19, item.type)
+      ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      ctx.fillText(item.name, palX + 50, iy + 19); ctx.textBaseline = 'alphabetic'
+      canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: 38, type: item.type })
+      iy += 42
     }
 
     iy += 10
@@ -729,6 +813,32 @@ export default function SeriesParallelScene() {
       ctx.beginPath(); ctx.roundRect(-14, -6, 28, 12, 2); ctx.fill(); ctx.stroke()
       const bands = ['#B71C1C', '#4CAF50', '#FF9800', '#FFD54F']
       bands.forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(-10 + i * 7, -6, 4, 12) })
+    } else if (type === 'rheostat') {
+      // 滑线变阻器：棕色电阻体+锯齿绕线+箭头滑片
+      ctx.fillStyle = '#EFEBE9'; ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.roundRect(-16, -6, 32, 12, 2); ctx.fill(); ctx.stroke()
+      ctx.strokeStyle = '#5D4037'; ctx.lineWidth = 1
+      ctx.beginPath()
+      for (let i = 0; i < 5; i++) {
+        const px = -12 + i * 6, py = (i % 2 === 0) ? -3 : 3
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+      }
+      ctx.stroke()
+      ctx.fillStyle = '#E65100'
+      ctx.beginPath(); ctx.moveTo(2, -10); ctx.lineTo(-1, -5); ctx.lineTo(5, -5); ctx.closePath(); ctx.fill()
+    } else if (type === 'inductor') {
+      // 电感：串联半圆弧
+      ctx.strokeStyle = '#5D4037'; ctx.lineWidth = 1.8; ctx.lineCap = 'round'
+      ctx.beginPath(); ctx.moveTo(-16, 0)
+      for (let i = 0; i < 4; i++) ctx.arc(-10 + i * 6, 0, 3, Math.PI, 0, false)
+      ctx.lineTo(16, 0); ctx.stroke(); ctx.lineCap = 'butt'
+    } else if (type === 'capacitor') {
+      // 电容：两条平行极板
+      ctx.strokeStyle = '#37474F'; ctx.lineWidth = 2.5; ctx.lineCap = 'butt'
+      ctx.beginPath(); ctx.moveTo(-16, 0); ctx.lineTo(-3, 0); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(-3, -8); ctx.lineTo(-3, 8); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(3, -8); ctx.lineTo(3, 8); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(3, 0); ctx.lineTo(16, 0); ctx.stroke()
     } else if (type === 'ammeter') {
       ctx.fillStyle = '#FFEBEE'; ctx.strokeStyle = '#E53935'; ctx.lineWidth = 1.5
       ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
@@ -769,17 +879,17 @@ export default function SeriesParallelScene() {
         const r = engineResult.results.get(comp.id)
         if (!r) return 0
         const maxP = ((s.U || 6) ** 2) / 10
-        return Math.max(0.08, Math.min(1, r.power / maxP))
+        return Math.max(0.05, Math.min(1, r.power / maxP))
       })()
-      ctx.fillStyle = brightness > 0.3 ? '#FFEB3B' : '#FFFDE7'
-      ctx.strokeStyle = brightness > 0.3 ? '#F9A825' : '#bbb'; ctx.lineWidth = 2
+      ctx.fillStyle = brightness > 0.15 ? '#FFEB3B' : '#FFFDE7'
+      ctx.strokeStyle = brightness > 0.15 ? '#F9A825' : '#bbb'; ctx.lineWidth = 2
       ctx.beginPath(); ctx.arc(0, -6, 20, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.strokeStyle = brightness > 0.3 ? '#E65100' : '#999'; ctx.lineWidth = 1.5
+      ctx.strokeStyle = brightness > 0.15 ? '#E65100' : '#999'; ctx.lineWidth = 1.5
       ctx.beginPath(); ctx.moveTo(-8, -14); ctx.lineTo(8, 2); ctx.stroke()
       ctx.beginPath(); ctx.moveTo(8, -14); ctx.lineTo(-8, 2); ctx.stroke()
       ctx.fillStyle = '#9E9E9E'; ctx.strokeStyle = '#616161'; ctx.lineWidth = 1
       ctx.beginPath(); ctx.roundRect(-10, 14, 20, 10, 2); ctx.fill(); ctx.stroke()
-      if (brightness > 0.3) {
+      if (brightness > 0.15) {
         const glow = ctx.createRadialGradient(0, -6, 15, 0, -6, 50)
         glow.addColorStop(0, 'rgba(255,235,59,0.35)'); glow.addColorStop(1, 'rgba(255,235,59,0)')
         ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, -6, 50, 0, Math.PI * 2); ctx.fill()
@@ -808,22 +918,72 @@ export default function SeriesParallelScene() {
       bands.forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(-24 + i * 15, -14, 8, 28) })
       ctx.fillStyle = '#333'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
       ctx.fillText('10Ω', 0, 16)
+    } else if (type === 'rheostat') {
+      // 滑线变阻器：木质底座+陶瓷管+金属滑杆+滑片（滑片位置随props.resistance）
+      const r = comp.props?.resistance ?? 20
+      ctx.fillStyle = '#D7CCC8'; ctx.strokeStyle = '#6D4C41'; ctx.lineWidth = 2
+      ctx.beginPath(); ctx.roundRect(-40, -10, 80, 20, 3); ctx.fill(); ctx.stroke()
+      // 绕线
+      ctx.strokeStyle = '#5D4037'; ctx.lineWidth = 1.2
+      ctx.beginPath()
+      for (let i = 0; i < 10; i++) {
+        const px = -34 + i * 7, py = (i % 2 === 0) ? -6 : 6
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+      }
+      ctx.stroke()
+      // 金属滑杆
+      ctx.strokeStyle = '#90A4AE'; ctx.lineWidth = 2.5
+      ctx.beginPath(); ctx.moveTo(-38, -18); ctx.lineTo(38, -18); ctx.stroke()
+      // 滑片箭头（位置随r变化，0~50Ω → x=-30~+30）
+      const sliderX = -30 + (r / 50) * 60
+      ctx.fillStyle = '#E65100'
+      ctx.beginPath(); ctx.moveTo(sliderX, -18); ctx.lineTo(sliderX - 4, -10); ctx.lineTo(sliderX + 4, -10); ctx.closePath(); ctx.fill()
+      ctx.fillStyle = '#5D4037'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+      ctx.fillText(`变阻器 ${r}Ω`, 0, 14)
+    } else if (type === 'inductor') {
+      // 电感：铜线绕在磁芯上
+      ctx.fillStyle = '#ECEFF1'; ctx.strokeStyle = '#607D8B'; ctx.lineWidth = 2
+      ctx.beginPath(); ctx.roundRect(-36, -14, 72, 28, 4); ctx.fill(); ctx.stroke()
+      ctx.strokeStyle = '#B8860B'; ctx.lineWidth = 2
+      ctx.beginPath()
+      for (let i = 0; i < 6; i++) {
+        const px = -28 + i * 10
+        ctx.moveTo(px, -10)
+        ctx.quadraticCurveTo(px + 5, -20, px + 10, -10)
+      }
+      ctx.stroke()
+      ctx.fillStyle = '#5D4037'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+      ctx.fillText('电感', 0, 16)
+    } else if (type === 'capacitor') {
+      // 电容：蓝色电解电容圆柱形
+      ctx.fillStyle = '#1565C0'; ctx.strokeStyle = '#0D47A1'; ctx.lineWidth = 2
+      ctx.beginPath(); ctx.roundRect(-30, -18, 60, 36, 4); ctx.fill(); ctx.stroke()
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText('C', 0, 0)
+      ctx.fillStyle = '#FFEB3B'; ctx.font = '8px sans-serif'
+      ctx.fillText('+', -22, -8)
+      ctx.fillStyle = '#5D4037'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+      ctx.fillText('电容', 0, 22)
     } else if (type === 'ammeter') {
-      // 电流表（红底白字，和伏安法一样）
+      // 电流表（红底白字，显示实时读数）
+      const r = (isClosed && engineResult?.ok && engineResult.results) ? engineResult.results.get(comp.id) : null
+      const cur = r ? r.current : 0
       ctx.fillStyle = '#FFCDD2'; ctx.strokeStyle = '#E53935'; ctx.lineWidth = 2
       ctx.beginPath(); ctx.arc(0, 0, 26, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#B71C1C'; ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('A', 0, -2)
-      ctx.fillStyle = '#E53935'; ctx.font = '10px sans-serif'
-      ctx.fillText('串联', 0, 14)
+      ctx.fillStyle = '#B71C1C'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText('A', 0, -8)
+      ctx.fillStyle = '#333'; ctx.font = 'bold 10px monospace'
+      ctx.fillText(isClosed ? `${Math.abs(cur).toFixed(2)}A` : '--', 0, 10)
     } else if (type === 'voltmeter') {
-      // 电压表（绿底白字，和伏安法一样）
+      // 电压表（绿底白字，显示实时读数）
+      const r = (isClosed && engineResult?.ok && engineResult.results) ? engineResult.results.get(comp.id) : null
+      const volt = r ? Math.abs(r.voltage) : 0
       ctx.fillStyle = '#C8E6C9'; ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2
       ctx.beginPath(); ctx.arc(0, 0, 26, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#1B5E20'; ctx.font = 'bold 18px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('V', 0, -2)
-      ctx.fillStyle = '#4CAF50'; ctx.font = '10px sans-serif'
-      ctx.fillText('并联', 0, 14)
+      ctx.fillStyle = '#1B5E20'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText('V', 0, -8)
+      ctx.fillStyle = '#333'; ctx.font = 'bold 10px monospace'
+      ctx.fillText(isClosed ? `${volt.toFixed(1)}V` : '--', 0, 10)
     }
     ctx.globalAlpha = 1; ctx.restore()
 
@@ -882,6 +1042,14 @@ export default function SeriesParallelScene() {
   // MNA引擎求解Tab2电路
   function solveSceneCircuit() {
     const s = S.current
+    // 清理已从器材栏移除的旧类型元件（如变压器）残留
+    const known = new Set(['battery','bulb','switch','resistor','rheostat','inductor','capacitor','ammeter','voltmeter'])
+    const stale = s.components.filter(c => !known.has(c.type))
+    if (stale.length) {
+      const staleIds = new Set(stale.map(c => c.id))
+      s.components = s.components.filter(c => known.has(c.type))
+      s.wires = s.wires.filter(w => !staleIds.has(w.from.compId) && !staleIds.has(w.to.compId))
+    }
     if (s.components.length === 0 || s.wires.length === 0) return { ok: false, results: new Map() }
     const graph = new CircuitGraph()
     for (const comp of s.components) {
@@ -889,6 +1057,7 @@ export default function SeriesParallelScene() {
       if (comp.type === 'battery') props.voltage = s.U || 6
       if (comp.type === 'bulb') props.resistance = 10
       if (comp.type === 'resistor') props.resistance = 10
+      if (comp.type === 'rheostat') props.resistance = comp.props?.resistance ?? 20
       if (comp.type === 'switch') props.closed = comp.closed !== false
       graph.addComponent(comp.type, comp.x, comp.y, props, comp.id)
     }
@@ -949,13 +1118,22 @@ export default function SeriesParallelScene() {
         if (a.action === 'color') { s.wireColor = a.color; forceUpdate(n => n + 1); return }
         if (a.type) {
           const id = s.nextId++
-          s.components.push({ id, type: a.type, x, y, rotation: 0, closed: true })
+          s.components.push({ id, type: a.type, x, y, rotation: 0, closed: true, props: a.type === 'rheostat' ? { resistance: 20 } : {} })
           s.dragId = id; s.dragOffX = 0; s.dragOffY = 0; forceUpdate(n => n + 1); return
         }
       }
     }
     const term = findTerm(x, y)
     if (term) { s.connecting = { ...term, mx: x, my: y }; forceUpdate(n => n + 1); return }
+    // Tab2 滑线变阻器滑片拖拽（优先于元件整体拖拽）
+    for (const c of s.components) {
+      if (c.type !== 'rheostat') continue
+      const r = c.props?.resistance ?? 20
+      const sliderX = c.x - 30 + (r / 50) * 60
+      if (Math.abs(x - sliderX) < 12 && Math.abs(y - (c.y - 14)) < 15) {
+        s.tab2RheoDragId = c.id; return
+      }
+    }
     for (const wire of s.wires) {
       const fc = s.components.find(c => c.id === wire.from.compId)
       const tc = s.components.find(c => c.id === wire.to.compId)
@@ -984,6 +1162,18 @@ export default function SeriesParallelScene() {
       return
     }
     if (s.tab !== 2) return
+    // Tab2 滑线变阻器滑片拖拽
+    if (s.tab2RheoDragId != null) {
+      const c = s.components.find(c => c.id === s.tab2RheoDragId)
+      if (c) {
+        const minX = c.x - 30, maxX = c.x + 30
+        const nx = Math.max(minX, Math.min(maxX, x))
+        c.props = c.props || {}
+        c.props.resistance = Math.round(((nx - minX) / (maxX - minX)) * 50)
+        forceUpdate(n => n + 1)
+      }
+      return
+    }
     if (s.dragId) {
       if (typeof s.dragId === 'string' && s.dragId.startsWith('wire_')) {
         const parts = s.dragId.split('_')
@@ -1013,6 +1203,7 @@ export default function SeriesParallelScene() {
   const handleMouseUp = useCallback(() => {
     const s = S.current
     if (s.rheoDragging) { s.rheoDragging = false; forceUpdate(n => n + 1); return }
+    if (s.tab2RheoDragId != null) { s.tab2RheoDragId = null; forceUpdate(n => n + 1); return }
     if (s.dragId) { s.dragId = null; forceUpdate(n => n + 1); return }
     if (s.connecting) {
       const t = s.hoverTerm

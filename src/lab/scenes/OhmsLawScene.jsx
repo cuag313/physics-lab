@@ -1,4 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+﻿import { useState, useRef, useEffect, useCallback } from 'react'
+import { CircuitGraph, CircuitSolver } from '../engine/index.js'
+
+// 模块级数据（跨渲染保留，不被组件重渲染重置）
+let dataIUStore = []
+let dataIRStore = []
 
 /**
  * OhmsLawScene — 探究电流与电压、电阻的关系（欧姆定律）
@@ -74,7 +79,7 @@ export default function OhmsLawScene() {
     const s = S.current
     const on = s.switchClosed
     const circuitLeft = W * 0.06, circuitRight = W * 0.48
-    const circuitTop = 70, circuitBottom = H - 140
+    const circuitTop = 85, circuitBottom = H - 140
 
     // 计算电路
     let I = 0, U_R = 0, U_slider = 0
@@ -101,60 +106,108 @@ export default function OhmsLawScene() {
   }
 
   function drawCircuit(ctx, left, right, top, bottom, on, s, I, U_R, U_slider) {
-    const battX = left + (right - left) * 0.1
-    const swX = left + (right - left) * 0.25
-    const sliderX = left + (right - left) * 0.45
-    const resistorX = left + (right - left) * 0.7
-    const midX = (left + right) / 2
+    // 下边：电源 + 开关
+    const battX = left + (right - left) * 0.12
+    const swX = left + (right - left) * 0.28
+    // 上边：A表 + 滑动变阻器 + 定值电阻
+    const amX = left + (right - left) * 0.22
+    const sliderX = left + (right - left) * 0.5
+    const resistorX = left + (right - left) * 0.78
     const wc = on ? '#1565C0' : '#999'
 
-    // 导线
+    // 外框导线
     drawLine(ctx, left, top, right, top, wc, 2.5)
     drawLine(ctx, right, top, right, bottom, wc, 2.5)
-    drawLine(ctx, left, bottom, battX - 12, bottom, wc, 2.5)
-    drawLine(ctx, battX + 12, bottom, swX - 18, bottom, wc, 2.5)
-    drawLine(ctx, swX + 18, bottom, sliderX - 24, bottom, wc, 2.5)
-    drawLine(ctx, sliderX + 24, bottom, resistorX - 16, bottom, wc, 2.5)
-    drawLine(ctx, resistorX + 16, bottom, right, bottom, wc, 2.5)
     drawLine(ctx, left, top, left, bottom, wc, 2.5)
+    // 下边：电池组、开关断开
+    drawLine(ctx, left, bottom, battX - 36, bottom, wc, 2.5)
+    drawLine(ctx, battX + 36, bottom, swX - 18, bottom, wc, 2.5)
+    drawLine(ctx, swX + 18, bottom, right, bottom, wc, 2.5)
+    // 上边：A表、变阻器、电阻断开
+    drawLine(ctx, left, top, amX - 18, top, wc, 2.5)
+    drawLine(ctx, amX + 18, top, sliderX - 24, top, wc, 2.5)
+    drawLine(ctx, sliderX + 24, top, resistorX - 16, top, wc, 2.5)
+    drawLine(ctx, resistorX + 16, top, right, top, wc, 2.5)
 
     // 电流流动
     if (on) {
       drawCurrentFlow(ctx, [
-        { x: battX + 12, y: bottom }, { x: swX, y: bottom }, { x: sliderX, y: bottom },
-        { x: resistorX, y: bottom }, { x: right, y: bottom }, { x: right, y: top },
-        { x: left, y: top }, { x: left, y: bottom }, { x: battX - 12, y: bottom },
+        { x: battX + 36, y: bottom }, { x: swX, y: bottom }, { x: right, y: bottom },
+        { x: right, y: top }, { x: resistorX, y: top }, { x: sliderX, y: top },
+        { x: amX, y: top }, { x: left, y: top }, { x: left, y: bottom }, { x: battX - 36, y: bottom },
       ], s.time, 0.5)
     }
 
-    // 电源
+    // 下边：电源、开关
     drawStdBattery(ctx, battX, bottom)
-    // 开关
     drawStdSwitch(ctx, swX, bottom, on, () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) })
-    // 滑动变阻器
-    drawSlidingRheostat(ctx, sliderX, bottom, s.sliderR, 50)
-    // 定值电阻
-    drawStdResistor(ctx, resistorX, bottom, s.R)
 
-    // Ⓐ A表（串联在主回路）
-    drawMeterInCircuit(ctx, (swX + sliderX) / 2, bottom - 28, 'A', on ? `${I.toFixed(3)}A` : '', '#E53935')
-    // Ⓥ V表（并联在定值电阻两端）
-    const volY = bottom + 35
-    drawLine(ctx, resistorX - 16, bottom, resistorX - 16, volY, wc, 2)
-    drawLine(ctx, resistorX + 16, bottom, resistorX + 16, volY, wc, 2)
-    drawLine(ctx, resistorX - 16, volY, resistorX - 20, volY, wc, 2)
-    drawLine(ctx, resistorX + 20, volY, resistorX + 16, volY, wc, 2)
+    // 上边：A表（串联）、滑动变阻器、定值电阻
+    drawMeterInCircuit(ctx, amX, top, 'A', on ? `${I.toFixed(3)}A` : '', '#E53935')
+    drawSlidingRheostat(ctx, sliderX, top, s.sliderR, 50)
+    drawStdResistor(ctx, resistorX, top, s.R)
+
+    // Step1：点击滑动变阻器电阻体调节 sliderR（扩大点击区域）
+    if (s.step === 1) {
+      canvasRef.current._clickAreas.push({
+        x: sliderX - 30, y: top - 22, w: 60, h: 34,
+        onClick: (mx) => {
+          const r = Math.max(0, Math.min(1, (mx - (sliderX - 24)) / 48))
+          S.current.sliderR = Math.round(r * 50)
+        }
+      })
+    }
+    // Step2：电阻 +/- 按钮
+    if (s.step === 2) {
+      for (const [dx, dv] of [[-30, -5], [30, 5]]) {
+        ctx.fillStyle = '#FF9800'; ctx.strokeStyle = '#E65100'; ctx.lineWidth = 1.5
+        ctx.beginPath(); ctx.arc(resistorX + dx, top - 28, 9, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+        ctx.fillStyle = '#fff'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.fillText(dv > 0 ? '+' : '−', resistorX + dx, top - 27)
+        canvasRef.current._clickAreas.push({
+          x: resistorX + dx - 10, y: top - 38, w: 20, h: 20,
+          onClick: () => { S.current.R = Math.max(5, Math.min(30, S.current.R + dv)); forceUpdate(n => n + 1) }
+        })
+      }
+    }
+
+    // V表并联在定值电阻两端（向下引出到电阻下方，电路内部）
+    const volY = top + 55
+    drawLine(ctx, resistorX - 16, top, resistorX - 16, volY, wc, 2)
+    drawLine(ctx, resistorX + 16, top, resistorX + 16, volY, wc, 2)
+    drawLine(ctx, resistorX - 16, volY, resistorX - 22, volY, wc, 2)
+    drawLine(ctx, resistorX + 22, volY, resistorX + 16, volY, wc, 2)
     drawMeterInCircuit(ctx, resistorX, volY, 'V', on ? `${U_R.toFixed(2)}V` : '', '#4CAF50')
 
     // 标注
-    ctx.fillStyle = '#555'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('滑动变阻器', sliderX, top - 18)
-    ctx.fillText(`R=${s.R}Ω`, resistorX, top - 18)
-    ctx.fillText(`滑动变阻器=${s.sliderR}Ω`, sliderX, bottom + 18)
+    ctx.fillStyle = '#555'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
+    ctx.fillText('A', amX, top - 22)
+    ctx.fillText('滑动变阻器', sliderX, top - 22)
+    ctx.fillText(`R=${s.R}Ω`, resistorX, top - 22)
+    ctx.textBaseline = 'alphabetic'
+
+    // 操作手册气泡（电路图中央）
+    const cx = (left + right) / 2, cy = (top + bottom) / 2 + 10
+    const bubbleW = 230, bubbleH = 92
+    ctx.fillStyle = 'rgba(255,253,230,0.95)'; ctx.strokeStyle = '#FFB300'; ctx.lineWidth = 1.5
+    ctx.beginPath(); ctx.roundRect(cx - bubbleW / 2, cy - bubbleH / 2, bubbleW, bubbleH, 10); ctx.fill(); ctx.stroke()
+    // 小尖角
+    ctx.fillStyle = 'rgba(255,253,230,0.95)'; ctx.strokeStyle = '#FFB300'; ctx.lineWidth = 1.5
+    ctx.beginPath(); ctx.moveTo(cx - 10, cy + bubbleH / 2); ctx.lineTo(cx + 10, cy + bubbleH / 2); ctx.lineTo(cx, cy + bubbleH / 2 + 10); ctx.closePath(); ctx.fill(); ctx.stroke()
+    // 文字
+    ctx.fillStyle = '#5D4037'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.font = 'bold 11px sans-serif'
+    ctx.fillText('📋 操作步骤', cx - bubbleW / 2 + 12, cy - bubbleH / 2 + 10)
+    ctx.font = '10px sans-serif'; ctx.fillStyle = '#6D4C41'
+    const steps = s.step === 1
+      ? ['①  点击开关，闭合电路', '②  点击滑动变阻器电阻体，调节分压', '③  记录电表读数 → 点"记录"', '④  重复 3 次以上，看 I-U 图']
+      : ['①  点击开关，闭合电路', '②  点电阻旁 ± 按钮，更换 R', '③  记录电表读数 → 点"记录"', '④  重复 3 次以上，看 I-R 图']
+    for (let i = 0; i < steps.length; i++) ctx.fillText(steps[i], cx - bubbleW / 2 + 12, cy - bubbleH / 2 + 28 + i * 15)
   }
 
   // ─── 右侧：数据表格+图像 ───
   function drawRightPanel(ctx, W, H, s, on, I, U_R) {
+    s = S.current
     const px = W * 0.52, py = 50, pw = W * 0.46, ph = H - 160
     ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill()
     ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.stroke()
@@ -162,51 +215,94 @@ export default function OhmsLawScene() {
     ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
     let ky = py + 12
 
-    if (s.step === 1) {
-      ctx.fillText('📖 探究 I 与 U 的关系（R不变）', px + 14, ky); ky += 28
-      ctx.font = '12px sans-serif'; ctx.fillStyle = '#555'
-      ctx.fillText(`定值电阻 R = ${s.R} Ω（不变）`, px + 14, ky); ky += 18
-      ctx.fillText(`电源电压 U = ${s.U.toFixed(1)} V`, px + 14, ky); ky += 18
-      ctx.fillText(`滑动变阻器 = ${s.sliderR} Ω`, px + 14, ky); ky += 24
+    // 实验目的（单行收窄）
+    ctx.fillStyle = '#1565C0'; ctx.font = 'bold 12px sans-serif'
+    ctx.fillText('🎯 实验目的：', px + 14, ky)
+    ctx.font = '11px sans-serif'; ctx.fillStyle = '#444'
+    const aim = s.step === 1
+      ? '保持 R 不变，改变 U，研究 I 与 U 关系'
+      : '保持 U 不变，改变 R，研究 I 与 R 关系'
+    ctx.fillText(aim, px + 14 + 80, ky); ky += 24
 
-      // 数据表格
-      if (s.dataIU.length > 0) {
+    if (s.step === 1) {
+      ctx.fillText('📖 探究 I 与 U 的关系（R不变）', px + 14, ky); ky += 26
+      ctx.font = '12px sans-serif'; ctx.fillStyle = '#555'
+      ctx.fillText(`R = ${s.R} Ω（不变）   U_R = ${U_R.toFixed(2)} V   I = ${I.toFixed(3)} A`, px + 14, ky); ky += 24
+
+      // 数据表格（带边框）
+      if (dataIUStore.length > 0) {
         ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'
-        ctx.fillText('📊 实验数据', px + 14, ky); ky += 18
-        ctx.font = '10px monospace'; ctx.fillStyle = '#555'
-        ctx.fillText('  序号    U(V)    I(A)    R=U/I(Ω)', px + 14, ky); ky += 14
-        for (let i = 0; i < s.dataIU.length; i++) {
-          const d = s.dataIU[i]
+        ctx.fillText('📊 实验数据', px + 14, ky); ky += 16
+        const colW = [35, 60, 60, 75]
+        const rowH = 16
+        const tblW = colW.reduce((a, b) => a + b, 0)
+        const tblX = px + 14
+        const rows = dataIUStore.length
+        // 表头
+        const headers = ['序号', 'U(V)', 'I(A)', 'R=U/I(Ω)']
+        ctx.fillStyle = '#E3F2FD'; ctx.strokeStyle = '#90CAF9'; ctx.lineWidth = 1
+        ctx.fillRect(tblX, ky, tblW, rowH)
+        ctx.strokeRect(tblX, ky, tblW, rowH)
+        ctx.fillStyle = '#1565C0'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        let cx2 = tblX
+        for (let c = 0; c < 4; c++) { ctx.fillText(headers[c], cx2 + colW[c]/2, ky + rowH/2); cx2 += colW[c] }
+        ky += rowH
+        // 数据行
+        ctx.font = '10px monospace'; ctx.fillStyle = '#333'
+        for (let i = 0; i < rows; i++) {
+          const d = dataIUStore[i]
           const R_calc = d.I > 0 ? (d.U / d.I) : 0
-          ctx.fillText(`  ${String(i + 1).padStart(3)}    ${d.U.toFixed(2).padStart(6)}  ${d.I.toFixed(3).padStart(6)}  ${R_calc.toFixed(1).padStart(8)}`, px + 14, ky)
-          ky += 13
+          if (i % 2 === 0) { ctx.fillStyle = '#F5F5F5'; ctx.fillRect(tblX, ky, tblW, rowH) }
+          ctx.strokeStyle = '#E0E0E0'; ctx.strokeRect(tblX, ky, tblW, rowH)
+          ctx.fillStyle = '#333'
+          const vals = [String(i+1), d.U.toFixed(2), d.I.toFixed(3), R_calc.toFixed(1)]
+          let cx3 = tblX
+          for (let c = 0; c < 4; c++) { ctx.fillText(vals[c], cx3 + colW[c]/2, ky + rowH/2); cx3 += colW[c] }
+          ky += rowH
         }
         // I-U 图
         ky += 10
-        drawGraph(ctx, px + 14, ky, pw - 28, 140, s.dataIU, 'U (V)', 'I (A)', d => d.U, d => d.I, '#4A90D9')
+        ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+        drawGraph(ctx, px + 14, ky, pw - 28, 130, dataIUStore, 'U (V)', 'I (A)', d => d.U, d => d.I, '#4A90D9')
       } else {
         ctx.fillStyle = '#888'; ctx.font = '11px sans-serif'
         ctx.fillText('闭合开关 → 调节U → 点"记录"采集数据', px + 14, ky); ky += 18
         ctx.fillText('至少采集3组数据', px + 14, ky)
       }
     } else {
-      ctx.fillText('📖 探究 I 与 R 的关系（U不变）', px + 14, ky); ky += 28
+      ctx.fillText('📖 探究 I 与 R 的关系（U不变）', px + 14, ky); ky += 26
       ctx.font = '12px sans-serif'; ctx.fillStyle = '#555'
-      ctx.fillText(`电源电压 U = ${s.U.toFixed(1)} V（不变）`, px + 14, ky); ky += 18
-      ctx.fillText(`当前电阻 R = ${s.R} Ω`, px + 14, ky); ky += 24
+      ctx.fillText(`U = ${s.U.toFixed(1)} V（不变）   R = ${s.R} Ω   I = ${I.toFixed(3)} A`, px + 14, ky); ky += 24
 
-      if (s.dataIR.length > 0) {
+      if (dataIRStore.length > 0) {
         ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'
-        ctx.fillText('📊 实验数据', px + 14, ky); ky += 18
-        ctx.font = '10px monospace'; ctx.fillStyle = '#555'
-        ctx.fillText('  序号    R(Ω)    I(A)    1/R(1/Ω)', px + 14, ky); ky += 14
-        for (let i = 0; i < s.dataIR.length; i++) {
-          const d = s.dataIR[i]
-          ctx.fillText(`  ${String(i + 1).padStart(3)}    ${d.R.toFixed(0).padStart(6)}  ${d.I.toFixed(3).padStart(6)}  ${(1/d.R).toFixed(4).padStart(10)}`, px + 14, ky)
-          ky += 13
+        ctx.fillText('📊 实验数据', px + 14, ky); ky += 16
+        const colW = [35, 60, 60, 75]
+        const rowH = 16
+        const tblW = colW.reduce((a, b) => a + b, 0)
+        const tblX = px + 14
+        const rows = dataIRStore.length
+        const headers = ['序号', 'R(Ω)', 'I(A)', '1/R(1/Ω)']
+        ctx.fillStyle = '#FFF3E0'; ctx.strokeStyle = '#FFCC80'; ctx.lineWidth = 1
+        ctx.fillRect(tblX, ky, tblW, rowH); ctx.strokeRect(tblX, ky, tblW, rowH)
+        ctx.fillStyle = '#E65100'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        let cx2 = tblX
+        for (let c = 0; c < 4; c++) { ctx.fillText(headers[c], cx2 + colW[c]/2, ky + rowH/2); cx2 += colW[c] }
+        ky += rowH
+        ctx.font = '10px monospace'; ctx.fillStyle = '#333'
+        for (let i = 0; i < rows; i++) {
+          const d = dataIRStore[i]
+          if (i % 2 === 0) { ctx.fillStyle = '#F5F5F5'; ctx.fillRect(tblX, ky, tblW, rowH) }
+          ctx.strokeStyle = '#E0E0E0'; ctx.strokeRect(tblX, ky, tblW, rowH)
+          ctx.fillStyle = '#333'
+          const vals = [String(i+1), d.R.toFixed(0), d.I.toFixed(3), (1/d.R).toFixed(4)]
+          let cx3 = tblX
+          for (let c = 0; c < 4; c++) { ctx.fillText(vals[c], cx3 + colW[c]/2, ky + rowH/2); cx3 += colW[c] }
+          ky += rowH
         }
+        ctx.textAlign = 'left'; ctx.textBaseline = 'top'
         ky += 10
-        drawGraph(ctx, px + 14, ky, pw - 28, 140, s.dataIR, '1/R (1/Ω)', 'I (A)', d => 1/d.R, d => d.I, '#E53935')
+        drawGraph(ctx, px + 14, ky, pw - 28, 130, dataIRStore, '1/R (1/Ω)', 'I (A)', d => 1/d.R, d => d.I, '#E53935')
       } else {
         ctx.fillStyle = '#888'; ctx.font = '11px sans-serif'
         ctx.fillText('闭合开关 → 调节R → 点"记录"采集数据', px + 14, ky); ky += 18
@@ -256,6 +352,37 @@ export default function OhmsLawScene() {
     }
   }
 
+  // 简易滑块（点击轨道设值）
+  function drawSlider(ctx, x, y, w, minV, maxV, val, onChange, label) {
+    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'
+    ctx.fillText(label, x, y - 4)
+    // 轨道
+    ctx.strokeStyle = '#ccc'; ctx.lineWidth = 4; ctx.lineCap = 'round'
+    ctx.beginPath(); ctx.moveTo(x, y + 10); ctx.lineTo(x + w, y + 10); ctx.stroke()
+    // 已填部分
+    const ratio = (val - minV) / (maxV - minV)
+    ctx.strokeStyle = '#4A90D9'; ctx.lineWidth = 4
+    ctx.beginPath(); ctx.moveTo(x, y + 10); ctx.lineTo(x + ratio * w, y + 10); ctx.stroke()
+    // 圆点
+    const px = x + ratio * w
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#4A90D9'; ctx.lineWidth = 2.5
+    ctx.beginPath(); ctx.arc(px, y + 10, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    // 数值
+    ctx.fillStyle = '#4A90D9'; ctx.font = 'bold 11px monospace'; ctx.textAlign = 'right'
+    ctx.fillText(val.toFixed(1), x + w, y + 4)
+    // 点击区域：整个轨道
+    canvasRef.current._clickAreas.push({
+      x: x - 5, y: y - 2, w: w + 10, h: 28,
+      onClick: (mx, my) => {
+        // mx/my 相对 canvas，需要换算成轨道上的值
+        const r = Math.max(0, Math.min(1, (mx - x) / w))
+        onChange(Math.round((minV + r * (maxV - minV)) * 10) / 10)
+        forceUpdate(n => n + 1)
+      }
+    })
+    ctx.textBaseline = 'alphabetic'
+  }
+
   // ─── 步骤导航 ───
   function drawStepNav(ctx, W, H, s) {
     const navY = H - 36
@@ -274,7 +401,7 @@ export default function OhmsLawScene() {
       ctx.font = active ? 'bold 11px sans-serif' : '11px sans-serif'
       ctx.fillText(st.label, bx + 67, navY + 14)
       canvasRef.current._clickAreas.push({ x: bx, y: navY, w: 135, h: 28, onClick: () => {
-        S.current.step = st.n; S.current.switchClosed = false; setStep(st.n); forceUpdate(n => n + 1)
+        S.current.step = st.n; S.current.switchClosed = false; S.current.sliderR = 0; setStep(st.n); forceUpdate(n => n + 1)
       }})
     })
 
@@ -285,14 +412,15 @@ export default function OhmsLawScene() {
     ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'
     ctx.fillText('📝 记录', recX + 40, navY + 14)
     canvasRef.current._clickAreas.push({ x: recX, y: navY, w: 80, h: 28, onClick: () => {
-      if (!s.switchClosed) return
-      const Rtotal = s.R + s.sliderR
-      const I_val = s.U / Rtotal
-      const U_R = I_val * s.R
-      if (s.step === 1) {
-        s.dataIU.push({ U: U_R, I: I_val })
+      const sc = S.current
+      if (!sc.switchClosed) return
+      const Rtotal = sc.R + sc.sliderR
+      const I_val = sc.U / Rtotal
+      const U_R = I_val * sc.R
+      if (sc.step === 1) {
+        dataIUStore.push({ U: U_R, I: I_val })
       } else {
-        s.dataIR.push({ R: s.R, I: I_val })
+        dataIRStore.push({ R: sc.R, I: I_val })
       }
       forceUpdate(n => n + 1)
     }})
@@ -305,7 +433,7 @@ export default function OhmsLawScene() {
     ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'
     ctx.fillText('清除', clrX + 30, navY + 14)
     canvasRef.current._clickAreas.push({ x: clrX, y: navY, w: 60, h: 28, onClick: () => {
-      if (s.step === 1) s.dataIU = []; else s.dataIR = []
+      if (s.step === 1) dataIUStore = []; else dataIRStore = []
       forceUpdate(n => n + 1)
     }})
 
@@ -316,14 +444,31 @@ export default function OhmsLawScene() {
   //  标准电路符号
   // ================================================================
   function drawStdBattery(ctx, x, y) {
-    ctx.strokeStyle = '#333'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.moveTo(x - 12, y - 18); ctx.lineTo(x - 12, y + 18); ctx.stroke()
-    ctx.lineWidth = 5
-    ctx.beginPath(); ctx.moveTo(x + 12, y - 9); ctx.lineTo(x + 12, y + 9); ctx.stroke()
+    // 电池组：3节电池串联（长短线交替）
+    ctx.lineWidth = 2
+    ctx.strokeStyle = '#333'
+    // 外引线
+    ctx.beginPath(); ctx.moveTo(x - 36, y); ctx.lineTo(x - 28, y); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(x + 28, y); ctx.lineTo(x + 36, y); ctx.stroke()
+    // 3节电池：每节由一长一短线组成
+    for (let i = 0; i < 3; i++) {
+      const bx = x - 20 + i * 20
+      // 长线（正极）
+      ctx.strokeStyle = '#333'; ctx.lineWidth = 2.5
+      ctx.beginPath(); ctx.moveTo(bx - 3, y - 14); ctx.lineTo(bx - 3, y + 14); ctx.stroke()
+      // 短线（负极）
+      ctx.lineWidth = 5
+      ctx.beginPath(); ctx.moveTo(bx + 3, y - 7); ctx.lineTo(bx + 3, y + 7); ctx.stroke()
+      // 连接线
+      ctx.lineWidth = 2
+      if (i < 2) { ctx.beginPath(); ctx.moveTo(bx + 3, y); ctx.lineTo(bx + 17, y); ctx.stroke() }
+    }
     ctx.fillStyle = '#E53935'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-    ctx.fillText('+', x - 12, y - 20)
+    ctx.fillText('+', x - 28, y - 16)
     ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'
-    ctx.fillText('−', x + 12, y - 11)
+    ctx.fillText('−', x + 32, y - 8)
+    ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textBaseline = 'top'
+    ctx.fillText('电池组', x, y + 18)
     ctx.textBaseline = 'alphabetic'
   }
 
@@ -371,10 +516,10 @@ export default function OhmsLawScene() {
     ctx.fillStyle = '#fff'; ctx.strokeStyle = color; ctx.lineWidth = 2
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
     ctx.fillStyle = color; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText(type === 'A' ? 'Ⓐ' : 'Ⓥ', x, y - 2)
+    ctx.fillText(type, x, y - 3)
     if (reading) {
-      ctx.fillStyle = '#333'; ctx.font = 'bold 10px monospace'
-      ctx.fillText(reading, x, y + 12)
+      ctx.fillStyle = '#333'; ctx.font = 'bold 9px monospace'
+      ctx.fillText(reading, x, y + 11)
     }
     ctx.textBaseline = 'alphabetic'
   }
@@ -431,10 +576,26 @@ export default function OhmsLawScene() {
       }
     }
     const circuit = checkCircuit()
-    for (const comp of s.components) drawBuilderComp(ctx, comp, s, circuit)
-    ctx.fillStyle = circuit.closed ? '#4CAF50' : '#F44336'
+    const engineResult = solveSceneCircuit()
+    for (const comp of s.components) drawBuilderComp(ctx, comp, s, circuit, engineResult)
+
+    // 标出所有未连线的元件（红色虚线框+提示）
+    const wiredIds = new Set()
+    for (const w of s.wires) { wiredIds.add(w.from.compId); wiredIds.add(w.to.compId) }
+    ctx.strokeStyle = '#F44336'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3])
+    for (const comp of s.components) {
+      if (wiredIds.has(comp.id)) continue
+      ctx.strokeRect(comp.x - 45, comp.y - 35, 90, 70)
+      ctx.setLineDash([])
+      ctx.fillStyle = '#F44336'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
+      ctx.fillText('未连线', comp.x, comp.y - 38)
+      ctx.setLineDash([4, 3])
+    }
+    ctx.setLineDash([])
+
+    ctx.fillStyle = engineResult.ok ? '#4CAF50' : '#F44336'
     ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText(circuit.closed ? '✅ ' + circuit.reason : '❌ ' + circuit.reason, cvX + 12, cvY + cvH - 25)
+    ctx.fillText(engineResult.ok ? '✅ ' + engineResult.reason : '❌ ' + (engineResult.reason || circuit.reason), cvX + 12, cvY + cvH - 25)
 
     const palX = W - palW - 10
     ctx.fillStyle = '#f8f9fa'; ctx.beginPath(); ctx.roundRect(palX, cvY, palW, cvH, 8); ctx.fill()
@@ -443,20 +604,25 @@ export default function OhmsLawScene() {
     ctx.fillText('🧰 电学器材', palX + 10, cvY + 10)
 
     const items = [
-      { type: 'battery', name: '电源' }, { type: 'bulb', name: '灯泡' },
-      { type: 'switch', name: '开关' }, { type: 'resistor', name: '电阻' },
-      { type: 'ammeter', name: '电流表Ⓐ' }, { type: 'voltmeter', name: '电压表Ⓥ' },
+      { type: 'battery', name: '电源' },
+      { type: 'bulb', name: '灯泡' },
+      { type: 'switch', name: '开关' },
+      { type: 'resistor', name: '电阻' },
       { type: 'rheostat', name: '滑动变阻器' },
+      { type: 'inductor', name: '电感' },
+      { type: 'capacitor', name: '电容' },
+      { type: 'ammeter', name: '电流表Ⓐ' },
+      { type: 'voltmeter', name: '电压表Ⓥ' },
     ]
     let iy = cvY + 35
     for (const item of items) {
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 44, 6); ctx.fill()
-      ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 44, 6); ctx.stroke()
-      drawRealisticIcon(ctx, palX + 30, iy + 22, item.type)
-      ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(item.name, palX + 52, iy + 22); ctx.textBaseline = 'alphabetic'
-      canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: 44, type: item.type })
-      iy += 50
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 38, 6); ctx.fill()
+      ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 38, 6); ctx.stroke()
+      drawRealisticIcon(ctx, palX + 28, iy + 19, item.type)
+      ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      ctx.fillText(item.name, palX + 50, iy + 19); ctx.textBaseline = 'alphabetic'
+      canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: 38, type: item.type })
+      iy += 42
     }
 
     iy += 10
@@ -515,14 +681,34 @@ export default function OhmsLawScene() {
     } else if (type === 'rheostat') {
       ctx.fillStyle = '#D7CCC8'; ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 1.5
       ctx.beginPath(); ctx.roundRect(-14, -6, 28, 12, 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#546E7A'; ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(-4, -6); ctx.lineTo(4, -6); ctx.closePath(); ctx.fill()
+      ctx.strokeStyle = '#5D4037'; ctx.lineWidth = 1
+      ctx.beginPath()
+      for (let i = 0; i < 4; i++) {
+        const px = -10 + i * 6, py = (i % 2 === 0) ? -3 : 3
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+      }
+      ctx.stroke()
+      ctx.fillStyle = '#E65100'; ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(-4, -5); ctx.lineTo(4, -5); ctx.closePath(); ctx.fill()
+    } else if (type === 'inductor') {
+      // 电感：串联半圆弧
+      ctx.strokeStyle = '#5D4037'; ctx.lineWidth = 1.6; ctx.lineCap = 'round'
+      ctx.beginPath(); ctx.moveTo(-14, 0)
+      for (let i = 0; i < 4; i++) ctx.arc(-9 + i * 5, 0, 2.5, Math.PI, 0, false)
+      ctx.lineTo(14, 0); ctx.stroke(); ctx.lineCap = 'butt'
+    } else if (type === 'capacitor') {
+      // 电容：两条平行极板
+      ctx.strokeStyle = '#37474F'; ctx.lineWidth = 2.2; ctx.lineCap = 'butt'
+      ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(-2, 0); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(-2, -7); ctx.lineTo(-2, 7); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(2, -7); ctx.lineTo(2, 7); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(2, 0); ctx.lineTo(14, 0); ctx.stroke()
     }
     ctx.restore()
   }
 
-  function drawBuilderComp(ctx, comp, s, circuit) {
+  function drawBuilderComp(ctx, comp, s, circuit, engineResult) {
     const { x, y, type, rotation } = comp
-    const isClosed = circuit && circuit.closed
+    const isClosed = engineResult ? engineResult.ok : (circuit && circuit.closed)
     ctx.save(); ctx.translate(x, y); ctx.rotate(rotation || 0)
     if (s.dragId === comp.id) ctx.globalAlpha = 0.6
 
@@ -541,20 +727,28 @@ export default function OhmsLawScene() {
       ctx.fillText('−', 40, -16)
       ctx.textBaseline = 'alphabetic'
     } else if (type === 'bulb') {
-      const brightness = isClosed ? 1.0 : 0
-      ctx.fillStyle = brightness > 0.3 ? '#FFEB3B' : '#FFFDE7'
-      ctx.strokeStyle = brightness > 0.3 ? '#F9A825' : '#bbb'; ctx.lineWidth = 2
+      const brightness = (() => {
+        if (!isClosed || !engineResult?.ok || !engineResult.results) return 0
+        const r = engineResult.results.get(comp.id)
+        if (!r) return 0
+        const maxP = (Math.pow(s.U || 6, 2)) / 10
+        return Math.max(0.05, Math.min(1, r.power / maxP))
+      })()
+      ctx.fillStyle = brightness > 0.15 ? '#FFEB3B' : '#FFFDE7'
+      ctx.strokeStyle = brightness > 0.15 ? '#F9A825' : '#bbb'; ctx.lineWidth = 2
       ctx.beginPath(); ctx.arc(0, -6, 20, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.strokeStyle = brightness > 0.3 ? '#E65100' : '#999'; ctx.lineWidth = 1.5
+      ctx.strokeStyle = brightness > 0.15 ? '#E65100' : '#999'; ctx.lineWidth = 1.5
       ctx.beginPath(); ctx.moveTo(-8, -14); ctx.lineTo(8, 2); ctx.stroke()
       ctx.beginPath(); ctx.moveTo(8, -14); ctx.lineTo(-8, 2); ctx.stroke()
       ctx.fillStyle = '#9E9E9E'; ctx.strokeStyle = '#616161'; ctx.lineWidth = 1
       ctx.beginPath(); ctx.roundRect(-10, 14, 20, 10, 2); ctx.fill(); ctx.stroke()
-      if (brightness > 0.3) {
+      if (brightness > 0.15) {
         const glow = ctx.createRadialGradient(0, -6, 15, 0, -6, 50)
         glow.addColorStop(0, 'rgba(255,235,59,0.35)'); glow.addColorStop(1, 'rgba(255,235,59,0)')
         ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, -6, 50, 0, Math.PI * 2); ctx.fill()
       }
+      ctx.fillStyle = '#F57F17'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+      ctx.fillText('灯泡', 0, 26)
     } else if (type === 'switch') {
       const sw = comp.closed !== false
       ctx.fillStyle = '#ECEFF1'; ctx.strokeStyle = '#78909C'; ctx.lineWidth = 2
@@ -578,23 +772,71 @@ export default function OhmsLawScene() {
       ctx.fillStyle = '#333'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
       ctx.fillText('10Ω', 0, 16)
     } else if (type === 'ammeter') {
-      ctx.fillStyle = '#FFEBEE'; ctx.strokeStyle = '#E53935'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.arc(0, 0, 22, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#E53935'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('Ⓐ', 0, 0)
+      const r = (isClosed && engineResult?.ok && engineResult.results) ? engineResult.results.get(comp.id) : null
+      const cur = r ? r.current : 0
+      ctx.fillStyle = '#FFCDD2'; ctx.strokeStyle = '#E53935'; ctx.lineWidth = 2
+      ctx.beginPath(); ctx.arc(0, 0, 26, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+      ctx.fillStyle = '#B71C1C'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText('A', 0, -8)
+      ctx.fillStyle = '#333'; ctx.font = 'bold 10px monospace'
+      ctx.fillText(isClosed ? `${Math.abs(cur).toFixed(2)}A` : '--', 0, 10)
     } else if (type === 'voltmeter') {
-      ctx.fillStyle = '#E8F5E9'; ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.arc(0, 0, 22, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#4CAF50'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('Ⓥ', 0, 0)
+      const r = (isClosed && engineResult?.ok && engineResult.results) ? engineResult.results.get(comp.id) : null
+      const volt = r ? Math.abs(r.voltage) : 0
+      ctx.fillStyle = '#C8E6C9'; ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2
+      ctx.beginPath(); ctx.arc(0, 0, 26, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+      ctx.fillStyle = '#1B5E20'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText('V', 0, -8)
+      ctx.fillStyle = '#333'; ctx.font = 'bold 10px monospace'
+      ctx.fillText(isClosed ? `${volt.toFixed(1)}V` : '--', 0, 10)
     } else if (type === 'rheostat') {
+      const Rv = (comp.props && comp.props.resistance != null) ? comp.props.resistance : 20
+      const minX = -30, maxX = 30
+      const sliderX = minX + (Rv / 50) * (maxX - minX)
+      // 底座
       ctx.fillStyle = '#EFEBE9'; ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 2
       ctx.beginPath(); ctx.roundRect(-34, -14, 68, 28, 4); ctx.fill(); ctx.stroke()
-      const bands = ['#B71C1C', '#43A047', '#FF6F00']
-      bands.forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(-24 + i * 18, -14, 8, 28) })
-      ctx.fillStyle = '#546E7A'; ctx.beginPath(); ctx.moveTo(0, -18); ctx.lineTo(-5, -14); ctx.lineTo(5, -14); ctx.closePath(); ctx.fill()
+      // 电阻体（锯齿）
+      ctx.strokeStyle = '#5D4037'; ctx.lineWidth = 1.2
+      ctx.beginPath(); ctx.moveTo(-30, 0)
+      for (let i = 0; i < 10; i++) {
+        const px = -30 + i * 6, py = (i % 2 === 0) ? -4 : 4
+        if (i > 0) ctx.lineTo(px, py)
+      }
+      ctx.lineTo(30, 0); ctx.stroke()
+      // 金属滑杆
+      ctx.strokeStyle = '#78909C'; ctx.lineWidth = 2.5
+      ctx.beginPath(); ctx.moveTo(-34, -18); ctx.lineTo(34, -18); ctx.stroke()
+      // 滑片
+      ctx.fillStyle = '#FB8C00'; ctx.strokeStyle = '#E65100'; ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.roundRect(sliderX - 6, -22, 12, 8, 2); ctx.fill(); ctx.stroke()
+      ctx.strokeStyle = '#E65100'; ctx.lineWidth = 2
+      ctx.beginPath(); ctx.moveTo(sliderX, -14); ctx.lineTo(sliderX, -4); ctx.stroke()
+      // 阻值标注
       ctx.fillStyle = '#333'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-      ctx.fillText('50Ω', 0, 16)
+      ctx.fillText(`变阻器 ${Rv}Ω`, 0, 16)
+    } else if (type === 'inductor') {
+      // 电感实物：灰壳+金色线圈
+      ctx.fillStyle = '#78909C'; ctx.strokeStyle = '#455A64'; ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.roundRect(-30, -14, 60, 28, 6); ctx.fill(); ctx.stroke()
+      ctx.strokeStyle = '#FFC107'; ctx.lineWidth = 2
+      ctx.beginPath()
+      for (let i = 0; i < 6; i++) {
+        const px = -22 + i * 8
+        if (i === 0) ctx.moveTo(px, 0); else ctx.arc(px, 0, 4, Math.PI, 0, false)
+      }
+      ctx.stroke()
+      ctx.fillStyle = '#37474F'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+      ctx.fillText('电感 L', 0, 16)
+    } else if (type === 'capacitor') {
+      // 电容实物：蓝色电解电容
+      ctx.fillStyle = '#1976D2'; ctx.strokeStyle = '#0D47A1'; ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.roundRect(-12, -20, 24, 40, 4); ctx.fill(); ctx.stroke()
+      ctx.fillStyle = '#42A5F5'; ctx.beginPath(); ctx.ellipse(0, -20, 12, 4, 0, 0, Math.PI * 2); ctx.fill()
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText('+', -6, 0)
+      ctx.fillStyle = '#0D47A1'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+      ctx.fillText('电容 C', 0, 26)
     }
 
     ctx.globalAlpha = 1; ctx.restore()
@@ -616,19 +858,29 @@ export default function OhmsLawScene() {
     const tc = S.current.components.find(c => c.id === wire.to.compId)
     if (!fc || !tc) return
     const f = getTermPos(fc, wire.from.termIdx), t = getTermPos(tc, wire.to.termIdx)
-    const ddx = t.x - f.x, ddy = t.y - f.y
     const color = wire.color || '#1565C0'
-    const m1x = wire.mid1X != null ? wire.mid1X : f.x + ddx * 0.33
-    const m1y = wire.mid1Y != null ? wire.mid1Y : f.y + ddy * 0.33
-    const m2x = wire.mid2X != null ? wire.mid2X : f.x + ddx * 0.67
-    const m2y = wire.mid2Y != null ? wire.mid2Y : f.y + ddy * 0.67
     ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
     ctx.beginPath(); ctx.moveTo(f.x, f.y)
-    ctx.lineTo(m1x, m1y); ctx.lineTo(m2x, m2y); ctx.lineTo(t.x, t.y); ctx.stroke()
-    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(m1x, m1y, 5, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(m1x, m1y, 2.5, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = color; ctx.beginPath(); ctx.arc(m2x, m2y, 5, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(m2x, m2y, 2.5, 0, Math.PI * 2); ctx.fill()
+    if (wire.mid1X != null) {
+      ctx.lineTo(wire.mid1X, wire.mid1Y)
+      if (wire.mid2X != null) ctx.lineTo(wire.mid2X, wire.mid2Y)
+      ctx.lineTo(t.x, t.y)
+    } else {
+      const dx = t.x - f.x
+      const ext = Math.min(Math.abs(dx) * 0.5, 80)
+      const fDir = f.x < t.x ? -1 : 1
+      const tDir = f.x < t.x ? 1 : -1
+      ctx.bezierCurveTo(f.x + fDir * ext, f.y, t.x + tDir * ext, t.y, t.x, t.y)
+    }
+    ctx.stroke(); ctx.lineCap = 'butt'
+    if (wire.mid1X != null) {
+      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(wire.mid1X, wire.mid1Y, 5, 0, Math.PI * 2); ctx.fill()
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(wire.mid1X, wire.mid1Y, 2.5, 0, Math.PI * 2); ctx.fill()
+    }
+    if (wire.mid2X != null) {
+      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(wire.mid2X, wire.mid2Y, 5, 0, Math.PI * 2); ctx.fill()
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(wire.mid2X, wire.mid2Y, 2.5, 0, Math.PI * 2); ctx.fill()
+    }
   }
 
   function checkCircuit() {
@@ -661,6 +913,52 @@ export default function OhmsLawScene() {
     return { closed: true, reason: '电路正常' }
   }
 
+  // Tab2 引擎求解：把 components/wires 喂给 CircuitGraph，返回各元件电流/电压/功率
+  function solveSceneCircuit() {
+    const s = S.current
+    // 白名单过滤：只保留电路认识的元件类型
+    const ALLOWED = new Set(['battery', 'bulb', 'switch', 'resistor', 'rheostat', 'inductor', 'capacitor', 'ammeter', 'voltmeter'])
+    const before = s.components.length
+    s.components = s.components.filter(c => ALLOWED.has(c.type))
+    if (s.components.length !== before) {
+      const kept = new Set(s.components.map(c => c.id))
+      s.wires = s.wires.filter(w => kept.has(w.from.compId) && kept.has(w.to.compId))
+    }
+
+    if (s.components.length === 0) return { ok: false, reason: '画布是空的' }
+
+    const g = new CircuitGraph()
+    for (const comp of s.components) {
+      const props = {}
+      if (comp.type === 'bulb') props.resistance = 10
+      if (comp.type === 'resistor') props.resistance = 10
+      if (comp.type === 'rheostat') props.resistance = (comp.props && comp.props.resistance != null) ? comp.props.resistance : 20
+      if (comp.type === 'inductor') props.resistance = 1
+      if (comp.type === 'capacitor') props.resistance = 1000000
+      if (comp.type === 'switch') props.closed = comp.closed !== false
+      if (comp.type === 'battery') props.voltage = s.U || 6
+      if (comp.type === 'ammeter') props.resistance = 0.001
+      if (comp.type === 'voltmeter') props.resistance = 1000000
+      g.addComponent(comp.type, comp.x, comp.y, props, comp.id)
+    }
+    for (const wire of s.wires) {
+      g.addWire(
+        { componentId: wire.from.compId, portIndex: wire.from.termIdx },
+        { componentId: wire.to.compId, portIndex: wire.to.termIdx }
+      )
+    }
+    try {
+      const v = g.validate()
+      if (!v.ok) return { ok: false, reason: v.reason, results: new Map() }
+      const info = g.getCircuitInfo()
+      const solver = new CircuitSolver()
+      const results = solver.solve(info)
+      return { ok: true, reason: v.reason, results }
+    } catch (e) {
+      return { ok: false, reason: '求解失败：' + (e.message || e), results: new Map() }
+    }
+  }
+
   function getTerminals(comp) {
     const c = Math.cos(comp.rotation || 0), sn = Math.sin(comp.rotation || 0)
     return [{ x: comp.x - 40 * c, y: comp.y - 40 * sn }, { x: comp.x + 40 * c, y: comp.y + 40 * sn }]
@@ -689,7 +987,7 @@ export default function OhmsLawScene() {
     if (e.button !== 0) return
     const s = S.current; const { x, y } = getPos(e)
     if (s.tab === 1) {
-      for (const a of canvasRef.current._clickAreas) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(); return } }
+      for (const a of canvasRef.current._clickAreas) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(x, y); return } }
       return
     }
     for (const a of canvasRef.current._palAreas) {
@@ -697,9 +995,21 @@ export default function OhmsLawScene() {
         if (a.action === 'color') { s.wireColor = a.color; forceUpdate(n => n + 1); return }
         if (a.type) {
           const id = s.nextId++
-          s.components.push({ id, type: a.type, x, y, rotation: 0, closed: true })
+          const props = {}
+          if (a.type === 'rheostat') props.resistance = 20
+          s.components.push({ id, type: a.type, x, y, rotation: 0, closed: true, props })
           s.dragId = id; s.dragOffX = 0; s.dragOffY = 0; forceUpdate(n => n + 1); return
         }
+      }
+    }
+    // 先检测是否点中滑线变阻器的滑片
+    for (const comp of s.components) {
+      if (comp.type !== 'rheostat') continue
+      const Rv = (comp.props && comp.props.resistance != null) ? comp.props.resistance : 20
+      const sliderX = comp.x - 30 + (Rv / 50) * 60
+      if (Math.abs(x - sliderX) < 12 && Math.abs(y - (comp.y - 18)) < 15) {
+        s.dragId = 'rheo_' + comp.id
+        forceUpdate(n => n + 1); return
       }
     }
     const term = findTerm(x, y)
@@ -709,13 +1019,12 @@ export default function OhmsLawScene() {
       const tc = s.components.find(c => c.id === wire.to.compId)
       if (!fc || !tc) continue
       const f = getTermPos(fc, wire.from.termIdx), t = getTermPos(tc, wire.to.termIdx)
-      const ddx = t.x - f.x, ddy = t.y - f.y
-      const m1x = wire.mid1X != null ? wire.mid1X : f.x + ddx * 0.33
-      const m1y = wire.mid1Y != null ? wire.mid1Y : f.y + ddy * 0.33
-      const m2x = wire.mid2X != null ? wire.mid2X : f.x + ddx * 0.67
-      const m2y = wire.mid2Y != null ? wire.mid2Y : f.y + ddy * 0.67
-      if ((x - m1x) ** 2 + (y - m1y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_1'; forceUpdate(n => n + 1); return }
-      if ((x - m2x) ** 2 + (y - m2y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_2'; forceUpdate(n => n + 1); return }
+      if (wire.mid1X != null) {
+        if ((x - wire.mid1X) ** 2 + (y - wire.mid1Y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_1'; forceUpdate(n => n + 1); return }
+      }
+      if (wire.mid2X != null) {
+        if ((x - wire.mid2X) ** 2 + (y - wire.mid2Y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_2'; forceUpdate(n => n + 1); return }
+      }
     }
     const comp = findComp(x, y)
     if (comp) { s.dragId = comp.id; s.dragOffX = x - comp.x; s.dragOffY = y - comp.y; forceUpdate(n => n + 1) }
@@ -725,6 +1034,17 @@ export default function OhmsLawScene() {
     const s = S.current; const { x, y } = getPos(e)
     if (s.tab !== 2) return
     if (s.dragId) {
+      if (typeof s.dragId === 'string' && s.dragId.startsWith('rheo_')) {
+        const compId = parseInt(s.dragId.slice(5))
+        const comp = s.components.find(c => c.id === compId)
+        if (comp) {
+          const minX = comp.x - 30, maxX = comp.x + 30
+          const nx = Math.max(minX, Math.min(maxX, x))
+          comp.props.resistance = Math.round(((nx - minX) / (maxX - minX)) * 50)
+          forceUpdate(n => n + 1)
+        }
+        return
+      }
       if (typeof s.dragId === 'string' && s.dragId.startsWith('wire_')) {
         const parts = s.dragId.split('_')
         const wire = s.wires.find(w => w.id === parseInt(parts[1]))
@@ -839,3 +1159,4 @@ const styles = {
   main: { flex: 1, display: 'flex', overflow: 'hidden' },
   desc: { padding: '8px 14px', background: '#f5f5f5', borderTop: '1px solid #ccc', fontSize: 13, color: '#333' },
 }
+

@@ -10,13 +10,16 @@
 
 // ─── 端口定义（每种元件的接线柱位置）───
 export const PORT_DEFS = {
-  battery:   [{ x: -44, y: 0 }, { x: 44, y: 0 }],
-  switch:    [{ x: -26, y: 0 }, { x: 26, y: 0 }],
-  ammeter:   [{ x: -30, y: 0 }, { x: 30, y: 0 }],
-  voltmeter: [{ x: -30, y: 0 }, { x: 30, y: 0 }],
-  rheostat:  [{ x: -40, y: 0 }, { x: 40, y: 0 }],
-  bulb:      [{ x: -20, y: 20 }, { x: 20, y: 20 }],
-  resistor:  [{ x: -42, y: 0 }, { x: 42, y: 0 }],
+  battery:    [{ x: -44, y: 0 }, { x: 44, y: 0 }],
+  switch:     [{ x: -26, y: 0 }, { x: 26, y: 0 }],
+  ammeter:    [{ x: -30, y: 0 }, { x: 30, y: 0 }],
+  voltmeter:  [{ x: -30, y: 0 }, { x: 30, y: 0 }],
+  rheostat:   [{ x: -40, y: 0 }, { x: 40, y: 0 }],
+  bulb:       [{ x: -20, y: 20 }, { x: 20, y: 20 }],
+  resistor:   [{ x: -42, y: 0 }, { x: 42, y: 0 }],
+  inductor:   [{ x: -30, y: 0 }, { x: 30, y: 0 }],
+  capacitor:  [{ x: -30, y: 0 }, { x: 30, y: 0 }],
+  transformer:[{ x: -40, y: -10 }, { x: 40, y: -10 }],  // 原边2端子（简化）
 }
 
 // ─── Union-Find ───
@@ -182,17 +185,15 @@ export class CircuitGraph {
         return { ok: false, reason: '短路！' }
     }
 
-    // 伏特表必须并联（与某个元件共享同一对节点）
+    // 伏特表必须并联（两端节点间，除V表外还有其他元件路径连通即可）
     const vm = this.components.find(c => c.type === 'voltmeter')
     if (vm && wired.has(vm.id)) {
       const vmPair = this.getNodePair(vm)
       if (vmPair) {
-        const hasParallelTarget = this.components.find(c => {
-          if (c.id === vm.id || c.type === 'battery') return false  // 不和电源比
-          const p = this.getNodePair(c); if (!p) return false
-          return (p[0] === vmPair[0] && p[1] === vmPair[1]) || (p[0] === vmPair[1] && p[1] === vmPair[0])
-        })
-        if (!hasParallelTarget) return { ok: false, reason: '伏特表串联→断路（应并联在灯泡两端）' }
+        // 排除V表自身，检查两节点间是否有其他路径（并联在单个元件或串联组合两端都算）
+        if (!this.hasPath(vmPair[0], vmPair[1], vm.id)) {
+          return { ok: false, reason: '伏特表串联→断路（应并联在灯泡两端）' }
+        }
       }
     }
 
@@ -243,7 +244,10 @@ export class CircuitGraph {
     switch (comp.type) {
       case 'resistor': return comp.props.resistance || 100
       case 'bulb': return comp.props.resistance || 15
-      case 'rheostat': return comp.props.resistance || 10
+      case 'rheostat': return comp.props.resistance || 20
+      case 'inductor': return 0.001   // 直流稳态：电感近似短路
+      case 'capacitor': return 1e9    // 直流稳态：电容近似开路
+      case 'transformer': return 0.001 // 原边绕组直流近似短路（暂不处理副边）
       case 'ammeter': return 0.001  // 近似短路
       case 'voltmeter': return 1e6   // 近似断路
       case 'switch': return comp.props.closed ? 0.001 : 1e9
