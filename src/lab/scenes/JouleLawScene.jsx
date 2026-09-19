@@ -355,55 +355,57 @@ export default function JouleLawScene() {
     ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill(); ctx.stroke()
 
     ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('🎯 实验目的：探究 Q 与 I、R、t 的关系', x + 12, y + 12)
+    ctx.fillText('🎯 探究 Q 与 I、R、t 的关系', x + 12, y + 12)
 
     const I = s.step === 2 ? s.U / (5 + 20 + s.sliderR) : s.U / (10 + s.sliderR)
+    const Rval = s.step === 2 ? 5 : 10
     const Rtxt = s.step === 2 ? '5Ω / 20Ω 串联' : '10Ω'
-    ctx.font = '11px sans-serif'; ctx.fillStyle = '#444'
-    ctx.fillText(`电流 I = ${I.toFixed(2)} A    电阻 R = ${Rtxt}`, x + 12, y + 36)
-    ctx.fillText(`时间 t = ${s.elapsed.toFixed(1)} s`, x + 12, y + 54)
+    ctx.font = '10px sans-serif'; ctx.fillStyle = '#444'
+    ctx.fillText(`I = ${I.toFixed(2)}A  R = ${Rtxt}`, x + 12, y + 32)
+    ctx.fillText(`t = ${s.elapsed.toFixed(1)}s    Q = I²Rt = ${I.toFixed(2)}²×${Rval}×${s.elapsed.toFixed(1)}`, x + 12, y + 46)
 
-    const Q0 = I * I * (s.step === 2 ? 5 : 10) * s.elapsed
+    const Q0 = I * I * Rval * s.elapsed
     const Q1 = s.step === 2 ? I * I * 20 * s.elapsed : 0
     ctx.fillStyle = '#E65100'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText(`Q₁=${Q0.toFixed(1)}J` + (s.step === 2 ? `  Q₂=${Q1.toFixed(1)}J` : ''), x + 12, y + 74)
+    ctx.fillText(`Q = ${Q0.toFixed(1)} J` + (s.step === 2 ? `  Q₁=${Q0.toFixed(1)}J  Q₂=${Q1.toFixed(1)}J` : ''), x + 12, y + 62)
 
     // 操作步骤
+    let ky = y + (s.step === 2 ? 116 : 100)
     const guideSteps = s.step === 1
-      ? ['① 点击开关闭合电路', '② 点击滑动变阻器改变电流', '③ 观察温度计上升快慢', '④ 结论：电流越大，升温越快']
+      ? ['① 闭合开关', '② 调变阻器改电流', '③ 观察温度上升快慢', '④ 结论：I 越大，升温越快']
       : s.step === 2
-        ? ['① 点击开关闭合电路', '② 两个电阻丝(5Ω/20Ω)串联', '③ 同电流，电阻大的升温快', '④ 结论：Q ∝ R']
-        : ['① 点击开关开始计时', '② 每5秒点"记录"', '③ 温度计随时间线性上升', '④ 结论：Q ∝ t']
-    ctx.fillStyle = '#5D4037'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText('📋 操作步骤', x + 12, y + 94)
+        ? ['① 闭合开关', '② 两电阻丝串联', '③ 同电流，R大的升温快', '④ 结论：Q ∝ R']
+        : ['① 闭合开关开始计时', '② 每隔几秒点"记录"', '③ 观察温度随时间上升', '④ 结论：Q ∝ t']
+    ctx.fillStyle = '#5D4037'; ctx.font = 'bold 10px sans-serif'
+    ctx.fillText('📋 操作步骤', x + 12, ky); ky += 16
     ctx.font = '10px sans-serif'
     for (let i = 0; i < guideSteps.length; i++) {
-      ctx.fillText(guideSteps[i], x + 12, y + 112 + i * 15)
+      ctx.fillText(guideSteps[i], x + 12, ky + i * 14)
     }
+    ky += guideSteps.length * 14 + 10
 
     // Step3 数据表
     if (s.step === 3) {
-      const ty = y + 178
       ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'
-      ctx.fillText('📊 实验数据', x + 12, ty - 16)
+      ctx.fillText('📊 实验数据', x + 12, ky); ky += 18
       ctx.fillStyle = '#FFB74D'
-      ctx.fillRect(x + 12, ty, w - 24, 20)
+      ctx.fillRect(x + 12, ky, w - 24, 18)
       ctx.fillStyle = '#333'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText('序号', x + 27, ty + 4)
-      ctx.fillText('t (s)', x + 62, ty + 4)
-      ctx.fillText('I²Rt (J)', x + 102, ty + 4)
-      ctx.fillText('ΔT (°C)', x + 142, ty + 4)
-      ctx.textAlign = 'left'
+      const col1 = x + 30, col2 = x + 65, col3 = x + 105, col4 = x + 145
+      ctx.fillText('序号', col1, ky + 3)
+      ctx.fillText('t(s)', col2, ky + 3)
+      ctx.fillText('I²Rt(J)', col3, ky + 3)
+      ctx.fillText('ΔT(°C)', col4, ky + 3)
+      ky += 18
       for (let i = 0; i < s.records.length; i++) {
         const r = s.records[i]
-        const ry = ty + 20 + i * 18
-        if (i % 2 === 0) { ctx.fillStyle = '#FFF8E1'; ctx.fillRect(x + 12, ry, w - 24, 18) }
-        ctx.fillStyle = '#333'; ctx.font = '10px monospace'
-        ctx.textAlign = 'center'
-        ctx.fillText(String(i + 1), x + 27, ry + 4)
-        ctx.fillText(r.t.toFixed(1), x + 62, ry + 4)
-        ctx.fillText(r.Q.toFixed(1), x + 102, ry + 4)
-        ctx.fillText(r.dT.toFixed(1), x + 142, ry + 4)
+        if (i % 2 === 0) { ctx.fillStyle = '#FFF8E1'; ctx.fillRect(x + 12, ky, w - 24, 16) }
+        ctx.fillStyle = '#333'; ctx.font = '10px monospace'; ctx.textAlign = 'center'
+        ctx.fillText(String(i + 1), col1, ky + 2)
+        ctx.fillText(r.t.toFixed(1), col2, ky + 2)
+        ctx.fillText(r.Q.toFixed(1), col3, ky + 2)
+        ctx.fillText(r.dT.toFixed(1), col4, ky + 2)
+        ky += 16
       }
       ctx.textAlign = 'left'
     }
@@ -421,7 +423,9 @@ export default function JouleLawScene() {
         x: bx, y: btnY, w: btnW, h: btnH,
         onClick: () => {
           const s2 = S.current
-          s2.records.push({ t: s2.elapsed, Q: I * I * 10 * s2.elapsed, dT: s2.temps[0] - 20 })
+          const I2 = s2.step === 2 ? s2.U / (5 + 20 + s2.sliderR) : s2.U / (10 + s2.sliderR)
+          const R2 = s2.step === 2 ? 5 : 10
+          s2.records.push({ t: s2.elapsed, Q: I2 * I2 * R2 * s2.elapsed, dT: s2.temps[0] - 20 })
           forceUpdate(n => n + 1)
         }
       })
@@ -541,6 +545,7 @@ export default function JouleLawScene() {
   }
 
   function drawPalette(ctx, x, y, w, h) {
+    const s = S.current
     ctx.fillStyle = '#fafafa'; ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1
     ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill(); ctx.stroke()
     ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
