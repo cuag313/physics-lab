@@ -1,94 +1,494 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 /**
  * BohrScene — 玻尔氢原子能级与光谱
  *
- * 氢原子能级跃迁模拟
- * - 发射/吸收光子
- * - 生成氢原子线状光谱
- * - 计算光子波长
+ * E_n = -13.6/n² eV
+ * hν = |ΔE|，λ = hc/|ΔE|
+ * 莱曼系(紫外)、巴尔末系(可见)、帕邢系(红外)
+ *
+ * Step1: 能级跃迁 — 发射/吸收光子，计算光子波长
+ * Step2: 光谱系列 — 莱曼系、巴尔末系、帕邢系
+ * Step3: 氢原子光谱 — 生成线状光谱图
  */
 export default function BohrScene() {
-  const [selectedLevel, setSelectedLevel] = useState(3)
-  const [targetLevel, setTargetLevel] = useState(2)
+  const canvasRef = useRef(null)
+  const animRef = useRef(null)
 
-  // 氢原子能级 (eV): En = -13.6/n²
-  const levels = [1, 2, 3, 4, 5, 6].map(n => ({
-    n, E: -13.6 / (n * n), label: `n=${n}`
-  }))
+  const S = useRef({
+    tab: 1,
+    step: 1,
+    switchClosed: false,
+    fromLevel: 3,      // 初始能级
+    toLevel: 2,        // 跃迁到
+    emitLine: null,    // 正在发射的光子动画
+    records: [],
+    components: [],
+    wires: [],
+    dragId: null,
+    dragOffX: 0, dragOffY: 0,
+    connecting: null,
+    nextId: 1,
+    wireColor: '#F44336',
+    _guideOpen: false,
+  })
 
-  const E1 = -13.6 / (selectedLevel * selectedLevel)
-  const E2 = -13.6 / (targetLevel * targetLevel)
-  const dE = Math.abs(E1 - E2)
-  const wavelength = dE > 0 ? (1240 / dE).toFixed(1) : '∞' // nm
-  const series = targetLevel === 1 ? '莱曼系(紫外)' : targetLevel === 2 ? '巴尔末系(可见)' : targetLevel === 3 ? '帕邢系(红外)' : '其他'
+  const [tab, setTab] = useState(1)
+  const [, setStep] = useState(1)
+  const [, forceUpdate] = useState(0)
+
+  useEffect(() => {
+    const canvas = canvasRef.current; if (!canvas) return
+    const R = {
+      canvas, ctx: canvas.getContext('2d'), W: 0, H: 0,
+      resize() {
+        const rect = canvas.getBoundingClientRect()
+        canvas.width = rect.width * devicePixelRatio
+        canvas.height = rect.height * devicePixelRatio
+        this.ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0)
+        this.W = rect.width; this.H = rect.height
+      },
+    }
+    R.resize(); canvasRef.current._R = R
+
+    const loop = () => { render(R); animRef.current = requestAnimationFrame(loop) }
+    animRef.current = requestAnimationFrame(loop)
+    window.addEventListener('resize', R.resize.bind(R))
+    return () => { if (animRef.current) cancelAnimationFrame(animRef.current) }
+  }, [])
+
+  // 氢原子能级
+  function levelE(n) { return -13.6 / (n * n) }
+
+  function bohrInfo(s) {
+    const E1 = levelE(s.fromLevel)
+    const E2 = levelE(s.toLevel)
+    const dE = Math.abs(E1 - E2)
+    const lambda = dE > 0 ? 1240 / dE : Infinity // nm
+    const isEmit = s.fromLevel > s.toLevel
+    const series = s.toLevel === 1 ? '莱曼系' : s.toLevel === 2 ? '巴尔末系' : s.toLevel === 3 ? '帕邢系' : '布拉开系'
+    const region = s.toLevel === 1 ? '紫外' : s.toLevel === 2 ? '可见' : '红外'
+    return { E1, E2, dE, lambda, isEmit, series, region }
+  }
+
+  // 光子波长→RGB颜色
+  function wavelengthToColor(nm) {
+    if (nm < 380) return '#9C27B0'  // 紫外→紫
+    if (nm < 450) return '#4A148C'
+    if (nm < 495) return '#1565C0'
+    if (nm < 570) return '#4CAF50'
+    if (nm < 590) return '#FF9800'
+    if (nm < 620) return '#FF5722'
+    if (nm < 750) return '#D32F2F'
+    return '#B71C1C'  // 红外
+  }
+
+  function render(R) {
+    try {
+      const ctx = R.ctx, W = R.W, H = R.H
+      ctx.clearRect(0, 0, W, H)
+      ctx.fillStyle = '#f0f4f8'; ctx.fillRect(0, 0, W, H)
+      canvasRef.current._clickAreas = []
+      canvasRef.current._palAreas = []
+      if (S.current.tab === 1) renderDemo(ctx, W, H)
+      else renderBuilder(ctx, W, H)
+    } catch (e) { console.error('render error:', e) }
+  }
+
+  function renderDemo(ctx, W, H) {
+    const s = S.current
+    const info = bohrInfo(s)
+
+    const labels = ['① 能级跃迁', '② 光谱系列', '③ 氢原子光谱']
+    const bw = 115, bh = 28, gap = 8
+    const totalW = bw * 3 + gap * 2
+    const bx0 = (W - totalW) / 2
+    for (let i = 0; i < 3; i++) {
+      const x = bx0 + i * (bw + gap), y = 10
+      ctx.fillStyle = s.step === i + 1 ? '#FF9800' : '#fff'
+      ctx.strokeStyle = s.step === i + 1 ? '#E65100' : '#999'
+      ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.roundRect(x, y, bw, bh, 6); ctx.fill(); ctx.stroke()
+      ctx.fillStyle = s.step === i + 1 ? '#fff' : '#555'
+      ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText(labels[i], x + bw / 2, y + bh / 2)
+      canvasRef.current._clickAreas.push({ x: x - 3, y: y - 3, w: bw + 6, h: bh + 6, onClick: () => {
+        S.current.step = i + 1; S.current.records = []
+        setStep(i + 1); forceUpdate(n => n + 1)
+      } })
+    }
+    ctx.textBaseline = 'alphabetic'
+
+    const subs = {
+      1: '电子从高能级跃迁到低能级发射光子，低到高吸收光子，hν = |ΔE|',
+      2: '不同终态对应不同光谱系列：莱曼(紫外)、巴尔末(可见)、帕邢(红外)',
+      3: '氢原子光谱是线状光谱，每条谱线对应一次能级跃迁',
+    }
+    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'
+    ctx.fillText(subs[s.step], W / 2, 52)
+    ctx.fillStyle = '#1565C0'; ctx.font = 'bold 11px sans-serif'
+    ctx.fillText('🎯 实验目的：理解玻尔原子模型，掌握能级跃迁与光谱的关系', W / 2, 70)
+
+    // 能级图
+    drawLevelDiagram(ctx, W * 0.12, 80, W * 0.38, H - 140, s, info)
+
+    // 光谱图
+    drawSpectrum(ctx, W * 0.54, 80, W * 0.42, H - 140, s, info)
+
+    // 底部参数
+    const barY = H - 26
+    ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#1565C0'; ctx.fillText(`初始 n=${s.fromLevel}`, 55, barY)
+    drawMiniSlider(ctx, 120, barY, 60, (s.fromLevel - 1) / 5, (r) => { S.current.fromLevel = Math.round(1 + r * 5); forceUpdate(n => n + 1) })
+    ctx.fillStyle = '#FF9800'; ctx.fillText('→', 185, barY)
+    ctx.fillStyle = '#E53935'; ctx.fillText(`跃迁 n=${s.toLevel}`, 200, barY)
+    drawMiniSlider(ctx, 265, barY, 60, (s.toLevel - 1) / 5, (r) => { S.current.toLevel = Math.round(1 + r * 5); forceUpdate(n => n + 1) })
+
+    // 发射/吸收按钮
+    ctx.fillStyle = info.isEmit ? '#4CAF50' : '#FF9800'
+    ctx.beginPath(); ctx.roundRect(340, barY - 13, 80, 26, 5); ctx.fill()
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'
+    ctx.fillText(info.isEmit ? '✨ 发射光子' : '⚡ 吸收光子', 380, barY)
+    canvasRef.current._clickAreas.push({ x: 340, y: barY - 13, w: 80, h: 26, onClick: () => {
+      S.current.switchClosed = true
+      S.current.emitLine = { from: s.fromLevel, to: s.toLevel, t: 0 }
+      forceUpdate(n => n + 1)
+    } })
+    ctx.textBaseline = 'alphabetic'
+
+    drawRightPanel(ctx, W * 0.56, H * 0.55, W - W * 0.56 - 25, H - H * 0.55 - 35, s, info)
+  }
+
+  // 能级图
+  function drawLevelDiagram(ctx, x, y, w, h, s, info) {
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#ddd'
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill(); ctx.stroke()
+
+    // 能级画布
+    const ox = x + 40, oy = y + 30
+    const ph = h - 80, pw = w - 60
+
+    // 能级线
+    const levels = [1, 2, 3, 4, 5, 6]
+    const toY = n => oy + ph * (1 - (levelE(n) + 13.6) / 13.6)
+
+    for (const n of levels) {
+      const ly = toY(n)
+      const isFrom = n === s.fromLevel, isTo = n === s.toLevel
+      ctx.strokeStyle = isFrom ? '#1565C0' : isTo ? '#E53935' : '#999'
+      ctx.lineWidth = isFrom || isTo ? 2.5 : 1
+      ctx.beginPath(); ctx.moveTo(ox, ly); ctx.lineTo(ox + pw * 0.7, ly); ctx.stroke()
+      // 标注
+      ctx.fillStyle = isFrom ? '#1565C0' : isTo ? '#E53935' : '#666'
+      ctx.font = `${isFrom || isTo ? 'bold ' : ''}11px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      ctx.fillText(`n=${n}`, ox + pw * 0.7 + 8, ly)
+      ctx.font = '9px sans-serif'; ctx.fillStyle = '#999'
+      ctx.fillText(`${levelE(n).toFixed(2)} eV`, ox + pw * 0.7 + 42, ly)
+    }
+
+    // 基态标注
+    ctx.fillStyle = '#333'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText('基态 n=1', ox + pw * 0.35, toY(1) + 8)
+
+    // 跃迁箭头
+    const y1 = toY(s.fromLevel), y2 = toY(s.toLevel)
+    const arrowX = ox + pw * 0.3
+    const dir = s.toLevel < s.fromLevel ? -1 : 1 // 向下=发射
+
+    ctx.strokeStyle = info.isEmit ? '#4CAF50' : '#FF9800'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
+    ctx.beginPath(); ctx.moveTo(arrowX, y1); ctx.lineTo(arrowX, y2); ctx.stroke()
+    ctx.lineCap = 'butt'
+    // 箭头
+    ctx.fillStyle = info.isEmit ? '#4CAF50' : '#FF9800'
+    ctx.beginPath()
+    ctx.moveTo(arrowX, y2)
+    ctx.lineTo(arrowX - 6, y2 + dir * 10)
+    ctx.lineTo(arrowX + 6, y2 + dir * 10)
+    ctx.closePath(); ctx.fill()
+
+    // ΔE 标注
+    ctx.fillStyle = '#333'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    ctx.fillText(`ΔE = ${info.dE.toFixed(3)} eV`, arrowX + 12, (y1 + y2) / 2)
+
+    // 发射光子动画
+    if (info.isEmit && s.switchClosed) {
+      const time = (Date.now() / 1000) % 2
+      const photoY = y1 + (y2 - y1) * Math.min(time, 1)
+      const photoColor = wavelengthToColor(info.lambda)
+      // 光子
+      ctx.fillStyle = photoColor
+      ctx.beginPath(); ctx.arc(arrowX + 30 + time * 40, photoY, 5, 0, Math.PI * 2); ctx.fill()
+      // 光晕
+      ctx.fillStyle = photoColor.replace(')', ',0.3)').replace('rgb', 'rgba')
+      ctx.beginPath(); ctx.arc(arrowX + 30 + time * 40, photoY, 10, 0, Math.PI * 2); ctx.fill()
+    }
+
+    // 标注
+    ctx.fillStyle = '#5D4037'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText('氢原子能级图', x + w / 2, y + h - 20)
+    ctx.textBaseline = 'alphabetic'
+  }
+
+  // 光谱图
+  function drawSpectrum(ctx, x, y, w, h, s, info) {
+    ctx.fillStyle = '#111'; ctx.strokeStyle = '#ddd'
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill(); ctx.stroke()
+
+    // 波长范围 100nm ~ 800nm
+    const ox = x + 20, oy = y + 30
+    const pw = w - 40
+    const toX = nm => ox + ((nm - 100) / 700) * pw
+
+    // 连续光谱背景（灰渐变）
+    for (let px = 0; px < pw; px++) {
+      const nm = 100 + (px / pw) * 700
+      ctx.fillStyle = wavelengthToColor(nm)
+      ctx.globalAlpha = 0.15
+      ctx.fillRect(ox + px, oy, 1, 60)
+    }
+    ctx.globalAlpha = 1
+
+    // 氢原子光谱线（巴尔末系 + 莱曼系 + 帕邢系）
+    const lines = []
+    // 莱曼系 (→n=1)
+    for (let ni = 2; ni <= 6; ni++) {
+      const dE = Math.abs(levelE(ni) - levelE(1))
+      const lam = 1240 / dE
+      lines.push({ nm: lam, series: '莱曼', ni })
+    }
+    // 巴尔末系 (→n=2)
+    for (let ni = 3; ni <= 8; ni++) {
+      const dE = Math.abs(levelE(ni) - levelE(2))
+      const lam = 1240 / dE
+      lines.push({ nm: lam, series: '巴尔末', ni })
+    }
+    // 帕邢系 (→n=3)
+    for (let ni = 4; ni <= 8; ni++) {
+      const dE = Math.abs(levelE(ni) - levelE(3))
+      const lam = 1240 / dE
+      lines.push({ nm: lam, series: '帕邢', ni })
+    }
+
+    // 画谱线
+    for (const line of lines) {
+      if (line.nm < 100 || line.nm > 800) continue
+      const lx = toX(line.nm)
+      const color = wavelengthToColor(line.nm)
+      const isCurrent = line.ni === s.fromLevel && Math.abs(line.nm - info.lambda) < 20
+      ctx.strokeStyle = isCurrent ? '#fff' : color
+      ctx.lineWidth = isCurrent ? 3 : 1.5
+      ctx.globalAlpha = isCurrent ? 1 : 0.7
+      ctx.beginPath(); ctx.moveTo(lx, oy); ctx.lineTo(lx, oy + 60); ctx.stroke()
+      ctx.globalAlpha = 1
+
+      // 标注主要谱线
+      if (line.series === '巴尔末' && line.ni <= 5) {
+        ctx.fillStyle = '#fff'; ctx.font = '8px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+        const names = { 3: 'Hα', 4: 'Hβ', 5: 'Hγ', 6: 'Hδ' }
+        ctx.fillText(names[line.ni] || `n=${line.ni}`, lx, oy + 62)
+      }
+    }
+
+    // 当前跃迁谱线高亮
+    if (info.lambda > 100 && info.lambda < 800) {
+      const lx = toX(info.lambda)
+      const color = wavelengthToColor(info.lambda)
+      const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 300)
+      ctx.fillStyle = color.replace(')', `)`)
+      ctx.globalAlpha = pulse * 0.5
+      ctx.fillRect(lx - 2, oy - 5, 4, 70)
+      ctx.globalAlpha = 1
+    }
+
+    // 波长刻度
+    ctx.fillStyle = '#aaa'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    for (let nm = 100; nm <= 800; nm += 100) {
+      ctx.fillText(nm + '', toX(nm), oy + 78)
+    }
+    ctx.fillText('波长 (nm)', ox + pw / 2, oy + 92)
+
+    // 标注
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText('氢原子线状光谱', x + w / 2, y + 10)
+    ctx.font = '9px sans-serif'; ctx.fillStyle = '#aaa'
+    ctx.fillText(`${info.series} ${info.region}`, x + w / 2, y + h - 18)
+    ctx.textBaseline = 'alphabetic'
+  }
+
+  function drawMiniSlider(ctx, x, y, w, ratio, onChange) {
+    ctx.strokeStyle = '#bbb'; ctx.lineWidth = 3
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w, y); ctx.stroke()
+    const kx = x + Math.max(0, Math.min(1, ratio)) * w
+    ctx.fillStyle = '#FF9800'; ctx.beginPath(); ctx.arc(kx, y, 6, 0, Math.PI * 2); ctx.fill()
+    canvasRef.current._clickAreas.push({ x: x - 8, y: y - 14, w: w + 16, h: 28, onClick: (mx) => onChange(Math.max(0, Math.min(1, (mx - x) / w))) })
+  }
+
+  function drawRightPanel(ctx, x, y, w, h, s, info) {
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill(); ctx.stroke()
+
+    ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('🎯 玻尔氢原子能级', x + 12, y + 12)
+    ctx.fillStyle = '#FF6F00'; ctx.font = 'bold 11px sans-serif'
+    ctx.fillText('E_n = -13.6/n² eV', x + 12, y + 32)
+    ctx.fillText('hν = |ΔE|', x + 12, y + 48)
+    ctx.font = '10px sans-serif'; ctx.fillStyle = '#444'
+    ctx.fillText(`跃迁: n=${s.fromLevel} → n=${s.toLevel}`, x + 12, y + 66)
+    ctx.fillText(`ΔE = ${info.dE.toFixed(3)} eV`, x + 12, y + 80)
+    ctx.fillText(`λ = ${info.lambda === Infinity ? '∞' : info.lambda.toFixed(1)} nm`, x + 12, y + 94)
+    ctx.fillStyle = info.isEmit ? '#4CAF50' : '#FF9800'; ctx.font = 'bold 10px sans-serif'
+    ctx.fillText(`${info.isEmit ? '发射' : '吸收'}光子  ${info.series}(${info.region})`, x + 12, y + 110)
+
+    let ky = y + 130
+    const guideSteps = s.step === 1
+      ? ['① 选择初始能级 n', '② 选择跃迁目标能级 n', '③ 点"发射/吸收"观察光子', '④ 计算光子波长 λ']
+      : s.step === 2
+        ? ['① 终态 n=1 → 莱曼系(紫外)', '② 终态 n=2 → 巴尔末系(可见)', '③ 终态 n=3 → 帕邢系(红外)', '④ 不同系列不同波长范围']
+        : ['① 观察线状光谱图', '② 每条谱线对应一次跃迁', '③ Hα(红) Hβ(蓝绿) Hγ(蓝紫)', '④ 氢原子光谱是不连续的']
+    ctx.fillStyle = '#5D4037'; ctx.font = 'bold 10px sans-serif'
+    ctx.fillText('📋 操作步骤', x + 12, ky); ky += 14
+    ctx.font = '9px sans-serif'; ctx.fillStyle = '#5D4037'
+    for (let i = 0; i < guideSteps.length; i++) ctx.fillText(guideSteps[i], x + 12, ky + i * 12)
+    ky += guideSteps.length * 12 + 6
+
+    ctx.fillStyle = '#C62828'; ctx.font = 'bold 10px sans-serif'
+    ctx.fillText('⚠ 注意事项', x + 12, ky); ky += 14
+    ctx.font = '9px sans-serif'; ctx.fillStyle = '#B71C1C'
+    const notes = s.step === 1
+      ? ['• 能级越高，能量越大（越接近0）', '• 发射光子：高→低，能量为正', '• 吸收光子：低→高，需要精确能量']
+      : s.step === 2
+        ? ['• 莱曼系在紫外区，人眼不可见', '• 巴尔末系在可见光区', '• 帕邢系在红外区']
+        : ['• 线状光谱：不连续的亮线', '• 每条线的波长由能级差决定', '• 玻尔模型解释了氢原子光谱']
+    for (let i = 0; i < notes.length; i++) ctx.fillText(notes[i], x + 12, ky + i * 12)
+    ky += notes.length * 12 + 6
+
+    if (s.records.length > 0) {
+      ctx.fillStyle = '#333'; ctx.font = 'bold 10px sans-serif'
+      ctx.fillText('📊 跃迁记录', x + 12, ky); ky += 14
+      ctx.fillStyle = '#FFB74D'; ctx.fillRect(x + 12, ky, w - 24, 16)
+      ctx.fillStyle = '#333'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'
+      const c1 = x + 22, c2 = x + 50, c3 = x + 78, c4 = x + 115, c5 = x + 165
+      ctx.fillText('#', c1, ky + 2); ctx.fillText('n₁', c2, ky + 2); ctx.fillText('n₂', c3, ky + 2); ctx.fillText('ΔE', c4, ky + 2); ctx.fillText('λ(nm)', c5, ky + 2)
+      ky += 14
+      for (let i = 0; i < s.records.length; i++) {
+        const r = s.records[i]
+        if (i % 2 === 0) { ctx.fillStyle = '#FFF8E1'; ctx.fillRect(x + 12, ky, w - 24, 13) }
+        ctx.fillStyle = '#333'; ctx.font = '8px monospace'; ctx.textAlign = 'center'
+        ctx.fillText(String(i + 1), c1, ky + 1); ctx.fillText(String(r.n1), c2, ky + 1); ctx.fillText(String(r.n2), c3, ky + 1); ctx.fillText(r.dE, c4, ky + 1); ctx.fillText(r.lam, c5, ky + 1)
+        ky += 13
+      }
+      ctx.textAlign = 'left'
+    }
+
+    const btnY = y + h - 38, btnW = 62, btnH = 24, gap = 6, bx = x + 12
+    ctx.fillStyle = '#4CAF50'; ctx.strokeStyle = '#2E7D32'
+    ctx.beginPath(); ctx.roundRect(bx, btnY, btnW, btnH, 5); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'
+    ctx.fillText('📝 记录', bx + btnW / 2, btnY + 7)
+    canvasRef.current._clickAreas.push({ x: bx, y: btnY, w: btnW, h: btnH, onClick: () => {
+      const s2 = S.current; const inf = bohrInfo(s2)
+      s2.records.push({ n1: s2.fromLevel, n2: s2.toLevel, dE: inf.dE.toFixed(3), lam: inf.lambda === Infinity ? '∞' : inf.lambda.toFixed(1) })
+      forceUpdate(n => n + 1)
+    } })
+    ctx.fillStyle = '#FF9800'; ctx.strokeStyle = '#E65100'
+    ctx.beginPath(); ctx.roundRect(bx + btnW + gap, btnY, btnW, btnH, 5); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = '#fff'; ctx.fillText('🗑 清除', bx + btnW + gap + btnW / 2, btnY + 7)
+    canvasRef.current._clickAreas.push({ x: bx + btnW + gap, y: btnY, w: btnW, h: btnH, onClick: () => { S.current.records = []; forceUpdate(n => n + 1) } })
+    ctx.fillStyle = '#9E9E9E'; ctx.strokeStyle = '#616161'
+    ctx.beginPath(); ctx.roundRect(bx + (btnW + gap) * 2, btnY, btnW, btnH, 5); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = '#fff'; ctx.fillText('↺ 重置', bx + (btnW + gap) * 2 + btnW / 2, btnY + 7)
+    canvasRef.current._clickAreas.push({ x: bx + (btnW + gap) * 2, y: btnY, w: btnW, h: btnH, onClick: () => {
+      S.current.fromLevel = 3; S.current.toLevel = 2; S.current.records = []; S.current.switchClosed = false
+      forceUpdate(n => n + 1)
+    } })
+    ctx.textBaseline = 'alphabetic'
+  }
+
+  // Tab2
+  function renderBuilder(ctx, W, H) {
+    const s = S.current
+    const palW = 150, palX = W - palW - 10
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#e0e0e0'
+    ctx.beginPath(); ctx.roundRect(10, 10, palX - 25, H - 20, 8); ctx.fill(); ctx.stroke()
+    for (const comp of s.components) drawComp(ctx, comp)
+
+    const bx = 22, by = H - 100, bw = palX - 50
+    ctx.fillStyle = 'rgba(255,252,240,0.95)'; ctx.strokeStyle = '#ddd'
+    ctx.beginPath(); ctx.roundRect(bx, by, bw, s._guideOpen ? 88 : 36, 6); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = '#5D4037'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    ctx.fillText('📋 操作说明', bx + 10, by + 18)
+    ctx.textAlign = 'right'; ctx.fillText(s._guideOpen ? '收起 ▲' : '展开 ▼', bx + bw - 10, by + 18)
+    canvasRef.current._clickAreas.push({ x: bx - 5, y: by - 3, w: bw + 10, h: 42, onClick: () => { s._guideOpen = !s._guideOpen; forceUpdate(n => n + 1) } })
+    if (s._guideOpen) { ctx.textAlign = 'left'; ctx.font = '10px sans-serif'; ['① 拖入器材到画布', '② 搭建能级跃迁模型', '③ 观察光谱', '④ 右键删除器材'].forEach((l, i) => ctx.fillText(l, bx + 10, by + 40 + i * 15)) }
+    ctx.textBaseline = 'alphabetic'
+    drawPalette(ctx, palX, 10, palW, H - 20)
+  }
+
+  function drawPalette(ctx, x, y, w, h) {
+    ctx.fillStyle = '#fafafa'; ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText('近代物理器材', x + w / 2, y + 10)
+    const items = [
+      { type: 'atom', name: '氢原子' }, { type: 'photon', name: '光子' },
+      { type: 'prism', name: '三棱镜' }, { type: 'screen', name: '光谱屏' },
+      { type: 'battery', name: '电源（干扰）' }, { type: 'magnet', name: '磁铁（干扰）' },
+    ]
+    const itemH = 30
+    for (let i = 0; i < items.length; i++) {
+      const iy = y + 32 + i * (itemH + 3)
+      if (iy + itemH > y + h - 40) break
+      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#ccc'
+      ctx.beginPath(); ctx.roundRect(x + 6, iy, w - 12, itemH, 5); ctx.fill(); ctx.stroke()
+      drawPaletteIcon(ctx, x + 18, iy + itemH / 2, items[i].type)
+      ctx.fillStyle = '#333'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      ctx.fillText(items[i].name, x + 34, iy + itemH / 2)
+      canvasRef.current._palAreas.push({ x: x + 6, y: iy, w: w - 12, h: itemH, type: items[i].type })
+    }
+    ctx.textBaseline = 'alphabetic'
+  }
+
+  function drawPaletteIcon(ctx, x, y, type) {
+    ctx.save(); ctx.translate(x, y)
+    if (type === 'atom') { ctx.fillStyle = '#E3F2FD'; ctx.strokeStyle = '#1565C0'; ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#1565C0'; ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill() }
+    else if (type === 'photon') { ctx.fillStyle = '#FFEB3B'; ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill() }
+    else if (type === 'prism') { ctx.fillStyle = '#E1F5FE'; ctx.strokeStyle = '#1565C0'; ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(-8, 8); ctx.lineTo(8, 8); ctx.closePath(); ctx.fill(); ctx.stroke() }
+    else if (type === 'screen') { ctx.fillStyle = '#263238'; ctx.fillRect(-10, -6, 20, 12) }
+    else if (type === 'battery') { ctx.fillStyle = '#4CAF50'; ctx.fillRect(-10, -7, 20, 14); ctx.strokeStyle = '#2E7D32'; ctx.strokeRect(-10, -7, 20, 14) }
+    else if (type === 'magnet') { ctx.fillStyle = '#E53935'; ctx.fillRect(-10, -6, 10, 12); ctx.fillStyle = '#1565C0'; ctx.fillRect(0, -6, 10, 12) }
+    ctx.restore()
+  }
+
+  function drawComp(ctx, comp) {
+    ctx.save(); ctx.translate(comp.x, comp.y)
+    const labels = { atom: '氢原子', photon: '光子', prism: '三棱镜', screen: '光谱屏', battery: '电源', magnet: '磁铁' }
+    const colors = { atom: '#E3F2FD', photon: '#FFEB3B', prism: '#E1F5FE', screen: '#263238', battery: '#4CAF50', magnet: '#FFCDD2' }
+    ctx.fillStyle = colors[comp.type] || '#eee'
+    ctx.strokeStyle = '#888'; ctx.lineWidth = 1.5
+    ctx.beginPath(); ctx.roundRect(-16, -12, 32, 24, 4); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = comp.type === 'screen' ? '#fff' : '#333'
+    ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText(labels[comp.type] || comp.type, 0, 0)
+    ctx.restore()
+  }
+
+  function getPos(e) { const r = canvasRef.current.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top } }
+  function handleMouseDown(e) { if (e.button !== 0) return; const s = S.current; const { x, y } = getPos(e); if (s.tab === 1) { for (const a of canvasRef.current._clickAreas) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(x, y); return } } return } for (const a of canvasRef.current._clickAreas || []) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(); return } } for (const a of canvasRef.current._palAreas) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { if (a.type) { s.components.push({ id: s.nextId++, type: a.type, x, y, closed: true, props: {} }); s.dragId = s.nextId - 1; forceUpdate(n => n + 1); return } } } for (const c of s.components) { if (Math.abs(x - c.x) < 25 && Math.abs(y - c.y) < 25) { s.dragId = c.id; s.dragOffX = x - c.x; s.dragOffY = y - c.y; forceUpdate(n => n + 1); return } } }
+  function handleMouseMove(e) { const s = S.current; const { x, y } = getPos(e); if (s.dragId == null) return; const c = s.components.find(c => c.id === s.dragId); if (c) { c.x = x - s.dragOffX; c.y = y - s.dragOffY; forceUpdate(n => n + 1) } }
+  function handleMouseUp() { S.current.dragId = null }
+  function handleDoubleClick() {}
+  function handleContextMenu(e) { e.preventDefault(); const s = S.current; const { x, y } = getPos(e); const idx = s.components.findIndex(c => Math.abs(x - c.x) < 25 && Math.abs(y - c.y) < 25); if (idx >= 0) { s.components.splice(idx, 1); forceUpdate(n => n + 1) } }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.topBar}>
-        <span style={styles.title}>玻尔氢原子能级与光谱</span>
-        <div style={styles.topActions}>
-          <button style={styles.setBtn}>⚙ 重置</button>
-        </div>
+    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', gap: 8, padding: '8px 12px', background: '#fff', borderBottom: '1px solid #e0e0e0', alignItems: 'center' }}>
+        <button onClick={() => { S.current.tab = 1; setTab(1); forceUpdate(n => n + 1) }} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #ddd', background: tab === 1 ? '#1976D2' : '#fff', color: tab === 1 ? '#fff' : '#333', cursor: 'pointer' }}>📊 实验演示</button>
+        <button onClick={() => { S.current.tab = 2; setTab(2); forceUpdate(n => n + 1) }} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #ddd', background: tab === 2 ? '#1976D2' : '#fff', color: tab === 2 ? '#fff' : '#333', cursor: 'pointer' }}>🔧 自己动手</button>
+        <button onClick={() => { S.current.fromLevel = 3; S.current.toLevel = 2; S.current.records = []; S.current.switchClosed = false; forceUpdate(n => n + 1) }} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#666', cursor: 'pointer' }}>↺ 重置</button>
       </div>
-      <div style={styles.controlBar}>
-        <label style={styles.controlLabel}>
-          <span style={styles.controlName}>初始能级</span>
-          <select value={selectedLevel} onChange={(e) => setSelectedLevel(parseInt(e.target.value))} style={styles.select}>
-            {[6,5,4,3,2,1].map(n => <option key={n} value={n}>n={n}</option>)}
-          </select>
-        </label>
-        <span style={{ fontSize: 14, color: '#FF9800' }}>→</span>
-        <label style={styles.controlLabel}>
-          <span style={styles.controlName}>跃迁到</span>
-          <select value={targetLevel} onChange={(e) => setTargetLevel(parseInt(e.target.value))} style={styles.select}>
-            {[6,5,4,3,2,1].map(n => <option key={n} value={n}>n={n}</option>)}
-          </select>
-        </label>
-        <span style={{ fontSize: 12, color: '#E53935', fontWeight: 600 }}>
-          {selectedLevel > targetLevel ? '发射光子' : selectedLevel < targetLevel ? '吸收光子' : '无跃迁'}
-        </span>
-      </div>
-      <div style={styles.main}>
-        <div style={styles.placeholder}>
-          <div style={styles.placeholderIcon}>🌟</div>
-          <div style={styles.placeholderTitle}>氢原子能级跃迁</div>
-          <div style={styles.placeholderText}>
-            能级跃迁: n={selectedLevel} → n={targetLevel}<br />
-            能量差: ΔE = {dE.toFixed(3)} eV<br />
-            光子波长: λ = {wavelength} nm<br />
-            光谱系列: {series}<br /><br />
-            <b>玻尔模型：</b><br />
-            E_n = -13.6/n² eV<br />
-            跃迁时发射/吸收光子: hν = |ΔE|<br /><br />
-            {selectedLevel > targetLevel && targetLevel === 2 && '可见光区域（巴尔末系）：Hα(红) Hβ(蓝绿) Hγ(蓝紫)'}
-          </div>
-        </div>
-      </div>
-      <div style={styles.desc}>
-        <b>实验：玻尔氢原子能级与光谱</b>
-        <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
-          选择能级跃迁，计算光子波长，生成氢原子线状光谱。
-        </span>
+      <div style={{ flex: 1, position: 'relative' }}>
+        <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onDoubleClick={handleDoubleClick} onContextMenu={handleContextMenu} />
       </div>
     </div>
   )
-}
-
-const styles = {
-  container: { display: 'flex', flexDirection: 'column', height: '100vh', maxHeight: '100vh', background: '#e8e8e8', color: '#333', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', overflow: 'hidden' },
-  topBar: { background: '#f5f5f5', borderBottom: '1px solid #ccc', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', flexShrink: 0, flexWrap: 'wrap', gap: 6 },
-  title: { fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap' },
-  topActions: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  controlBar: { background: '#fafafa', borderBottom: '1px solid #ddd', display: 'flex', alignItems: 'center', padding: '4px 12px', flexShrink: 0, gap: 8 },
-  controlLabel: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#555', whiteSpace: 'nowrap' },
-  controlName: { fontWeight: 600, color: '#4A90D9' },
-  select: { background: '#fff', color: '#333', border: '1px solid #ccc', borderRadius: 4, padding: '3px 6px', fontSize: 12 },
-  setBtn: { background: '#7B1FA2', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
-  main: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', minHeight: 0 },
-  placeholder: { textAlign: 'center', padding: 40 },
-  placeholderIcon: { fontSize: 64, marginBottom: 16 },
-  placeholderTitle: { fontSize: 20, fontWeight: 700, color: '#333', marginBottom: 12 },
-  placeholderText: { fontSize: 13, color: '#555', lineHeight: 1.8, maxWidth: 400, margin: '0 auto' },
-  desc: { padding: '6px 14px', background: '#fff', borderTop: '1px solid #ddd', fontSize: 13, flexShrink: 0 },
 }
