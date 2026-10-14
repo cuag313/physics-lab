@@ -135,38 +135,44 @@ export default function ElectromagneticInductionScene() {
     const cx = W * 0.28, cy = H * 0.42
     drawInduction(ctx, cx, cy, s, info, on)
 
-    // ─── 电路（导轨回路 + 电压表）───
+    // ─── 电路（导轨回路：导体棒=感应电源 + 检流计 + 开关，无外接电源）───
     const circL = 60, circR = W * 0.52
     const span = circR - circL
     const circTop = H * 0.72, circBottom = H - 55
     const wc = on ? '#1565C0' : '#999'
 
-    const battX = circL + span * 0.28
-    const swX = circL + span * 0.72
+    const swX = circL + span * 0.5
 
     ctx.strokeStyle = wc; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
+    // 顶边（导轨1）
     ctx.beginPath(); ctx.moveTo(circL, circTop); ctx.lineTo(circR, circTop); ctx.stroke()
+    // 右边（接检流计）
     ctx.beginPath(); ctx.moveTo(circR, circTop); ctx.lineTo(circR, circBottom); ctx.stroke()
+    // 底边（导轨2 + 开关）
     ctx.beginPath(); ctx.moveTo(circR, circBottom); ctx.lineTo(swX + 18, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(swX - 18, circBottom); ctx.lineTo(battX + 30, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(battX - 30, circBottom); ctx.lineTo(circL, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(swX - 18, circBottom); ctx.lineTo(circL, circBottom); ctx.stroke()
+    // 左边（接导体棒）
     ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(circL, circTop); ctx.stroke()
     ctx.lineCap = 'butt'
 
-    if (on && info.emf !== 0) {
-      const path = [
-        { x: battX + 30, y: circBottom }, { x: swX, y: circBottom },
-        { x: circR, y: circBottom }, { x: circR, y: circTop },
-        { x: circL, y: circTop }, { x: circL, y: circBottom },
-        { x: battX - 30, y: circBottom },
-      ]
-      drawCurrentFlow(ctx, path, info.emf > 0 ? 1 : -1)
-    }
-
-    drawBatteryGroup(ctx, battX, circBottom)
+    // 导体棒（感应电源，ε = BLv，左竖边）
+    drawBarSource(ctx, circL, circTop, circBottom, info.emf, on)
+    // 检流计（G，右竖边，检测感应电流）
+    drawGalvanometer(ctx, circR, (circTop + circBottom) / 2, info)
+    // 开关
     drawSwitch(ctx, swX, circBottom, on, () => {
       S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1)
     })
+
+    // 感应电流流动
+    if (on && info.emf !== 0) {
+      const path = [
+        { x: circL, y: circTop }, { x: circR, y: circTop },
+        { x: circR, y: circBottom }, { x: swX, y: circBottom },
+        { x: circL, y: circBottom }, { x: circL, y: circTop },
+      ]
+      drawCurrentFlow(ctx, path, info.emf > 0 ? 1 : -1)
+    }
 
     // ─── 速度调节（底部）───
     const barY = H - 26
@@ -335,25 +341,31 @@ export default function ElectromagneticInductionScene() {
     }
   }
 
-  function drawBatteryGroup(ctx, x, y) {
-    ctx.lineWidth = 2; ctx.strokeStyle = '#333'
-    ctx.beginPath(); ctx.moveTo(x - 40, y); ctx.lineTo(x - 30, y); ctx.stroke()
-    for (let i = 0; i < 3; i++) {
-      const cx = x - 20 + i * 20
-      ctx.lineWidth = 2.5
-      ctx.beginPath(); ctx.moveTo(cx - 3, y - 14); ctx.lineTo(cx - 3, y + 14); ctx.stroke()
-      ctx.lineWidth = 5
-      ctx.beginPath(); ctx.moveTo(cx + 3, y - 7); ctx.lineTo(cx + 3, y + 7); ctx.stroke()
-      ctx.lineWidth = 2
-      if (i < 2) { ctx.beginPath(); ctx.moveTo(cx + 3, y); ctx.lineTo(cx + 17, y); ctx.stroke() }
-    }
-    ctx.beginPath(); ctx.moveTo(x + 30, y); ctx.lineTo(x + 40, y); ctx.stroke()
+  // 导体棒（感应电源，ε = BLv）
+  function drawBarSource(ctx, x, yTop, yBottom, emf, _on) {
+    const mid = (yTop + yBottom) / 2
+    ctx.lineWidth = 3; ctx.strokeStyle = '#555'
+    ctx.beginPath(); ctx.moveTo(x - 30, yTop); ctx.lineTo(x - 30, yBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(x + 30, yTop); ctx.lineTo(x + 30, yBottom); ctx.stroke()
+    // 导体棒（竖直粗线，左竖边位置 x 由调用方传入）
+    ctx.lineWidth = 5; ctx.strokeStyle = '#E53935'; ctx.lineCap = 'round'
+    ctx.beginPath(); ctx.moveTo(x - 30, mid); ctx.lineTo(x + 30, mid); ctx.stroke()
+    ctx.lineCap = 'butt'
     ctx.fillStyle = '#E53935'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-    ctx.fillText('+', x - 36, y - 16)
-    ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'
-    ctx.fillText('−', x + 38, y - 8)
-    ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textBaseline = 'top'
-    ctx.fillText('电池组 6V', x, y + 18)
+    ctx.fillText('导体棒', x, mid - 6)
+    ctx.fillStyle = '#333'; ctx.font = '10px sans-serif'; ctx.textBaseline = 'top'
+    ctx.fillText(`ε=${emf.toFixed(2)}V`, x, mid + 6)
+    ctx.textBaseline = 'alphabetic'
+  }
+
+  // 检流计（G，检测感应电流）
+  function drawGalvanometer(ctx, x, y, info) {
+    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#2E7D32'; ctx.lineWidth = 2
+    ctx.beginPath(); ctx.arc(x, y, 18, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = '#2E7D32'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText('G', x, y - 4)
+    ctx.font = 'bold 10px monospace'
+    ctx.fillText(info.emf !== 0 ? info.emf.toFixed(2) + 'V' : '0', x, y + 8)
     ctx.textBaseline = 'alphabetic'
   }
 

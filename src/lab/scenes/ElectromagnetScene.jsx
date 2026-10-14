@@ -129,64 +129,60 @@ export default function ElectromagnetScene() {
     ctx.fillStyle = '#1565C0'; ctx.font = 'bold 11px sans-serif'
     ctx.fillText('🎯 实验目的：用控制变量法探究电流 I 和线圈匝数 N 对电磁铁磁性强弱的影响', W / 2, 70)
 
-    // ─── 电磁铁主视觉（左中部）───
-    const magCx = W * 0.30, magCy = H * 0.38
-    drawElectromagnet(ctx, magCx, magCy, s.turns, magnetInfo(s), s.switchClosed)
-
-    // ─── 电路（矩形回路，标准布局：下边=电源+开关，上边=变阻器+电流表）───
-    const circL = 60, circR = W * 0.52
+    // ─── 电路回路（矩形）：顶边=电磁铁线圈(负载)，左边=电流表，底边=电源+开关+变阻器 ───
+    const circL = W * 0.10, circR = W * 0.50
     const span = circR - circL
-    const circTop = H * 0.62, circBottom = H - 60
+    const circTop = H * 0.30, circBottom = H * 0.62
     const on = s.switchClosed
     const wc = on ? '#1565C0' : '#999'
+    const { I } = magnetInfo(s)
+    const ammY = (circTop + circBottom) / 2
+    const battX = circL + span * 0.20
+    const swX = circL + span * 0.50
+    const rheoX = circL + span * 0.80
 
-    const rheoX = circL + span * 0.22
-    const ammX = circL + span * 0.62
-    const battX = circL + span * 0.28
-    const swX = circL + span * 0.72
-
-    // 导线矩形
+    // 导线（左边含电流表、底边含电源/开关/变阻器、右边；顶边由线圈组成）
     ctx.strokeStyle = wc; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-    // 上边：左→变阻器→电流表→右
-    ctx.beginPath(); ctx.moveTo(circL, circTop); ctx.lineTo(rheoX - 35, circTop); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(rheoX + 35, circTop); ctx.lineTo(ammX - 16, circTop); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(ammX + 16, circTop); ctx.lineTo(circR, circTop); ctx.stroke()
-    // 右边
-    ctx.beginPath(); ctx.moveTo(circR, circTop); ctx.lineTo(circR, circBottom); ctx.stroke()
-    // 下边：右→开关→电源→左
-    ctx.beginPath(); ctx.moveTo(circR, circBottom); ctx.lineTo(swX + 18, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(swX - 18, circBottom); ctx.lineTo(battX + 30, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(battX - 30, circBottom); ctx.lineTo(circL, circBottom); ctx.stroke()
-    // 左边
-    ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(circL, circTop); ctx.stroke()
+    // 左边：上→电流表→下
+    ctx.beginPath(); ctx.moveTo(circL, circTop); ctx.lineTo(circL, ammY - 16); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(circL, ammY + 16); ctx.lineTo(circL, circBottom); ctx.stroke()
+    // 底边：左→电源→开关→变阻器→右
+    ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(battX - 30, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(battX + 30, circBottom); ctx.lineTo(swX - 18, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(swX + 18, circBottom); ctx.lineTo(rheoX - 35, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(rheoX + 35, circBottom); ctx.lineTo(circR, circBottom); ctx.stroke()
+    // 右边：下→上（连接线圈右端）
+    ctx.beginPath(); ctx.moveTo(circR, circBottom); ctx.lineTo(circR, circTop); ctx.stroke()
     ctx.lineCap = 'butt'
 
-    // 电流流动动画
+    // 电流流动动画（沿闭合回路：电源→开关→变阻器→线圈→电流表→电源）
     if (on) {
       const path = [
         { x: battX + 30, y: circBottom }, { x: swX, y: circBottom },
-        { x: circR, y: circBottom }, { x: circR, y: circTop },
-        { x: ammX, y: circTop }, { x: rheoX, y: circTop },
-        { x: circL, y: circTop }, { x: circL, y: circBottom },
+        { x: rheoX, y: circBottom }, { x: circR, y: circBottom },
+        { x: circR, y: circTop }, { x: circL, y: circTop },
+        { x: circL, y: ammY }, { x: circL, y: circBottom },
         { x: battX - 30, y: circBottom },
       ]
       drawCurrentFlow(ctx, path)
     }
 
-    // 元件
+    // 元件（全部串联回路）
     drawBatteryGroup(ctx, battX, circBottom)
     drawSwitch(ctx, swX, circBottom, on, () => {
       S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1)
     })
 
     // 滑动变阻器（可拖拽滑片）
-    drawRheostat(ctx, rheoX, circTop, s.sliderR, (val) => {
+    drawRheostat(ctx, rheoX, circBottom, s.sliderR, (val) => {
       S.current.sliderR = val; forceUpdate(n => n + 1)
     })
 
     // 电流表
-    const { I } = magnetInfo(s)
-    drawAmmeter(ctx, ammX, circTop, on ? I : 0)
+    drawAmmeter(ctx, circL, ammY, on ? I : 0)
+
+    // 电磁铁线圈 = 顶边负载（接入回路，电流流过线圈产生磁性）
+    drawElectromagnet(ctx, (circL + circR) / 2, circTop, s.turns, magnetInfo(s), on, span)
 
     // ─── 匝数调节（Step2 可调）───
     const turnsY = H - 30
@@ -235,8 +231,8 @@ export default function ElectromagnetScene() {
   }
 
   // ─── 电磁铁（螺线管+铁芯+回形针）───
-  function drawElectromagnet(ctx, cx, cy, turns, info, on) {
-    const coreW = 220, coreH = 26
+  function drawElectromagnet(ctx, cx, cy, turns, info, on, width) {
+    const coreW = width, coreH = 26
     // 铁芯
     ctx.fillStyle = '#8D6E63'; ctx.strokeStyle = '#5D4037'; ctx.lineWidth = 2
     ctx.beginPath(); ctx.roundRect(cx - coreW / 2, cy - coreH / 2, coreW, coreH, 6); ctx.fill(); ctx.stroke()
@@ -254,12 +250,10 @@ export default function ElectromagnetScene() {
       ctx.beginPath(); ctx.arc(x, cy + coreH / 2, 9, 0, Math.PI); ctx.stroke()
     }
 
-    // 接线柱（左右引出）
+    // 接线柱 = 铁芯两端（直接与电路左、右竖直导线相连，线圈接入回路）
     for (const side of [-1, 1]) {
-      const px = cx + side * (coreW / 2 + 18)
-      ctx.strokeStyle = '#333'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.moveTo(cx + side * coreW / 2, cy); ctx.lineTo(px, cy); ctx.stroke()
-      ctx.fillStyle = '#666'
+      const px = cx + side * (coreW / 2)
+      ctx.fillStyle = '#333'
       ctx.beginPath(); ctx.arc(px, cy, 5, 0, Math.PI * 2); ctx.fill()
     }
 
@@ -283,9 +277,9 @@ export default function ElectromagnetScene() {
     }
 
     // N/S 极
-    ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillStyle = '#1565C0'; ctx.fillText('N', cx - coreW / 2 - 18, cy + 10)
-    ctx.fillStyle = '#E53935'; ctx.fillText('S', cx + coreW / 2 + 6, cy + 10)
+    ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
+    ctx.fillStyle = '#1565C0'; ctx.fillText('N', cx - coreW / 2 + 12, cy - coreH / 2 - 2)
+    ctx.fillStyle = '#E53935'; ctx.fillText('S', cx + coreW / 2 - 12, cy - coreH / 2 - 2)
 
     // 回形针（挂在铁芯两端下方）
     const clipSpacing = 13

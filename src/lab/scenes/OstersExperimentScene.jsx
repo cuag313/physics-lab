@@ -113,29 +113,42 @@ export default function OstersExperimentScene() {
     ctx.fillStyle = '#1565C0'; ctx.font = 'bold 11px sans-serif'
     ctx.fillText('🎯 实验目的：探究通电导线周围磁场的存在、强弱规律及安培定则', W / 2, 70)
 
-    // ─── 磁场主视觉（左中部，导线截面 + 环形磁感线 + 小磁针）───
-    const cx = W * 0.30, cy = H * 0.42
-    const maxR = Math.min(W * 0.24, H * 0.32)
-    drawWireField(ctx, cx, cy, maxR, s.current, s.direction, on)
-
-    // ─── 电路（矩形回路）───
+    // ─── 电路（矩形回路）：顶边=通电直导线（载流导体，产生磁场），下边=电源+开关 ───
     const circL = 60, circR = W * 0.52
     const span = circR - circL
-    const circTop = H * 0.72, circBottom = H - 55
+    const circTop = H * 0.70, circBottom = H - 52
     const wc = on ? '#1565C0' : '#999'
-
     const battX = circL + span * 0.28
     const swX = circL + span * 0.72
 
-    // 导线
+    // 导线（侧边+下边）
     ctx.strokeStyle = wc; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-    ctx.beginPath(); ctx.moveTo(circL, circTop); ctx.lineTo(circR, circTop); ctx.stroke()
     ctx.beginPath(); ctx.moveTo(circR, circTop); ctx.lineTo(circR, circBottom); ctx.stroke()
     ctx.beginPath(); ctx.moveTo(circR, circBottom); ctx.lineTo(swX + 18, circBottom); ctx.stroke()
     ctx.beginPath(); ctx.moveTo(swX - 18, circBottom); ctx.lineTo(battX + 30, circBottom); ctx.stroke()
     ctx.beginPath(); ctx.moveTo(battX - 30, circBottom); ctx.lineTo(circL, circBottom); ctx.stroke()
     ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(circL, circTop); ctx.stroke()
     ctx.lineCap = 'butt'
+    // 顶边：通电直导线（加粗=载流导体，电流流过才产生磁场）
+    ctx.strokeStyle = wc; ctx.lineWidth = 5; ctx.lineCap = 'round'
+    ctx.beginPath(); ctx.moveTo(circL, circTop); ctx.lineTo(circR, circTop); ctx.stroke()
+    ctx.lineCap = 'butt'
+    // 导线标注（下方，避免与截面图重叠）
+    ctx.fillStyle = '#5D4037'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText('通电直导线（载流导体）', (circL + circR) / 2, circTop + 8)
+
+    // ─── 磁场主视觉（导线截面 + 环形磁感线 + 小磁针）───
+    const cx = W * 0.30, cy = H * 0.34
+    const maxR = Math.min(W * 0.14, H * 0.15)
+    drawWireField(ctx, cx, cy, maxR, s.current, s.direction, on)
+
+    // 连接：截面图是该导线的放大视图（导线已接入电路，电流流过产生磁场）
+    const wireMidX = (circL + circR) / 2
+    ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4])
+    ctx.beginPath(); ctx.moveTo(cx + maxR * 0.4, cy + maxR + 42); ctx.lineTo(wireMidX, circTop - 16); ctx.stroke()
+    ctx.setLineDash([])
+    ctx.fillStyle = '#8D6E63'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText('放大', (cx + maxR * 0.4 + wireMidX) / 2, (cy + maxR + 42 + circTop - 16) / 2)
 
     // 电流流动
     if (on) {

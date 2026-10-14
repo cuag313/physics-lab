@@ -136,12 +136,25 @@ export default function ElectricMotorScene() {
     const battX = circL + span * 0.28
     const swX = circL + span * 0.72
 
+    // 电动机电刷接线柱（线圈经电刷接入电路，电流流过线圈才受安培力）
+    const brushLX = cx - 28, brushRX = cx + 28
+
     ctx.strokeStyle = wc; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-    ctx.beginPath(); ctx.moveTo(circL, circTop); ctx.lineTo(circR, circTop); ctx.stroke()
+    // 顶边左段：circL → 左电刷接线柱
+    ctx.beginPath(); ctx.moveTo(circL, circTop); ctx.lineTo(brushLX, circTop); ctx.stroke()
+    // 顶边右段：右电刷接线柱 → circR
+    ctx.beginPath(); ctx.moveTo(brushRX, circTop); ctx.lineTo(circR, circTop); ctx.stroke()
+    // 左连接线：左电刷接线柱 → 左电刷
+    ctx.beginPath(); ctx.moveTo(brushLX, circTop); ctx.lineTo(brushLX, cy); ctx.stroke()
+    // 右连接线：右电刷接线柱 → 右电刷
+    ctx.beginPath(); ctx.moveTo(brushRX, circTop); ctx.lineTo(brushRX, cy); ctx.stroke()
+    // 右边
     ctx.beginPath(); ctx.moveTo(circR, circTop); ctx.lineTo(circR, circBottom); ctx.stroke()
+    // 底边：电源+开关
     ctx.beginPath(); ctx.moveTo(circR, circBottom); ctx.lineTo(swX + 18, circBottom); ctx.stroke()
     ctx.beginPath(); ctx.moveTo(swX - 18, circBottom); ctx.lineTo(battX + 30, circBottom); ctx.stroke()
     ctx.beginPath(); ctx.moveTo(battX - 30, circBottom); ctx.lineTo(circL, circBottom); ctx.stroke()
+    // 左边
     ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(circL, circTop); ctx.stroke()
     ctx.lineCap = 'butt'
 
@@ -149,6 +162,8 @@ export default function ElectricMotorScene() {
       const path = [
         { x: battX + 30, y: circBottom }, { x: swX, y: circBottom },
         { x: circR, y: circBottom }, { x: circR, y: circTop },
+        { x: brushRX, y: circTop }, { x: brushRX, y: cy },
+        { x: brushLX, y: cy }, { x: brushLX, y: circTop },
         { x: circL, y: circTop }, { x: circL, y: circBottom },
         { x: battX - 30, y: circBottom },
       ]
@@ -249,12 +264,17 @@ export default function ElectricMotorScene() {
       ctx.beginPath(); ctx.arc(0, 0, 20, Math.PI - 0.12, Math.PI + 0.12); ctx.stroke()
     }
 
-    // 电刷
-    ctx.fillStyle = '#333'
-    ctx.fillRect(-4, -80, 8, 12)
-    ctx.fillRect(-4, 68, 8, 12)
-
     ctx.restore()
+
+    // 电刷（固定不动，压在换向器两侧；电流经电刷→换向器→线圈）
+    ctx.fillStyle = '#333'
+    ctx.fillRect(cx - 28, cy - 3, 12, 6)
+    ctx.fillRect(cx + 16, cy - 3, 12, 6)
+    // 电刷接线柱（接入外电路）
+    for (const bx of [cx - 28, cx + 28]) {
+      ctx.fillStyle = '#333'
+      ctx.beginPath(); ctx.arc(bx, cy, 4, 0, Math.PI * 2); ctx.fill()
+    }
 
     // 标注
     ctx.fillStyle = '#5D4037'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'

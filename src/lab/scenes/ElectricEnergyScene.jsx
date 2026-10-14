@@ -138,36 +138,55 @@ export default function ElectricEnergyScene() {
     const on = s.switchClosed
     const wc = on ? '#1565C0' : '#999'
 
-    const loadX = circL + span * 0.25
-    const swX = circL + span * 0.75
+    const battX = circL + span * 0.18
+    const loadX = circL + span * 0.50
+    const swX = circL + span * 0.82
 
-    // 导线
+    // 电能表接入电路（顶边由电能表跨接，电流流经电能表）
+    const meterTx1 = meterCx - 90, meterTx2 = meterCx + 90, meterTy = meterCy + 85
+
+    // 导线（串联回路：电源→用电器→开关→电能表→电源）
     ctx.strokeStyle = wc; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-    ctx.beginPath(); ctx.moveTo(circL, circTop); ctx.lineTo(circR, circTop); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(circR, circTop); ctx.lineTo(circR, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(circR, circBottom); ctx.lineTo(swX + 18, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(swX - 18, circBottom); ctx.lineTo(loadX + 35, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(loadX - 35, circBottom); ctx.lineTo(circL, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(circL, circTop); ctx.stroke()
+    // 电能表到顶角
+    ctx.beginPath(); ctx.moveTo(meterTx1, meterTy); ctx.lineTo(circL, circTop); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(meterTx2, meterTy); ctx.lineTo(circR, circTop); ctx.stroke()
+    // 左边
+    ctx.beginPath(); ctx.moveTo(circL, circTop); ctx.lineTo(circL, circBottom); ctx.stroke()
+    // 底边：电源→用电器→开关
+    ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(battX - 30, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(battX + 30, circBottom); ctx.lineTo(loadX - 35, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(loadX + 35, circBottom); ctx.lineTo(swX - 18, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(swX + 18, circBottom); ctx.lineTo(circR, circBottom); ctx.stroke()
+    // 右边
+    ctx.beginPath(); ctx.moveTo(circR, circBottom); ctx.lineTo(circR, circTop); ctx.stroke()
     ctx.lineCap = 'butt'
 
     // 电流流动
     if (on) {
       const path = [
-        { x: loadX + 35, y: circBottom }, { x: swX, y: circBottom },
-        { x: circR, y: circBottom }, { x: circR, y: circTop },
-        { x: circL, y: circTop }, { x: circL, y: circBottom },
-        { x: loadX - 35, y: circBottom },
+        { x: battX + 30, y: circBottom }, { x: loadX - 35, y: circBottom },
+        { x: loadX + 35, y: circBottom }, { x: swX - 18, y: circBottom },
+        { x: swX + 18, y: circBottom }, { x: circR, y: circBottom },
+        { x: circR, y: circTop }, { x: meterTx2, y: meterTy },
+        { x: meterTx1, y: meterTy }, { x: circL, y: circTop },
+        { x: circL, y: circBottom }, { x: battX - 30, y: circBottom },
       ]
       drawCurrentFlow(ctx, path)
     }
 
+    // 电源
+    drawBatteryGroup(ctx, battX, circBottom)
     // 负载（用电器）
     drawLoad(ctx, loadX, circBottom, on, info.P)
     // 开关
     drawSwitch(ctx, swX, circBottom, on, () => {
       S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1)
     })
+    // 电能表接线柱
+    for (const tx of [meterTx1, meterTx2]) {
+      ctx.fillStyle = '#333'
+      ctx.beginPath(); ctx.arc(tx, meterTy, 5, 0, Math.PI * 2); ctx.fill()
+    }
 
     // ─── 参数调节区（底部）───
     const barY = H - 28
@@ -260,6 +279,27 @@ export default function ElectricEnergyScene() {
       ctx.fillStyle = '#fff'; ctx.strokeStyle = '#666'; ctx.lineWidth = 2
       ctx.beginPath(); ctx.arc(x + dx, y, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
     }
+  }
+
+  // ─── 电源 ───
+  function drawBatteryGroup(ctx, x, y) {
+    // 引线
+    ctx.lineWidth = 2; ctx.strokeStyle = '#333'
+    ctx.beginPath(); ctx.moveTo(x - 30, y); ctx.lineTo(x - 12, y); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(x + 12, y); ctx.lineTo(x + 30, y); ctx.stroke()
+    // 极板（长正短负）
+    ctx.lineWidth = 2.5
+    ctx.beginPath(); ctx.moveTo(x - 8, y - 14); ctx.lineTo(x - 8, y + 14); ctx.stroke()
+    ctx.lineWidth = 5
+    ctx.beginPath(); ctx.moveTo(x + 2, y - 7); ctx.lineTo(x + 2, y + 7); ctx.stroke()
+    // 标注
+    ctx.fillStyle = '#E53935'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
+    ctx.fillText('+', x - 8, y - 16)
+    ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'
+    ctx.fillText('−', x + 8, y - 12)
+    ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textBaseline = 'top'
+    ctx.fillText('电源 220V', x, y + 20)
+    ctx.textBaseline = 'alphabetic'
   }
 
   function drawMiniSlider(ctx, x, y, w, ratio, onChange) {
