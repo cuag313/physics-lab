@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import SceneShell from '../ui/SceneShell'
 
 /**
  * MeterConversionScene — 电表改装与校准
@@ -163,52 +164,47 @@ export default function MeterConversionScene() {
   }, [Ig, Rg, targetV, Rs_volt, Rs_amp, n])
 
   return (
-    <div style={styles.container}>
-      <div style={styles.topBar}>
-        <span style={styles.title}>电表改装与校准</span>
-        <div style={styles.topActions}>
-          <button style={styles.setBtn} onClick={() => { setIg(100); setRg(500); setTargetV(3) }}>⚙ 重置</button>
-        </div>
-      </div>
-      <div style={styles.controlBar}>
-        <label style={styles.controlLabel}>
-          <span style={styles.controlName}>满偏电流 Ig</span>
-          <input type="range" min="10" max="500" step="10" value={Ig} onChange={e => setIg(+e.target.value)} style={styles.slider} />
-          <span style={styles.sliderVal}>{Ig} μA</span>
-        </label>
-        <label style={styles.controlLabel}>
-          <span style={styles.controlName}>内阻 Rg</span>
-          <input type="range" min="50" max="2000" step="50" value={Rg} onChange={e => setRg(+e.target.value)} style={styles.slider} />
-          <span style={styles.sliderVal}>{Rg} Ω</span>
-        </label>
-        <label style={styles.controlLabel}>
-          <span style={styles.controlName}>电压量程</span>
-          <input type="range" min="1" max="15" step="0.5" value={targetV} onChange={e => setTargetV(+e.target.value)} style={styles.slider} />
-          <span style={styles.sliderVal}>{targetV} V</span>
-        </label>
-      </div>
-      <div style={styles.main}>
-        <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />
-      </div>
-      <div style={styles.desc}>
-        <b>实验：电表改装</b>
-        <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
-          调节表头参数，观察分压/分流电阻变化。电压表串联大电阻，电流表并联小电阻。
-        </span>
-      </div>
-    </div>
+    <SceneShell
+      title="电表改装与校准"
+      showTabs={false}
+      onReset={() => { setIg(100); setRg(500); setTargetV(3) }}
+      resetLabel="⚙ 重置"
+      toolbarExtra={(
+        <>
+          <label style={styles.controlLabel}>
+            <span style={styles.controlName}>满偏电流 Ig</span>
+            <input type="range" min="10" max="500" step="10" value={Ig} onChange={e => setIg(+e.target.value)} style={styles.slider} />
+            <span style={styles.sliderVal}>{Ig} μA</span>
+          </label>
+          <label style={styles.controlLabel}>
+            <span style={styles.controlName}>内阻 Rg</span>
+            <input type="range" min="50" max="2000" step="50" value={Rg} onChange={e => setRg(+e.target.value)} style={styles.slider} />
+            <span style={styles.sliderVal}>{Rg} Ω</span>
+          </label>
+          <label style={styles.controlLabel}>
+            <span style={styles.controlName}>电压量程</span>
+            <input type="range" min="1" max="15" step="0.5" value={targetV} onChange={e => setTargetV(+e.target.value)} style={styles.slider} />
+            <span style={styles.sliderVal}>{targetV} V</span>
+          </label>
+        </>
+      )}
+      desc={(
+        <>
+          <b>实验：电表改装</b>
+          <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
+            调节表头参数，观察分压/分流电阻变化。电压表串联大电阻，电流表并联小电阻。
+          </span>
+        </>
+      )}
+    >
+      <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />
+    </SceneShell>
   )
 }
 
 const styles = {
-  container: { display: 'flex', flexDirection: 'column', height: '100vh', maxHeight: '100vh', background: '#e8e8e8', color: '#333', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', overflow: 'hidden' },
-  topBar: { background: '#f5f5f5', borderBottom: '1px solid #ccc', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', flexShrink: 0 },
-  title: { fontSize: 14, fontWeight: 600 }, topActions: { display: 'flex', gap: 6 },
-  controlBar: { background: '#fafafa', borderBottom: '1px solid #ddd', display: 'flex', alignItems: 'center', padding: '4px 12px', flexShrink: 0, gap: 12 },
   controlLabel: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#555' },
-  controlName: { fontWeight: 600, color: '#4A90D9' }, slider: { width: 110, accentColor: '#4A90D9' },
+  controlName: { fontWeight: 600, color: '#4A90D9' },
+  slider: { width: 110, accentColor: '#4A90D9' },
   sliderVal: { color: '#4A90D9', fontWeight: 600, fontSize: 12, minWidth: 55 },
-  setBtn: { background: '#7B1FA2', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
-  main: { flex: 1, minHeight: 0, background: '#fff' },
-  desc: { padding: '6px 14px', background: '#fff', borderTop: '1px solid #ddd', fontSize: 13, flexShrink: 0 },
 }

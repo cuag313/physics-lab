@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import SceneShell from '../ui/SceneShell'
 
 /**
  * EmfInternalResistanceScene — 测量电源电动势和内阻
@@ -384,55 +385,24 @@ export default function EmfInternalResistanceScene() {
   }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.topBar}>
-        <span style={styles.title}>测量电源电动势和内阻</span>
-        <div style={styles.topActions}>
-          {['电压表测路端电压', '电压表测外电阻'].map((label, i) => (
-            <button key={i} style={{ ...styles.modeBtn, background: method === i ? '#4A90D9' : '#eee', color: method === i ? '#fff' : '#333' }}
-              onClick={() => { setMethod(i); dataPointsRef.current = [] }}>{label}</button>
-          ))}
-          <button style={styles.resetBtn} onClick={handleReset}>⚙ 重置</button>
-        </div>
-      </div>
-      <div style={styles.controlBar}>
-        <label style={styles.controlLabel}>
-          <span style={styles.controlName}>外电阻 R</span>
-          <input type="range" min="1" max="50" step="0.5" value={Rext} onChange={e => setRext(+e.target.value)} style={styles.slider} />
-          <span style={styles.sliderVal}>{Rext.toFixed(1)} Ω</span>
-        </label>
-        <div style={styles.readings}>
-          <span style={{ color: '#E53935', fontWeight: 600 }}>I = {I_measured.toFixed(3)} A</span>
-          <span style={{ color: '#1565C0', fontWeight: 600 }}>U = {U_measured.toFixed(3)} V</span>
-        </div>
-        <button style={styles.recordBtn} onClick={handleRecord}>📋 记录数据</button>
-        <span style={{ fontSize: 11, color: '#888' }}>已记录 {dataPointsRef.current.length} 个点</span>
-      </div>
-      <div style={styles.main}>
-        <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />
-      </div>
-      <div style={styles.desc}>
-        <b>实验：测量电源电动势和内阻</b>
-        <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
+    <SceneShell
+      title="测量电源电动势和内阻"
+      tab={tab}
+      onTabChange={(t) => { S.current.tab = t; setTab(t) }}
+      onReset={handleReset}
+      desc={(
+        <>
+          <b>实验：测量电源电动势和内阻</b>
+          <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
           U = ε - Ir。调节外电阻记录多组U、I数据，用U-I图像的截距和斜率求ε和r。
-        </span>
-      </div>
-    </div>
+          </span>
+        </>
+      )}
+    >
+      <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }}
+        onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
+        onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} />
+    </SceneShell>
   )
-}
-
-const styles = {
-  container: { display: 'flex', flexDirection: 'column', height: '100vh', maxHeight: '100vh', background: '#e8e8e8', color: '#333', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', overflow: 'hidden' },
-  topBar: { background: '#f5f5f5', borderBottom: '1px solid #ccc', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 12px', flexShrink: 0 },
-  title: { fontSize: 14, fontWeight: 600 }, topActions: { display: 'flex', gap: 6, alignItems: 'center' },
-  modeBtn: { border: 'none', borderRadius: 4, padding: '4px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 600 },
-  resetBtn: { background: '#7B1FA2', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
-  controlBar: { background: '#fafafa', borderBottom: '1px solid #ddd', display: 'flex', alignItems: 'center', padding: '4px 12px', flexShrink: 0, gap: 16 },
-  controlLabel: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#555' },
-  controlName: { fontWeight: 600, color: '#4A90D9' }, slider: { width: 120, accentColor: '#4A90D9' },
-  sliderVal: { color: '#4A90D9', fontWeight: 600, fontSize: 12, minWidth: 50 },
-  readings: { display: 'flex', gap: 12, fontSize: 12 },
-  recordBtn: { background: '#4A90D9', color: '#fff', border: 'none', borderRadius: 4, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
-  main: { flex: 1, minHeight: 0, background: '#fff' },
-  desc: { padding: '6px 14px', background: '#fff', borderTop: '1px solid #ddd', fontSize: 13, flexShrink: 0 },
 }

@@ -94,6 +94,22 @@ import EmfInternalResistanceScene from './scenes/EmfInternalResistanceScene'
 import MultimeterScene from './scenes/MultimeterScene'
 import AmpereForceScene from './scenes/AmpereForceScene'
 import LenzLawScene from './scenes/LenzLawScene'
+import MeltingCurveScene from './scenes/MeltingCurveScene'
+import BoilingWaterScene from './scenes/BoilingWaterScene'
+import SpecificHeatScene from './scenes/SpecificHeatScene'
+import DiffusionScene from './scenes/DiffusionScene'
+import EvaporationScene from './scenes/EvaporationScene'
+import PhaseChangeScene from './scenes/PhaseChangeScene'
+import OilFilmMethodScene from './scenes/OilFilmMethodScene'
+import MillikanScene from './scenes/MillikanScene'
+import RefractionLawScene from './scenes/RefractionLawScene'
+import TotalInternalReflectionScene from './scenes/TotalInternalReflectionScene'
+import LightPolarizationScene from './scenes/LightPolarizationScene'
+import TransformerScene from './scenes/TransformerScene'
+import ElectricFieldDeflectionScene from './scenes/ElectricFieldDeflectionScene'
+import BulbIVCurveScene from './scenes/BulbIVCurveScene'
+import VoltAmpereMethodHSScene from './scenes/VoltAmpereMethodHSScene'
+import ElectricLab3DScene from './scenes/ElectricLab3DScene'
 import { PRESETS } from './scenes'
 import { EXPERIMENT_CATALOG, CATEGORIES, DIFFICULTY_LABELS } from './scenes/catalog'
 
@@ -459,8 +475,24 @@ export default function LabPage({ onBack }) {
           <RelativityScene />
         ) : currentExperiment?.key === 'compton' ? (
           <ComptonScene />
+        ) : currentExperiment?.key === 'millikan' ? (
+          <MillikanScene />
+        ) : currentExperiment?.key === 'meltingCurve' ? (
+          <MeltingCurveScene />
+        ) : currentExperiment?.key === 'boilingWater' ? (
+          <BoilingWaterScene />
+        ) : currentExperiment?.key === 'specificHeat' ? (
+          <SpecificHeatScene />
         ) : currentExperiment?.key === 'brownianMotion' ? (
           <BrownianMotionScene />
+        ) : currentExperiment?.key === 'diffusion' ? (
+          <DiffusionScene />
+        ) : currentExperiment?.key === 'evaporation' ? (
+          <EvaporationScene />
+        ) : currentExperiment?.key === 'phaseChange' ? (
+          <PhaseChangeScene />
+        ) : currentExperiment?.key === 'oilFilmMethod' ? (
+          <OilFilmMethodScene />
         ) : currentExperiment?.key === 'gasLaws' ? (
           <GasLawsScene />
         ) : currentExperiment?.key === 'thermodynamicsFirst' ? (
@@ -521,6 +553,22 @@ export default function LabPage({ onBack }) {
           <LenzLawScene />
         ) : currentExperiment?.key === 'measureSpeed' ? (
           <MeasureSpeedScene />
+        ) : currentExperiment?.key === 'refractionLaw' ? (
+          <RefractionLawScene />
+        ) : currentExperiment?.key === 'totalInternalReflection' ? (
+          <TotalInternalReflectionScene />
+        ) : currentExperiment?.key === 'lightPolarization' ? (
+          <LightPolarizationScene />
+        ) : currentExperiment?.key === 'transformer' ? (
+          <TransformerScene />
+        ) : currentExperiment?.key === 'electricFieldDeflection' ? (
+          <ElectricFieldDeflectionScene />
+        ) : currentExperiment?.key === 'bulbIVCurve' ? (
+          <BulbIVCurveScene />
+        ) : currentExperiment?.key === 'voltAmpereMethodHS' ? (
+          <VoltAmpereMethodHSScene />
+        ) : currentExperiment?.key === 'electricLab3D' ? (
+          <ElectricLab3DScene />
         ) : (
           <ExperimentBench
             preset={getPreset()}
@@ -537,14 +585,17 @@ export default function LabPage({ onBack }) {
 const styles = {
   // ===== 目录页 =====
   catalogPage: {
-    minHeight: '100vh',
+    minHeight: '100dvh',
+    height: '100dvh',
+    overflow: 'auto',
+    WebkitOverflowScrolling: 'touch',
     background: '#0d1117',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     display: 'flex',
     flexDirection: 'column',
   },
   catalogHeader: {
-    padding: '32px 40px 0',
+    padding: '24px 16px 0',
     textAlign: 'center',
   },
   backBtn: {
@@ -580,7 +631,10 @@ const styles = {
     display: 'flex',
     justifyContent: 'center',
     gap: 8,
-    padding: '24px 40px 0',
+    padding: '24px 16px 0',
+    overflowX: 'auto',
+    WebkitOverflowScrolling: 'touch',
+    flexWrap: 'wrap',
   },
   categoryTab: {
     display: 'flex',
@@ -607,8 +661,8 @@ const styles = {
   filterBar: {
     display: 'flex',
     alignItems: 'center',
-    gap: 16,
-    padding: '12px 40px',
+    gap: 12,
+    padding: '12px 16px',
     flexWrap: 'wrap',
   },
   filterGroup: {
@@ -634,9 +688,9 @@ const styles = {
   // 实验卡片网格
   experimentGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+    gridTemplateColumns: 'repeat(auto-fill, minmax(min(280px, 100%), 1fr))',
     gap: 16,
-    padding: '24px 40px',
+    padding: '20px 16px 48px',
     flex: 1,
   },
   experimentCard: {
@@ -732,20 +786,22 @@ const styles = {
 
   // ===== 实验台 =====
   labContainer: {
-    height: '100vh',
+    height: '100dvh',
     display: 'flex',
     flexDirection: 'column',
     background: '#0d1117',
   },
   labHeader: {
-    height: 44,
+    minHeight: 44,
+    height: 'auto',
     background: '#161b22',
     borderBottom: '1px solid #30363d',
     display: 'flex',
     alignItems: 'center',
-    padding: '0 16px',
-    gap: 16,
+    padding: '8px 12px',
+    gap: 10,
     flexShrink: 0,
+    flexWrap: 'wrap',
   },
   backToCatalog: {
     padding: '4px 12px',

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import SceneShell from '../ui/SceneShell'
 
 /**
  * SimpleCircuitScene — 简单电路
@@ -714,40 +715,26 @@ export default function SimpleCircuitScene() {
   }, [])
 
   return (
-    <div style={styles.container}>
-      <div style={styles.toolbar}>
-        <span style={styles.title}>简单电路</span>
-        <div style={styles.actions}>
-          <button style={tab === 1 ? styles.tabA : styles.tab} onClick={() => { S.current.tab = 1; setTab(1) }}>📖 电路演示</button>
-          <button style={tab === 2 ? styles.tabA : styles.tab} onClick={() => { S.current.tab = 2; setTab(2) }}>🔧 自己动手</button>
-          <div style={{ flex: 1 }} />
-          <button style={styles.btn} onClick={handleReset}>↺ 重置</button>
-        </div>
-      </div>
-      <div style={styles.main}>
-        <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }}
-          onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
-          onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} />
-      </div>
-      <div style={styles.desc}>
-        <b>简单电路</b>
-        <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
-          {tab === 1 ? '电路演示：矩形回路 · 点击开关 · 标准符号 · 电子方向' : '自己动手：实物器材 · 红黄绿导线 · 接线柱连线 · 右键删除'}
-        </span>
-      </div>
-    </div>
+    <SceneShell
+      title="简单电路"
+      tab={tab}
+      onTabChange={(t) => { S.current.tab = t; setTab(t) }}
+      tab1Label="📖 电路演示"
+      tab2Label="🔧 自己动手"
+      onReset={handleReset}
+      desc={(
+        <>
+          <b>简单电路</b>
+          <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
+            {tab === 1 ? '电路演示：矩形回路 · 点击开关 · 标准符号 · 电子方向' : '自己动手：实物器材 · 红黄绿导线 · 接线柱连线 · 右键删除'}
+          </span>
+        </>
+      )}
+    >
+      <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }}
+        onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
+        onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} />
+    </SceneShell>
   )
-}
-
-const styles = {
-  container: { display: 'flex', flexDirection: 'column', height: '100vh', background: '#f0f4f8', color: '#333', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
-  toolbar: { minHeight: 44, background: '#f5f5f5', borderBottom: '1px solid #ccc', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', flexShrink: 0, flexWrap: 'wrap', gap: 6 },
-  title: { fontSize: 14, fontWeight: 600, color: '#333' },
-  actions: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1 },
-  tab: { background: '#f0f0f0', color: '#666', border: '1px solid #ddd', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer' },
-  tabA: { background: '#4A90D9', color: '#fff', border: '1px solid #4A90D9', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 600 },
-  btn: { background: '#f0f0f0', color: '#333', border: '1px solid #ddd', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer' },
-  main: { flex: 1, display: 'flex', overflow: 'hidden' },
-  desc: { padding: '8px 14px', background: '#f5f5f5', borderTop: '1px solid #ccc', fontSize: 13, color: '#333' },
 }

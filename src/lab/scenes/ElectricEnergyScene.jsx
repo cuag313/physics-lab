@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import SceneShell from '../ui/SceneShell'
 
 /**
  * ElectricEnergyScene — 电功与电能表
@@ -762,35 +763,22 @@ export default function ElectricEnergyScene() {
   }
 
   return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', gap: 8, padding: '8px 12px', background: '#fff', borderBottom: '1px solid #e0e0e0', alignItems: 'center' }}>
-        <button onClick={() => { S.current.tab = 1; setTab(1); forceUpdate(n => n + 1) }}
-          style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #ddd', background: tab === 1 ? '#1976D2' : '#fff', color: tab === 1 ? '#fff' : '#333', cursor: 'pointer' }}>
-          📊 实验演示
-        </button>
-        <button onClick={() => { S.current.tab = 2; setTab(2); forceUpdate(n => n + 1) }}
-          style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #ddd', background: tab === 2 ? '#1976D2' : '#fff', color: tab === 2 ? '#fff' : '#333', cursor: 'pointer' }}>
-          🔧 自己动手
-        </button>
-        <button onClick={() => {
-          S.current.elapsed = 0; S.current.U = 220; S.current.I = 2
-          S.current.records = []; S.current.switchClosed = false
-          forceUpdate(n => n + 1)
-        }} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#666', cursor: 'pointer' }}>
-          ↺ 重置
-        </button>
-      </div>
-      <div style={{ flex: 1, position: 'relative' }}>
-        <canvas
-          ref={canvasRef}
-          style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onDoubleClick={handleDoubleClick}
-          onContextMenu={handleContextMenu}
-        />
-      </div>
-    </div>
+    <SceneShell
+      title="电功与电能表"
+      tab={tab}
+      onTabChange={(t) => { S.current.tab = t; setTab(t); forceUpdate(n => n + 1) }}
+      tab1Label="📊 实验演示"
+      tab2Label="🔧 自己动手"
+    >
+      <canvas
+      ref={canvasRef}
+      style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onDoubleClick={handleDoubleClick}
+      onContextMenu={handleContextMenu}
+      />
+    </SceneShell>
   )
 }

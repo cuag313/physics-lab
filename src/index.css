@@ -1,4 +1,43 @@
 /* Reset */
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body, #root { height: 100%; width: 100%; overflow: hidden; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; }
+
+/* 页面壳：目录可滚动，实验页内部固定 */
+html, body, #root {
+  height: 100%;
+  width: 100%;
+}
+
+html, body {
+  /* 移动端动态视口，避免 100vh 被浏览器工具栏裁切 */
+  height: 100dvh;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0d1117;
+  color: #c9d1d9;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  height: 100%;
+  min-height: 100dvh;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+button, a, [role='button'] {
+  touch-action: manipulation;
+  /* 加大可点区域，避免手指点不中 */
+  min-height: 32px;
+}
+
+/* 实验页内画布容器不应把整页拖走 */
+canvas {
+  touch-action: none;
+  display: block;
+  max-width: 100%;
+}

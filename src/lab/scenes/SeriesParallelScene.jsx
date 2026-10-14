@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import SceneShell from '../ui/SceneShell'
 import { CircuitGraph, CircuitSolver } from '../engine/index.js'
 
 /**
@@ -1241,55 +1242,44 @@ export default function SeriesParallelScene() {
   }, [])
 
   return (
-    <div style={styles.container}>
-      <div style={styles.toolbar}>
-        <span style={styles.title}>串并联电路规律</span>
-        <div style={styles.actions}>
-          <button style={tab === 1 ? styles.tabA : styles.tab} onClick={() => { S.current.tab = 1; setTab(1) }}>📖 电路演示</button>
-          <button style={tab === 2 ? styles.tabA : styles.tab} onClick={() => { S.current.tab = 2; setTab(2) }}>🔧 自己动手</button>
-          <div style={styles.sep} />
-          {tab === 1 && (
-            <>
-              <label style={styles.lbl}>电源U：<input type="range" min="1" max="12" step="0.5" value={S.current.U}
-                onChange={(e) => { S.current.U = parseFloat(e.target.value); forceUpdate(n => n + 1) }} style={styles.slider} /><span style={styles.val}>{S.current.U.toFixed(1)}V</span></label>
-              <label style={styles.lbl}>R₁：<input type="range" min="5" max="50" step="1" value={R1}
-                onChange={(e) => { const v = parseInt(e.target.value); S.current.R1 = v; setR1(v) }} style={styles.slider} /><span style={styles.val}>{R1}Ω</span></label>
-              <label style={styles.lbl}>R₂：<input type="range" min="5" max="50" step="1" value={R2}
-                onChange={(e) => { const v = parseInt(e.target.value); S.current.R2 = v; setR2(v) }} style={styles.slider} /><span style={styles.val}>{R2}Ω</span></label>
-            </>
-          )}
-          <div style={{ flex: 1 }} />
-          <button style={styles.btn} onClick={handleReset}>↺ 重置</button>
-        </div>
-      </div>
-      <div style={styles.main}>
-        <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }}
-          onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
-          onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} />
-      </div>
-      <div style={styles.desc}>
-        <b>串并联电路规律</b>
-        <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
+    <SceneShell
+      title="串并联电路规律"
+      tab={tab}
+      onTabChange={(t) => { S.current.tab = t; setTab(t) }}
+      tab1Label="📖 电路演示"
+      tab2Label="🔧 自己动手"
+      onReset={handleReset}
+      toolbarExtra={tab === 1 ? (
+        <>
+          <span style={styles.sep} />
+          <label style={styles.lbl}>电源U：<input type="range" min="1" max="12" step="0.5" value={S.current.U}
+            onChange={(e) => { S.current.U = parseFloat(e.target.value); forceUpdate(n => n + 1) }} style={styles.slider} /><span style={styles.val}>{S.current.U.toFixed(1)}V</span></label>
+          <label style={styles.lbl}>R₁：<input type="range" min="5" max="50" step="1" value={R1}
+            onChange={(e) => { const v = parseInt(e.target.value); S.current.R1 = v; setR1(v) }} style={styles.slider} /><span style={styles.val}>{R1}Ω</span></label>
+          <label style={styles.lbl}>R₂：<input type="range" min="5" max="50" step="1" value={R2}
+            onChange={(e) => { const v = parseInt(e.target.value); S.current.R2 = v; setR2(v) }} style={styles.slider} /><span style={styles.val}>{R2}Ω</span></label>
+        </>
+      ) : null}
+      desc={(
+        <>
+          <b>串并联电路规律</b>
+          <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
           {tab === 1 ? '① 测单灯泡电阻 → ② 串联：电阻变大，灯变暗 → ③ 并联：电阻变小，灯变亮' : '自己动手搭建串并联电路'}
-        </span>
-      </div>
-    </div>
+          </span>
+        </>
+      )}
+    >
+      <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }}
+      onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
+      onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} />
+    </SceneShell>
   )
 }
 
 const styles = {
-  container: { display: 'flex', flexDirection: 'column', height: '100vh', background: '#f0f4f8', color: '#333', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
-  toolbar: { minHeight: 44, background: '#f5f5f5', borderBottom: '1px solid #ccc', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', flexShrink: 0, flexWrap: 'wrap', gap: 6 },
-  title: { fontSize: 14, fontWeight: 600, color: '#333' },
-  actions: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1 },
-  tab: { background: '#f0f0f0', color: '#666', border: '1px solid #ddd', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer' },
-  tabA: { background: '#4A90D9', color: '#fff', border: '1px solid #4A90D9', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 600 },
-  btn: { background: '#f0f0f0', color: '#333', border: '1px solid #ddd', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer' },
   sep: { width: 1, height: 20, background: '#ddd' },
   lbl: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#666' },
   slider: { width: 70, accentColor: '#4A90D9' },
   val: { color: '#4A90D9', fontWeight: 600, minWidth: 35, fontSize: 12 },
-  main: { flex: 1, display: 'flex', overflow: 'hidden' },
-  desc: { padding: '8px 14px', background: '#f5f5f5', borderTop: '1px solid #ccc', fontSize: 13, color: '#333' },
 }

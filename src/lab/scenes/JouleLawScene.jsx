@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import SceneShell from '../ui/SceneShell'
 
 /**
  * JouleLawScene — 探究焦耳定律 Q = I²Rt
@@ -787,33 +788,30 @@ export default function JouleLawScene() {
   }
 
   return (
-    <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', gap: 8, padding: '8px 12px', background: '#fff', borderBottom: '1px solid #e0e0e0', alignItems: 'center' }}>
-        <button onClick={() => { S.current.tab = 1; setTab(1); forceUpdate(n => n + 1) }} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #ddd', background: tab === 1 ? '#1976D2' : '#fff', color: tab === 1 ? '#fff' : '#333', cursor: 'pointer' }}>
-          📊 实验演示
-        </button>
-        <button onClick={() => { S.current.tab = 2; setTab(2); forceUpdate(n => n + 1) }} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #ddd', background: tab === 2 ? '#1976D2' : '#fff', color: tab === 2 ? '#fff' : '#333', cursor: 'pointer' }}>
-          🔧 自己动手
-        </button>
-        <button onClick={() => {
-          S.current.elapsed = 0; S.current.temps = [20, 20]
-          S.current.records = []; S.current.switchClosed = false
-          forceUpdate(n => n + 1)
-        }} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #ddd', background: '#fff', color: '#666', cursor: 'pointer' }}>
-          ↺ 重置
-        </button>
-      </div>
-      <div style={{ flex: 1, position: 'relative' }}>
-        <canvas
-          ref={canvasRef}
-          style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onDoubleClick={handleDoubleClick}
-          onContextMenu={handleContextMenu}
-        />
-      </div>
-    </div>
+    <SceneShell
+      title="探究焦耳定律 Q = I²Rt"
+      tab={tab}
+      onTabChange={(t) => { S.current.tab = t; setTab(t); forceUpdate(n => n + 1) }}
+      onReset={() => {
+        S.current.elapsed = 0
+        S.current.temps = [20, 20]
+        S.current.records = []
+        S.current.switchClosed = false
+        forceUpdate(n => n + 1)
+      }}
+      desc={tab === 1
+        ? '控制变量：改 I / 改 R / 改 t，观察电阻丝升温快慢，归纳 Q = I²Rt'
+        : '自己动手：拖入器材，搭建可调节电流的焦耳定律实验电路'}
+    >
+      <canvas
+        ref={canvasRef}
+        style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onDoubleClick={handleDoubleClick}
+        onContextMenu={handleContextMenu}
+      />
+    </SceneShell>
   )
 }

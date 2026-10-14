@@ -1,37 +1,55 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
+import './index.css'
 
-// ===== 全局触摸→鼠标事件桥接（让所有 canvas 场景自动支持触屏）=====
-;(function() {
+// ===== 触摸桥接：让 canvas 的 mousedown/move/up 在手机上可用 =====
+// 注意：touchend 时 e.touches 为空，必须用 changedTouches；
+// 不要全局 preventDefault，否则目录无法滚动、按钮点击会被吞掉。
+;(function () {
+  const TYPE_MAP = {
+    touchstart: 'mousedown',
+    touchmove: 'mousemove',
+    touchend: 'mouseup',
+    touchcancel: 'mouseup',
+  }
+
+  function firstTouch(e) {
+    return (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
+  }
+
+  function isCanvasTarget(target) {
+    if (!target || !target.closest) return false
+    return !!target.closest('canvas')
+  }
+
   function touchToMouse(e) {
-    if (e.touches.length === 0) return
-    const t = e.touches[0] || e.changedTouches[0]
-    const typeMap = {
-      touchstart: 'mousedown',
-      touchmove: 'mousemove',
-      touchend: 'mouseup',
-    }
-    const mouseEvent = new MouseEvent(typeMap[e.type], {
+    const t = firstTouch(e)
+    if (!t) return
+
+    const type = TYPE_MAP[e.type]
+    if (!type) return
+
+    const mouseEvent = new MouseEvent(type, {
       bubbles: true,
       cancelable: true,
       clientX: t.clientX,
       clientY: t.clientY,
       button: 0,
+      buttons: type === 'mouseup' ? 0 : 1,
     })
     e.target.dispatchEvent(mouseEvent)
-    if (e.type !== 'touchmove') e.preventDefault()
+
+    // 只在 canvas 交互时阻止默认滚动，目录页保留系统滚动
+    if (isCanvasTarget(e.target) && e.type !== 'touchend' && e.type !== 'touchcancel') {
+      e.preventDefault()
+    }
   }
+
   document.addEventListener('touchstart', touchToMouse, { passive: false })
   document.addEventListener('touchmove', touchToMouse, { passive: false })
   document.addEventListener('touchend', touchToMouse, { passive: false })
-  // 双击缩放禁止
-  let lastTouch = 0
-  document.addEventListener('touchend', (e) => {
-    const now = Date.now()
-    if (now - lastTouch < 300) e.preventDefault()
-    lastTouch = now
-  }, { passive: false })
+  document.addEventListener('touchcancel', touchToMouse, { passive: false })
 })()
 
 createRoot(document.getElementById('root')).render(

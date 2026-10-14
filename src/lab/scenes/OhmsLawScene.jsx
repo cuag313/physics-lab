@@ -1,5 +1,6 @@
-﻿import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { CircuitGraph, CircuitSolver } from '../engine/index.js'
+import SceneShell from '../ui/SceneShell'
 
 // 模块级数据（跨渲染保留，不被组件重渲染重置）
 let dataIUStore = []
@@ -43,6 +44,7 @@ export default function OhmsLawScene() {
   const [tab, setTab] = useState(1)
   const [step, setStep] = useState(1)
   const [, forceUpdate] = useState(0)
+  const [conclusionOpen, setConclusionOpen] = useState(false)
 
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas) return
@@ -1103,60 +1105,65 @@ export default function OhmsLawScene() {
 
   const handleReset = useCallback(() => {
     S.current.components = []; S.current.wires = []; S.current.switchClosed = false; S.current.dragId = null; S.current.connecting = null
+    dataIUStore = []; dataIRStore = []
     forceUpdate(n => n + 1)
   }, [])
 
   return (
-    <div style={styles.container}>
-      <div style={styles.toolbar}>
-        <span style={styles.title}>探究电流与电压、电阻的关系</span>
-        <div style={styles.actions}>
-          <button style={tab === 1 ? styles.tabA : styles.tab} onClick={() => { S.current.tab = 1; setTab(1) }}>📖 控制变量法</button>
-          <button style={tab === 2 ? styles.tabA : styles.tab} onClick={() => { S.current.tab = 2; setTab(2) }}>🔧 自己动手</button>
-          <div style={styles.sep} />
-          {tab === 1 && (
-            <>
-              <label style={styles.lbl}>电源U：<input type="range" min="1" max="12" step="0.5" value={S.current.U}
-                onChange={(e) => { S.current.U = parseFloat(e.target.value); forceUpdate(n => n + 1) }} style={styles.slider} /><span style={styles.val}>{S.current.U.toFixed(1)}V</span></label>
-              <label style={styles.lbl}>R：<input type="range" min="5" max="50" step="1" value={S.current.R}
-                onChange={(e) => { const v = parseInt(e.target.value); S.current.R = v; S.current.R_slider = v; forceUpdate(n => n + 1) }} style={styles.slider} /><span style={styles.val}>{S.current.R}Ω</span></label>
-              <label style={styles.lbl}>滑动变阻器：<input type="range" min="0" max="50" step="1" value={S.current.sliderR}
-                onChange={(e) => { S.current.sliderR = parseInt(e.target.value); forceUpdate(n => n + 1) }} style={styles.slider} /><span style={styles.val}>{S.current.sliderR}Ω</span></label>
-            </>
-          )}
-          <div style={{ flex: 1 }} />
-          <button style={styles.btn} onClick={handleReset}>↺ 重置</button>
-        </div>
-      </div>
-      <div style={styles.main}>
-        <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }}
-          onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
-          onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} />
-      </div>
-      <div style={styles.desc}>
-        <b>探究欧姆定律 I=U/R</b>
-        <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
-          {tab === 1 ? '控制变量法：①R不变改变U→I∝U ②U不变改变R→I∝1/R' : '自己动手搭建伏安法电路'}
-        </span>
-      </div>
-    </div>
+    <SceneShell
+      title="探究电流与电压、电阻的关系"
+      tab={tab}
+      onTabChange={(t) => { S.current.tab = t; setTab(t) }}
+      tab1Label="📖 控制变量法"
+      tab2Label="🔧 自己动手"
+      onReset={handleReset}
+      conclusionOpen={conclusionOpen}
+      onConclusionToggle={() => setConclusionOpen(o => !o)}
+      conclusion={{
+        title: '查看结论',
+        phenomenon: tab === 1
+          ? (S.current.step === 1 ? 'R 不变时，电压越大电流越大，I-U 近似过原点直线。' : 'U 不变时，电阻越大电流越小，I 与 1/R 成正比。')
+          : '自己动手测出 U、I、R，验证 I = U/R。',
+        dataRows: (tab === 1 && S.current.step === 1 ? dataIUStore : tab === 1 ? dataIRStore : []).slice(-8).map(r =>
+          (tab === 1 && S.current.step === 1)
+            ? { U: r.U.toFixed(2), I: r.I.toFixed(3) }
+            : { R: r.R, I: r.I.toFixed(3) }
+        ),
+        formula: tab === 1 && S.current.step === 1 ? 'I ∝ U（R 一定）' : tab === 1 ? 'I ∝ 1/R（U 一定）' : 'I = U / R',
+        summary: tab === 1
+          ? '控制变量法：只改变一个量，观察电流如何变化。'
+          : '多测几组数据，作 I-U 或 I-1/R 图像可验证正比关系。',
+      }}      toolbarExtra={tab === 1 ? (
+        <>
+          <span style={styles.sep} />
+          <label style={styles.lbl}>电源U：<input type="range" min="1" max="12" step="0.5" value={S.current.U}
+            onChange={(e) => { S.current.U = parseFloat(e.target.value); forceUpdate(n => n + 1) }} style={styles.slider} /><span style={styles.val}>{S.current.U.toFixed(1)}V</span></label>
+          <label style={styles.lbl}>R：<input type="range" min="5" max="50" step="1" value={S.current.R}
+            onChange={(e) => { const v = parseInt(e.target.value); S.current.R = v; S.current.R_slider = v; forceUpdate(n => n + 1) }} style={styles.slider} /><span style={styles.val}>{S.current.R}Ω</span></label>
+          <label style={styles.lbl}>滑动变阻器：<input type="range" min="0" max="50" step="1" value={S.current.sliderR}
+            onChange={(e) => { S.current.sliderR = parseInt(e.target.value); forceUpdate(n => n + 1) }} style={styles.slider} /><span style={styles.val}>{S.current.sliderR}Ω</span></label>
+        </>
+      ) : null}
+      desc={(
+        <>
+          <b>探究欧姆定律 I=U/R</b>
+          <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
+            {tab === 1 ? '控制变量法：①R不变改变U→I∝U ②U不变改变R→I∝1/R' : '自己动手搭建伏安法电路'}
+          </span>
+        </>
+      )}
+    >
+      <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }}
+        onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
+        onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} />
+    </SceneShell>
   )
 }
 
 const styles = {
-  container: { display: 'flex', flexDirection: 'column', height: '100vh', background: '#f0f4f8', color: '#333', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' },
-  toolbar: { minHeight: 44, background: '#f5f5f5', borderBottom: '1px solid #ccc', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', flexShrink: 0, flexWrap: 'wrap', gap: 6 },
-  title: { fontSize: 14, fontWeight: 600, color: '#333' },
-  actions: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flex: 1 },
-  tab: { background: '#f0f0f0', color: '#666', border: '1px solid #ddd', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer' },
-  tabA: { background: '#4A90D9', color: '#fff', border: '1px solid #4A90D9', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 600 },
-  btn: { background: '#f0f0f0', color: '#333', border: '1px solid #ddd', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer' },
   sep: { width: 1, height: 20, background: '#ddd' },
   lbl: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, color: '#666' },
   slider: { width: 70, accentColor: '#4A90D9' },
   val: { color: '#4A90D9', fontWeight: 600, minWidth: 35, fontSize: 12 },
-  main: { flex: 1, display: 'flex', overflow: 'hidden' },
-  desc: { padding: '8px 14px', background: '#f5f5f5', borderTop: '1px solid #ccc', fontSize: 13, color: '#333' },
 }
-

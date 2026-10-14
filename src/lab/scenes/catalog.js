@@ -1190,6 +1190,17 @@ export const EXPERIMENT_CATALOG = [
     tags: ['密立根', '油滴', '元电荷', '电荷量子化', '受力平衡'],
     examLevel: '★★',
   },
+  {
+    key: 'electricLab3D',
+    name: '3D 电学实验台',
+    description: '拟物 3D 电池、开关、电表、灯泡、变阻器，可旋转视角的电路实验台',
+    category: 'electric',
+    subCategory: '3D 实验台',
+    difficulty: 1,
+    grade: '九年级',
+    tags: ['3D', '拟物器材', '电路'],
+    examLevel: '★',
+  },
 ]
 
 /** 分类配置 */
