@@ -10,25 +10,62 @@
     <style>
       * { -webkit-tap-highlight-color: transparent; }
       html, body { margin: 0; padding: 0; overscroll-behavior: none; touch-action: manipulation; }
-      /* 竖屏进入实验时的小浮层提示（不挡目录） */
+      /* 竖屏进入实验时的小浮层提示（点一下关闭，不挡操作） */
       #rotate-hint {
         display: none;
         position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
         z-index: 9999;
         background: rgba(255,152,0,0.95); color: #fff;
-        padding: 8px 18px; border-radius: 20px;
+        padding: 10px 18px; border-radius: 20px;
         font-family: -apple-system, sans-serif; font-size: 13px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        cursor: pointer; user-select: none; -webkit-user-select: none;
+        touch-action: manipulation;
+        transition: opacity .25s ease, transform .25s ease;
+      }
+      #rotate-hint .hint-x {
+        margin-left: 10px; opacity: .85; font-weight: 700;
+      }
+      #rotate-hint.hint-hide {
+        opacity: 0; pointer-events: none;
+        transform: translateX(-50%) translateY(8px);
       }
       @media (orientation: portrait) and (max-width: 820px) {
         /* 只在实验页（有 labBody）显示，目录页不挡 */
-        body.in-experiment #rotate-hint { display: block; }
+        body.in-experiment #rotate-hint:not(.hint-hide) { display: block; }
       }
     </style>
   </head>
   <body>
     <div id="root"></div>
-    <div id="rotate-hint">📱 横屏操作效果更佳</div>
+    <div id="rotate-hint" title="点击关闭">📱 横屏操作效果更佳<span class="hint-x">×</span></div>
     <script type="module" src="/src/main.jsx"></script>
+    <script>
+      (function () {
+        var hint = document.getElementById('rotate-hint')
+        if (!hint) return
+        var hideTimer = null
+        function hideHint() {
+          hint.classList.add('hint-hide')
+          if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
+        }
+        // 点一下关闭（以前是死提示，点了没反应）
+        hint.addEventListener('click', hideHint)
+        hint.addEventListener('touchend', function (e) {
+          e.preventDefault()
+          hideHint()
+        }, { passive: false })
+        // 6 秒后自动淡出，避免一直挡住底部
+        if ('IntersectionObserver' in window) {
+          var mo = new MutationObserver(function () {
+            if (document.body.classList.contains('in-experiment') && !hint.classList.contains('hint-hide')) {
+              if (hideTimer) clearTimeout(hideTimer)
+              hideTimer = setTimeout(hideHint, 6000)
+            }
+          })
+          mo.observe(document.body, { attributes: true, attributeFilter: ['class'] })
+        }
+      })()
+    </script>
   </body>
 </html>
