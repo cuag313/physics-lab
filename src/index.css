@@ -51,12 +51,13 @@ canvas {
 }
 
 .lab-body .canvas-fill {
-  width: 100% !important;
-  height: 100% !important;
+  width: auto !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
   max-width: none !important;
   max-height: none !important;
-  flex: 1 !important;
-  min-height: 0 !important;
+  height: 100% !important;
 }
 
 /* 器材列表：触屏可滚 */

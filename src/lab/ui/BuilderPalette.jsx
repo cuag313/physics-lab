@@ -1,8 +1,8 @@
 import { useRef } from 'react'
 
 /**
- * 自己动手模式的器材工具条（DOM）
- * 手机可横向滑动选择，不再把列表画进 canvas 导致裁切/叠框。
+ * 自己动手模式的器材栏（DOM）
+ * 横屏优先：放在右侧竖向滑动，把高度留给画布；竖屏也可用同一组件。
  */
 const DEFAULT_ITEMS = [
   { type: 'battery', name: '电源', icon: '🔋' },
@@ -22,59 +22,86 @@ const COLORS = [
   { color: '#4CAF50', name: '绿' },
 ]
 
-export default function BuilderPalette({ items = DEFAULT_ITEMS, wireColor, onPickColor, onAdd, hint }) {
+export default function BuilderPalette({
+  items = DEFAULT_ITEMS,
+  wireColor,
+  onPickColor,
+  onAdd,
+  hint,
+  side = 'right', // right | bottom
+}) {
   const listRef = useRef(null)
+  const isRight = side === 'right'
 
   return (
-    <div style={styles.wrap}>
+    <div style={isRight ? styles.wrapRight : styles.wrapBottom}>
       <div
         ref={listRef}
-        style={styles.scroll}
         className="toolbox-list"
+        style={isRight ? styles.scrollRight : styles.scrollBottom}
       >
-        <span style={styles.label}>器材</span>
+        <div style={isRight ? styles.labelRight : styles.label}>器材</div>
         {items.map((it) => (
           <button
             key={it.type}
             type="button"
-            style={styles.chip}
+            style={isRight ? styles.chipRight : styles.chip}
             onClick={() => onAdd && onAdd(it.type)}
             title={`添加${it.name}`}
           >
             <span style={styles.icon}>{it.icon}</span>
-            <span style={styles.name}>{it.name}</span>
+            <span style={isRight ? styles.nameRight : styles.name}>{it.name}</span>
           </button>
         ))}
-        <span style={{ ...styles.label, marginLeft: 8 }}>导线</span>
+        <div style={isRight ? styles.labelRight : styles.label}>导线</div>
         {COLORS.map((c) => (
           <button
             key={c.color}
             type="button"
             style={{
-              ...styles.chip,
-              ...styles.colorChip,
+              ...(isRight ? styles.chipRight : styles.chip),
               borderColor: wireColor === c.color ? c.color : 'transparent',
               background: wireColor === c.color ? `${c.color}22` : '#fff',
             }}
             onClick={() => onPickColor && onPickColor(c.color)}
           >
             <span style={{ ...styles.swatch, background: c.color }} />
-            <span style={styles.name}>{c.name}</span>
+            <span style={isRight ? styles.nameRight : styles.name}>{c.name}</span>
           </button>
         ))}
-        {hint && <span style={styles.hint}>{hint}</span>}
+        {hint && <div style={isRight ? styles.hintRight : styles.hint}>{hint}</div>}
       </div>
     </div>
   )
 }
 
 const styles = {
-  wrap: {
+  wrapRight: {
+    flexShrink: 0,
+    width: 108,
+    borderLeft: '1px solid #d0d7de',
+    background: '#f6f8fa',
+    minHeight: 0,
+    display: 'flex',
+  },
+  wrapBottom: {
     flexShrink: 0,
     borderTop: '1px solid #d0d7de',
     background: '#f6f8fa',
   },
-  scroll: {
+  scrollRight: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 6,
+    overflowY: 'auto',
+    overflowX: 'hidden',
+    WebkitOverflowScrolling: 'touch',
+    overscrollBehaviorY: 'contain',
+    padding: '8px 6px',
+    width: '100%',
+  },
+  scrollBottom: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
@@ -90,6 +117,14 @@ const styles = {
     fontSize: 11,
     color: '#666',
     fontWeight: 600,
+  },
+  labelRight: {
+    fontSize: 10,
+    color: '#666',
+    fontWeight: 700,
+    textAlign: 'center',
+    padding: '2px 0 0',
+    flexShrink: 0,
   },
   chip: {
     flexShrink: 0,
@@ -107,16 +142,34 @@ const styles = {
     touchAction: 'manipulation',
     boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
   },
-  colorChip: {
-    padding: '6px 10px',
+  chipRight: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 2,
+    padding: '8px 4px',
+    borderRadius: 8,
+    border: '1px solid #d0d7de',
+    background: '#fff',
+    cursor: 'pointer',
+    minHeight: 52,
+    width: '100%',
+    fontSize: 11,
+    color: '#24292f',
+    touchAction: 'manipulation',
+    boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+    flexShrink: 0,
   },
   icon: { fontSize: 16 },
   name: { fontWeight: 600, whiteSpace: 'nowrap' },
+  nameRight: { fontWeight: 600, whiteSpace: 'nowrap', fontSize: 10 },
   swatch: {
-    width: 22,
-    height: 12,
+    width: 18,
+    height: 10,
     borderRadius: 3,
     display: 'inline-block',
+    flexShrink: 0,
   },
   hint: {
     flexShrink: 0,
@@ -124,5 +177,13 @@ const styles = {
     color: '#8b949e',
     marginLeft: 8,
     whiteSpace: 'nowrap',
+  },
+  hintRight: {
+    fontSize: 9,
+    color: '#8b949e',
+    textAlign: 'center',
+    lineHeight: 1.3,
+    padding: '4px 0',
+    flexShrink: 0,
   },
 }

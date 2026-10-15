@@ -693,7 +693,7 @@ export default function SimpleCircuitScene() {
         </>
       )}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, width: '100%' }}>
+      <div style={{ display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0, width: '100%' }}>
         <canvas
           ref={canvasRef}
           className="canvas-fill" style={{ width: '100%', flex: 1, minHeight: 0, display: 'block', touchAction: 'none' }}
@@ -702,7 +702,7 @@ export default function SimpleCircuitScene() {
           onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick}
         />
         {tab === 2 && (
-          <BuilderPalette
+          <BuilderPalette side="right"
             items={[
               { type: 'battery', name: '电源', icon: '🔋' },
               { type: 'bulb', name: '灯泡', icon: '💡' },
