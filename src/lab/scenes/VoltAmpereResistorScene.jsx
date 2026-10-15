@@ -9,7 +9,7 @@ let dataStore = []
  * Tab1: 演示 — 改变滑动变阻器，测灯泡在不同电压下的 P=UI（灯泡电阻随温度非线性）
  * Tab2: 自己动手搭电路（完整电路引擎）
  */
-export default function VoltAmpereResistorScene() {
+export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡电功率' }) {
   const canvasRef = useRef(null)
   const animRef = useRef(null)
 
@@ -88,7 +88,7 @@ export default function VoltAmpereResistorScene() {
     }
 
     ctx.fillStyle = '#333'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('伏安法测小灯泡电功率', W / 2, 12)
+    ctx.fillText(title, W / 2, 12)
 
     // 电路图
     const battX = L + (Rt - L) * 0.15
@@ -905,7 +905,7 @@ export default function VoltAmpereResistorScene() {
   return (
     <div style={st.container}>
       <div style={st.topBar}>
-        <span style={st.title}>伏安法测小灯泡电功率</span>
+        <span style={st.title}>{title}</span>
         <div style={st.topActions}>
           <button style={tab === 1 ? st.tabA : st.tab} onClick={() => { S.current.tab = 1; setTab(1); forceUpdate(n => n + 1) }}>📖 实验演示</button>
           <button style={tab === 2 ? st.tabA : st.tab} onClick={() => { S.current.tab = 2; setTab(2); forceUpdate(n => n + 1) }}>🔧 自己动手</button>
@@ -920,7 +920,7 @@ export default function VoltAmpereResistorScene() {
           onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} />
       </div>
       <div style={st.desc}>
-        <b>伏安法测小灯泡电功率</b>
+        <b>{title}</b>
         <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
           {tab === 1 ? '点击开关→点滑动变阻器电阻体调分压→记录3组数据' : '从器材栏拖入器材·点击接线柱连线·双击开关·拖动变阻器滑片'}
         </span>

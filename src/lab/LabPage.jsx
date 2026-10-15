@@ -131,13 +131,20 @@ export default function LabPage({ onBack }) {
     setCurrentExperiment(null)
   }, [])
 
-  // 进入实验时给 body 加 class，触发横屏小提示
+  // 进入实验：统一手机横屏（真横屏或强制横屏，只保留一种体验）
   useEffect(() => {
     if (currentExperiment && !showCatalog) {
       document.body.classList.add('in-experiment')
-    } else {
-      document.body.classList.remove('in-experiment')
+      // 延后一帧，等场景挂载完再切横屏，避免布局抖动
+      const t = setTimeout(() => {
+        if (window.mimoEnterLandscape) window.mimoEnterLandscape()
+      }, 50)
+      return () => {
+        clearTimeout(t)
+        document.body.classList.remove('in-experiment')
+      }
     }
+    document.body.classList.remove('in-experiment')
     return () => document.body.classList.remove('in-experiment')
   }, [currentExperiment, showCatalog])
 
@@ -553,7 +560,7 @@ export default function LabPage({ onBack }) {
         ) : currentExperiment?.key === 'ohmsLaw' ? (
           <OhmsLawScene />
         ) : currentExperiment?.key === 'bulbPower' ? (
-          <VoltAmpereResistorScene />
+          <VoltAmpereResistorScene title={currentExperiment?.key === 'voltAmpereResistor' ? '伏安法测定值电阻' : '伏安法测小灯泡电功率'} />
         ) : currentExperiment?.key === 'voltAmpereResistor' ? (
           <VoltAmpereResistorScene />
         ) : currentExperiment?.key === 'multimeter' ? (

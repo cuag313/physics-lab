@@ -175,6 +175,18 @@
             try { if (document.exitFullscreen) document.exitFullscreen() } catch (err) {}
           })
         }
+        window.mimoEnterLandscape = function () {
+          // 手机统一：进实验即横屏（真横屏则无需强制）
+          if (window.matchMedia('(orientation: landscape)').matches && window.innerWidth <= 900) {
+            htmlClearForce()
+            syncMode()
+            return
+          }
+          if (window.innerWidth <= 900) {
+            enableForceLandscape()
+          }
+        }
+        window.mimoExitLandscape = disableForceLandscape
         syncMode()
       })()
     </script>
