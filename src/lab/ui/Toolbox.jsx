@@ -88,10 +88,11 @@ export default function Toolbox({ onAddInstrument, visible = true, category = nu
       </div>
 
       {/* 器材列表 */}
-      <div style={styles.itemList}>
+      <div className="toolbox-list" style={styles.itemList}>
         {cat.items.map(item => (
           <div
             key={item.type}
+            className="toolbox-item"
             style={styles.item}
             onClick={() => onAddInstrument(item.type)}
             title={`点击添加${item.name}`}

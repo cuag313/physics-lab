@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { CircuitGraph, CircuitSolver } from '../engine/index.js'
 import SceneShell from '../ui/SceneShell'
+import { paletteMetrics } from '../ui/paletteLayout'
 
 // 模块级数据（跨渲染保留，不被组件重渲染重置）
 let dataIUStore = []
@@ -558,7 +559,8 @@ export default function OhmsLawScene() {
   // ================================================================
   function renderBuilder(ctx, W, H) {
     const s = S.current
-    const palW = 170
+    const PM = paletteMetrics(W, H)
+    const palW = PM.palW
     const cvX = 10, cvY = 60, cvW = W - palW - 30, cvH = H - 120
 
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(cvX, cvY, cvW, cvH, 8); ctx.fill()
@@ -602,8 +604,8 @@ export default function OhmsLawScene() {
     const palX = W - palW - 10
     ctx.fillStyle = '#f8f9fa'; ctx.beginPath(); ctx.roundRect(palX, cvY, palW, cvH, 8); ctx.fill()
     ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX, cvY, palW, cvH, 8); ctx.stroke()
-    ctx.fillStyle = '#333'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('🧰 电学器材', palX + 10, cvY + 10)
+    ctx.fillStyle = '#333'; ctx.font = PM.fontTitle; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('🧰 电学器材', palX + PM.palPad, cvY + 8)
 
     const items = [
       { type: 'battery', name: '电源' },
@@ -616,30 +618,41 @@ export default function OhmsLawScene() {
       { type: 'ammeter', name: '电流表Ⓐ' },
       { type: 'voltmeter', name: '电压表Ⓥ' },
     ]
-    let iy = cvY + 35
-    for (const item of items) {
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 38, 6); ctx.fill()
-      ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 38, 6); ctx.stroke()
-      drawRealisticIcon(ctx, palX + 28, iy + 19, item.type)
-      ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(item.name, palX + 50, iy + 19); ctx.textBaseline = 'alphabetic'
-      canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: 38, type: item.type })
-      iy += 42
-    }
+    const cols = PM.compact ? 2 : 1
+    const cellW = (palW - 12 - (cols - 1) * 4) / cols
+    const itemH = PM.compact ? 28 : 38
+    let iy = cvY + (PM.compact ? 24 : 35)
+    items.forEach((item, idx) => {
+      const col = idx % cols
+      const row = Math.floor(idx / cols)
+      const ix = palX + 6 + col * (cellW + 4)
+      const y = iy + row * (itemH + PM.itemGap)
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(ix, y, cellW, itemH, 6); ctx.fill()
+      ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(ix, y, cellW, itemH, 6); ctx.stroke()
+      drawRealisticIcon(ctx, ix + (PM.compact ? 14 : 28), y + itemH / 2, item.type)
+      ctx.fillStyle = '#333'; ctx.font = PM.compact ? '9px sans-serif' : 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      const label = PM.compact ? item.name.replace('滑动变阻器', '滑变').replace('电流表Ⓐ', '电流表').replace('电压表Ⓥ', '电压表') : item.name
+      ctx.fillText(label, ix + (PM.compact ? 26 : 50), y + itemH / 2); ctx.textBaseline = 'alphabetic'
+      canvasRef.current._palAreas.push({ x: ix, y, w: cellW, h: itemH, type: item.type })
+    })
+    iy += Math.ceil(items.length / cols) * (itemH + PM.itemGap)
 
-    iy += 10
-    ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('导线颜色：', palX + 10, iy); iy += 20
-    for (const wc of [{ color: '#F44336', name: '红线' }, { color: '#FFC107', name: '黄线' }, { color: '#4CAF50', name: '绿线' }]) {
+    iy += PM.compact ? 4 : 10
+    if (!PM.compact) {
+      ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+      ctx.fillText('导线颜色：', palX + 10, iy); iy += 20
+    }
+    const colorH = PM.compact ? 22 : 26
+    for (const [i, wc] of [{ color: '#F44336', name: '红线' }, { color: '#FFC107', name: '黄线' }, { color: '#4CAF50', name: '绿线' }].entries()) {
       const active = s.wireColor === wc.color
+      const y = iy + i * (colorH + 3)
       ctx.fillStyle = active ? '#e3f2fd' : '#fff'
-      ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 26, 4); ctx.fill()
-      if (active) { ctx.strokeStyle = wc.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 26, 4); ctx.stroke() }
-      ctx.fillStyle = wc.color; ctx.fillRect(palX + 14, iy + 8, 30, 10)
-      ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(wc.name, palX + 52, iy + 13); ctx.textBaseline = 'alphabetic'
-      canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: 26, action: 'color', color: wc.color })
-      iy += 30
+      ctx.beginPath(); ctx.roundRect(palX + 6, y, palW - 12, colorH, 4); ctx.fill()
+      if (active) { ctx.strokeStyle = wc.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(palX + 6, y, palW - 12, colorH, 4); ctx.stroke() }
+      ctx.fillStyle = wc.color; ctx.fillRect(palX + 12, y + 6, PM.compact ? 22 : 30, colorH - 12)
+      ctx.fillStyle = '#333'; ctx.font = PM.fontSmall; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      ctx.fillText(wc.name, palX + (PM.compact ? 42 : 52), y + colorH / 2); ctx.textBaseline = 'alphabetic'
+      canvasRef.current._palAreas.push({ x: palX + 6, y, w: palW - 12, h: colorH, action: 'color', color: wc.color })
     }
     ctx.textBaseline = 'alphabetic'
   }

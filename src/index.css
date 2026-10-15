@@ -41,6 +41,40 @@ canvas {
   max-width: 100%;
 }
 
+/* 固定尺寸画布（width/height 属性）在小屏等比缩放，不裁切 */
+.lab-body canvas {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: auto !important;
+  height: auto !important;
+  object-fit: contain;
+}
+
+/* 器材列表：触屏可滚 */
+.toolbox-list {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  flex: 1;
+  min-height: 0;
+}
+
+.toolbox-item {
+  min-height: 48px;
+  touch-action: pan-y;
+}
+
+@media (max-width: 900px) {
+  .toolbox-list {
+    overflow-y: auto !important;
+    max-height: none;
+  }
+  .toolbox-item {
+    min-height: 52px;
+    padding: 10px 12px !important;
+  }
+}
+
 /* ===== 目录分类：手机必须看得到电学/光学等 ===== */
 .category-tabs {
   display: flex;
@@ -412,11 +446,30 @@ canvas {
 
   .scene-side {
     width: min(240px, 32vw) !important;
+    max-width: min(240px, 32vw) !important;
     max-height: none !important;
     border-top: none !important;
     border-left: 1px solid rgba(0, 0, 0, 0.12) !important;
     overflow: auto !important;
     position: relative !important;
+    padding: 8px !important;
+    font-size: 11px;
+  }
+
+  /* 固定画布缩放到可视区，避免被裁掉下半截 */
+  .lab-body canvas {
+    max-width: 100% !important;
+    max-height: calc(100vh - 120px) !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 auto;
+  }
+
+  .scene-canvas {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden !important;
   }
 
   .formula-overlay {

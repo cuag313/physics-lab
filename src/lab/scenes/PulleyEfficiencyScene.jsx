@@ -453,10 +453,10 @@ export default function PulleyEfficiencyScene() {
     rb: { display: 'flex', gap: 4, alignItems: 'center', marginLeft: 'auto' },
     tg: { padding: '2px 6px', borderRadius: 3, fontSize: 10, color: '#fff' },
     ab: { padding: '2px 7px', borderRadius: 4, border: '1px solid #556', background: 'transparent', color: '#fff', cursor: 'pointer', fontSize: 10 },
-    mn: { display: 'flex', flex: 1, overflow: 'hidden' },
-    cw: { flex: '1 1 auto', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: 4, background: '#fafafa', minWidth: 0 },
-    cv: { border: '1px solid #ddd', borderRadius: 4, cursor: 'default', touchAction: 'none' },
-    pn: { width: 340, flexShrink: 0, padding: '10px 14px', background: '#fff', borderLeft: '1px solid #e0e0e0', overflow: 'hidden' },
+    mn: { display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 },
+    cw: { flex: '1 1 auto', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 4, background: '#fafafa', minWidth: 0, minHeight: 0, overflow: 'hidden' },
+    cv: { border: '1px solid #ddd', borderRadius: 4, cursor: 'default', touchAction: 'none', maxWidth: '100%', maxHeight: '100%', width: 'auto', height: 'auto', objectFit: 'contain' },
+    pn: { width: 340, maxWidth: '38vw', flexShrink: 0, padding: '10px 14px', background: '#fff', borderLeft: '1px solid #e0e0e0', overflow: 'auto', minHeight: 0 },
     pt: { fontSize: 13, fontWeight: 700, marginBottom: 6, color: '#2c3e50' },
     gd: { display: 'grid', gridTemplateColumns: '1fr 100px', gap: '0', alignItems: 'center' },
     rl: { fontSize: 12, color: '#333', padding: '2px 0', lineHeight: '26px' },
@@ -477,7 +477,7 @@ export default function PulleyEfficiencyScene() {
   }
 
   return (
-    <div style={st.wrap}>
+    <div className="lab-shell" style={st.wrap}>
       {/* 顶部控制栏（唯一返回按钮） */}
       <div style={st.top}>
         <button style={st.bb} onClick={() => window.dispatchEvent(new CustomEvent('lab-navigate', { detail: { key: null } }))}>← 返回目录</button>
@@ -520,8 +520,8 @@ export default function PulleyEfficiencyScene() {
       </div>
 
       {/* 主区域 */}
-      <div style={st.mn}>
-        <div style={st.cw}>
+      <div className="scene-split" style={st.mn}>
+        <div className="scene-canvas" style={st.cw}>
           <canvas ref={canvasRef} width={CANVAS_W} height={CANVAS_H} style={st.cv}
             onMouseDown={handleDown} onMouseMove={handleMove} onMouseUp={handleUp} onMouseLeave={handleUp}
             onTouchStart={handleDown} onTouchMove={handleMove} onTouchEnd={handleUp}
@@ -529,7 +529,7 @@ export default function PulleyEfficiencyScene() {
         </div>
 
         {/* 右侧面板 */}
-        <div style={st.pn}>
+        <div className="scene-side" style={st.pn}>
           <div style={st.pt}>📊 实时数据</div>
           <div style={st.gd}>
             <span style={st.rl}>物重 G物</span><span style={st.rv}>{gVal.toFixed(2)} N</span>

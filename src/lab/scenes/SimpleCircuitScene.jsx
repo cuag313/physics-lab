@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import SceneShell from '../ui/SceneShell'
+import { paletteMetrics } from '../ui/paletteLayout'
 
 /**
  * SimpleCircuitScene — 简单电路
@@ -329,7 +330,8 @@ export default function SimpleCircuitScene() {
   // ================================================================
   function renderBuilder(ctx, W, H) {
     const s = S.current
-    const palW = 170
+    const PM = paletteMetrics(W, H)
+    const palW = PM.palW
     const cvX = 10, cvY = 60, cvW = W - palW - 30, cvH = H - 120
 
     // 画布
@@ -364,8 +366,8 @@ export default function SimpleCircuitScene() {
     const palX = W - palW - 10
     ctx.fillStyle = '#f8f9fa'; ctx.beginPath(); ctx.roundRect(palX, cvY, palW, cvH, 8); ctx.fill()
     ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX, cvY, palW, cvH, 8); ctx.stroke()
-    ctx.fillStyle = '#333'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('🧰 电学器材', palX + 10, cvY + 10)
+    ctx.fillStyle = '#333'; ctx.font = PM.fontTitle; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('🧰 电学器材', palX + PM.palPad, cvY + 8)
 
     const items = [
       { type: 'battery', name: '电源' },
@@ -373,44 +375,59 @@ export default function SimpleCircuitScene() {
       { type: 'switch', name: '开关' },
       { type: 'resistor', name: '电阻' },
     ]
-    let iy = cvY + 35
-    for (const item of items) {
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 44, 6); ctx.fill()
-      ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 44, 6); ctx.stroke()
-      drawRealisticIcon(ctx, palX + 30, iy + 22, item.type)
-      ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(item.name, palX + 52, iy + 22); ctx.textBaseline = 'alphabetic'
-      canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: 44, type: item.type })
-      iy += 50
-    }
+    // 小屏：两列铺开，保证 4 个器材都点得到
+    const cols = PM.compact ? 2 : 1
+    const cellW = (palW - 12 - (cols - 1) * 4) / cols
+    const itemH = PM.itemH
+    let iy = cvY + (PM.compact ? 26 : 35)
+    items.forEach((item, idx) => {
+      const col = idx % cols
+      const row = Math.floor(idx / cols)
+      const ix = palX + 6 + col * (cellW + 4)
+      const y = iy + row * (itemH + PM.itemGap)
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(ix, y, cellW, itemH, 6); ctx.fill()
+      ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(ix, y, cellW, itemH, 6); ctx.stroke()
+      drawRealisticIcon(ctx, ix + (PM.compact ? 18 : 30), y + itemH / 2, item.type)
+      ctx.fillStyle = '#333'; ctx.font = PM.fontItem; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      ctx.fillText(item.name, ix + (PM.compact ? 34 : 52), y + itemH / 2); ctx.textBaseline = 'alphabetic'
+      canvasRef.current._palAreas.push({ x: ix, y, w: cellW, h: itemH, type: item.type })
+    })
+    iy += Math.ceil(items.length / cols) * (itemH + PM.itemGap)
 
     // 导线颜色选择
-    iy += 10
-    ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('导线颜色：', palX + 10, iy); iy += 20
+    iy += PM.compact ? 4 : 10
+    if (!PM.compact) {
+      ctx.fillStyle = '#333'; ctx.font = PM.fontSmall; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+      ctx.fillText('导线颜色：', palX + 10, iy); iy += 20
+    }
     const wireColors = [
       { color: '#F44336', name: '红线' },
       { color: '#FFC107', name: '黄线' },
       { color: '#4CAF50', name: '绿线' },
     ]
-    for (const wc of wireColors) {
+    const colorH = PM.compact ? 22 : 26
+    wireColors.forEach((wc, i) => {
       const active = s.wireColor === wc.color
+      const y = iy + i * (colorH + 3)
+      const cw2 = palW - 12
       ctx.fillStyle = active ? '#e3f2fd' : '#fff'
-      ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 26, 4); ctx.fill()
-      if (active) { ctx.strokeStyle = wc.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 26, 4); ctx.stroke() }
-      ctx.fillStyle = wc.color; ctx.fillRect(palX + 14, iy + 8, 30, 10)
-      ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(wc.name, palX + 52, iy + 13); ctx.textBaseline = 'alphabetic'
-      canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: 26, action: 'color', color: wc.color })
-      iy += 30
-    }
+      ctx.beginPath(); ctx.roundRect(palX + 6, y, cw2, colorH, 4); ctx.fill()
+      if (active) { ctx.strokeStyle = wc.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(palX + 6, y, cw2, colorH, 4); ctx.stroke() }
+      ctx.fillStyle = wc.color; ctx.fillRect(palX + 12, y + 6, PM.compact ? 22 : 30, colorH - 12)
+      ctx.fillStyle = '#333'; ctx.font = PM.fontSmall; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      ctx.fillText(wc.name, palX + (PM.compact ? 42 : 52), y + colorH / 2); ctx.textBaseline = 'alphabetic'
+      canvasRef.current._palAreas.push({ x: palX + 6, y, w: cw2, h: colorH, action: 'color', color: wc.color })
+    })
+    iy += wireColors.length * (colorH + 3)
 
-    // 操作提示
-    iy += 12
-    ctx.fillStyle = '#888'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    const hints = ['点击器材添加到画布', '拖拽器材移动', '点击接线柱连线', '右键删除器材/导线']
-    for (const h of hints) { ctx.fillText('• ' + h, palX + 10, iy); iy += 15 }
-    ctx.textBaseline = 'alphabetic'
+    // 操作提示（小屏省略，避免被裁切）
+    if (PM.showHints) {
+      iy += 12
+      ctx.fillStyle = '#888'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+      const hints = ['点击器材添加到画布', '拖拽器材移动', '点击接线柱连线', '右键删除器材/导线']
+      for (const h of hints) { ctx.fillText('• ' + h, palX + 10, iy); iy += 15 }
+      ctx.textBaseline = 'alphabetic'
+    }
   }
 
   // ─── 器材栏小图标（实物风格） ───
