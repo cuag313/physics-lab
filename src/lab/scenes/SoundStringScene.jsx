@@ -154,12 +154,12 @@ export default function SoundStringScene() {
         </label>
       </div>
 
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <div style={styles.graphArea}>
           <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
         </div>
 
-        <div style={styles.infoPanel}>
+        <div className="scene-side" style={styles.infoPanel}>
           <div style={styles.panelTitle}>📊 弦参数</div>
           <div style={styles.panelRow}><span style={styles.panelLabel}>弦长 L</span><span style={styles.panelValue}>{length.toFixed(2)} m</span></div>
           <div style={styles.panelRow}><span style={styles.panelLabel}>张力 T</span><span style={styles.panelValue}>{tension} N</span></div>

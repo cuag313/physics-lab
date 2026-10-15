@@ -68,7 +68,7 @@ export default function SoundLoudnessScene() {
         </span>
       </div>
 
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <div style={styles.vizContainer}>
           <WaveVisualizer
             getWaveform={playing ? audio.getWaveform : null}
@@ -79,7 +79,7 @@ export default function SoundLoudnessScene() {
           />
         </div>
 
-        <div style={styles.infoPanel}>
+        <div className="scene-side" style={styles.infoPanel}>
           <div style={styles.panelTitle}>📖 响度与振幅</div>
           <div style={styles.tipText}>
             <b>响度</b>由振幅决定<br />

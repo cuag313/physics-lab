@@ -493,10 +493,10 @@ export default function InterferenceDiffractionScene() {
         </div>
       </div>
 
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <canvas ref={canvasRef} style={{ ...styles.canvas, cursor: st.cursor }} />
 
-        <div style={styles.panel}>
+        <div className="scene-side" style={styles.panel}>
           <div style={styles.panelSection}>
             <div style={styles.panelTitle}>📐 公式</div>
             {(st.mode === 'interference' || st.mode === 'both') && <><div style={styles.formula}><span style={styles.formulaMain}>d·sinθ = mλ</span></div><div style={styles.formulaSub}>双缝干涉明纹条件</div></>}

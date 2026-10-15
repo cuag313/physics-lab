@@ -166,12 +166,12 @@ export default function SoundDopplerScene() {
         </label>
       </div>
 
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <div style={styles.graphArea}>
           <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
         </div>
 
-        <div style={styles.infoPanel}>
+        <div className="scene-side" style={styles.infoPanel}>
           <div style={styles.panelTitle}>📊 频率对比</div>
           <div style={styles.panelRow}><span style={styles.panelLabel}>声源频率 f₀</span><span style={styles.panelValue}>{sourceFreq} Hz</span></div>
           <div style={styles.panelRow}><span style={styles.panelLabel}>接收频率 f'</span><span style={{ ...styles.panelValue, color: observedFreq > sourceFreq ? '#E53935' : '#1976D2' }}>{observedFreq.toFixed(1)} Hz</span></div>

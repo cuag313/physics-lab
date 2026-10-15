@@ -401,7 +401,7 @@ export default function LenzLawScene() {
           <span style={styles.controlName}>快→ 感应电动势大</span>
         </label>
       </div>
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />
       </div>
       <div style={styles.desc}>

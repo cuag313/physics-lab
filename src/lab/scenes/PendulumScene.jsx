@@ -407,7 +407,7 @@ export default function PendulumScene() {
           </label>
         </div>
       </div>
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <canvas ref={canvasRef} style={{ ...styles.canvas, cursor }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}

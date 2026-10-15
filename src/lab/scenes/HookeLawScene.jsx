@@ -733,7 +733,7 @@ export default function HookeLawScene() {
         <span style={st.headerTitle}>🔬 探究胡克定律</span>
         <span style={st.headerSub}>F = k·Δx | 弹簧伸长与拉力的关系</span>
       </div>
-      <div style={st.main}>
+      <div className="scene-split" style={st.main}>
         {/* 左侧工具栏：只保留3个有效按钮 */}
         <div style={st.toolbar}>
           <button style={{ ...st.toolBtn, ...(paused ? { color: '#4ade80' } : { color: '#f87171' }) }}
@@ -765,7 +765,7 @@ export default function HookeLawScene() {
 
         <ChartPanel />
 
-        <div style={st.canvasWrap}>
+        <div className="scene-canvas" style={st.canvasWrap}>
           <canvas ref={canvasRef} style={st.canvas}
             onMouseDown={handlePointerDown} onMouseMove={handlePointerMove}
             onMouseUp={handlePointerUp} onMouseLeave={handlePointerUp}
@@ -774,7 +774,7 @@ export default function HookeLawScene() {
         </div>
 
         {/* 右面板 */}
-        <div style={st.rightPanel}>
+        <div className="scene-side" style={st.rightPanel}>
           <div style={st.section}>
             <div style={st.sectionTitle}>⚙️ 弹簧参数</div>
             <div style={st.controlRow}>

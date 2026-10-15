@@ -322,7 +322,7 @@ export default function LabPage({ onBack }) {
 
   // 实验台
   return (
-    <div style={styles.labContainer}>
+    <div className="lab-shell" style={styles.labContainer}>
       <div style={styles.labHeader}>
         <div style={styles.backToCatalog} onClick={handleBackToCatalog}>
           ← 返回目录
@@ -348,7 +348,7 @@ export default function LabPage({ onBack }) {
         </div>
       </div>
 
-      <div style={styles.labBody}>
+      <div className="lab-body" style={styles.labBody}>
         {currentExperiment?.key === 'convexLensImaging' ? (
           <ConvexLensImaging
             preset={{ focalLength: 1.0 }}
@@ -790,6 +790,8 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     background: '#0d1117',
+    minHeight: 0,
+    overflow: 'hidden',
   },
   labHeader: {
     minHeight: 44,
@@ -829,6 +831,9 @@ const styles = {
   },
   labBody: {
     flex: 1,
+    minHeight: 0,
     overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
   },
 }

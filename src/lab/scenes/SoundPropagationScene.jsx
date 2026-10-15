@@ -96,7 +96,7 @@ export default function SoundPropagationScene() {
         </div>
       </div>
 
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         {/* 左侧：真空铃实验 */}
         <div style={styles.leftPanel}>
           <div style={styles.bellContainer}>
@@ -150,7 +150,7 @@ export default function SoundPropagationScene() {
         </div>
 
         {/* 右侧：信息面板 + 波形 */}
-        <div style={styles.rightPanel}>
+        <div className="scene-side" style={styles.rightPanel}>
           <div style={styles.vizBox}>
             <WaveVisualizer
               getWaveform={ringing ? audio.getWaveform : null}
@@ -160,7 +160,7 @@ export default function SoundPropagationScene() {
               lineColor="#1976D2"
             />
           </div>
-          <div style={styles.infoPanel}>
+          <div className="scene-side" style={styles.infoPanel}>
             <div style={styles.panelTitle}>📖 声音的传播</div>
             <div style={styles.tipText}>
               <b>真空铃实验（推理法）：</b><br />

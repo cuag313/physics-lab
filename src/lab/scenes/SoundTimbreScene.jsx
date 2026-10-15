@@ -80,7 +80,7 @@ export default function SoundTimbreScene() {
         ))}
       </div>
 
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <div style={styles.vizContainer}>
           <WaveVisualizer
             getWaveform={playing ? audio.getWaveform : null}
@@ -93,7 +93,7 @@ export default function SoundTimbreScene() {
           />
         </div>
 
-        <div style={styles.infoPanel}>
+        <div className="scene-side" style={styles.infoPanel}>
           <div style={styles.panelTitle}>📖 音色与波形</div>
           <div style={styles.tipText}>
             <b>音色</b>由波形（谐波结构）决定<br /><br />

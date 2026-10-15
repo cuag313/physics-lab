@@ -181,7 +181,7 @@ export default function BrownianMotionScene() {
           <span style={styles.controlName}>轨迹</span>
         </label>
       </div>
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />
       </div>
       <div style={styles.desc}>

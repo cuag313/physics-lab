@@ -275,7 +275,7 @@ export default function AtmosphericPressureScene() {
           </div>
         </div>
         <div style={st.canvasArea}><canvas ref={canvasRef} style={st.canvas} /></div>
-        <div style={st.rightPanel}>
+        <div className="scene-side" style={st.rightPanel}>
           <div style={st.panelCard}>
             <div style={st.panelTitle}>📊 大气压分析</div>
             <div style={st.section}><div style={st.sectionLabel}>标准大气压（常量）</div><div style={st.eq}>p₀ = 1.013×10⁵ Pa = 760 mmHg</div></div>

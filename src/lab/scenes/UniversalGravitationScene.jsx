@@ -429,7 +429,7 @@ export default function UniversalGravitationScene() {
             onChange={(e) => hR(parseFloat(e.target.value))} style={styles.slider} /><span style={styles.val}>{r.toFixed(1)}m</span></label>
         </div>
       </div>
-      <div style={styles.main}><canvas ref={canvasRef} style={{ flex: 1, width: '100%' }} /></div>
+      <div className="scene-split" style={styles.main}><canvas ref={canvasRef} style={{ flex: 1, width: '100%' }} /></div>
       <div style={styles.desc}>
         <b>万有引力定律</b>
         <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>F = GMm/r² · 验证引力与距离、质量的关系 · 卡文迪什扭秤测量G</span>

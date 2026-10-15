@@ -309,7 +309,8 @@ export default function DataPanel({ instruments, circuitValid, selectedInstrumen
 
 const styles = {
   container: {
-    width: 220,
+    width: '100%',
+    height: '100%',
     background: '#161b22',
     borderLeft: '1px solid #30363d',
     display: 'flex',

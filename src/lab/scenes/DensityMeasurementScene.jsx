@@ -701,14 +701,14 @@ export default function DensityMeasurementScene() {
         <span style={st.headerTitle}>⚖️ 测量物质密度</span>
         <span style={st.headerSub}>ρ = m / V | 托盘天平 + 量筒排水法 | 3个待测物体</span>
       </div>
-      <div style={st.main}>
-        <div style={st.canvasWrap}>
+      <div className="scene-split" style={st.main}>
+        <div className="scene-canvas" style={st.canvasWrap}>
           <canvas ref={canvasRef} style={st.canvas}
             onMouseDown={handlePointerDown}
             onTouchStart={handlePointerDown}
             onContextMenu={e => e.preventDefault()} />
         </div>
-        <div style={st.rightPanel}>
+        <div className="scene-side" style={st.rightPanel}>
           {/* 3个物体卡片 */}
           <div style={st.section}>
             <div style={st.sectionTitle}>🧪 待测物体（3个）</div>

@@ -275,7 +275,7 @@ export default function AmpereForceScene() {
           <span style={styles.sliderVal}>{fieldB.toFixed(2)} T</span>
         </label>
       </div>
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />
         {showRule && (
           <div style={styles.ruleOverlay} onClick={() => setShowRule(false)}>

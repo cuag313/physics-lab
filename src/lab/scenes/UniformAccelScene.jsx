@@ -670,7 +670,7 @@ export default function UniformAccelScene() {
         </span>
       </div>
 
-      <div style={styles.main}
+      <div className="scene-split" style={styles.main}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}

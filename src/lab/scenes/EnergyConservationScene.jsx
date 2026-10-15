@@ -608,7 +608,7 @@ export default function EnergyConservationScene() {
         <span style={styles.timer}>t = {(liveRef.current?.t ?? 0).toFixed(3)} s</span>
       </div>
 
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <canvas ref={canvasRef} style={styles.canvas} />
       </div>
 

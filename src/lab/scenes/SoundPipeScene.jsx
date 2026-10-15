@@ -191,12 +191,12 @@ export default function SoundPipeScene() {
         </label>
       </div>
 
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <div style={styles.graphArea}>
           <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
         </div>
 
-        <div style={styles.infoPanel}>
+        <div className="scene-side" style={styles.infoPanel}>
           <div style={styles.panelTitle}>📊 管参数</div>
           <div style={styles.panelRow}><span style={styles.panelLabel}>管型</span><span style={styles.panelValue}>{pipeType === 'open' ? '开管' : '闭管'}</span></div>
           <div style={styles.panelRow}><span style={styles.panelLabel}>管长 L</span><span style={styles.panelValue}>{pipeLength.toFixed(2)} m</span></div>

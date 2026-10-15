@@ -198,12 +198,12 @@ export default function SoundResonanceScene() {
         </label>
       </div>
 
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <div style={styles.graphArea}>
           <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
         </div>
 
-        <div style={styles.infoPanel}>
+        <div className="scene-side" style={styles.infoPanel}>
           <div style={styles.panelTitle}>📊 共振状态</div>
           <div style={styles.panelRow}><span style={styles.panelLabel}>驱动频率</span><span style={styles.panelValue}>{driveFreq} Hz</span></div>
           <div style={styles.panelRow}><span style={styles.panelLabel}>固有频率</span><span style={styles.panelValue}>{naturalFreq} Hz</span></div>

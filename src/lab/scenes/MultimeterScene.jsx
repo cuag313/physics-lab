@@ -475,7 +475,7 @@ export default function MultimeterScene() {
           </label>
         )}
       </div>
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} onClick={handleClick} />
       </div>
       <div style={styles.desc}>

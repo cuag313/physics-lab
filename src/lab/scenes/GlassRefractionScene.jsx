@@ -609,7 +609,7 @@ export default function GlassRefractionScene({ preset }) {
         </div>
       </div>
 
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <canvas ref={canvasRef}
           style={{ ...styles.canvas, cursor }}
           onMouseDown={handleMouseDown}
@@ -619,7 +619,7 @@ export default function GlassRefractionScene({ preset }) {
           onContextMenu={handleContextMenu}
         />
 
-        <div style={styles.panel}>
+        <div className="scene-side" style={styles.panel}>
           <div style={styles.panelSection}>
             <div style={styles.panelTitle}>📐 折射定律</div>
             <div style={styles.formula}>

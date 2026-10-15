@@ -183,12 +183,12 @@ export default function SoundEchoScene() {
         </span>
       </div>
 
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <div style={styles.graphArea}>
           <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
         </div>
 
-        <div style={styles.infoPanel}>
+        <div className="scene-side" style={styles.infoPanel}>
           <div style={styles.panelTitle}>📊 回声参数</div>
           <div style={styles.panelRow}><span style={styles.panelLabel}>距离 s</span><span style={styles.panelValue}>{distance} m</span></div>
           <div style={styles.panelRow}><span style={styles.panelLabel}>往返 2s</span><span style={styles.panelValue}>{roundTrip} m</span></div>

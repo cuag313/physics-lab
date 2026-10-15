@@ -24,7 +24,7 @@ export default function FormulaOverlay({ instruments, circuitValid }) {
   if (totalR === 0) return null
 
   return (
-    <div style={styles.overlay}>
+    <div className="formula-overlay" style={styles.overlay}>
       <div style={styles.title}>📐 公式推导</div>
 
       {/* 欧姆定律 */}

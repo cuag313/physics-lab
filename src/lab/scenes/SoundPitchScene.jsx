@@ -91,7 +91,7 @@ export default function SoundPitchScene() {
         </span>
       </div>
 
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <div style={styles.vizContainer}>
           <WaveVisualizer
             getWaveform={playing ? audio.getWaveform : null}
@@ -102,7 +102,7 @@ export default function SoundPitchScene() {
           />
         </div>
 
-        <div style={styles.infoPanel}>
+        <div className="scene-side" style={styles.infoPanel}>
           <div style={styles.panelTitle}>📖 音调与频率</div>
           <div style={styles.tipText}>
             <b>音调</b>由频率决定<br />

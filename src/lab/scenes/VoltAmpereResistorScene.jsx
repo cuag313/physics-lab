@@ -913,7 +913,7 @@ export default function VoltAmpereResistorScene() {
           <button style={st.btn} onClick={handleReset}>↺ 重置</button>
         </div>
       </div>
-      <div style={st.main}>
+      <div className="scene-split" style={st.main}>
         <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }}
           onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}

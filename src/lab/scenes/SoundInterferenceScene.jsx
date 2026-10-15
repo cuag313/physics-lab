@@ -114,7 +114,7 @@ export default function SoundInterferenceScene() {
         </label>
       </div>
 
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <div style={styles.vizContainer}>
           <WaveVisualizer
             getWaveform={playing ? audio.getWaveform : null}
@@ -125,7 +125,7 @@ export default function SoundInterferenceScene() {
           />
         </div>
 
-        <div style={styles.infoPanel}>
+        <div className="scene-side" style={styles.infoPanel}>
           <div style={styles.panelTitle}>📊 干涉参数</div>
           <div style={styles.panelRow}><span style={styles.panelLabel}>频率</span><span style={styles.panelValue}>{freq} Hz</span></div>
           <div style={styles.panelRow}><span style={styles.panelLabel}>相位差</span><span style={styles.panelValue}>{phaseDiff}°</span></div>

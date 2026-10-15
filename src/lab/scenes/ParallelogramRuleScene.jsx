@@ -605,7 +605,7 @@ export default function ParallelogramRuleScene({ preset }) {
       </div>
 
       {/* 画布区 */}
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <canvas ref={canvasRef}
           style={{ ...styles.canvas, cursor }}
           onMouseDown={handlePointerDown}

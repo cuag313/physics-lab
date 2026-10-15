@@ -32,7 +32,7 @@ export default function SceneShell({
   children,
 }) {
   return (
-    <div style={styles.container}>
+    <div className="scene-shell" style={styles.container}>
       <div style={styles.toolbar}>
         <span style={styles.title}>{title}</span>
         <div style={styles.actions}>
@@ -54,7 +54,20 @@ export default function SceneShell({
               </button>
             </>
           )}
-          {toolbarExtra}
+          {toolbarExtra && (
+            <div
+              className="scene-toolbar-extra"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                flexWrap: 'wrap',
+                minWidth: 0,
+              }}
+            >
+              {toolbarExtra}
+            </div>
+          )}
           <div style={{ flex: 1 }} />
           {onReset && (
             <button type="button" style={styles.btn} onClick={onReset}>
@@ -66,7 +79,7 @@ export default function SceneShell({
 
       {purpose && <div style={styles.purpose}>{purpose}</div>}
 
-      <div style={styles.main}>
+      <div className="scene-main" style={styles.main}>
         {children}
         {conclusion && (
           <ConclusionCard
@@ -113,7 +126,8 @@ const styles = {
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    maxWidth: '40vw',
+    maxWidth: 'min(40vw, 220px)',
+    flexShrink: 0,
   },
   actions: {
     display: 'flex',
@@ -166,6 +180,7 @@ const styles = {
     minHeight: 0,
     position: 'relative',
   },
+  // canvas 子元素在手机上由 .scene-canvas-fill 控高
   desc: {
     padding: '8px 14px',
     background: '#f5f5f5',

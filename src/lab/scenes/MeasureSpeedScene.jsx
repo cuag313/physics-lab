@@ -554,7 +554,7 @@ export default function MeasureSpeedScene() {
         <span style={st.headerSub}>v = s / t | 斜面小车实验</span>
       </div>
 
-      <div style={st.main}>
+      <div className="scene-split" style={st.main}>
         {/* 左面板 */}
         <div style={st.leftPanel}>
           <div style={st.section}>
@@ -658,7 +658,7 @@ export default function MeasureSpeedScene() {
         </div>
 
         {/* 画布 */}
-        <div style={st.canvasWrap}>
+        <div className="scene-canvas" style={st.canvasWrap}>
           <canvas ref={canvasRef} style={st.canvas}
             onMouseDown={handlePointerDown} onMouseMove={handlePointerMove}
             onMouseUp={handlePointerUp} onMouseLeave={handlePointerUp}
@@ -667,7 +667,7 @@ export default function MeasureSpeedScene() {
         </div>
 
         {/* 右面板 */}
-        <div style={st.rightPanel}>
+        <div className="scene-side" style={st.rightPanel}>
           <div style={st.section}>
             <div style={st.formulaBox}>
               <div style={{ fontSize: 12, fontWeight: 700, color: C.subText, marginBottom: 4 }}>📐 平均速度公式</div>

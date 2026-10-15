@@ -203,7 +203,7 @@ export default function SoundWaveScene() {
         </div>
       )}
 
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <div style={styles.vizContainer}>
           <WaveVisualizer
             getWaveform={playing && !paused ? audio.getWaveform : null}
@@ -216,7 +216,7 @@ export default function SoundWaveScene() {
           />
         </div>
 
-        <div style={styles.infoPanel}>
+        <div className="scene-side" style={styles.infoPanel}>
           <div style={styles.panelTitle}>📊 声波参数</div>
           <div style={styles.panelRow}><span style={styles.panelLabel}>频率 f₁</span><span style={styles.panelValue}>{freq} Hz</span></div>
           <div style={styles.panelRow}><span style={styles.panelLabel}>周期 T</span><span style={styles.panelValue}>{(1000 / freq).toFixed(2)} ms</span></div>

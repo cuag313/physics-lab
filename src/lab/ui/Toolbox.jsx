@@ -129,7 +129,8 @@ export default function Toolbox({ onAddInstrument, visible = true, category = nu
 
 const styles = {
   container: {
-    width: 180,
+    width: '100%',
+    height: '100%',
     background: '#161b22',
     borderRight: '1px solid #30363d',
     display: 'flex',

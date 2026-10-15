@@ -186,7 +186,7 @@ export default function ThermodynamicsFirstScene() {
           ΔU = {deltaU > 0 ? '+' : ''}{deltaU} J
         </span>
       </div>
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />
       </div>
       <div style={styles.desc}>

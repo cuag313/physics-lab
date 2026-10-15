@@ -101,7 +101,7 @@ export default function SoundNoiseScene() {
         </span>
       </div>
 
-      <div style={styles.main}>
+      <div className="scene-split" style={styles.main}>
         <div style={styles.leftPanel}>
           {/* dB 仪表 */}
           <div style={styles.dbMeter}>
@@ -151,7 +151,7 @@ export default function SoundNoiseScene() {
           </div>
         </div>
 
-        <div style={styles.rightPanel}>
+        <div className="scene-side" style={styles.rightPanel}>
           <div style={styles.panelTitle}>📖 噪声防治三种途径</div>
           {methods.map(m => (
             <div key={m.title} style={styles.methodCard}>

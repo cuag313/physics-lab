@@ -175,7 +175,7 @@ export default function PressureEffectScene() {
         </div>
 
         {/* 右侧：压强分析面板 */}
-        <div style={styles.rightPanel}>
+        <div className="scene-side" style={styles.rightPanel}>
           <PressurePanel
             force={force}
             areaCm2={areaCm2}

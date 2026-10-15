@@ -436,7 +436,7 @@ export default function GalileoFreeFallScene() {
           )}
         </div>
       </div>
-      <div style={styles.main}><canvas ref={canvasRef} style={styles.canvas} /></div>
+      <div className="scene-split" style={styles.main}><canvas ref={canvasRef} style={styles.canvas} /></div>
       <div style={styles.desc}>
         <b>伽利略·自由落体</b>
         <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>比萨斜塔：不同质量同时落地 · 斜面对比：同球沿三条路径滚下比谁快</span>

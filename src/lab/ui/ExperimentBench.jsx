@@ -635,7 +635,7 @@ export default function ExperimentBench({ preset = null, title = '物理实验�
   }, [])
 
   return (
-    <div style={styles.container}>
+    <div className="lab-shell" style={styles.container}>
       {/* 顶部工具栏 */}
       <div style={styles.toolbar}>
         <span style={styles.title}>{title}</span>
@@ -657,13 +657,16 @@ export default function ExperimentBench({ preset = null, title = '物理实验�
         </div>
       </div>
 
-      {/* 主体 */}
-      <div style={styles.main}>
-        <Toolbox onAddInstrument={handleAddInstrument} visible={toolboxVisible} category={category} />
+      {/* 主体：电脑三栏 / 手机纵向堆叠（同一套模块） */}
+      <div className="bench-main" style={styles.main}>
+        <div className="bench-side" style={styles.sideWrap}>
+          <Toolbox onAddInstrument={handleAddInstrument} visible={toolboxVisible} category={category} />
+        </div>
 
-        <div style={styles.benchWrapper}>
+        <div className="bench-canvas-wrap" style={styles.benchWrapper}>
           <canvas
             ref={canvasRef}
+            className="bench-canvas"
             style={{
               ...styles.canvas,
               cursor: cursor,
@@ -685,23 +688,25 @@ export default function ExperimentBench({ preset = null, title = '物理实验�
           )}
 
           {/* 状态栏 */}
-          <div style={styles.statusBar}>
+          <div className="status-bar" style={styles.statusBar}>
             <span>仪器: {instruments.filter(i => i.type !== 'wire').length}</span>
             <span>导线: {sceneRef.current?.wires.length ?? 0}</span>
             <span style={{ color: circuitValid ? '#4CAF50' : '#f44336' }}>
               {circuitValid ? '● 电路通路' : '○ 电路断路'}
             </span>
-            <span style={{ color: '#484f58', marginLeft: 'auto' }}>
+            <span className="status-tip" style={{ color: '#484f58', marginLeft: 'auto' }}>
               💡 点击连接点拖出导线 | 双击开关 | 右键删除 | ⚡快速搭建一键连线
             </span>
           </div>
         </div>
 
-        <DataPanel
-          instruments={instruments}
-          circuitValid={circuitValid}
-          selectedInstrument={selectedInst}
-        />
+        <div className="bench-side-data" style={styles.sideWrapData}>
+          <DataPanel
+            instruments={instruments}
+            circuitValid={circuitValid}
+            selectedInstrument={selectedInst}
+          />
+        </div>
       </div>
     </div>
   )
@@ -743,28 +748,36 @@ function loadPreset(scene, preset) {
 
 const styles = {
   container: {
-    display: 'flex', flexDirection: 'column', height: '100vh',
+    display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0,
     background: '#0d1117', color: '#c9d1d9',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   },
   toolbar: {
-    height: 44, background: '#161b22', borderBottom: '1px solid #30363d',
+    minHeight: 44, background: '#161b22', borderBottom: '1px solid #30363d',
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '0 16px', flexShrink: 0,
+    padding: '6px 12px', flexShrink: 0, flexWrap: 'wrap', gap: 8,
   },
-  title: { fontSize: 15, fontWeight: 600, color: '#c9d1d9' },
-  toolbarActions: { display: 'flex', alignItems: 'center', gap: 12 },
+  title: { fontSize: 15, fontWeight: 600, color: '#c9d1d9', minWidth: 0 },
+  toolbarActions: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   wiringHint: { fontSize: 12, color: '#4CAF50', fontWeight: 500 },
   btn: {
     padding: '4px 12px', background: '#21262d', color: '#c9d1d9',
     border: '1px solid #30363d', borderRadius: 4, fontSize: 12, cursor: 'pointer',
   },
-  main: { flex: 1, display: 'flex', overflow: 'hidden' },
-  benchWrapper: { flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' },
-  canvas: { flex: 1, width: '100%' },
+  main: { flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 },
+  sideWrap: {
+    width: 180, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0,
+    overflow: 'hidden',
+  },
+  sideWrapData: {
+    width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0,
+    overflow: 'hidden',
+  },
+  benchWrapper: { flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', minWidth: 0, minHeight: 0 },
+  canvas: { flex: 1, width: '100%', minHeight: 0 },
   statusBar: {
-    height: 24, background: '#161b22', borderTop: '1px solid #30363d',
-    display: 'flex', alignItems: 'center', gap: 20,
-    padding: '0 14px', fontSize: 11, color: '#484f58', flexShrink: 0,
+    minHeight: 24, background: '#161b22', borderTop: '1px solid #30363d',
+    display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+    padding: '2px 14px', fontSize: 11, color: '#484f58', flexShrink: 0,
   },
 }
