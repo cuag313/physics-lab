@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import SceneShell from '../ui/SceneShell'
-import { paletteMetrics } from '../ui/paletteLayout'
+import BuilderPalette from '../ui/BuilderPalette'
 
 /**
  * SimpleCircuitScene — 简单电路
@@ -330,9 +330,8 @@ export default function SimpleCircuitScene() {
   // ================================================================
   function renderBuilder(ctx, W, H) {
     const s = S.current
-    const PM = paletteMetrics(W, H)
-    const palW = PM.palW
-    const cvX = 10, cvY = 60, cvW = W - palW - 30, cvH = H - 120
+    // 画布铺满工作区；器材用底部 DOM 工具条（可横滑）
+    const cvX = 10, cvY = 16, cvW = W - 20, cvH = H - 40
 
     // 画布
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(cvX, cvY, cvW, cvH, 8); ctx.fill()
@@ -361,73 +360,7 @@ export default function SimpleCircuitScene() {
     ctx.fillStyle = circuit.closed ? '#4CAF50' : '#F44336'
     ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
     ctx.fillText(circuit.closed ? '✅ ' + circuit.reason : '❌ ' + circuit.reason, cvX + 12, cvY + cvH - 25)
-
-    // ─── 器材栏 ───
-    const palX = W - palW - 10
-    ctx.fillStyle = '#f8f9fa'; ctx.beginPath(); ctx.roundRect(palX, cvY, palW, cvH, 8); ctx.fill()
-    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX, cvY, palW, cvH, 8); ctx.stroke()
-    ctx.fillStyle = '#333'; ctx.font = PM.fontTitle; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('🧰 电学器材', palX + PM.palPad, cvY + 8)
-
-    const items = [
-      { type: 'battery', name: '电源' },
-      { type: 'bulb', name: '灯泡' },
-      { type: 'switch', name: '开关' },
-      { type: 'resistor', name: '电阻' },
-    ]
-    // 小屏：两列铺开，保证 4 个器材都点得到
-    const cols = PM.compact ? 2 : 1
-    const cellW = (palW - 12 - (cols - 1) * 4) / cols
-    const itemH = PM.itemH
-    let iy = cvY + (PM.compact ? 26 : 35)
-    items.forEach((item, idx) => {
-      const col = idx % cols
-      const row = Math.floor(idx / cols)
-      const ix = palX + 6 + col * (cellW + 4)
-      const y = iy + row * (itemH + PM.itemGap)
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(ix, y, cellW, itemH, 6); ctx.fill()
-      ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(ix, y, cellW, itemH, 6); ctx.stroke()
-      drawRealisticIcon(ctx, ix + (PM.compact ? 18 : 30), y + itemH / 2, item.type)
-      ctx.fillStyle = '#333'; ctx.font = PM.fontItem; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(item.name, ix + (PM.compact ? 34 : 52), y + itemH / 2); ctx.textBaseline = 'alphabetic'
-      canvasRef.current._palAreas.push({ x: ix, y, w: cellW, h: itemH, type: item.type })
-    })
-    iy += Math.ceil(items.length / cols) * (itemH + PM.itemGap)
-
-    // 导线颜色选择
-    iy += PM.compact ? 4 : 10
-    if (!PM.compact) {
-      ctx.fillStyle = '#333'; ctx.font = PM.fontSmall; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-      ctx.fillText('导线颜色：', palX + 10, iy); iy += 20
-    }
-    const wireColors = [
-      { color: '#F44336', name: '红线' },
-      { color: '#FFC107', name: '黄线' },
-      { color: '#4CAF50', name: '绿线' },
-    ]
-    const colorH = PM.compact ? 22 : 26
-    wireColors.forEach((wc, i) => {
-      const active = s.wireColor === wc.color
-      const y = iy + i * (colorH + 3)
-      const cw2 = palW - 12
-      ctx.fillStyle = active ? '#e3f2fd' : '#fff'
-      ctx.beginPath(); ctx.roundRect(palX + 6, y, cw2, colorH, 4); ctx.fill()
-      if (active) { ctx.strokeStyle = wc.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(palX + 6, y, cw2, colorH, 4); ctx.stroke() }
-      ctx.fillStyle = wc.color; ctx.fillRect(palX + 12, y + 6, PM.compact ? 22 : 30, colorH - 12)
-      ctx.fillStyle = '#333'; ctx.font = PM.fontSmall; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(wc.name, palX + (PM.compact ? 42 : 52), y + colorH / 2); ctx.textBaseline = 'alphabetic'
-      canvasRef.current._palAreas.push({ x: palX + 6, y, w: cw2, h: colorH, action: 'color', color: wc.color })
-    })
-    iy += wireColors.length * (colorH + 3)
-
-    // 操作提示（小屏省略，避免被裁切）
-    if (PM.showHints) {
-      iy += 12
-      ctx.fillStyle = '#888'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-      const hints = ['点击器材添加到画布', '拖拽器材移动', '点击接线柱连线', '右键删除器材/导线']
-      for (const h of hints) { ctx.fillText('• ' + h, palX + 10, iy); iy += 15 }
-      ctx.textBaseline = 'alphabetic'
-    }
+    ctx.textBaseline = 'alphabetic'
   }
 
   // ─── 器材栏小图标（实物风格） ───
@@ -622,20 +555,7 @@ export default function SimpleCircuitScene() {
       return
     }
 
-    // Tab2：器材栏 —— 拖拽添加（点击并拖到画布）
-    for (const a of canvasRef.current._palAreas) {
-      if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) {
-        if (a.action === 'color') { s.wireColor = a.color; forceUpdate(n => n + 1); return }
-        if (a.type) {
-          const id = s.nextId++
-          s.components.push({ id, type: a.type, x: x, y: y, rotation: 0, closed: true })
-          s.dragId = id; s.dragOffX = 0; s.dragOffY = 0
-          s.guideDismissed = true; forceUpdate(n => n + 1); return
-        }
-      }
-    }
-
-    // 接线柱
+    // Tab2：从底部工具条添加后拖到画布；此处只处理画布内交互
     const term = findTerm(x, y)
     if (term) { s.connecting = { ...term, mx: x, my: y }; forceUpdate(n => n + 1); return }
 
@@ -731,6 +651,31 @@ export default function SimpleCircuitScene() {
     forceUpdate(n => n + 1)
   }, [])
 
+  const handleAddFromPalette = useCallback((type) => {
+    const s = S.current
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const r = canvas.getBoundingClientRect()
+    // 放到画布中心偏下，避免叠在一起
+    const n = s.components.length
+    const x = r.width * 0.35 + (n % 3) * 90
+    const y = r.height * 0.4 + (Math.floor(n / 3) % 3) * 80
+    const id = s.nextId++
+    s.components.push({ id, type, x, y, rotation: 0, closed: true })
+    s.dragId = id
+    s.dragOffX = 0
+    s.dragOffY = 0
+    s.guideDismissed = true
+    s.tab = 2
+    setTab(2)
+    forceUpdate(v => v + 1)
+  }, [])
+
+  const handlePickColor = useCallback((color) => {
+    S.current.wireColor = color
+    forceUpdate(v => v + 1)
+  }, [])
+
   return (
     <SceneShell
       title="简单电路"
@@ -743,15 +688,34 @@ export default function SimpleCircuitScene() {
         <>
           <b>简单电路</b>
           <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
-            {tab === 1 ? '电路演示：矩形回路 · 点击开关 · 标准符号 · 电子方向' : '自己动手：实物器材 · 红黄绿导线 · 接线柱连线 · 右键删除'}
+            {tab === 1 ? '电路演示：矩形回路 · 点击开关 · 标准符号 · 电子方向' : '自己动手：点底部器材加入 · 拖拽移动 · 接线柱连线 · 右键删除'}
           </span>
         </>
       )}
     >
-      <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }}
-        onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
-        onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} />
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, width: '100%' }}>
+        <canvas
+          ref={canvasRef}
+          className="canvas-fill" style={{ width: '100%', flex: 1, minHeight: 0, display: 'block', touchAction: 'none' }}
+          onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
+          onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick}
+        />
+        {tab === 2 && (
+          <BuilderPalette
+            items={[
+              { type: 'battery', name: '电源', icon: '🔋' },
+              { type: 'bulb', name: '灯泡', icon: '💡' },
+              { type: 'switch', name: '开关', icon: '🔌' },
+              { type: 'resistor', name: '电阻', icon: '⚡' },
+            ]}
+            wireColor={S.current.wireColor}
+            onPickColor={handlePickColor}
+            onAdd={handleAddFromPalette}
+            hint="左右滑动选器材"
+          />
+        )}
+      </div>
     </SceneShell>
   )
 }

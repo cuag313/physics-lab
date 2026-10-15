@@ -34,20 +34,29 @@ button, a, [role='button'] {
   min-height: 32px;
 }
 
-/* 实验页内画布容器不应把整页拖走 */
+/* 固定尺寸画布（带 width/height 属性）才等比缩放；
+   flex 铺满的 canvas 不要 letterbox，否则会出现大黑边 */
 canvas {
   touch-action: none;
   display: block;
   max-width: 100%;
 }
 
-/* 固定尺寸画布（width/height 属性）在小屏等比缩放，不裁切 */
-.lab-body canvas {
+.lab-body canvas[width][height] {
   max-width: 100% !important;
   max-height: 100% !important;
   width: auto !important;
   height: auto !important;
-  object-fit: contain;
+  margin: 0 auto;
+}
+
+.lab-body .canvas-fill {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  max-height: none !important;
+  flex: 1 !important;
+  min-height: 0 !important;
 }
 
 /* 器材列表：触屏可滚 */
