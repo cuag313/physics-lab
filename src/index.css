@@ -31,7 +31,6 @@ body {
 
 button, a, [role='button'] {
   touch-action: manipulation;
-  /* 加大可点区域，避免手指点不中 */
   min-height: 32px;
 }
 
@@ -42,10 +41,7 @@ canvas {
   max-width: 100%;
 }
 
-/* ===== 实验界面对齐电脑端（手机完整显示） ===== */
-/* 电脑：左右工具箱/数据面板 + 中间画布
-   手机：同一套元素全部保留，改为纵向堆叠 + 可滚，避免 overflow:hidden 裁切 */
-
+/* ===== 布局钩子（桌面默认不改场景内部结构） ===== */
 .lab-shell {
   display: flex;
   flex-direction: column;
@@ -59,28 +55,6 @@ canvas {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-}
-
-/* 场景根节点撑满实验体（与电脑端一致，覆盖各场景的 100vh） */
-.lab-body > * {
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  height: 100% !important;
-  max-height: none !important;
-}
-
-.lab-body > * > * {
-  min-height: 0;
-  min-width: 0;
-}
-
-/* 各场景 inline height/maxHeight 100vh → 跟随实验体，手机不裁切 */
-.lab-body [style*="100vh"] {
-  height: 100% !important;
-  max-height: none !important;
 }
 
 .bench-main {
@@ -102,7 +76,7 @@ canvas {
 .bench-canvas {
   flex: 1;
   width: 100%;
-  min-height: 220px;
+  min-height: 0;
 }
 
 .bench-side {
@@ -114,14 +88,6 @@ canvas {
   overflow: hidden;
 }
 
-.bench-side > *,
-.bench-side-data > * {
-  width: 100% !important;
-  max-width: none !important;
-  flex: 1;
-  min-height: 0;
-}
-
 .bench-side-data {
   width: 220px;
   flex-shrink: 0;
@@ -129,6 +95,14 @@ canvas {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+.bench-side > *,
+.bench-side-data > * {
+  width: 100%;
+  max-width: none;
+  flex: 1;
+  min-height: 0;
 }
 
 .scene-shell {
@@ -146,41 +120,25 @@ canvas {
   position: relative;
 }
 
-/* 自定义分栏场景（密度/力学/声学等自带 side panel） */
+/* 自定义分栏场景钩子：桌面保持原 flex，仅手机断点改堆叠 */
 .scene-split {
-  display: flex;
   min-height: 0;
   min-width: 0;
 }
 
 .scene-canvas {
-  position: relative;
   min-width: 0;
   min-height: 0;
-  flex: 1;
-  overflow: hidden;
 }
 
 .scene-side {
-  flex-shrink: 0;
   min-height: 0;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-/* 各 Scene 自带的 canvas 统一填满画布区（与电脑一致） */
-.scene-main > canvas,
-.scene-main canvas {
-  width: 100% !important;
-  height: 100% !important;
-  display: block;
-  touch-action: none;
-  flex: 1;
-  min-height: 0;
-}
-
-/* 小屏 / 竖屏手机：保留电脑端全部模块，改为可滚动的纵向布局 */
-@media (max-width: 900px) {
+/* ===== 手机竖屏：分栏改上下堆叠，内容完整可滚 ===== */
+@media (max-width: 900px) and (orientation: portrait) {
   .lab-body {
     overflow: auto !important;
     -webkit-overflow-scrolling: touch;
@@ -190,37 +148,14 @@ canvas {
   .lab-body > * {
     height: auto !important;
     min-height: 100%;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .lab-body [style*="100vh"] {
-    height: auto !important;
     max-height: none !important;
-    min-height: 280px;
   }
 
   .bench-main {
-    flex-direction: column;
+    flex-direction: column !important;
     overflow: visible !important;
-    -webkit-overflow-scrolling: touch;
     height: auto !important;
     flex: none !important;
-  }
-
-  .bench-side,
-  .bench-side-data {
-    width: 100% !important;
-    max-height: 220px;
-    border-right: none !important;
-    border-left: none !important;
-    border-top: 1px solid #30363d;
-    border-bottom: 1px solid #30363d;
-    overflow: auto !important;
-  }
-
-  .bench-side {
-    order: 2;
   }
 
   .bench-canvas-wrap {
@@ -230,28 +165,29 @@ canvas {
     height: auto !important;
   }
 
-  .bench-side-data {
-    order: 3;
-    max-height: 280px;
-  }
-
   .bench-canvas {
     min-height: 280px !important;
     height: 42vh !important;
     flex: none !important;
   }
 
-  .scene-main {
-    overflow: visible !important;
-    min-height: 240px;
-    flex: none !important;
-    height: auto !important;
+  .bench-side {
+    order: 2;
   }
 
-  .scene-main > canvas,
-  .scene-main canvas {
-    min-height: 240px !important;
-    height: 48vh !important;
+  .bench-side-data {
+    order: 3;
+  }
+
+  .bench-side,
+  .bench-side-data {
+    width: 100% !important;
+    max-height: 240px;
+    border-right: none !important;
+    border-left: none !important;
+    border-top: 1px solid #30363d;
+    border-bottom: 1px solid #30363d;
+    overflow: auto !important;
     flex: none !important;
   }
 
@@ -261,28 +197,41 @@ canvas {
     overflow: visible !important;
   }
 
-  /* 自定义分栏：手机改为上画布、下侧栏，与电脑同内容不裁切 */
-  .scene-split {
-    flex-direction: column !important;
+  .scene-main {
     overflow: visible !important;
-    height: auto !important;
     flex: none !important;
+    height: auto !important;
+    min-height: 240px;
+  }
+
+  /* 仅主画布区内的 canvas 填满，不影响图表/小画布 */
+  .scene-canvas > canvas,
+  .bench-canvas {
+    width: 100% !important;
+    display: block;
+    touch-action: none;
   }
 
   .scene-canvas {
     flex: none !important;
     width: 100% !important;
-    min-height: 300px !important;
-    height: 50vh !important;
+    min-height: 280px !important;
+    height: 48vh !important;
     order: -1;
     overflow: hidden !important;
   }
 
   .scene-canvas > canvas {
-    width: 100% !important;
     height: 100% !important;
-    display: block;
-    touch-action: none;
+    min-height: 280px !important;
+  }
+
+  .scene-split {
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: visible !important;
+    height: auto !important;
+    flex: none !important;
   }
 
   .scene-side {
@@ -292,21 +241,10 @@ canvas {
     flex: none !important;
     border-left: none !important;
     border-right: none !important;
-    border-top: 1px solid rgba(0,0,0,0.12);
+    border-top: 1px solid rgba(0, 0, 0, 0.12);
     overflow: visible !important;
     position: relative !important;
     z-index: 5;
-  }
-
-  /* 密度实验等自带顶栏：标题与副标题换行完整显示 */
-  .lab-body [style*="linear-gradient"] {
-    height: auto !important;
-    min-height: 44px;
-    flex-wrap: wrap;
-    padding: 8px 12px !important;
-    gap: 4px;
-    align-items: flex-start !important;
-    flex-direction: column;
   }
 
   .scene-toolbar-extra {
@@ -341,7 +279,7 @@ canvas {
   }
 }
 
-/* 手机横屏：接近电脑三栏（缩小侧栏，不裁切） */
+/* ===== 手机横屏 / 小窗：恢复电脑三栏，侧栏略窄 ===== */
 @media (max-width: 900px) and (orientation: landscape) {
   .lab-body {
     overflow: hidden !important;
@@ -352,13 +290,7 @@ canvas {
   .lab-body > * {
     height: 100% !important;
     min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .lab-body [style*="100vh"] {
-    height: 100% !important;
-    min-height: 0;
+    max-height: none !important;
   }
 
   .bench-main {
@@ -372,7 +304,7 @@ canvas {
   .bench-side {
     order: 0;
     width: 132px !important;
-    max-height: none;
+    max-height: none !important;
     overflow: auto !important;
     border-top: none !important;
     border-bottom: none !important;
@@ -382,7 +314,7 @@ canvas {
   .bench-side-data {
     order: 0;
     width: 168px !important;
-    max-height: none;
+    max-height: none !important;
     overflow: auto !important;
     border-top: none !important;
     border-bottom: none !important;
@@ -401,6 +333,12 @@ canvas {
     flex: 1 !important;
   }
 
+  .scene-shell {
+    height: 100% !important;
+    overflow: hidden !important;
+    min-height: 0;
+  }
+
   .scene-main {
     overflow: hidden !important;
     flex: 1 !important;
@@ -408,31 +346,8 @@ canvas {
     min-height: 0;
   }
 
-  .scene-main > canvas,
-  .scene-main canvas {
-    min-height: 0 !important;
-    height: 100% !important;
-    flex: 1 !important;
-  }
-
-  .scene-shell {
-    height: 100% !important;
-    overflow: hidden !important;
-    min-height: 0;
-  }
-
-  .formula-overlay {
-    position: absolute !important;
-    right: 12px !important;
-    bottom: 12px !important;
-    left: auto !important;
-    margin: 0;
-    max-width: min(360px, 42vw) !important;
-    min-width: 200px !important;
-  }
-
-  /* 横屏分栏：侧栏收窄，保持左右结构（与电脑一致） */
   .scene-split {
+    display: flex !important;
     flex-direction: row !important;
     overflow: hidden !important;
     flex: 1 !important;
@@ -444,22 +359,31 @@ canvas {
     min-height: 0 !important;
     height: auto !important;
     order: 0;
+    overflow: hidden !important;
+  }
+
+  .scene-canvas > canvas {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
   }
 
   .scene-side {
     width: min(240px, 32vw) !important;
     max-height: none !important;
     border-top: none !important;
-    border-left: 1px solid rgba(0,0,0,0.12) !important;
+    border-left: 1px solid rgba(0, 0, 0, 0.12) !important;
     overflow: auto !important;
     position: relative !important;
   }
 
-  .lab-body [style*="linear-gradient"] {
-    flex-direction: row !important;
-    align-items: center !important;
-    height: 44px !important;
-    flex-wrap: wrap;
-    padding: 0 12px !important;
+  .formula-overlay {
+    position: absolute !important;
+    right: 12px !important;
+    bottom: 12px !important;
+    left: auto !important;
+    margin: 0;
+    max-width: min(360px, 42vw) !important;
+    min-width: 200px !important;
   }
 }
