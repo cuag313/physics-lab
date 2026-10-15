@@ -129,13 +129,16 @@ export default function LabPage({ onBack }) {
   const handleBackToCatalog = useCallback(() => {
     setShowCatalog(true)
     setCurrentExperiment(null)
+    // 回目录必须退出横屏，恢复竖屏目录
+    if (window.mimoExitLandscape) window.mimoExitLandscape()
+    document.body.classList.remove('in-experiment')
   }, [])
 
   // 进入实验：统一手机横屏（真横屏或强制横屏，只保留一种体验）
+  // 回目录：必须退出横屏
   useEffect(() => {
     if (currentExperiment && !showCatalog) {
       document.body.classList.add('in-experiment')
-      // 延后一帧，等场景挂载完再切横屏，避免布局抖动
       const t = setTimeout(() => {
         if (window.mimoEnterLandscape) window.mimoEnterLandscape()
       }, 50)
@@ -144,7 +147,9 @@ export default function LabPage({ onBack }) {
         document.body.classList.remove('in-experiment')
       }
     }
+    // 目录态：退出横屏 + 清标记
     document.body.classList.remove('in-experiment')
+    if (window.mimoExitLandscape) window.mimoExitLandscape()
     return () => document.body.classList.remove('in-experiment')
   }, [currentExperiment, showCatalog])
 
@@ -167,7 +172,7 @@ export default function LabPage({ onBack }) {
     })
 
     return (
-      <div style={styles.catalogPage}>
+      <div className="catalog-shell" style={styles.catalogPage}>
         {/* 顶部导航 */}
         <div style={styles.catalogHeader}>
           {onBack && (

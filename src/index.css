@@ -386,6 +386,17 @@ html.force-landscape #root {
   transform-origin: center center !important;
 }
 
+/* 目录永远竖屏可滚，即使误入横屏类也要能看全 */
+.catalog-shell {
+  max-width: 100%;
+  min-height: 100%;
+}
+
+html.mode-landscape .catalog-shell {
+  height: 100% !important;
+  overflow: auto !important;
+}
+
 html.mode-landscape .lab-body {
   overflow: hidden !important;
   display: flex !important;
