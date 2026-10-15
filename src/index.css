@@ -41,6 +41,48 @@ canvas {
   max-width: 100%;
 }
 
+/* ===== 目录分类：手机必须看得到电学/光学等 ===== */
+.category-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 12px 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.category-tab {
+  flex-shrink: 0;
+  min-height: 40px;
+}
+
+@media (max-width: 900px) {
+  .category-tabs {
+    flex-wrap: nowrap !important;
+    justify-content: flex-start !important;
+    align-items: center;
+    padding: 10px 10px 4px;
+    gap: 6px;
+    scrollbar-width: none;
+  }
+  .category-tabs::-webkit-scrollbar { display: none; }
+  .category-tab {
+    padding: 8px 12px !important;
+    gap: 4px !important;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.04);
+    flex-shrink: 0 !important;
+    min-height: 44px;
+    white-space: nowrap;
+  }
+  .category-tab span {
+    font-size: 12px !important;
+    white-space: nowrap;
+  }
+}
+
 /* ===== 布局钩子（桌面默认不改场景内部结构） ===== */
 .lab-shell {
   display: flex;

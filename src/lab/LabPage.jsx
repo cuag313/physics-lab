@@ -173,14 +173,15 @@ export default function LabPage({ onBack }) {
           <div style={styles.catalogSubtitle}>课程标准 · 交互仿真 · 实时数据</div>
         </div>
 
-        {/* 分类标签 */}
-        <div style={styles.categoryTabs}>
+        {/* 分类标签：手机横向可滑，保证电学/光学等可见 */}
+        <div className="category-tabs" style={styles.categoryTabs}>
           {CATEGORIES.map(cat => {
             const count = EXPERIMENT_CATALOG.filter(e => e.category === cat.key).length
             const ready = EXPERIMENT_CATALOG.filter(e => e.category === cat.key && !e.comingSoon).length
             return (
               <div
                 key={cat.key}
+                className="category-tab"
                 style={{
                   ...styles.categoryTab,
                   borderColor: activeCategory === cat.key ? cat.color : 'transparent',
@@ -331,6 +332,16 @@ export default function LabPage({ onBack }) {
           <span>{CATEGORIES.find(c => c.key === currentExperiment?.category)?.icon}</span>
           <span>{currentExperiment?.name ?? '自由实验'}</span>
         </div>
+        <button
+          type="button"
+          style={styles.rotateBtn}
+          onClick={() => {
+            const ev = new CustomEvent('mimo-rotate-landscape')
+            window.dispatchEvent(ev)
+          }}
+        >
+          🔄 横屏
+        </button>
         <div style={styles.labMeta}>
           <span>{currentExperiment?.grade}</span>
           <span>{DIFFICULTY_LABELS[currentExperiment?.difficulty ?? 0]}</span>
@@ -813,6 +824,19 @@ const styles = {
     borderRadius: 4,
     fontSize: 12,
     cursor: 'pointer',
+    flexShrink: 0,
+  },
+  rotateBtn: {
+    padding: '4px 10px',
+    background: '#238636',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 4,
+    fontSize: 12,
+    cursor: 'pointer',
+    fontWeight: 600,
+    flexShrink: 0,
+    minHeight: 28,
   },
   labTitle: {
     display: 'flex',
@@ -821,6 +845,8 @@ const styles = {
     fontSize: 15,
     fontWeight: 600,
     color: '#c9d1d9',
+    minWidth: 0,
+    flex: 1,
   },
   labMeta: {
     display: 'flex',

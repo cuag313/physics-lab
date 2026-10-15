@@ -65,48 +65,53 @@
           hint.classList.add('hint-hide')
         }
 
+        function showHint() {
+          hint.classList.remove('hint-hide')
+          var t = hint.querySelector('.hint-text')
+          if (t) t.textContent = '📱 横屏操作效果更佳'
+          goBtn.textContent = '切换横屏'
+        }
+
         function setTip(text) {
           var t = hint.querySelector('.hint-text')
           if (t) t.textContent = text
         }
 
-        // 尝试全屏 + 锁定横屏（安卓 Chrome 等支持；iOS 需手动转屏）
         function tryLandscape() {
           var root = document.documentElement
           var reqFs = root.requestFullscreen || root.webkitRequestFullscreen
-          var lock = null
-          if (screen.orientation && screen.orientation.lock) {
-            lock = screen.orientation.lock('landscape')
-          } else if (screen.orientation && screen.orientation.lock === undefined && screen.lockOrientation) {
-            // very old
-            try { screen.lockOrientation('landscape') } catch (e) {}
+          var lockP = null
+          if (screen.orientation && typeof screen.orientation.lock === 'function') {
+            lockP = Promise.resolve(screen.orientation.lock('landscape')).catch(function (e) { return Promise.reject(e) })
           }
 
-          var fsP = reqFs ? Promise.resolve(reqFs.call(root)).catch(function () {}) : Promise.resolve()
+          var fsP = reqFs
+            ? Promise.resolve(reqFs.call(root)).catch(function () {})
+            : Promise.resolve()
 
-          if (lock && typeof lock.then === 'function') {
-            fsP.then(function () {
-              return lock
-            }).then(function () {
+          function fallback() {
+            setTip('请打开系统「自动旋转」，把手机横过来')
+            goBtn.textContent = '知道了'
+            hint.classList.remove('hint-hide')
+          }
+
+          if (lockP) {
+            fsP.then(function () { return lockP }).then(function () {
               hideHint()
-            }).catch(function () {
-              setTip('请开启系统「自动旋转」，再转动手机')
-              goBtn.textContent = '知道了'
-              goBtn.onclick = function (e) { e.stopPropagation(); hideHint() }
-            })
+            }).catch(fallback)
           } else {
-            // 浏览器不支持锁定方向（iOS Safari 等）
-            fsP.then(function () {
-              setTip('请打开系统「自动旋转」，把手机横过来')
-              goBtn.textContent = '知道了'
-              goBtn.onclick = function (e) { e.stopPropagation(); hideHint() }
-            })
+            fsP.then(fallback)
           }
         }
 
-        // 点主区域或「切换横屏」→ 进横屏
+        // 顶栏「横屏」按钮 + 浮层按钮
+        window.addEventListener('mimo-rotate-landscape', function () {
+          tryLandscape()
+        })
+
         hint.addEventListener('click', function (e) {
           if (e.target === closeBtn) return
+          if (goBtn.textContent === '知道了') { hideHint(); return }
           tryLandscape()
         })
         goBtn.addEventListener('click', function (e) {
@@ -119,9 +124,13 @@
           hideHint()
         })
 
-        // 已是横屏则不显示
+        // 转回竖屏时重新提示，方便再次进横屏
         function onOrient() {
-          if (window.matchMedia('(orientation: landscape)').matches) hideHint()
+          if (window.matchMedia('(orientation: landscape)').matches) {
+            hideHint()
+          } else if (document.body.classList.contains('in-experiment')) {
+            showHint()
+          }
         }
         window.addEventListener('orientationchange', onOrient)
         window.addEventListener('resize', onOrient)
