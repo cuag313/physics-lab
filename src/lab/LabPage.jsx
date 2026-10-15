@@ -336,7 +336,7 @@ export default function LabPage({ onBack }) {
   // 实验台
   return (
     <div className="lab-shell" style={styles.labContainer}>
-      <div style={styles.labHeader}>
+      <div className="lab-header" style={styles.labHeader}>
         <div style={styles.backToCatalog} onClick={handleBackToCatalog}>
           ← 返回目录
         </div>
@@ -799,24 +799,26 @@ const styles = {
 
   // ===== 实验台 =====
   labContainer: {
-    height: '100dvh',
+    height: '100%',
+    minHeight: 0,
     display: 'flex',
     flexDirection: 'column',
     background: '#0d1117',
-    minHeight: 0,
     overflow: 'hidden',
   },
   labHeader: {
-    minHeight: 44,
+    minHeight: 40,
     height: 'auto',
     background: '#161b22',
     borderBottom: '1px solid #30363d',
     display: 'flex',
     alignItems: 'center',
-    padding: '8px 12px',
+    padding: '4px 12px',
     gap: 10,
     flexShrink: 0,
     flexWrap: 'wrap',
+    zIndex: 50,
+    position: 'relative',
   },
   backToCatalog: {
     padding: '4px 12px',

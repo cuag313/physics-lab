@@ -378,12 +378,35 @@ html.mode-landscape #root {
 
 html.force-landscape #root {
   position: fixed !important;
-  top: 50% !important;
-  left: 50% !important;
+  top: 0 !important;
+  left: 100% !important;
   width: 100vh !important;
   height: 100vw !important;
-  transform: translate(-50%, -50%) rotate(90deg) !important;
-  transform-origin: center center !important;
+  transform: rotate(90deg) !important;
+  transform-origin: top left !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+}
+
+/* 强制横屏时，把所有视口高度单位收敛到旋转容器，避免「返回目录」被裁 */
+html.force-landscape .lab-shell,
+html.force-landscape .lab-container,
+html.force-landscape .lab-body,
+html.force-landscape .lab-body > *,
+html.force-landscape [style*="100vh"],
+html.force-landscape [style*="100dvh"] {
+  height: 100% !important;
+  max-height: none !important;
+  min-height: 0 !important;
+}
+
+/* 返回目录顶栏必须始终露出 */
+html.force-landscape .lab-header,
+html.force-landscape .lab-shell > div:first-child {
+  flex-shrink: 0 !important;
+  z-index: 50 !important;
+  position: relative !important;
+  min-height: 40px;
 }
 
 /* 目录永远竖屏可滚，即使误入横屏类也要能看全 */
