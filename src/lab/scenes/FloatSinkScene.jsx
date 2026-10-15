@@ -1,4 +1,4 @@
-﻿/**
+/**
  * FloatSinkScene — 物体的浮沉条件
  *
  * 物理规则：
@@ -49,7 +49,8 @@ const BEAKER = {
 }
 
 const ARROW_SCALE = 30
-const OBJ_SIZE = 28
+const OBJ_SIZE = 28                 // 屏幕像素半径（绘图用）
+const PHYS_RADIUS_M = 0.03          // 物理半径 3cm，避免把像素当厘米导致力过大
 
 export default function FloatSinkScene() {
   const canvasRef = useRef(null)
@@ -139,7 +140,7 @@ export default function FloatSinkScene() {
     const liquidH = liquidBottom - liquidTop
     if (liquidH <= 0) return
 
-    const V物 = (4 / 3) * Math.PI * Math.pow(OBJ_SIZE / 100, 3)  // 近似球体，m³
+    const V物 = (4 / 3) * Math.PI * Math.pow(PHYS_RADIUS_M, 3)  // 近似球体，m³
 
     // 物体半径（屏幕px）及其占液体高度的比例
     const objR = OBJ_SIZE
@@ -436,17 +437,17 @@ export default function FloatSinkScene() {
 
     // 浮力（蓝色向上）
     if (s.F浮 > 0.001) {
-      const bLen = Math.max(10, s.F浮 * ARROW_SCALE * 1000)
-      drawArrow(ctx, bx - objR - 15, objCenterY, bx - objR - 15, objCenterY - bLen, '#2196F3', 3, `F浮=${(s.F浮 * 1000).toFixed(1)}mN`)
+      const bLen = Math.max(10, s.F浮 * ARROW_SCALE * 900)
+      drawArrow(ctx, bx - objR - 15, objCenterY, bx - objR - 15, objCenterY - bLen, '#2196F3', 3, `F浮=${s.F浮.toFixed(2)}N`)
     }
 
     // 重力（红色向下）
-    const gLen = Math.max(10, s.G物 * ARROW_SCALE * 1000)
-    drawArrow(ctx, bx + objR + 15, objCenterY, bx + objR + 15, objCenterY + gLen, '#FF6B6B', 3, `G=${(s.G物 * 1000).toFixed(1)}mN`)
+    const gLen = Math.max(10, s.G物 * ARROW_SCALE * 900)
+    drawArrow(ctx, bx + objR + 15, objCenterY, bx + objR + 15, objCenterY + gLen, '#FF6B6B', 3, `G=${s.G物.toFixed(2)}N`)
 
     // 净力（绿色）
     if (Math.abs(s.Fnet) > 0.0001 && s.released && !s.settled) {
-      const netLen = Math.max(5, Math.abs(s.Fnet) * ARROW_SCALE * 1000)
+      const netLen = Math.max(5, Math.abs(s.Fnet) * ARROW_SCALE * 900)
       const netDir = s.Fnet > 0 ? -1 : 1  // 正值向上
       drawArrow(ctx, bx, objCenterY, bx, objCenterY + netLen * netDir, '#4CAF50', 2.5,
         s.Fnet > 0 ? '↑上浮' : '↓下沉')
@@ -555,8 +556,8 @@ export default function FloatSinkScene() {
     // 力比较
     ctx.fillStyle = '#333'
     ctx.font = '11px sans-serif'
-    ctx.fillText(`F浮 = ${(s.F浮 * 1000).toFixed(2)} mN`, px + 14, y); y += lh
-    ctx.fillText(`G物 = ${(s.G物 * 1000).toFixed(2)} mN`, px + 14, y); y += lh
+    ctx.fillText(`F浮 = ${s.F浮.toFixed(3)} N`, px + 14, y); y += lh
+    ctx.fillText(`G物 = ${s.G物.toFixed(3)} N`, px + 14, y); y += lh
 
     let forceRelation, forceColor
     if (Math.abs(s.F浮 - s.G物) < 0.0001) {
@@ -765,19 +766,19 @@ export default function FloatSinkScene() {
     const F浮max = s.G物 / Math.max(s.浸入比, 0.001) * 1  // 粗略估计
     // 更准确：F浮max = ρ液 * g * V物，但G物 = ρ物 * g * V物，所以 F浮max = G物 * ρ液/ρ物
     const rhoRatio = s.liquidDensity / Math.max(s.objectDensity, 1)
-    const F浮maxmN = s.G物 * 1000 * rhoRatio
+    const F浮maxN = s.G物 * rhoRatio
 
     // ── 行1：F浮（蓝色进度条，实时缩放） ──
     ctx.fillStyle = '#2196F3'
     ctx.font = 'bold 12px sans-serif'
-    ctx.fillText(`F浮 = ${(s.F浮 * 1000).toFixed(2)} mN`, barX, y)
+    ctx.fillText(`F浮 = ${s.F浮.toFixed(3)} N`, barX, y)
     y += 18
     // 进度条背景
     ctx.fillStyle = '#e8e8e8'
     roundedRect(ctx, barX, y, barW, barH, 3)
     ctx.fill()
     // 进度条填充：F浮 / 理论最大浮力
-    const fRatio = Math.min(1, (s.F浮 * 1000) / Math.max(F浮maxmN, 0.001))
+    const fRatio = Math.min(1, (s.F浮) / Math.max(F浮maxN, 0.0001))
     const fBarW = Math.max(2, fRatio * barW)
     ctx.fillStyle = '#2196F3'
     roundedRect(ctx, barX, y, fBarW, barH, 3)
@@ -787,14 +788,14 @@ export default function FloatSinkScene() {
     // ── 行2：G物（红色进度条，长度固定） ──
     ctx.fillStyle = '#FF6B6B'
     ctx.font = 'bold 12px sans-serif'
-    ctx.fillText(`G物 = ${(s.G物 * 1000).toFixed(2)} mN`, barX, y)
+    ctx.fillText(`G物 = ${s.G物.toFixed(3)} N`, barX, y)
     y += 18
     // 进度条背景
     ctx.fillStyle = '#e8e8e8'
     roundedRect(ctx, barX, y, barW, barH, 3)
     ctx.fill()
     // 进度条填充：G物 / 理论最大浮力（固定比例）
-    const gRatio = Math.min(1, (s.G物 * 1000) / Math.max(F浮maxmN, 0.001))
+    const gRatio = Math.min(1, (s.G物) / Math.max(F浮maxN, 0.0001))
     const gBarW = Math.max(2, gRatio * barW)
     ctx.fillStyle = '#FF6B6B'
     roundedRect(ctx, barX, y, gBarW, barH, 3)
@@ -802,11 +803,11 @@ export default function FloatSinkScene() {
     y += barH + 10
 
     // ── 行3：ΔF ──
-    const deltaF = (s.F浮 - s.G物) * 1000
+    const deltaF = (s.F浮 - s.G物)
     const deltaColor = Math.abs(deltaF) < 0.001 ? '#4CAF50' : deltaF > 0 ? '#2196F3' : '#FF6B6B'
     ctx.fillStyle = deltaColor
     ctx.font = 'bold 12px sans-serif'
-    ctx.fillText(`ΔF = F浮−G物 = ${deltaF >= 0 ? '+' : ''}${deltaF.toFixed(2)} mN`, barX, y)
+    ctx.fillText(`ΔF = F浮−G物 = ${deltaF >= 0 ? '+' : ''}${deltaF.toFixed(3)} N`, barX, y)
     y += 18
 
     // ── 行4：浸入比 ──
@@ -835,8 +836,8 @@ export default function FloatSinkScene() {
       statusColor = '#999'
     } else if (touchingBottom && s.F浮 < s.G物 - EPSILON) {
       // 沉底：G物 > F浮，底部提供支持力
-      const supportF = ((s.G物 - s.F浮) * 1000).toFixed(2)
-      statusText = `🔻 沉底，G物＞F浮，支持力=${supportF} mN`
+      const supportF = (s.G物 - s.F浮).toFixed(3)
+      statusText = `🔻 沉底，G物＞F浮，支持力=${supportF} N`
       statusColor = '#f44336'
     } else if (Math.abs(s.F浮 - s.G物) < EPSILON) {
       // 力平衡：F浮 = G物
@@ -848,10 +849,10 @@ export default function FloatSinkScene() {
         statusColor = '#4CAF50'
       }
     } else if (s.F浮 > s.G物) {
-      statusText = `↑ F浮＞G物 → 上浮中 ΔF=+${deltaF.toFixed(2)} mN`
+      statusText = `↑ F浮＞G物 → 上浮中 ΔF=+${deltaF.toFixed(3)} N`
       statusColor = '#2196F3'
     } else {
-      statusText = `↓ F浮＜G物 → 下沉中 ΔF=${deltaF.toFixed(2)} mN`
+      statusText = `↓ F浮＜G物 → 下沉中 ΔF=${deltaF.toFixed(3)} N`
       statusColor = '#FF6B6B'
     }
 

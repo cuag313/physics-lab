@@ -198,56 +198,65 @@ export default function ConvexLensImaging({ preset }) {
     drawDescription(ctx, scene, renderer)
   }
 
-  // 绘制文字说明
+  // 绘制文字说明（小屏只保留当前结论，避免盖住光路）
   function drawDescription(ctx, scene, renderer) {
     const result = calcImage(scene)
     const lens = scene.instruments.find(i => i.type === 'convexLens')
     const f = lens ? lens.getParam('focalLength') : 1.0
 
-    const x = 16
-    let y = 20
+    const W = renderer.screenW || 800
+    const H = renderer.screenH || 500
+    const compact = W < 720 || H < 420
+
+    const x = 12
+    let y = 12
     ctx.textBaseline = 'top'
     ctx.textAlign = 'left'
 
-    // 标题
-    ctx.fillStyle = '#c9d1d9'
-    ctx.font = 'bold 16px sans-serif'
-    ctx.fillText('凸透镜成像规律', x, y)
-    y += 28
+    if (!compact) {
+      ctx.fillStyle = '#c9d1d9'
+      ctx.font = 'bold 16px sans-serif'
+      ctx.fillText('凸透镜成像规律', x, y)
+      y += 28
 
-    // 公式
-    ctx.fillStyle = '#4a90d9'
-    ctx.font = 'bold 14px serif'
-    ctx.fillText('1/u + 1/v = 1/f', x, y)
-    y += 20
-    ctx.fillText('m = -v/u', x, y)
-    y += 26
+      ctx.fillStyle = '#4a90d9'
+      ctx.font = 'bold 14px serif'
+      ctx.fillText('1/u + 1/v = 1/f', x, y)
+      y += 20
+      ctx.fillText('m = -v/u', x, y)
+      y += 26
 
-    // 成像规律
-    ctx.fillStyle = '#8b949e'
-    ctx.font = '12px sans-serif'
-    const rules = [
-      'u > 2f：倒立缩小实像，f < v < 2f',
-      'u = 2f：倒立等大实像，v = 2f',
-      'f < u < 2f：倒立放大实像，v > 2f',
-      'u = f：不成像（折射光平行）',
-      'u < f：正立放大虚像（同侧）',
-    ]
-    for (const r of rules) {
-      ctx.fillText(r, x, y)
-      y += 17
+      ctx.fillStyle = '#8b949e'
+      ctx.font = '12px sans-serif'
+      const rules = [
+        'u > 2f：倒立缩小实像，f < v < 2f',
+        'u = 2f：倒立等大实像，v = 2f',
+        'f < u < 2f：倒立放大实像，v > 2f',
+        'u = f：不成像（折射光平行）',
+        'u < f：正立放大虚像（同侧）',
+      ]
+      for (const r of rules) {
+        ctx.fillText(r, x, y)
+        y += 17
+      }
     }
 
-    // 当前状态
     if (result) {
-      y += 6
+      if (compact) y += 4
+      else y += 6
       const rule = getImageRuleText(result, f)
+      // 小屏：半透明底，只显示一行结论
+      if (compact) {
+        const tw = Math.min(W - 24, 360)
+        ctx.fillStyle = 'rgba(13,17,23,0.72)'
+        ctx.fillRect(x - 4, y - 4, tw, 44)
+      }
       ctx.fillStyle = rule.color
-      ctx.font = 'bold 12px sans-serif'
+      ctx.font = compact ? 'bold 11px sans-serif' : 'bold 12px sans-serif'
       ctx.fillText(rule.text, x, y)
       y += 18
       ctx.fillStyle = '#FFD700'
-      ctx.font = '11px sans-serif'
+      ctx.font = compact ? '10px sans-serif' : '11px sans-serif'
       ctx.fillText(`u = ${result.objectDistance.toFixed(2)}m  v = ${Math.abs(result.imageDistance).toFixed(2)}m  m = ${Math.abs(result.magnification).toFixed(2)}`, x, y)
     }
   }

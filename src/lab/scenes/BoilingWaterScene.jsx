@@ -301,78 +301,92 @@ export default function BoilingWaterScene() {
   }
 
   function drawRightPanel(ctx, x, y, w, h, s, info) {
+    // 小屏：面板变窄变矮，步骤压缩，避免盖住温度计/烧杯
+    const compact = w < 220 || h < 180
+    const panelW = Math.max(140, Math.min(w, compact ? 168 : w))
+    const panelH = Math.max(120, Math.min(h, compact ? 130 : h))
+    x = Math.min(x, (canvasRef.current?.width || 800) / (window.devicePixelRatio || 1) - panelW - 8)
+    y = Math.min(y, (canvasRef.current?.height || 500) / (window.devicePixelRatio || 1) - panelH - 8)
+
     ctx.fillStyle = '#fff'; ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill(); ctx.stroke()
+    ctx.beginPath(); ctx.roundRect(x, y, panelW, panelH, 8); ctx.fill(); ctx.stroke()
 
-    ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('🎯 水的沸腾', x + 12, y + 12)
-    ctx.fillStyle = '#FF6F00'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText(`沸点 = ${info.boilT.toFixed(1)}°C`, x + 12, y + 32)
-    ctx.font = '10px sans-serif'; ctx.fillStyle = '#444'
-    ctx.fillText(`T = ${s.temp.toFixed(1)}°C    状态: ${info.phase}`, x + 12, y + 50)
-    if (s.step === 3) ctx.fillText(`气压 = ${s.pressure.toFixed(2)} atm`, x + 12, y + 64)
+    ctx.fillStyle = '#333'; ctx.font = compact ? 'bold 10px sans-serif' : 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('🎯 水的沸腾', x + 10, y + 8)
+    ctx.fillStyle = '#FF6F00'; ctx.font = compact ? 'bold 9px sans-serif' : 'bold 11px sans-serif'
+    ctx.fillText(`沸点 = ${info.boilT.toFixed(1)}°C`, x + 10, y + (compact ? 22 : 32))
+    ctx.font = compact ? '8px sans-serif' : '10px sans-serif'; ctx.fillStyle = '#444'
+    ctx.fillText(`T = ${s.temp.toFixed(1)}°C  ${info.phase}`, x + 10, y + (compact ? 34 : 50))
+    if (s.step === 3) ctx.fillText(`气压 = ${s.pressure.toFixed(2)} atm`, x + 10, y + (compact ? 46 : 64))
 
-    let ky = y + (s.step === 3 ? 82 : 66)
-    const guideSteps = s.step === 1
-      ? ['① 点"加热"开始加热', '② 观察气泡由小变大', '③ 沸腾时大量气泡上升破裂', '④ 剧烈汽化现象']
-      : s.step === 2
-        ? ['① 持续加热', '② 温度升到沸点后不变', '③ 持续吸热温度不变', '④ 结论：沸腾时温度不变']
-        : ['① 调节气压滑条', '② 气压↓→沸点↓', '③ 气压↑→沸点↑', '④ 高压锅原理：气压高沸点高']
-    ctx.fillStyle = '#5D4037'; ctx.font = 'bold 10px sans-serif'
-    ctx.fillText('📋 操作步骤', x + 12, ky); ky += 14
-    ctx.font = '9px sans-serif'; ctx.fillStyle = '#5D4037'
-    for (let i = 0; i < guideSteps.length; i++) ctx.fillText(guideSteps[i], x + 12, ky + i * 12)
-    ky += guideSteps.length * 12 + 6
+    let ky = y + (compact ? 58 : (s.step === 3 ? 82 : 66))
+    const guideSteps = compact
+      ? (s.step === 1 ? ['① 加热观察气泡', '② 沸腾时气泡剧增'] : s.step === 2 ? ['① 沸腾时温度不变', '② 持续吸热'] : ['① 调气压看沸点', '② 气压高沸点高'])
+      : s.step === 1
+        ? ['① 点"加热"开始加热', '② 观察气泡由小变大', '③ 沸腾时大量气泡上升破裂', '④ 剧烈汽化现象']
+        : s.step === 2
+          ? ['① 持续加热', '② 温度升到沸点后不变', '③ 持续吸热温度不变', '④ 结论：沸腾时温度不变']
+          : ['① 调节气压滑条', '② 气压↓→沸点↓', '③ 气压↑→沸点↑', '④ 高压锅原理：气压高沸点高']
+    if (!compact) {
+      ctx.fillStyle = '#5D4037'; ctx.font = 'bold 10px sans-serif'
+      ctx.fillText('📋 操作步骤', x + 12, ky); ky += 14
+    }
+    ctx.font = compact ? '8px sans-serif' : '9px sans-serif'; ctx.fillStyle = '#5D4037'
+    for (let i = 0; i < guideSteps.length; i++) ctx.fillText(guideSteps[i], x + 10, ky + i * (compact ? 11 : 12))
+    ky += guideSteps.length * (compact ? 11 : 12) + 4
 
-    ctx.fillStyle = '#C62828'; ctx.font = 'bold 10px sans-serif'
-    ctx.fillText('⚠ 注意事项', x + 12, ky); ky += 14
-    ctx.font = '9px sans-serif'; ctx.fillStyle = '#B71C1C'
-    const notes = s.step === 1
-      ? ['• 气泡上升过程中由小变大', '• 沸腾是剧烈的汽化现象', '• 发生在液体内部和表面']
-      : s.step === 2
-        ? ['• 沸腾过程温度不变', '• 条件：达到沸点+持续吸热', '• 与蒸发的区别：剧烈程度不同']
-        : ['• 标准大气压下沸点 100°C', '• 高压锅：增大气压提高沸点', '• 高山上沸点降低，饭难煮熟']
-    for (let i = 0; i < notes.length; i++) ctx.fillText(notes[i], x + 12, ky + i * 12)
-    ky += notes.length * 12 + 6
+    if (!compact) {
+      ctx.fillStyle = '#C62828'; ctx.font = 'bold 10px sans-serif'
+      ctx.fillText('⚠ 注意事项', x + 12, ky); ky += 14
+      ctx.font = '9px sans-serif'; ctx.fillStyle = '#B71C1C'
+      const notes = s.step === 1
+        ? ['• 气泡上升过程中由小变大', '• 沸腾是剧烈的汽化现象', '• 发生在液体内部和表面']
+        : s.step === 2
+          ? ['• 沸腾过程温度不变', '• 条件：达到沸点+持续吸热', '• 与蒸发的区别：剧烈程度不同']
+          : ['• 标准大气压下沸点 100°C', '• 高压锅：增大气压提高沸点', '• 高山上沸点降低，饭难煮熟']
+      for (let i = 0; i < notes.length; i++) ctx.fillText(notes[i], x + 12, ky + i * 12)
+      ky += notes.length * 12 + 6
 
-    if (s.records.length > 0) {
-      ctx.fillStyle = '#333'; ctx.font = 'bold 10px sans-serif'
-      ctx.fillText('📊 实验数据', x + 12, ky); ky += 14
-      ctx.fillStyle = '#FFB74D'; ctx.fillRect(x + 12, ky, w - 24, 16)
-      ctx.fillStyle = '#333'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'
-      const c1 = x + 26, c2 = x + 60, c3 = x + 110
-      ctx.fillText('#', c1, ky + 2); ctx.fillText('t(s)', c2, ky + 2); ctx.fillText('T(°C)', c3, ky + 2)
-      ky += 14
-      for (let i = 0; i < s.records.length; i++) {
-        const r = s.records[i]
-        if (i % 2 === 0) { ctx.fillStyle = '#FFF8E1'; ctx.fillRect(x + 12, ky, w - 24, 13) }
-        ctx.fillStyle = '#333'; ctx.font = '9px monospace'; ctx.textAlign = 'center'
-        ctx.fillText(String(i + 1), c1, ky + 1); ctx.fillText(r.t.toFixed(1), c2, ky + 1); ctx.fillText(r.temp.toFixed(1), c3, ky + 1)
-        ky += 13
+      if (s.records.length > 0) {
+        ctx.fillStyle = '#333'; ctx.font = 'bold 10px sans-serif'
+        ctx.fillText('📊 实验数据', x + 12, ky); ky += 14
+        ctx.fillStyle = '#FFB74D'; ctx.fillRect(x + 12, ky, w - 24, 16)
+        ctx.fillStyle = '#333'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'
+        const c1 = x + 26, c2 = x + 60, c3 = x + 110
+        ctx.fillText('#', c1, ky + 2); ctx.fillText('t(s)', c2, ky + 2); ctx.fillText('T(°C)', c3, ky + 2)
+        ky += 14
+        for (let i = 0; i < s.records.length; i++) {
+          const r = s.records[i]
+          if (i % 2 === 0) { ctx.fillStyle = '#FFF8E1'; ctx.fillRect(x + 12, ky, w - 24, 13) }
+          ctx.fillStyle = '#333'; ctx.font = '9px monospace'; ctx.textAlign = 'center'
+          ctx.fillText(String(i + 1), c1, ky + 1); ctx.fillText(r.t.toFixed(1), c2, ky + 1); ctx.fillText(r.temp.toFixed(1), c3, ky + 1)
+          ky += 13
+        }
+        ctx.textAlign = 'left'
       }
-      ctx.textAlign = 'left'
     }
 
-    const btnY = y + h - 38, btnW = 62, btnH = 24, gap = 6, bx = x + 12
+    const btnY = y + panelH - 34, btnW = compact ? 48 : 62, btnH = 22, gap = 5, bx = x + 8
     ctx.fillStyle = '#4CAF50'; ctx.strokeStyle = '#2E7D32'
     ctx.beginPath(); ctx.roundRect(bx, btnY, btnW, btnH, 5); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'
-    ctx.fillText('📝 记录', bx + btnW / 2, btnY + 7)
+    ctx.fillStyle = '#fff'; ctx.font = compact ? 'bold 9px sans-serif' : 'bold 10px sans-serif'; ctx.textAlign = 'center'
+    ctx.fillText('📝 记录', bx + btnW / 2, btnY + 6)
     canvasRef.current._clickAreas.push({ x: bx, y: btnY, w: btnW, h: btnH, onClick: () => {
       const s2 = S.current; s2.records.push({ t: s2.t, temp: s2.temp }); forceUpdate(n => n + 1)
     } })
     ctx.fillStyle = '#FF9800'; ctx.strokeStyle = '#E65100'
     ctx.beginPath(); ctx.roundRect(bx + btnW + gap, btnY, btnW, btnH, 5); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#fff'; ctx.fillText('🗑 清除', bx + btnW + gap + btnW / 2, btnY + 7)
+    ctx.fillStyle = '#fff'; ctx.fillText('🗑 清除', bx + btnW + gap + btnW / 2, btnY + 6)
     canvasRef.current._clickAreas.push({ x: bx + btnW + gap, y: btnY, w: btnW, h: btnH, onClick: () => { S.current.records = []; forceUpdate(n => n + 1) } })
     ctx.fillStyle = '#9E9E9E'; ctx.strokeStyle = '#616161'
     ctx.beginPath(); ctx.roundRect(bx + (btnW + gap) * 2, btnY, btnW, btnH, 5); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#fff'; ctx.fillText('↺ 重置', bx + (btnW + gap) * 2 + btnW / 2, btnY + 7)
+    ctx.fillStyle = '#fff'; ctx.fillText('↺ 重置', bx + (btnW + gap) * 2 + btnW / 2, btnY + 6)
     canvasRef.current._clickAreas.push({ x: bx + (btnW + gap) * 2, y: btnY, w: btnW, h: btnH, onClick: () => {
       S.current.t = 0; S.current.temp = 25; S.current.pressure = 1; S.current.data = []; S.current.records = []; S.current.switchClosed = false
       forceUpdate(n => n + 1)
     } })
     ctx.textBaseline = 'alphabetic'
+    ctx.textAlign = 'left'
   }
 
   // Tab2
