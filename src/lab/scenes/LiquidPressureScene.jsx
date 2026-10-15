@@ -1,4 +1,4 @@
-﻿/**
+/**
  * LiquidPressureScene — 探究液体内部压强（优化版）
  *
  * 物理规则：
@@ -128,20 +128,23 @@ export default function LiquidPressureScene() {
   // ============================================================
   function getLayout(rect) {
     const w = rect.width, h = rect.height
-    const tankW = Math.min(180, w * 0.20)
-    const tankH = h * 0.55
-    const tankX = w * 0.36
-    const tankY = h * 0.18
+    // 小屏（手机横屏）压缩说明框占位，给中间实验区留空间
+    const compact = w < 720 || h < 420
+    const leftPad = compact ? 8 : 16
+    const tankW = Math.min(compact ? 120 : 180, w * 0.18)
+    const tankH = h * (compact ? 0.52 : 0.55)
+    const tankX = w * (compact ? 0.34 : 0.36)
+    const tankY = h * (compact ? 0.20 : 0.18)
     const liquidH = tankH * 0.85
     const liquidTop = tankY + tankH - liquidH
 
-    const tubeX = w * 0.70
+    const tubeX = w * (compact ? 0.72 : 0.70)
     const tubeY = h * 0.12
-    const tubeW = 20
-    const tubeH = Math.min(320, h * 0.48)
-    const tubeGap = 56
+    const tubeW = compact ? 16 : 20
+    const tubeH = Math.min(compact ? 220 : 320, h * 0.48)
+    const tubeGap = compact ? 40 : 56
 
-    return { w, h, tankX, tankY, tankW, tankH, liquidH, liquidTop, tubeX, tubeY, tubeW, tubeH, tubeGap }
+    return { w, h, leftPad, compact, tankX, tankY, tankW, tankH, liquidH, liquidTop, tubeX, tubeY, tubeW, tubeH, tubeGap }
   }
 
   // ============================================================
@@ -504,8 +507,14 @@ export default function LiquidPressureScene() {
   // ── 左侧数据面板 ──
   function drawDataPanel(ctx, rect) {
     const s = sim.current
-    const panelW = 250, panelH = 340
-    const px = 16, py = 16
+    const L = getLayout(rect)
+    const compact = L.compact
+    const panelW = compact ? Math.min(168, rect.width * 0.30) : 250
+    const panelH = compact ? Math.min(210, rect.height * 0.62) : 340
+    const px = compact ? 6 : 16
+    const py = compact ? 6 : 16
+    const pad = compact ? 8 : 14
+    const lh = compact ? 14 : 20
 
     ctx.fillStyle = 'rgba(255,255,255,0.96)'
     ctx.fillRect(px, py, panelW, panelH)
@@ -517,78 +526,91 @@ export default function LiquidPressureScene() {
     ctx.textBaseline = 'top'
 
     ctx.fillStyle = '#333'
-    ctx.font = 'bold 14px sans-serif'
-    ctx.fillText('📊 液体压强', px + 14, py + 14)
+    ctx.font = compact ? 'bold 11px sans-serif' : 'bold 14px sans-serif'
+    ctx.fillText('📊 液体压强', px + pad, py + (compact ? 8 : 14))
 
-    let y = py + 40
-    const lh = 20
+    let y = py + (compact ? 26 : 40)
 
     ctx.fillStyle = '#666'
-    ctx.font = '12px sans-serif'
-    ctx.fillText(`容器液体：${LIQUIDS[s.liquidType].name}`, px + 14, y); y += lh
+    ctx.font = compact ? '10px sans-serif' : '12px sans-serif'
+    ctx.fillText(`容器液体：${LIQUIDS[s.liquidType].name}`, px + pad, y); y += lh
     ctx.fillStyle = '#4A90D9'
-    ctx.fillText(`ρ_液 = ${s.liquidDensity} kg/m³`, px + 14, y); y += lh
-    ctx.fillStyle = '#888'
-    ctx.font = '11px sans-serif'
-    ctx.fillText('U形管内：水银 ρ=13600kg/m³', px + 14, y); y += lh + 4
+    ctx.fillText(`ρ_液 = ${s.liquidDensity} kg/m³`, px + pad, y); y += lh
+    if (!compact) {
+      ctx.fillStyle = '#888'
+      ctx.font = '11px sans-serif'
+      ctx.fillText('U形管内：水银 ρ=13600kg/m³', px + pad, y); y += lh + 4
+    }
 
     ctx.fillStyle = '#E6A800'
-    ctx.font = 'bold 12px sans-serif'
-    ctx.fillText(`探头深度 h = ${s.depth.toFixed(2)} m`, px + 14, y); y += lh + 8
+    ctx.font = compact ? 'bold 10px sans-serif' : 'bold 12px sans-serif'
+    ctx.fillText(`探头深度 h = ${s.depth.toFixed(2)} m`, px + pad, y); y += lh + (compact ? 4 : 8)
 
     ctx.fillStyle = '#333'
-    ctx.font = 'bold 16px serif'
-    ctx.fillText('p = ρgh', px + 14, y); y += 26
+    ctx.font = compact ? 'bold 12px serif' : 'bold 16px serif'
+    ctx.fillText('p = ρgh', px + pad, y); y += compact ? 18 : 26
 
     ctx.fillStyle = '#4A90D9'
-    ctx.font = '12px sans-serif'
-    ctx.fillText(`理论压强 p = ${s.liquidDensity}×9.8×${s.depth.toFixed(2)}`, px + 14, y); y += lh
-    ctx.fillStyle = '#4A90D9'
-    ctx.font = 'bold 14px sans-serif'
-    ctx.fillText(`p = ${s.pressure.toFixed(2)} Pa`, px + 14, y); y += lh + 6
+    ctx.font = compact ? '9px sans-serif' : '12px sans-serif'
+    if (!compact) {
+      ctx.fillText(`理论压强 p = ${s.liquidDensity}×9.8×${s.depth.toFixed(2)}`, px + pad, y); y += lh
+    }
+    ctx.font = compact ? 'bold 11px sans-serif' : 'bold 14px sans-serif'
+    ctx.fillText(`p = ${s.pressure.toFixed(2)} Pa`, px + pad, y); y += lh + (compact ? 2 : 6)
 
     ctx.strokeStyle = '#eee'
     ctx.lineWidth = 1
     ctx.beginPath()
-    ctx.moveTo(px + 14, y)
-    ctx.lineTo(px + panelW - 14, y)
+    ctx.moveTo(px + pad, y)
+    ctx.lineTo(px + panelW - pad, y)
     ctx.stroke()
-    y += 8
+    y += compact ? 4 : 8
 
     ctx.fillStyle = '#2196F3'
-    ctx.font = 'bold 12px sans-serif'
-    ctx.fillText(`U形管实测 Δh = ${(s.deltaHCurrent * 100).toFixed(2)} cm`, px + 14, y); y += lh
-    ctx.fillStyle = '#888'
-    ctx.font = '10px sans-serif'
-    ctx.fillText(`(= ${(s.deltaHCurrent).toFixed(5)} m)`, px + 14, y); y += lh
+    ctx.font = compact ? 'bold 10px sans-serif' : 'bold 12px sans-serif'
+    ctx.fillText(`U形管实测 Δh = ${(s.deltaHCurrent * 100).toFixed(2)} cm`, px + pad, y); y += lh
+    if (!compact) {
+      ctx.fillStyle = '#888'
+      ctx.font = '10px sans-serif'
+      ctx.fillText(`(= ${(s.deltaHCurrent).toFixed(5)} m)`, px + pad, y); y += lh
 
-    const pFromDeltaH = RHO_HG * G * s.deltaHCurrent
-    ctx.fillStyle = '#9C27B0'
-    ctx.font = '12px sans-serif'
-    ctx.fillText(`p' = ρ_水银×g×Δh = ${pFromDeltaH.toFixed(2)} Pa`, px + 14, y); y += lh + 6
+      const pFromDeltaH = RHO_HG * G * s.deltaHCurrent
+      ctx.fillStyle = '#9C27B0'
+      ctx.font = '12px sans-serif'
+      ctx.fillText(`p' = ρ_水银×g×Δh = ${pFromDeltaH.toFixed(2)} Pa`, px + pad, y); y += lh + 6
 
-    ctx.fillStyle = '#333'
-    ctx.font = '11px sans-serif'
-    ctx.fillText('平衡等式：', px + 14, y); y += lh
-    ctx.fillStyle = '#4A90D9'
-    ctx.font = '11px serif'
-    ctx.fillText('ρ_液·g·h = ρ_水银·g·Δh', px + 14, y); y += lh + 6
+      ctx.fillStyle = '#333'
+      ctx.font = '11px sans-serif'
+      ctx.fillText('平衡等式：', px + pad, y); y += lh
+      ctx.fillStyle = '#4A90D9'
+      ctx.font = '11px serif'
+      ctx.fillText('ρ_液·g·h = ρ_水银·g·Δh', px + pad, y); y += lh + 6
 
-    const diff = Math.abs(s.pressure - pFromDeltaH)
-    const match = diff < 0.1
-    ctx.fillStyle = match ? '#4CAF50' : '#FF9800'
-    ctx.font = 'bold 11px sans-serif'
-    ctx.fillText(match ? '✅ 理论值与实测值一致' : `偏差 ${diff.toFixed(2)} Pa`, px + 14, y)
+      const diff = Math.abs(s.pressure - pFromDeltaH)
+      const match = diff < 0.1
+      ctx.fillStyle = match ? '#4CAF50' : '#FF9800'
+      ctx.font = 'bold 11px sans-serif'
+      ctx.fillText(match ? '✅ 理论值与实测值一致' : `偏差 ${diff.toFixed(2)} Pa`, px + pad, y)
+    } else {
+      const pFromDeltaH = RHO_HG * G * s.deltaHCurrent
+      const diff = Math.abs(s.pressure - pFromDeltaH)
+      const match = diff < 0.1
+      ctx.fillStyle = match ? '#4CAF50' : '#FF9800'
+      ctx.font = 'bold 9px sans-serif'
+      ctx.fillText(match ? '✅ 理论≈实测' : `偏差 ${diff.toFixed(1)} Pa`, px + pad, y)
+    }
   }
 
   // ── 工作原理（右下角） ──
   function drawPrinciple(ctx, rect) {
+    const L = getLayout(rect)
+    const compact = L.compact
     const w = rect.width, h = rect.height
-    const panelW = 240, panelH = 150
-    const px = w - panelW - 16
-    const py = h - panelH - 12
+    const panelW = compact ? Math.min(170, w * 0.32) : 240
+    const panelH = compact ? 112 : 150
+    const px = w - panelW - (compact ? 6 : 16)
+    const py = h - panelH - (compact ? 6 : 12)
 
-    // 背景
     ctx.fillStyle = 'rgba(255,255,255,0.96)'
     ctx.fillRect(px, py, panelW, panelH)
     ctx.strokeStyle = '#ddd'
@@ -598,39 +620,47 @@ export default function LiquidPressureScene() {
     ctx.textAlign = 'left'
     ctx.textBaseline = 'top'
     ctx.fillStyle = '#333'
-    ctx.font = 'bold 12px sans-serif'
-    ctx.fillText('📖 U形管压强计工作原理', px + 12, py + 10)
+    ctx.font = compact ? 'bold 10px sans-serif' : 'bold 12px sans-serif'
+    ctx.fillText('📖 U形管压强计工作原理', px + (compact ? 8 : 12), py + (compact ? 6 : 10))
 
-    let y = py + 32
-    const lines = [
-      '① 探头浸入液体，橡皮膜受压',
-      '② 压强通过橡胶软管传递',
-      '③ 封闭端水银被压下',
-      '④ 开放端水银上升，产生Δh',
-      '⑤ ρ液·g·h = ρ水银·g·Δh',
-    ]
-    ctx.font = '10px sans-serif'
+    let y = py + (compact ? 22 : 32)
+    const lines = compact
+      ? ['① 橡皮膜受压', '② 软管传压', '③ 产生 Δh', '④ ρ液·g·h = ρ水银·g·Δh']
+      : [
+          '① 探头浸入液体，橡皮膜受压',
+          '② 压强通过橡胶软管传递',
+          '③ 封闭端水银被压下',
+          '④ 开放端水银上升，产生Δh',
+          '⑤ ρ液·g·h = ρ水银·g·Δh',
+        ]
+    ctx.font = compact ? '9px sans-serif' : '10px sans-serif'
     for (let i = 0; i < lines.length; i++) {
-      ctx.fillStyle = i === 4 ? '#4A90D9' : '#666'
-      ctx.fillText(lines[i], px + 12, y)
-      y += 16
+      ctx.fillStyle = i === lines.length - 1 ? '#4A90D9' : '#666'
+      ctx.fillText(lines[i], px + (compact ? 8 : 12), y)
+      y += compact ? 13 : 16
     }
-    y += 4
+    if (!compact) y += 4
     ctx.fillStyle = '#4CAF50'
-    ctx.font = 'bold 10px sans-serif'
-    ctx.fillText('同一深度各方向压强相等', px + 12, y)
+    ctx.font = compact ? 'bold 8px sans-serif' : 'bold 10px sans-serif'
+    ctx.fillText('同一深度各方向压强相等', px + (compact ? 8 : 12), y)
   }
   function drawFormula(ctx, rect) {
+    const L = getLayout(rect)
     const h = rect.height
     ctx.fillStyle = '#4A90D9'
-    ctx.font = 'bold 15px serif'
+    ctx.font = L.compact ? 'bold 12px serif' : 'bold 15px serif'
     ctx.textAlign = 'left'
     ctx.textBaseline = 'bottom'
-    ctx.fillText('p = ρgh', 16, h - 24)
+    // 小屏放到中下，避免压住右下原理框
+    const x = L.compact ? 8 : 16
+    const y = L.compact ? h - 10 : h - 24
+    ctx.fillText('p = ρgh', x, y)
   }
 
   function drawInstructions(ctx, rect) {
+    const L = getLayout(rect)
     const h = rect.height
+    if (L.compact) return
     ctx.fillStyle = '#888'
     ctx.font = '11px sans-serif'
     ctx.textAlign = 'left'
@@ -645,8 +675,8 @@ export default function LiquidPressureScene() {
   const liq = LIQUIDS[s.liquidType]
 
   return (
-    <div style={S.container}>
-      <div style={S.toolbar}>
+    <div className="lab-shell" style={S.container}>
+      <div className="scene-toolbar-extra" style={S.toolbar}>
         <span style={S.title}>探究液体内部压强</span>
         <div style={S.actions}>
           <label style={S.label}>
@@ -654,7 +684,7 @@ export default function LiquidPressureScene() {
             <input type="range" min="0" max="0.80" step="0.01"
               value={s.depth}
               onChange={(e) => { sim.current.depth = parseFloat(e.target.value) }}
-              style={{ width: 100, accentColor: '#4A90D9' }} />
+              style={{ width: 80, accentColor: '#4A90D9' }} />
             <span style={S.sliderVal}>{s.depth.toFixed(2)}m</span>
           </label>
           <label style={S.label}>
@@ -682,18 +712,18 @@ export default function LiquidPressureScene() {
         </div>
       </div>
 
-      <div style={S.main}>
+      <div className="scene-canvas" style={S.main}>
         <canvas ref={canvasRef} style={{ ...S.canvas, cursor: dragging ? 'grabbing' : 'grab' }} />
       </div>
 
-      <div style={S.statusBar}>
+      <div className="status-bar" style={S.statusBar}>
         <span style={{ color: '#4CAF50', fontWeight: 600 }}>
           p = {s.liquidDensity}×9.8×{s.depth.toFixed(2)} = {s.pressure.toFixed(2)} Pa
         </span>
         <span style={{ color: '#2196F3', marginLeft: 16 }}>
           Δh = {(s.deltaHCurrent * 100).toFixed(2)} cm
         </span>
-        <span style={{ color: '#999', marginLeft: 'auto', fontSize: 11 }}>
+        <span className="status-tip" style={{ color: '#999', marginLeft: 'auto', fontSize: 11 }}>
           p=ρgh · 同深度各方向压强相等
         </span>
       </div>
@@ -703,33 +733,34 @@ export default function LiquidPressureScene() {
 
 const S = {
   container: {
-    display: 'flex', flexDirection: 'column', height: '100vh',
+    display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0,
     background: '#e8e8e8', color: '#333',
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    overflow: 'hidden',
   },
   toolbar: {
-    minHeight: 44, background: '#f5f5f5', borderBottom: '1px solid #ccc',
+    minHeight: 40, background: '#f5f5f5', borderBottom: '1px solid #ccc',
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-    padding: '0 12px', flexShrink: 0, flexWrap: 'wrap', gap: 6,
+    padding: '4px 10px', flexShrink: 0, flexWrap: 'wrap', gap: 6,
   },
-  title: { fontSize: 14, fontWeight: 600, color: '#333' },
-  actions: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
-  label: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#555' },
-  sliderVal: { color: '#4A90D9', fontWeight: 600, minWidth: 45, fontSize: 12 },
+  title: { fontSize: 13, fontWeight: 600, color: '#333', flexShrink: 0 },
+  actions: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minWidth: 0 },
+  label: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#555' },
+  sliderVal: { color: '#4A90D9', fontWeight: 600, minWidth: 40, fontSize: 11 },
   select: {
     background: '#fff', color: '#333', border: '1px solid #ccc',
-    borderRadius: 4, padding: '3px 6px', fontSize: 12,
+    borderRadius: 4, padding: '2px 4px', fontSize: 11, maxWidth: 120,
   },
   dirBtn: {
     border: '1px solid #ccc', borderRadius: 4,
-    padding: '3px 10px', fontSize: 11, cursor: 'pointer',
+    padding: '2px 8px', fontSize: 11, cursor: 'pointer',
     transition: 'all 0.15s',
   },
-  main: { flex: 1, display: 'flex', overflow: 'hidden', background: '#fff' },
-  canvas: { flex: 1, width: '100%' },
+  main: { flex: 1, display: 'flex', overflow: 'hidden', background: '#fff', minHeight: 0 },
+  canvas: { flex: 1, width: '100%', height: '100%', touchAction: 'none' },
   statusBar: {
     minHeight: 28, background: '#f5f5f5', borderTop: '1px solid #ccc',
-    display: 'flex', alignItems: 'center', gap: 20,
-    padding: '4px 14px', fontSize: 12, color: '#555', flexShrink: 0, flexWrap: 'wrap',
+    display: 'flex', alignItems: 'center', gap: 12,
+    padding: '4px 12px', fontSize: 11, color: '#555', flexShrink: 0, flexWrap: 'wrap',
   },
 }
