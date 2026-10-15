@@ -10,175 +10,45 @@
     <style>
       * { -webkit-tap-highlight-color: transparent; }
       html, body { margin: 0; padding: 0; overscroll-behavior: none; touch-action: manipulation; }
-      /* 竖屏进入实验时的小浮层：点击切换横屏 / 关闭 */
-      #rotate-hint {
-        display: none;
-        position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
-        z-index: 9999;
-        background: rgba(255,152,0,0.95); color: #fff;
-        padding: 10px 16px; border-radius: 20px;
-        font-family: -apple-system, sans-serif; font-size: 13px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-        cursor: pointer; user-select: none; -webkit-user-select: none;
-        touch-action: manipulation;
-        transition: opacity .25s ease, transform .25s ease;
-        align-items: center; gap: 8px;
-        max-width: min(92vw, 420px);
-        line-height: 1.35;
-      }
-      #rotate-hint .hint-go {
-        background: #fff; color: #c62828;
-        border-radius: 14px; padding: 4px 12px;
-        font-weight: 700; font-size: 12px; white-space: nowrap;
-        flex-shrink: 0;
-      }
-      #rotate-hint .hint-x {
-        opacity: .85; font-weight: 700; padding: 2px 4px; flex-shrink: 0;
-      }
-      #rotate-hint.hint-hide {
-        opacity: 0; pointer-events: none;
-        transform: translateX(-50%) translateY(8px);
-      }
-      @media (orientation: portrait) and (max-width: 820px) {
-        body.in-experiment #rotate-hint:not(.hint-hide) {
-          display: flex;
-        }
-      }
     </style>
   </head>
   <body>
     <div id="root"></div>
-    <button id="exit-force-landscape" type="button" style="display:none;position:fixed;top:10px;right:10px;z-index:10000;background:#c62828;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:700;min-height:40px;cursor:pointer;">退出横屏</button>
-    <div id="rotate-hint" role="button" aria-label="切换横屏">
-      <span class="hint-text">📱 横屏操作效果更佳</span>
-      <span class="hint-go" id="rotate-go">切换横屏</span>
-      <span class="hint-x" id="rotate-close" aria-label="关闭">×</span>
-    </div>
     <script type="module" src="/src/main.jsx"></script>
     <script>
       (function () {
-        var hint = document.getElementById('rotate-hint')
-        var goBtn = document.getElementById('rotate-go')
-        var closeBtn = document.getElementById('rotate-close')
-        if (!hint) return
-
-        function hideHint() {
-          hint.classList.add('hint-hide')
-        }
-
-        function showHint() {
-          hint.classList.remove('hint-hide')
-          var t = hint.querySelector('.hint-text')
-          if (t) t.textContent = '📱 横屏操作效果更佳'
-          goBtn.textContent = '切换横屏'
-        }
-
-        function setTip(text) {
-          var t = hint.querySelector('.hint-text')
-          if (t) t.textContent = text
-        }
+        var html = document.documentElement
 
         function syncMode() {
-          var html = document.documentElement
           var physLand = window.matchMedia('(orientation: landscape)').matches && window.innerWidth <= 900
           var forced = html.classList.contains('force-landscape')
           html.classList.toggle('mode-landscape', physLand || forced)
-          if (physLand || forced) hideHint()
-          else if (document.body.classList.contains('in-experiment')) showHint()
         }
 
         function enableForceLandscape() {
-          var html = document.documentElement
           html.classList.add('force-landscape')
           html.classList.add('mode-landscape')
-          hideHint()
-          // 提供退出
-          var exit = document.getElementById('exit-force-landscape')
-          if (exit) exit.style.display = 'flex'
         }
 
         function disableForceLandscape() {
-          var html = document.documentElement
           html.classList.remove('force-landscape')
-          var exit = document.getElementById('exit-force-landscape')
-          if (exit) exit.style.display = 'none'
           syncMode()
         }
 
-        function tryLandscape() {
-          var root = document.documentElement
-          var reqFs = root.requestFullscreen || root.webkitRequestFullscreen
-          var fsP = reqFs
-            ? Promise.resolve(reqFs.call(root)).catch(function () {})
-            : Promise.resolve()
-
-          // 系统允许则锁横屏；否则立刻用 CSS 强制横屏布局
-          fsP.then(function () {
-            if (screen.orientation && typeof screen.orientation.lock === 'function') {
-              return Promise.resolve(screen.orientation.lock('landscape')).then(function () {
-                htmlClearForce()
-                syncMode()
-                hideHint()
-              })
-            }
-            return Promise.reject(new Error('no-lock'))
-          }).catch(function () {
-            enableForceLandscape()
-            setTip('已强制横屏，点×可退出')
-            hint.classList.remove('hint-hide')
-            setTimeout(hideHint, 1600)
-          })
-        }
-
-        function htmlClearForce() {
-          document.documentElement.classList.remove('force-landscape')
-          var exit = document.getElementById('exit-force-landscape')
-          if (exit) exit.style.display = 'none'
-        }
-
-        // 顶栏「横屏」按钮 + 浮层按钮
-        window.addEventListener('mimo-rotate-landscape', function () {
-          tryLandscape()
-        })
-
-        hint.addEventListener('click', function (e) {
-          if (e.target === closeBtn) return
-          if (goBtn.textContent === '知道了') { hideHint(); return }
-          tryLandscape()
-        })
-        goBtn.addEventListener('click', function (e) {
-          e.stopPropagation()
-          if (goBtn.textContent === '知道了') { hideHint(); return }
-          tryLandscape()
-        })
-        closeBtn.addEventListener('click', function (e) {
-          e.stopPropagation()
-          hideHint()
-        })
-
-        // 转回竖屏时重新提示，方便再次进横屏
+        // 真横屏时清掉强制，避免双重
         function onOrient() {
           if (window.matchMedia('(orientation: landscape)').matches) {
-            htmlClearForce()
+            html.classList.remove('force-landscape')
           }
           syncMode()
         }
         window.addEventListener('orientationchange', onOrient)
         window.addEventListener('resize', onOrient)
-        window.addEventListener('mimo-exit-landscape', function () { disableForceLandscape() })
 
-        var exitBtn = document.getElementById('exit-force-landscape')
-        if (exitBtn) {
-          exitBtn.addEventListener('click', function (e) {
-            e.stopPropagation()
-            disableForceLandscape()
-            try { if (document.exitFullscreen) document.exitFullscreen() } catch (err) {}
-          })
-        }
+        // 进实验：统一横屏；回目录由 LabPage 调 mimoExitLandscape
         window.mimoEnterLandscape = function () {
-          // 手机统一：进实验即横屏（真横屏则无需强制）
           if (window.matchMedia('(orientation: landscape)').matches && window.innerWidth <= 900) {
-            htmlClearForce()
+            html.classList.remove('force-landscape')
             syncMode()
             return
           }

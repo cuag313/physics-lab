@@ -344,16 +344,6 @@ export default function LabPage({ onBack }) {
           <span>{CATEGORIES.find(c => c.key === currentExperiment?.category)?.icon}</span>
           <span>{currentExperiment?.name ?? '自由实验'}</span>
         </div>
-        <button
-          type="button"
-          style={styles.rotateBtn}
-          onClick={() => {
-            const ev = new CustomEvent('mimo-rotate-landscape')
-            window.dispatchEvent(ev)
-          }}
-        >
-          🔄 横屏
-        </button>
         <div style={styles.labMeta}>
           <span>{currentExperiment?.grade}</span>
           <span>{DIFFICULTY_LABELS[currentExperiment?.difficulty ?? 0]}</span>
@@ -837,18 +827,6 @@ const styles = {
     fontSize: 12,
     cursor: 'pointer',
     flexShrink: 0,
-  },
-  rotateBtn: {
-    padding: '4px 10px',
-    background: '#238636',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 4,
-    fontSize: 12,
-    cursor: 'pointer',
-    fontWeight: 600,
-    flexShrink: 0,
-    minHeight: 28,
   },
   labTitle: {
     display: 'flex',
