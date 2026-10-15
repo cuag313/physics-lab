@@ -1,8 +1,6 @@
-import { useRef } from 'react'
-
 /**
  * 自己动手模式的器材栏（DOM）
- * 横屏优先：放在右侧竖向滑动，把高度留给画布；竖屏也可用同一组件。
+ * 横屏优先：放在右侧竖向滑动，把高度留给画布。
  */
 const DEFAULT_ITEMS = [
   { type: 'battery', name: '电源', icon: '🔋' },
@@ -30,13 +28,11 @@ export default function BuilderPalette({
   hint,
   side = 'right', // right | bottom
 }) {
-  const listRef = useRef(null)
   const isRight = side === 'right'
 
   return (
     <div style={isRight ? styles.wrapRight : styles.wrapBottom}>
       <div
-        ref={listRef}
         className="toolbox-list"
         style={isRight ? styles.scrollRight : styles.scrollBottom}
       >

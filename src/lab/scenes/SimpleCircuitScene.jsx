@@ -364,41 +364,6 @@ export default function SimpleCircuitScene() {
   }
 
   // ─── 器材栏小图标（实物风格） ───
-  function drawRealisticIcon(ctx, x, y, type) {
-    ctx.save(); ctx.translate(x, y)
-    if (type === 'battery') {
-      // 电池实物：绿色外壳，+−标志
-      ctx.fillStyle = '#81C784'; ctx.strokeStyle = '#388E3C'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.roundRect(-14, -10, 28, 20, 3); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('+ −', 0, 0)
-    } else if (type === 'bulb') {
-      // 灯泡实物：透明玻璃+灯丝
-      ctx.fillStyle = '#FFFDE7'; ctx.strokeStyle = '#F9A825'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.arc(0, -2, 10, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#9E9E9E'; ctx.fillRect(-5, 8, 10, 5)
-      ctx.strokeStyle = '#E65100'; ctx.lineWidth = 1
-      ctx.beginPath(); ctx.moveTo(-4, -6); ctx.lineTo(4, 2); ctx.stroke()
-      ctx.beginPath(); ctx.moveTo(4, -6); ctx.lineTo(-4, 2); ctx.stroke()
-    } else if (type === 'switch') {
-      // 开关实物
-      ctx.fillStyle = '#ECEFF1'; ctx.strokeStyle = '#90A4AE'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.roundRect(-14, -6, 28, 12, 3); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#666'; ctx.beginPath(); ctx.arc(-8, 0, 2.5, 0, Math.PI * 2); ctx.fill()
-      ctx.beginPath(); ctx.arc(8, 0, 2.5, 0, Math.PI * 2); ctx.fill()
-      ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(5, -6); ctx.stroke(); ctx.lineCap = 'butt'
-    } else if (type === 'resistor') {
-      // 电阻实物（色环）
-      ctx.fillStyle = '#D7CCC8'; ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.roundRect(-14, -6, 28, 12, 2); ctx.fill(); ctx.stroke()
-      const bands = ['#B71C1C', '#4CAF50', '#FF9800', '#FFD54F']
-      bands.forEach((c, i) => { ctx.fillStyle = c; ctx.fillRect(-10 + i * 7, -6, 4, 12) })
-    }
-    ctx.restore()
-  }
-
-  // ─── 画布上的实物风格器材 ───
   function drawBuilderComp(ctx, comp, s, circuit) {
     const { x, y, type, rotation } = comp
     const dragging = s.dragId === comp.id

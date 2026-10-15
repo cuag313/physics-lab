@@ -34,3 +34,19 @@ nul
 *.njsproj
 *.sln
 *.sw?
+
+# Debug / temp (local only)
+audit/
+audit.cjs
+shot*.cjs
+test-*.cjs
+test-*.js
+test-*.png
+tab2_issue*.png
+*_issue*.png
+transformer_ref.png
+build-log.txt
+classify_log.json
+NB3DDemo-main-decrypted.js
+nul
+*.log
