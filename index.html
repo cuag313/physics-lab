@@ -48,6 +48,7 @@
   </head>
   <body>
     <div id="root"></div>
+    <button id="exit-force-landscape" type="button" style="display:none;position:fixed;top:10px;right:10px;z-index:10000;background:#c62828;color:#fff;border:none;border-radius:8px;padding:10px 14px;font-size:13px;font-weight:700;min-height:40px;cursor:pointer;">退出横屏</button>
     <div id="rotate-hint" role="button" aria-label="切换横屏">
       <span class="hint-text">📱 横屏操作效果更佳</span>
       <span class="hint-go" id="rotate-go">切换横屏</span>
@@ -77,31 +78,62 @@
           if (t) t.textContent = text
         }
 
+        function syncMode() {
+          var html = document.documentElement
+          var physLand = window.matchMedia('(orientation: landscape)').matches && window.innerWidth <= 900
+          var forced = html.classList.contains('force-landscape')
+          html.classList.toggle('mode-landscape', physLand || forced)
+          if (physLand || forced) hideHint()
+          else if (document.body.classList.contains('in-experiment')) showHint()
+        }
+
+        function enableForceLandscape() {
+          var html = document.documentElement
+          html.classList.add('force-landscape')
+          html.classList.add('mode-landscape')
+          hideHint()
+          // 提供退出
+          var exit = document.getElementById('exit-force-landscape')
+          if (exit) exit.style.display = 'flex'
+        }
+
+        function disableForceLandscape() {
+          var html = document.documentElement
+          html.classList.remove('force-landscape')
+          var exit = document.getElementById('exit-force-landscape')
+          if (exit) exit.style.display = 'none'
+          syncMode()
+        }
+
         function tryLandscape() {
           var root = document.documentElement
           var reqFs = root.requestFullscreen || root.webkitRequestFullscreen
-          var lockP = null
-          if (screen.orientation && typeof screen.orientation.lock === 'function') {
-            lockP = Promise.resolve(screen.orientation.lock('landscape')).catch(function (e) { return Promise.reject(e) })
-          }
-
           var fsP = reqFs
             ? Promise.resolve(reqFs.call(root)).catch(function () {})
             : Promise.resolve()
 
-          function fallback() {
-            setTip('请打开系统「自动旋转」，把手机横过来')
-            goBtn.textContent = '知道了'
+          // 系统允许则锁横屏；否则立刻用 CSS 强制横屏布局
+          fsP.then(function () {
+            if (screen.orientation && typeof screen.orientation.lock === 'function') {
+              return Promise.resolve(screen.orientation.lock('landscape')).then(function () {
+                htmlClearForce()
+                syncMode()
+                hideHint()
+              })
+            }
+            return Promise.reject(new Error('no-lock'))
+          }).catch(function () {
+            enableForceLandscape()
+            setTip('已强制横屏，点×可退出')
             hint.classList.remove('hint-hide')
-          }
+            setTimeout(hideHint, 1600)
+          })
+        }
 
-          if (lockP) {
-            fsP.then(function () { return lockP }).then(function () {
-              hideHint()
-            }).catch(fallback)
-          } else {
-            fsP.then(fallback)
-          }
+        function htmlClearForce() {
+          document.documentElement.classList.remove('force-landscape')
+          var exit = document.getElementById('exit-force-landscape')
+          if (exit) exit.style.display = 'none'
         }
 
         // 顶栏「横屏」按钮 + 浮层按钮
@@ -127,13 +159,23 @@
         // 转回竖屏时重新提示，方便再次进横屏
         function onOrient() {
           if (window.matchMedia('(orientation: landscape)').matches) {
-            hideHint()
-          } else if (document.body.classList.contains('in-experiment')) {
-            showHint()
+            htmlClearForce()
           }
+          syncMode()
         }
         window.addEventListener('orientationchange', onOrient)
         window.addEventListener('resize', onOrient)
+        window.addEventListener('mimo-exit-landscape', function () { disableForceLandscape() })
+
+        var exitBtn = document.getElementById('exit-force-landscape')
+        if (exitBtn) {
+          exitBtn.addEventListener('click', function (e) {
+            e.stopPropagation()
+            disableForceLandscape()
+            try { if (document.exitFullscreen) document.exitFullscreen() } catch (err) {}
+          })
+        }
+        syncMode()
       })()
     </script>
   </body>

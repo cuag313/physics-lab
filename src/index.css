@@ -365,130 +365,174 @@ canvas {
   }
 }
 
-/* ===== 手机横屏 / 小窗：恢复电脑三栏，侧栏略窄 ===== */
+/* ===== 横屏布局：真横屏 或 强制横屏(html.mode-landscape) ===== */
+html.mode-landscape {
+  overflow: hidden !important;
+}
+
+html.mode-landscape #root {
+  width: 100% !important;
+  height: 100% !important;
+  overflow: hidden !important;
+}
+
+html.force-landscape #root {
+  position: fixed !important;
+  top: 50% !important;
+  left: 50% !important;
+  width: 100vh !important;
+  height: 100vw !important;
+  transform: translate(-50%, -50%) rotate(90deg) !important;
+  transform-origin: center center !important;
+}
+
+html.mode-landscape .lab-body {
+  overflow: hidden !important;
+  display: flex !important;
+  flex-direction: column;
+}
+
+html.mode-landscape .lab-body > * {
+  height: 100% !important;
+  min-height: 0;
+  max-height: none !important;
+}
+
+html.mode-landscape .bench-main {
+  flex-direction: row !important;
+  overflow: hidden !important;
+  flex: 1 !important;
+  height: auto !important;
+  min-height: 0;
+}
+
+html.mode-landscape .bench-side {
+  order: 0;
+  width: 132px !important;
+  max-height: none !important;
+  overflow: auto !important;
+  border-top: none !important;
+  border-bottom: none !important;
+  border-right: 1px solid #30363d !important;
+}
+
+html.mode-landscape .bench-side-data {
+  order: 0;
+  width: 168px !important;
+  max-height: none !important;
+  overflow: auto !important;
+  border-top: none !important;
+  border-bottom: none !important;
+  border-left: 1px solid #30363d !important;
+}
+
+html.mode-landscape .bench-canvas-wrap {
+  flex: 1 !important;
+  min-height: 0;
+  height: auto !important;
+}
+
+html.mode-landscape .bench-canvas {
+  min-height: 0 !important;
+  height: 100% !important;
+  flex: 1 !important;
+}
+
+html.mode-landscape .scene-shell {
+  height: 100% !important;
+  overflow: hidden !important;
+  min-height: 0;
+}
+
+html.mode-landscape .scene-main {
+  overflow: hidden !important;
+  flex: 1 !important;
+  height: auto !important;
+  min-height: 0;
+}
+
+html.mode-landscape .scene-split {
+  display: flex !important;
+  flex-direction: row !important;
+  overflow: hidden !important;
+  flex: 1 !important;
+  height: auto !important;
+}
+
+html.mode-landscape .scene-canvas {
+  flex: 1 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  order: 0;
+  overflow: hidden !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+}
+
+html.mode-landscape .scene-canvas > canvas {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+html.mode-landscape .scene-side {
+  width: min(240px, 32vw) !important;
+  max-width: min(240px, 32vw) !important;
+  max-height: none !important;
+  border-top: none !important;
+  border-left: 1px solid rgba(0, 0, 0, 0.12) !important;
+  overflow: auto !important;
+  position: relative !important;
+  padding: 8px !important;
+  font-size: 11px;
+}
+
+html.mode-landscape .lab-body canvas[width][height] {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: auto !important;
+  height: auto !important;
+  margin: 0 auto;
+}
+
+html.mode-landscape .formula-overlay {
+  position: absolute !important;
+  right: 12px !important;
+  bottom: 12px !important;
+  left: auto !important;
+  margin: 0;
+  max-width: min(360px, 42vw) !important;
+  min-width: 200px !important;
+}
+
+/* 真横屏（手机已转）也启用同一套 */
 @media (max-width: 900px) and (orientation: landscape) {
   .lab-body {
     overflow: hidden !important;
     display: flex !important;
     flex-direction: column;
   }
-
-  .lab-body > * {
-    height: 100% !important;
-    min-height: 0;
-    max-height: none !important;
-  }
-
-  .bench-main {
+  .bench-main,
+  .scene-split {
     flex-direction: row !important;
     overflow: hidden !important;
     flex: 1 !important;
     height: auto !important;
     min-height: 0;
   }
-
   .bench-side {
-    order: 0;
     width: 132px !important;
     max-height: none !important;
-    overflow: auto !important;
-    border-top: none !important;
-    border-bottom: none !important;
-    border-right: 1px solid #30363d !important;
   }
-
   .bench-side-data {
-    order: 0;
     width: 168px !important;
     max-height: none !important;
-    overflow: auto !important;
-    border-top: none !important;
-    border-bottom: none !important;
-    border-left: 1px solid #30363d !important;
   }
-
-  .bench-canvas-wrap {
-    flex: 1 !important;
-    min-height: 0;
-    height: auto !important;
-  }
-
-  .bench-canvas {
-    min-height: 0 !important;
-    height: 100% !important;
-    flex: 1 !important;
-  }
-
-  .scene-shell {
-    height: 100% !important;
-    overflow: hidden !important;
-    min-height: 0;
-  }
-
-  .scene-main {
-    overflow: hidden !important;
-    flex: 1 !important;
-    height: auto !important;
-    min-height: 0;
-  }
-
-  .scene-split {
-    display: flex !important;
-    flex-direction: row !important;
-    overflow: hidden !important;
-    flex: 1 !important;
-    height: auto !important;
-  }
-
-  .scene-canvas {
-    flex: 1 !important;
-    min-height: 0 !important;
-    height: auto !important;
-    order: 0;
-    overflow: hidden !important;
-  }
-
-  .scene-canvas > canvas {
-    width: 100% !important;
-    height: 100% !important;
-    min-height: 0 !important;
-  }
-
   .scene-side {
     width: min(240px, 32vw) !important;
     max-width: min(240px, 32vw) !important;
     max-height: none !important;
-    border-top: none !important;
-    border-left: 1px solid rgba(0, 0, 0, 0.12) !important;
     overflow: auto !important;
-    position: relative !important;
-    padding: 8px !important;
-    font-size: 11px;
-  }
-
-  /* 固定画布缩放到可视区，避免被裁掉下半截 */
-  .lab-body canvas {
-    max-width: 100% !important;
-    max-height: calc(100vh - 120px) !important;
-    width: auto !important;
-    height: auto !important;
-    margin: 0 auto;
-  }
-
-  .scene-canvas {
-    display: flex !important;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden !important;
-  }
-
-  .formula-overlay {
-    position: absolute !important;
-    right: 12px !important;
-    bottom: 12px !important;
-    left: auto !important;
-    margin: 0;
-    max-width: min(360px, 42vw) !important;
-    min-width: 200px !important;
   }
 }
