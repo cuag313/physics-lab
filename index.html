@@ -10,61 +10,121 @@
     <style>
       * { -webkit-tap-highlight-color: transparent; }
       html, body { margin: 0; padding: 0; overscroll-behavior: none; touch-action: manipulation; }
-      /* 竖屏进入实验时的小浮层提示（点一下关闭，不挡操作） */
+      /* 竖屏进入实验时的小浮层：点击切换横屏 / 关闭 */
       #rotate-hint {
         display: none;
         position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
         z-index: 9999;
         background: rgba(255,152,0,0.95); color: #fff;
-        padding: 10px 18px; border-radius: 20px;
+        padding: 10px 16px; border-radius: 20px;
         font-family: -apple-system, sans-serif; font-size: 13px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.3);
         cursor: pointer; user-select: none; -webkit-user-select: none;
         touch-action: manipulation;
         transition: opacity .25s ease, transform .25s ease;
+        align-items: center; gap: 8px;
+        max-width: min(92vw, 420px);
+        line-height: 1.35;
+      }
+      #rotate-hint .hint-go {
+        background: #fff; color: #c62828;
+        border-radius: 14px; padding: 4px 12px;
+        font-weight: 700; font-size: 12px; white-space: nowrap;
+        flex-shrink: 0;
       }
       #rotate-hint .hint-x {
-        margin-left: 10px; opacity: .85; font-weight: 700;
+        opacity: .85; font-weight: 700; padding: 2px 4px; flex-shrink: 0;
       }
       #rotate-hint.hint-hide {
         opacity: 0; pointer-events: none;
         transform: translateX(-50%) translateY(8px);
       }
       @media (orientation: portrait) and (max-width: 820px) {
-        /* 只在实验页（有 labBody）显示，目录页不挡 */
-        body.in-experiment #rotate-hint:not(.hint-hide) { display: block; }
+        body.in-experiment #rotate-hint:not(.hint-hide) {
+          display: flex;
+        }
       }
     </style>
   </head>
   <body>
     <div id="root"></div>
-    <div id="rotate-hint" title="点击关闭">📱 横屏操作效果更佳<span class="hint-x">×</span></div>
+    <div id="rotate-hint" role="button" aria-label="切换横屏">
+      <span class="hint-text">📱 横屏操作效果更佳</span>
+      <span class="hint-go" id="rotate-go">切换横屏</span>
+      <span class="hint-x" id="rotate-close" aria-label="关闭">×</span>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
     <script>
       (function () {
         var hint = document.getElementById('rotate-hint')
+        var goBtn = document.getElementById('rotate-go')
+        var closeBtn = document.getElementById('rotate-close')
         if (!hint) return
-        var hideTimer = null
+
         function hideHint() {
           hint.classList.add('hint-hide')
-          if (hideTimer) { clearTimeout(hideTimer); hideTimer = null }
         }
-        // 点一下关闭（以前是死提示，点了没反应）
-        hint.addEventListener('click', hideHint)
-        hint.addEventListener('touchend', function (e) {
-          e.preventDefault()
+
+        function setTip(text) {
+          var t = hint.querySelector('.hint-text')
+          if (t) t.textContent = text
+        }
+
+        // 尝试全屏 + 锁定横屏（安卓 Chrome 等支持；iOS 需手动转屏）
+        function tryLandscape() {
+          var root = document.documentElement
+          var reqFs = root.requestFullscreen || root.webkitRequestFullscreen
+          var lock = null
+          if (screen.orientation && screen.orientation.lock) {
+            lock = screen.orientation.lock('landscape')
+          } else if (screen.orientation && screen.orientation.lock === undefined && screen.lockOrientation) {
+            // very old
+            try { screen.lockOrientation('landscape') } catch (e) {}
+          }
+
+          var fsP = reqFs ? Promise.resolve(reqFs.call(root)).catch(function () {}) : Promise.resolve()
+
+          if (lock && typeof lock.then === 'function') {
+            fsP.then(function () {
+              return lock
+            }).then(function () {
+              hideHint()
+            }).catch(function () {
+              setTip('请开启系统「自动旋转」，再转动手机')
+              goBtn.textContent = '知道了'
+              goBtn.onclick = function (e) { e.stopPropagation(); hideHint() }
+            })
+          } else {
+            // 浏览器不支持锁定方向（iOS Safari 等）
+            fsP.then(function () {
+              setTip('请打开系统「自动旋转」，把手机横过来')
+              goBtn.textContent = '知道了'
+              goBtn.onclick = function (e) { e.stopPropagation(); hideHint() }
+            })
+          }
+        }
+
+        // 点主区域或「切换横屏」→ 进横屏
+        hint.addEventListener('click', function (e) {
+          if (e.target === closeBtn) return
+          tryLandscape()
+        })
+        goBtn.addEventListener('click', function (e) {
+          e.stopPropagation()
+          if (goBtn.textContent === '知道了') { hideHint(); return }
+          tryLandscape()
+        })
+        closeBtn.addEventListener('click', function (e) {
+          e.stopPropagation()
           hideHint()
-        }, { passive: false })
-        // 6 秒后自动淡出，避免一直挡住底部
-        if ('IntersectionObserver' in window) {
-          var mo = new MutationObserver(function () {
-            if (document.body.classList.contains('in-experiment') && !hint.classList.contains('hint-hide')) {
-              if (hideTimer) clearTimeout(hideTimer)
-              hideTimer = setTimeout(hideHint, 6000)
-            }
-          })
-          mo.observe(document.body, { attributes: true, attributeFilter: ['class'] })
+        })
+
+        // 已是横屏则不显示
+        function onOrient() {
+          if (window.matchMedia('(orientation: landscape)').matches) hideHint()
         }
+        window.addEventListener('orientationchange', onOrient)
+        window.addEventListener('resize', onOrient)
       })()
     </script>
   </body>
