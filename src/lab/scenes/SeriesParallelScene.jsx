@@ -726,12 +726,12 @@ export default function SeriesParallelScene() {
   function renderBuilder(ctx, W, H) {
     const s = S.current
     const lay = fitLayout(W, H)
-    // 器材栏固定右侧单列
-    const palW = lay.compact ? 120 : 170
-    const cvX = 8
-    const cvY = 8
-    const cvW = W - palW - 24
-    const cvH = H - 16
+    // 器材栏固定右侧单列（不占竖向短边）
+    const palW = lay.compact ? 112 : 170
+    const cvX = 4
+    const cvY = 4
+    const cvW = W - palW - 16
+    const cvH = H - 8
 
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(cvX, cvY, cvW, cvH, 8); ctx.fill()
     ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(cvX, cvY, cvW, cvH, 8); ctx.stroke()

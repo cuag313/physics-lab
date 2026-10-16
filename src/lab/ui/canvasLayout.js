@@ -9,10 +9,9 @@ export function fitLayout(W, H) {
   if (compact) {
     return {
       compact: true,
-      // 电路尽量宽、上下少留白
-      circuit: { L: W * 0.03, R: W * 0.68, T: 18, B: H - 28 },
-      // 右侧竖条只放读数
-      readout: { x: W * 0.72, y: 6, w: W * 0.26, h: H - 12 },
+      // 横屏短边尽量吃满：上下几乎不留白
+      circuit: { L: W * 0.03, R: W * 0.68, T: 8, B: H - 12 },
+      readout: { x: W * 0.72, y: 4, w: W * 0.26, h: H - 8 },
       guide: null,
       font: { title: 12, label: 9, body: 11, data: 11 },
     }
