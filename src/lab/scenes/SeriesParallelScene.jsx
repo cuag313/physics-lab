@@ -417,17 +417,23 @@ export default function SeriesParallelScene() {
     let ky = inner.y
     const px = inner.x - 14, pw = inner.w + 28, py = inner.y - 20
 
-    // 手机：只显示关键读数（开关前后都保留，实验中不消失）
+    // 手机：U=灯泡端电压（断开=0，闭合=计算值），不是电源电压
     if (lay.compact) {
+      const Ub = on ? (U1 ?? 0) : 0
+      const Ib = on ? (I ?? 0) : 0
+      const Rb = on ? (Rtotal ?? 0) : 0
       ctx.font = `bold ${lay.font.data}px monospace`
       ctx.fillStyle = '#333'
-      ctx.fillText(`U = ${(U ?? 0).toFixed(1)} V`, inner.x, ky); ky += 18
-      ctx.fillText(`I = ${(I ?? 0).toFixed(2)} A`, inner.x, ky); ky += 18
+      ctx.fillText(`U = ${Ub.toFixed(2)} V`, inner.x, ky); ky += 18
+      ctx.fillText(`I = ${Ib.toFixed(3)} A`, inner.x, ky); ky += 18
       ctx.fillStyle = '#FF6F00'
-      ctx.fillText(`R = ${(Rtotal ?? 0).toFixed(1)} Ω`, inner.x, ky); ky += 20
+      ctx.fillText(`R = ${Rb.toFixed(1)} Ω`, inner.x, ky); ky += 18
+      ctx.fillStyle = '#888'
+      ctx.font = `${lay.font.body}px sans-serif`
+      ctx.fillText(`电源 ${(U ?? 0).toFixed(1)}V`, inner.x, ky); ky += 16
       ctx.fillStyle = on ? '#2E7D32' : '#888'
       ctx.font = `bold ${lay.font.body}px sans-serif`
-      ctx.fillText(on ? '● 实验中' : '○ 未闭合', inner.x, ky)
+      ctx.fillText(on ? '● 闭合' : '○ 断开 U=0', inner.x, ky)
       ctx.textBaseline = 'alphabetic'
       return
     }
@@ -516,13 +522,16 @@ export default function SeriesParallelScene() {
       }
     }
 
-    // 实时数据
+    // 实时数据（U 为灯泡端电压）
     if (on) {
       ky += 10
       ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'
       ctx.fillText('📊 实测数据', px + 14, ky); ky += 20
       ctx.font = '11px monospace'; ctx.fillStyle = '#555'
-      ctx.fillText(`电源 U = ${U} V`, px + 14, ky); ky += 18
+      ctx.fillText(`电源 U源 = ${U} V`, px + 14, ky); ky += 18
+      ctx.fillStyle = '#1565C0'
+      ctx.fillText(`灯泡端电压 U = ${U1.toFixed(2)} V`, px + 14, ky); ky += 18
+      ctx.fillStyle = '#555'
       ctx.fillText(`总电流 I = ${I.toFixed(3)} A`, px + 14, ky); ky += 18
       ctx.fillStyle = '#E53935'
       ctx.fillText(`总电阻 R = ${Rtotal.toFixed(1)} Ω`, px + 14, ky); ky += 22
