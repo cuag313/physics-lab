@@ -225,7 +225,7 @@ canvas {
 .info-bubble-chip:hover,
 .info-bubble-chip:focus,
 .info-bubble.is-open .info-bubble-chip {
-  width: auto !important;
+  min-width: 88px !important;
   padding-left: 10px !important;
   padding-right: 12px !important;
 }
@@ -275,8 +275,24 @@ html.mode-landscape .scene-shell .scene-main {
 
 html.force-landscape .lab-header,
 html.mode-landscape .lab-header {
-  min-height: 32px !important;
-  max-height: 34px !important;
+  min-height: 34px !important;
+  max-height: none !important;
+  overflow: visible !important;
+  flex-wrap: nowrap !important;
+}
+
+html.force-landscape .lab-header .lab-meta,
+html.force-landscape .lab-header div:last-child {
+  white-space: nowrap !important;
+  overflow: visible !important;
+  flex-shrink: 0 !important;
+  font-size: 11px !important;
+}
+
+html.force-landscape .lab-header span,
+html.force-landscape .lab-header div {
+  font-size: 11px !important;
+  line-height: 1.25 !important;
 }
 
 .scene-canvas {

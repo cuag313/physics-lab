@@ -24,10 +24,28 @@ export default function SceneShell({
 }) {
   return (
     <div className="scene-shell" style={styles.container}>
-      {/* 行1：标题 + 重置 */}
-      <div className="scene-bar scene-bar-head" style={styles.bar}>
-        <span style={styles.title}>{title}</span>
-        <div style={{ flex: 1 }} />
+      {/* 行1：Tab + 重置合并一行 */}
+      <div className="scene-bar scene-bar-tabs" style={styles.bar}>
+        {showTabs && onTabChange && (
+          <>
+            <button
+              type="button"
+              className={`scene-tab${tab === 1 ? ' is-on' : ''}`}
+              style={tab === 1 ? styles.tabA : styles.tab}
+              onClick={() => onTabChange(1)}
+            >
+              {tab1Label}
+            </button>
+            <button
+              type="button"
+              className={`scene-tab${tab === 2 ? ' is-on' : ''}`}
+              style={tab === 2 ? styles.tabA : styles.tab}
+              onClick={() => onTabChange(2)}
+            >
+              {tab2Label}
+            </button>
+          </>
+        )}
         {onReset && (
           <button type="button" className="scene-btn" style={styles.btn} onClick={onReset}>
             {resetLabel}
@@ -35,29 +53,7 @@ export default function SceneShell({
         )}
       </div>
 
-      {/* 行2：Tab 独占一行 */}
-      {showTabs && onTabChange && (
-        <div className="scene-bar scene-bar-tabs" style={styles.bar}>
-          <button
-            type="button"
-            className={`scene-tab${tab === 1 ? ' is-on' : ''}`}
-            style={tab === 1 ? styles.tabA : styles.tab}
-            onClick={() => onTabChange(1)}
-          >
-            {tab1Label}
-          </button>
-          <button
-            type="button"
-            className={`scene-tab${tab === 2 ? ' is-on' : ''}`}
-            style={tab === 2 ? styles.tabA : styles.tab}
-            onClick={() => onTabChange(2)}
-          >
-            {tab2Label}
-          </button>
-        </div>
-      )}
-
-      {/* 行3：参数控件独占一行 */}
+      {/* 行2：参数控件 */}
       {toolbarExtra && (
         <div className="scene-bar scene-bar-extra" style={styles.bar}>
           <div className="scene-toolbar-extra" style={styles.extra}>

@@ -726,13 +726,12 @@ export default function SeriesParallelScene() {
   function renderBuilder(ctx, W, H) {
     const s = S.current
     const lay = fitLayout(W, H)
-    const palW = 170
-    // 手机：操作区加宽，器材改底部横条
-    const cvX = lay.compact ? 8 : 10
-    const cvY = lay.compact ? 8 : 60
-    const palH = lay.compact ? 88 : 0
-    const cvW = lay.compact ? W - 16 : W - palW - 30
-    const cvH = lay.compact ? H - palH - 16 : H - 120
+    // 器材栏固定右侧单列
+    const palW = lay.compact ? 120 : 170
+    const cvX = 8
+    const cvY = 8
+    const cvW = W - palW - 24
+    const cvH = H - 16
 
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(cvX, cvY, cvW, cvH, 8); ctx.fill()
     ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(cvX, cvY, cvW, cvH, 8); ctx.stroke()
@@ -772,9 +771,9 @@ export default function SeriesParallelScene() {
     ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
     ctx.fillText(engineResult.ok ? '✅ ' + engineResult.reason : '❌ ' + (engineResult.reason || circuit.reason), cvX + 12, cvY + cvH - 25)
 
-    // 操作说明：手机走 InfoDock；桌面保留画布内气泡
+    // 操作说明：折叠在左上角
     if (!lay.compact) {
-    const bx = cvX + cvW - 220, by2 = cvY + 10, bw = 210, bh = s._guideExpanded ? 140 : 28
+    const bx = cvX + 10, by2 = cvY + 10, bw = 210, bh = s._guideExpanded ? 140 : 28
     ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.strokeStyle = '#1976D2'; ctx.lineWidth = 1
     ctx.beginPath(); ctx.roundRect(bx, by2, bw, bh, 6); ctx.fill(); ctx.stroke()
     ctx.fillStyle = '#1976D2'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
@@ -787,93 +786,68 @@ export default function SeriesParallelScene() {
       const lines = ['🔌 拖拽器材到画布', '🔵 点击端子开始连线', '🔵 点击另一端子完成连线', '🔄 双击开关切换通断', '🎨 侧栏选导线颜色', '❌ 右键删除器材', '⚡ 连好电路自动求解']
       for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], bx + 12, by2 + 30 + i * 16)
     }
+    } else {
+      // 手机：左上角折叠「操作说明」
+      const bx = cvX + 8, by2 = cvY + 8, bw = 88, bh = 26
+      ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.strokeStyle = '#1976D2'; ctx.lineWidth = 1
+      ctx.beginPath(); ctx.roundRect(bx, by2, bw, bh, 6); ctx.fill(); ctx.stroke()
+      ctx.fillStyle = '#1976D2'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText(s._guideExpanded ? '收起 ▲' : '操作说明 ▼', bx + bw / 2, by2 + bh / 2)
+      canvasRef.current._clickAreas.push({ x: bx, y: by2, w: bw, h: bh, onClick: () => { s._guideExpanded = !s._guideExpanded; forceUpdate(n => n + 1) } })
+      if (s._guideExpanded) {
+        ctx.fillStyle = 'rgba(255,255,255,0.96)'; ctx.strokeStyle = '#c5daf0'; ctx.lineWidth = 1
+        ctx.beginPath(); ctx.roundRect(bx, by2 + 30, 180, 110, 6); ctx.fill(); ctx.stroke()
+        ctx.fillStyle = '#333'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+        const lines = ['拖器材到画布', '点端子连线', '双击开关切换', '右键删除器材']
+        for (let i = 0; i < lines.length; i++) ctx.fillText('· ' + lines[i], bx + 8, by2 + 38 + i * 22)
+      }
     }
 
-    if (lay.compact) {
-      // 底部器材条
-      const palX = 8, palY = H - palH + 4
-      ctx.fillStyle = '#f8f9fa'; ctx.beginPath(); ctx.roundRect(palX, palY, W - 16, palH - 8, 8); ctx.fill()
-      ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX, palY, W - 16, palH - 8, 8); ctx.stroke()
-      const items = [
-        { type: 'battery', name: '电源' },
-        { type: 'bulb', name: '灯泡' },
-        { type: 'switch', name: '开关' },
-        { type: 'resistor', name: '电阻' },
-        { type: 'rheostat', name: '变阻' },
-        { type: 'ammeter', name: 'A表' },
-        { type: 'voltmeter', name: 'V表' },
-      ]
-      const iw = (W - 28) / items.length
-      items.forEach((item, i) => {
-        const ix = palX + 8 + i * iw
-        const iy = palY + 6
-        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(ix, iy, iw - 4, 52, 6); ctx.fill()
-        ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(ix, iy, iw - 4, 52, 6); ctx.stroke()
-        drawRealisticIcon(ctx, ix + (iw - 4) / 2, iy + 18, item.type)
-        ctx.fillStyle = '#333'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-        ctx.fillText(item.name, ix + (iw - 4) / 2, iy + 42)
-        canvasRef.current._palAreas.push({ x: ix, y: iy, w: iw - 4, h: 52, type: item.type })
-      })
-      // 导线颜色小点
-      const cy = palY + 62
-      const colors = ['#F44336', '#FFC107', '#4CAF50']
-      colors.forEach((c, i) => {
-        const cx = palX + 20 + i * 28
-        ctx.fillStyle = c
-        ctx.beginPath(); ctx.arc(cx, cy, 8, 0, Math.PI * 2); ctx.fill()
-        if (s.wireColor === c) {
-          ctx.strokeStyle = '#333'; ctx.lineWidth = 2
-          ctx.beginPath(); ctx.arc(cx, cy, 11, 0, Math.PI * 2); ctx.stroke()
-        }
-        canvasRef.current._palAreas.push({ x: cx - 12, y: cy - 12, w: 24, h: 24, action: 'color', color: c })
-      })
-      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
-      return
-    }
-
-    const palX = W - palW - 10
+    // 器材栏：桌面/手机都是右侧单列
+    {
+    const palX = W - palW - 8
     ctx.fillStyle = '#f8f9fa'; ctx.beginPath(); ctx.roundRect(palX, cvY, palW, cvH, 8); ctx.fill()
     ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX, cvY, palW, cvH, 8); ctx.stroke()
-    ctx.fillStyle = '#333'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('🧰 电学器材', palX + 10, cvY + 10)
+    ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('电学器材', palX + 10, cvY + 8)
 
     const items = [
       { type: 'battery', name: '电源' },
       { type: 'bulb', name: '灯泡' },
       { type: 'switch', name: '开关' },
       { type: 'resistor', name: '电阻' },
-      { type: 'rheostat', name: '滑线变阻器' },
-      { type: 'inductor', name: '电感' },
-      { type: 'capacitor', name: '电容' },
-      { type: 'ammeter', name: '电流表 Ⓐ' },
-      { type: 'voltmeter', name: '电压表 Ⓥ' },
+      { type: 'rheostat', name: '变阻' },
+      { type: 'ammeter', name: 'A表' },
+      { type: 'voltmeter', name: 'V表' },
     ]
-    let iy = cvY + 35
+    const rowH = lay.compact ? 34 : 38
+    let iy = cvY + 30
     for (const item of items) {
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 38, 6); ctx.fill()
-      ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 38, 6); ctx.stroke()
-      drawRealisticIcon(ctx, palX + 28, iy + 19, item.type)
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, rowH, 6); ctx.fill()
+      ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, rowH, 6); ctx.stroke()
+      drawRealisticIcon(ctx, palX + 28, iy + rowH / 2, item.type)
       ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(item.name, palX + 50, iy + 19); ctx.textBaseline = 'alphabetic'
-      canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: 38, type: item.type })
-      iy += 42
+      ctx.fillText(item.name, palX + 50, iy + rowH / 2); ctx.textBaseline = 'alphabetic'
+      canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: rowH, type: item.type })
+      iy += rowH + 4
     }
 
-    iy += 10
+    iy += 6
     ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('导线颜色：', palX + 10, iy); iy += 20
-    for (const wc of [{ color: '#F44336', name: '红线' }, { color: '#FFC107', name: '黄线' }, { color: '#4CAF50', name: '绿线' }]) {
+    ctx.fillText('导线：', palX + 10, iy); iy += 18
+    for (const wc of [{ color: '#F44336', name: '红' }, { color: '#FFC107', name: '黄' }, { color: '#4CAF50', name: '绿' }]) {
       const active = s.wireColor === wc.color
       ctx.fillStyle = active ? '#e3f2fd' : '#fff'
-      ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 26, 4); ctx.fill()
-      if (active) { ctx.strokeStyle = wc.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 26, 4); ctx.stroke() }
-      ctx.fillStyle = wc.color; ctx.fillRect(palX + 14, iy + 8, 30, 10)
+      ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 24, 4); ctx.fill()
+      if (active) { ctx.strokeStyle = wc.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 24, 4); ctx.stroke() }
+      ctx.fillStyle = wc.color; ctx.fillRect(palX + 14, iy + 7, 28, 10)
       ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(wc.name, palX + 52, iy + 13); ctx.textBaseline = 'alphabetic'
-      canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: 26, action: 'color', color: wc.color })
-      iy += 30
+      ctx.fillText(wc.name, palX + 52, iy + 12); ctx.textBaseline = 'alphabetic'
+      canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: 24, action: 'color', color: wc.color })
+      iy += 28
     }
     ctx.textBaseline = 'alphabetic'
+    }
   }
 
   function drawRealisticIcon(ctx, x, y, type) {

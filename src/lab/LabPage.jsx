@@ -841,10 +841,14 @@ const styles = {
   },
   labMeta: {
     display: 'flex',
-    gap: 12,
+    gap: 8,
     fontSize: 12,
     color: '#8b949e',
     marginLeft: 'auto',
+    flexShrink: 0,
+    whiteSpace: 'nowrap',
+    overflow: 'visible',
+    alignItems: 'center',
   },
   labBody: {
     flex: 1,

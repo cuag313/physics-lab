@@ -23,7 +23,7 @@ function Chip({ id, icon, title, open, onToggle, children }) {
         title={title}
       >
         <span style={styles.icon}>{icon}</span>
-        {(open || peek) && <span style={styles.label}>{title}</span>}
+        <span style={styles.label}>{open || peek ? title : title.slice(0, 1)}</span>
       </button>
       {open && (
         <div className="info-bubble-card" style={styles.card}>
@@ -92,8 +92,8 @@ export default function InfoDock({
 const styles = {
   rail: {
     position: 'absolute',
-    right: 6,
-    bottom: 8,
+    right: 4,
+    top: 4,
     zIndex: 30,
     display: 'flex',
     flexDirection: 'column',
@@ -110,27 +110,26 @@ const styles = {
   chip: (open) => ({
     display: 'inline-flex',
     alignItems: 'center',
-    gap: 4,
+    gap: 2,
     border: '1px solid ' + (open ? '#4A90D9' : '#c5daf0'),
     background: open ? '#4A90D9' : 'rgba(255,255,255,0.95)',
     color: open ? '#fff' : '#1a5a8a',
-    borderRadius: 20,
-    padding: 8,
-    width: 36,
-    height: 36,
-    justifyContent: 'center',
+    borderRadius: 18,
+    padding: '8px 6px',
+    minWidth: 42,
+    justifyContent: 'flex-start',
     cursor: 'pointer',
     boxShadow: '0 2px 10px rgba(0,0,0,0.16)',
     overflow: 'hidden',
-    transition: 'width 0.15s ease, background 0.15s',
+    transition: 'min-width 0.15s ease, background 0.15s',
     whiteSpace: 'nowrap',
     lineHeight: 1,
   }),
-  icon: { fontSize: 16, flexShrink: 0 },
+  icon: { fontSize: 15, flexShrink: 0 },
   label: {
     fontSize: 11,
     fontWeight: 700,
-    maxWidth: 88,
+    maxWidth: 80,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
   },
