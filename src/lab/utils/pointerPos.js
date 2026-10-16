@@ -26,14 +26,20 @@ export function mapClientToCanvas(canvas, clientX, clientY) {
 }
 
 export function eventToCanvas(canvas, e) {
+  if (!canvas) return { x: 0, y: 0 }
+  // 优先用浏览器给出的本地坐标（对 CSS 旋转已经算对）
+  if (e && e.target === canvas && typeof e.offsetX === 'number' && typeof e.offsetY === 'number') {
+    // 合成 MouseEvent 的 offsetX 常为 0，此时退回逆变换
+    const maybeFake = e.offsetX === 0 && e.offsetY === 0 && (e.clientX || e.clientY)
+    if (!maybeFake) return { x: e.offsetX, y: e.offsetY }
+  }
   const t = (e.touches && e.touches[0])
     || (e.changedTouches && e.changedTouches[0])
     || e
   if (t && t.clientX != null) {
     return mapClientToCanvas(canvas, t.clientX, t.clientY)
   }
-  // 合成 MouseEvent 可能没有 clientX，退回 offsetX
-  if (e.offsetX != null) {
+  if (e && e.offsetX != null) {
     return { x: e.offsetX, y: e.offsetY }
   }
   return { x: 0, y: 0 }

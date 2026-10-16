@@ -112,14 +112,22 @@ export default function SeriesParallelScene() {
     const midX = (left + right) / 2
     const wc = on ? '#1565C0' : '#999'
 
-    if (s.step === 1) drawSingleBulb(ctx, left, right, top, bottom, midX, wc, on, s, U, I, U1, Rtotal)
-    else if (s.step === 2) drawSeriesTwo(ctx, left, right, top, bottom, midX, wc, on, s, U, I, U1, U2, Rtotal)
-    else drawParallelTwo(ctx, left, right, top, bottom, midX, wc, on, s, U, I, I1, I2, U1, U2, Rtotal)
+    try {
+      if (s.step === 1) drawSingleBulb(ctx, left, right, top, bottom, midX, wc, on, s, U, I, U1, Rtotal)
+      else if (s.step === 2) drawSeriesTwo(ctx, left, right, top, bottom, midX, wc, on, s, U, I, U1, U2, Rtotal)
+      else drawParallelTwo(ctx, left, right, top, bottom, midX, wc, on, s, U, I, I1, I2, U1, U2, Rtotal)
+    } catch (err) {
+      console.error('drawCircuit', err)
+    }
 
-    // 右侧：教学说明+数据
-    drawTeachingPanel(ctx, W, H, s, on, U, I, U1, U2, I1, I2, Rtotal, lay)
+    // 右侧读数最后画，保证不被异常中断
+    try {
+      drawTeachingPanel(ctx, W, H, s, on, U, I, U1, U2, I1, I2, Rtotal, lay)
+    } catch (err) {
+      console.error('drawTeachingPanel', err)
+    }
 
-    // 底部：步骤导航
+    // 底部/右侧步骤导航
     drawStepNav(ctx, W, H, s, lay)
   }
 
@@ -409,14 +417,17 @@ export default function SeriesParallelScene() {
     let ky = inner.y
     const px = inner.x - 14, pw = inner.w + 28, py = inner.y - 20
 
-    // 手机：只显示关键读数，长文走 InfoDock
+    // 手机：只显示关键读数（开关前后都保留，实验中不消失）
     if (lay.compact) {
       ctx.font = `bold ${lay.font.data}px monospace`
       ctx.fillStyle = '#333'
-      ctx.fillText(`U = ${U.toFixed(1)} V`, inner.x, ky); ky += 18
-      ctx.fillText(`I = ${I.toFixed(2)} A`, inner.x, ky); ky += 18
+      ctx.fillText(`U = ${(U ?? 0).toFixed(1)} V`, inner.x, ky); ky += 18
+      ctx.fillText(`I = ${(I ?? 0).toFixed(2)} A`, inner.x, ky); ky += 18
       ctx.fillStyle = '#FF6F00'
-      ctx.fillText(`R = ${Rtotal.toFixed(1)} Ω`, inner.x, ky)
+      ctx.fillText(`R = ${(Rtotal ?? 0).toFixed(1)} Ω`, inner.x, ky); ky += 20
+      ctx.fillStyle = on ? '#2E7D32' : '#888'
+      ctx.font = `bold ${lay.font.body}px sans-serif`
+      ctx.fillText(on ? '● 实验中' : '○ 未闭合', inner.x, ky)
       ctx.textBaseline = 'alphabetic'
       return
     }
@@ -1215,9 +1226,9 @@ export default function SeriesParallelScene() {
   }
   function getTermPos(comp, idx) { return getTerminals(comp)[idx] }
 
-  /** 接线热点：以接线柱为圆心的圆形热区 */
+  /** 接线热点：以接线柱为圆心的圆形热区（手机加大） */
   function findTerm(mx, my) {
-    const R = 24
+    const R = 30
     for (const comp of S.current.components) {
       const terms = getTerminals(comp)
       for (let i = 0; i < terms.length; i++) {
@@ -1230,7 +1241,7 @@ export default function SeriesParallelScene() {
 
   /** 连线过程中的目标端点：圆形吸附区更大，排除源元件 */
   function findTermNear(mx, my, exceptCompId) {
-    const R = 30
+    const R = 38
     let best = null, bestD = Infinity
     for (const comp of S.current.components) {
       if (comp.id === exceptCompId) continue
@@ -1283,7 +1294,7 @@ export default function SeriesParallelScene() {
         if (a.action === 'color') { s.wireColor = a.color; forceUpdate(n => n + 1); return }
         if (a.type) {
           const id = s.nextId++
-          s.components.push({ id, type: a.type, x, y, rotation: 0, closed: true, props: a.type === 'rheostat' ? { resistance: 20 } : {} })
+          s.components.push({ id, type: a.type, x, y, rotation: 0, closed: false, props: a.type === 'rheostat' ? { resistance: 20 } : {} })
           s.dragId = id; s.dragOffX = 0; s.dragOffY = 0; forceUpdate(n => n + 1); return
         }
       }
@@ -1313,13 +1324,16 @@ export default function SeriesParallelScene() {
       const tc = s.components.find(c => c.id === wire.to.compId)
       if (!fc || !tc) continue
       const f = getTermPos(fc, wire.from.termIdx), t = getTermPos(tc, wire.to.termIdx)
-      const ddx = t.x - f.x, ddy = t.y - f.y
-      const m1x = wire.mid1X != null ? wire.mid1X : f.x + ddx * 0.33
-      const m1y = wire.mid1Y != null ? wire.mid1Y : f.y + ddy * 0.33
-      const m2x = wire.mid2X != null ? wire.mid2X : f.x + ddx * 0.67
-      const m2y = wire.mid2Y != null ? wire.mid2Y : f.y + ddy * 0.67
-      if ((x - m1x) ** 2 + (y - m1y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_1'; s.dragMoved = false; forceUpdate(n => n + 1); return }
-      if ((x - m2x) ** 2 + (y - m2y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_2'; s.dragMoved = false; forceUpdate(n => n + 1); return }
+      // 与三次贝塞尔控制点一致（左出左/右出右）
+      const fOut = wire.from.termIdx === 0 ? -1 : 1
+      const tOut = wire.to.termIdx === 0 ? -1 : 1
+      const ext = 42
+      const m1x = wire.mid1X != null ? wire.mid1X : f.x + fOut * ext
+      const m1y = wire.mid1Y != null ? wire.mid1Y : f.y
+      const m2x = wire.mid2X != null ? wire.mid2X : t.x + tOut * ext
+      const m2y = wire.mid2Y != null ? wire.mid2Y : t.y
+      if ((x - m1x) ** 2 + (y - m1y) ** 2 < 256) { s.dragId = 'wire_' + wire.id + '_1'; s.dragMoved = false; forceUpdate(n => n + 1); return }
+      if ((x - m2x) ** 2 + (y - m2y) ** 2 < 256) { s.dragId = 'wire_' + wire.id + '_2'; s.dragMoved = false; forceUpdate(n => n + 1); return }
     }
     // 中心拖动 / 点按开关
     const comp = findComp(x, y)
@@ -1441,7 +1455,7 @@ export default function SeriesParallelScene() {
               const id = s.nextId++
               const wx = s._palRect ? s._palRect.x * 0.42 : pd.x
               const wy = s._palRect ? s._palRect.y + s._palRect.h * 0.45 : pd.y
-              s.components.push({ id, type: a.type, x: wx, y: wy, rotation: 0, closed: true, props: a.type === 'rheostat' ? { resistance: 20 } : {} })
+              s.components.push({ id, type: a.type, x: wx, y: wy, rotation: 0, closed: false, props: a.type === 'rheostat' ? { resistance: 20 } : {} })
               s.dragId = id; s.dragOffX = 0; s.dragOffY = 0
             }
             break
