@@ -803,13 +803,15 @@ export default function SeriesParallelScene() {
       }
     }
 
-    // 器材栏：桌面/手机都是右侧单列
+    // 器材栏：右侧单列，可上下滑动
     {
     const palX = W - palW - 8
     ctx.fillStyle = '#f8f9fa'; ctx.beginPath(); ctx.roundRect(palX, cvY, palW, cvH, 8); ctx.fill()
     ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX, cvY, palW, cvH, 8); ctx.stroke()
+    ctx.save()
+    ctx.beginPath(); ctx.rect(palX + 2, cvY + 2, palW - 4, cvH - 4); ctx.clip()
     ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('电学器材', palX + 10, cvY + 8)
+    ctx.fillText('电学器材', palX + 10, cvY + 6)
 
     const items = [
       { type: 'battery', name: '电源' },
@@ -819,33 +821,55 @@ export default function SeriesParallelScene() {
       { type: 'rheostat', name: '变阻' },
       { type: 'ammeter', name: 'A表' },
       { type: 'voltmeter', name: 'V表' },
+      { type: 'inductor', name: '电感' },
+      { type: 'capacitor', name: '电容' },
     ]
     const rowH = lay.compact ? 34 : 38
-    let iy = cvY + 30
+    const gap = 4
+    const contentH = items.length * (rowH + gap) + 70
+    const viewH = cvH - 28
+    const maxScroll = Math.max(0, contentH - viewH)
+    if (s._palScroll == null) s._palScroll = 0
+    s._palScroll = Math.max(0, Math.min(maxScroll, s._palScroll))
+    s._palMaxScroll = maxScroll
+
+    let iy = cvY + 28 - s._palScroll
     for (const item of items) {
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, rowH, 6); ctx.fill()
-      ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, rowH, 6); ctx.stroke()
-      drawRealisticIcon(ctx, palX + 28, iy + rowH / 2, item.type)
-      ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(item.name, palX + 50, iy + rowH / 2); ctx.textBaseline = 'alphabetic'
+      if (iy + rowH > cvY && iy < cvY + cvH) {
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, rowH, 6); ctx.fill()
+        ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, rowH, 6); ctx.stroke()
+        drawRealisticIcon(ctx, palX + 28, iy + rowH / 2, item.type)
+        ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+        ctx.fillText(item.name, palX + 50, iy + rowH / 2); ctx.textBaseline = 'alphabetic'
+      }
       canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: rowH, type: item.type })
-      iy += rowH + 4
+      iy += rowH + gap
     }
 
-    iy += 6
+    iy += 8
     ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
     ctx.fillText('导线：', palX + 10, iy); iy += 18
     for (const wc of [{ color: '#F44336', name: '红' }, { color: '#FFC107', name: '黄' }, { color: '#4CAF50', name: '绿' }]) {
       const active = s.wireColor === wc.color
-      ctx.fillStyle = active ? '#e3f2fd' : '#fff'
-      ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 24, 4); ctx.fill()
-      if (active) { ctx.strokeStyle = wc.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 24, 4); ctx.stroke() }
-      ctx.fillStyle = wc.color; ctx.fillRect(palX + 14, iy + 7, 28, 10)
-      ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(wc.name, palX + 52, iy + 12); ctx.textBaseline = 'alphabetic'
+      if (iy + 24 > cvY && iy < cvY + cvH) {
+        ctx.fillStyle = active ? '#e3f2fd' : '#fff'
+        ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 24, 4); ctx.fill()
+        if (active) { ctx.strokeStyle = wc.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 24, 4); ctx.stroke() }
+        ctx.fillStyle = wc.color; ctx.fillRect(palX + 14, iy + 7, 28, 10)
+        ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+        ctx.fillText(wc.name, palX + 52, iy + 12); ctx.textBaseline = 'alphabetic'
+      }
       canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: 24, action: 'color', color: wc.color })
       iy += 28
     }
+    ctx.restore()
+    if (maxScroll > 0) {
+      const th = Math.max(24, (viewH / contentH) * viewH)
+      const ty = cvY + 28 + (s._palScroll / maxScroll) * (viewH - th)
+      ctx.fillStyle = 'rgba(0,0,0,0.18)'
+      ctx.beginPath(); ctx.roundRect(palX + palW - 5, ty, 3, th, 2); ctx.fill()
+    }
+    s._palRect = { x: palX, y: cvY, w: palW, h: cvH }
     ctx.textBaseline = 'alphabetic'
     }
   }
@@ -1176,6 +1200,11 @@ export default function SeriesParallelScene() {
     }
     // Tab2 点击区域处理
     for (const a of canvasRef.current._clickAreas || []) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(); return } }
+    // 器材栏：按下记录，拖动=滑动列表，轻点=放置器材
+    if (s._palRect && x >= s._palRect.x && x <= s._palRect.x + s._palRect.w && y >= s._palRect.y && y <= s._palRect.y + s._palRect.h) {
+      s.palDrag = { y0: y, scroll0: s._palScroll || 0, moved: false, x, y }
+      return
+    }
     for (const a of canvasRef.current._palAreas) {
       if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) {
         if (a.action === 'color') { s.wireColor = a.color; forceUpdate(n => n + 1); return }
@@ -1225,6 +1254,16 @@ export default function SeriesParallelScene() {
       return
     }
     if (s.tab !== 2) return
+    // 器材栏滑动
+    if (s.palDrag) {
+      const dy = y - s.palDrag.y0
+      if (Math.abs(dy) > 6) s.palDrag.moved = true
+      if (s.palDrag.moved) {
+        s._palScroll = s.palDrag.scroll0 - dy
+        forceUpdate(n => n + 1)
+        return
+      }
+    }
     // Tab2 滑线变阻器滑片拖拽
     if (s.tab2RheoDragId != null) {
       const c = s.components.find(c => c.id === s.tab2RheoDragId)
@@ -1265,6 +1304,26 @@ export default function SeriesParallelScene() {
 
   const handleMouseUp = useCallback(() => {
     const s = S.current
+    if (s.palDrag) {
+      const pd = s.palDrag
+      s.palDrag = null
+      if (!pd.moved) {
+        // 轻点：命中器材则放置
+        for (const a of canvasRef.current._palAreas || []) {
+          if (pd.x >= a.x && pd.x <= a.x + a.w && pd.y >= a.y && pd.y <= a.y + a.h) {
+            if (a.action === 'color') { s.wireColor = a.color; forceUpdate(n => n + 1); return }
+            if (a.type) {
+              const id = s.nextId++
+              s.components.push({ id, type: a.type, x: pd.x, y: pd.y, rotation: 0, closed: true, props: a.type === 'rheostat' ? { resistance: 20 } : {} })
+              s.dragId = id; s.dragOffX = 0; s.dragOffY = 0
+            }
+            break
+          }
+        }
+      }
+      forceUpdate(n => n + 1)
+      return
+    }
     if (s.rheoDragging) { s.rheoDragging = false; forceUpdate(n => n + 1); return }
     if (s.tab2RheoDragId != null) { s.tab2RheoDragId = null; forceUpdate(n => n + 1); return }
     if (s.dragId) { s.dragId = null; forceUpdate(n => n + 1); return }

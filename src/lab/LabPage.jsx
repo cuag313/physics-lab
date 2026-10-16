@@ -126,6 +126,13 @@ export default function LabPage({ onBack }) {
     setShowCatalog(false)
     // 同步进横屏，不靠 effect 延时（延时会被 StrictMode/重渲染 cleanup 清掉）
     if (window.mimoEnterLandscape) window.mimoEnterLandscape()
+    // 尽量全屏，去掉浏览器上下栏
+    try {
+      const el = document.documentElement
+      if (el.requestFullscreen && !document.fullscreenElement) {
+        el.requestFullscreen().catch(() => {})
+      }
+    } catch (_) {}
   }, [])
 
   const handleBackToCatalog = useCallback(() => {
@@ -134,6 +141,7 @@ export default function LabPage({ onBack }) {
     // 回目录必须退出横屏，恢复竖屏目录
     if (window.mimoExitLandscape) window.mimoExitLandscape()
     document.body.classList.remove('in-experiment')
+    try { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}) } catch (_) {}
   }, [])
 
   // 进入实验：统一手机横屏（真横屏或强制横屏，只保留一种体验）

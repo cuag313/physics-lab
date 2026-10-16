@@ -7,11 +7,14 @@
 export function fitLayout(W, H) {
   const compact = H < 380 || W / Math.max(H, 1) > 2.4
   if (compact) {
+    // 电路回路：宽扁居中，上下留安全边距，避免撑满/溢出
+    const boxW = W * 0.66
+    const boxH = Math.min(H * 0.72, boxW * 0.58)
+    const top = (H - boxH) / 2
     return {
       compact: true,
-      // 横屏短边尽量吃满：上下几乎不留白
-      circuit: { L: W * 0.03, R: W * 0.68, T: 8, B: H - 12 },
-      readout: { x: W * 0.72, y: 4, w: W * 0.26, h: H - 8 },
+      circuit: { L: W * 0.04, R: W * 0.04 + boxW, T: top, B: top + boxH },
+      readout: { x: W * 0.72, y: H * 0.12, w: W * 0.26, h: H * 0.76 },
       guide: null,
       font: { title: 12, label: 9, body: 11, data: 11 },
     }
