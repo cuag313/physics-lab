@@ -34,30 +34,28 @@ button, a, [role='button'] {
   min-height: 32px;
 }
 
-/* 固定尺寸画布（带 width/height 属性）才等比缩放；
-   flex 铺满的 canvas 不要 letterbox，否则会出现大黑边 */
+/* canvas 的 width/height 属性是 DPR 位图（backing store），不是显示尺寸。
+   显示尺寸必须由 CSS/内联 style 决定；绝不能 width:auto，否则手机 dpr=2/3 会
+   把位图当 CSS 像素，文字/面板整体放大 2–3 倍后互相叠框。 */
 canvas {
   touch-action: none;
   display: block;
   max-width: 100%;
 }
 
-.lab-body canvas[width][height] {
+.lab-body canvas {
   max-width: 100% !important;
   max-height: 100% !important;
-  width: auto !important;
-  height: auto !important;
-  margin: 0 auto;
 }
 
 .lab-body .canvas-fill {
-  width: auto !important;
+  width: 100% !important;
+  height: 100% !important;
   flex: 1 1 auto !important;
   min-width: 0 !important;
   min-height: 0 !important;
   max-width: none !important;
   max-height: none !important;
-  height: 100% !important;
 }
 
 /* 器材列表：触屏可滚 */
@@ -522,12 +520,9 @@ html.mode-landscape .scene-side {
   font-size: 11px;
 }
 
-html.mode-landscape .lab-body canvas[width][height] {
+html.mode-landscape .lab-body canvas {
   max-width: 100% !important;
   max-height: 100% !important;
-  width: auto !important;
-  height: auto !important;
-  margin: 0 auto;
 }
 
 html.mode-landscape .formula-overlay {
