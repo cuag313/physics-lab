@@ -982,25 +982,46 @@ export default function SeriesParallelScene() {
       ctx.fillText('−', 40, -16)
       ctx.textBaseline = 'alphabetic'
     } else if (type === 'bulb') {
+      // 与电路演示一致：随滑线变阻器连续渐变（左 0Ω 最亮，右最大最暗不熄灭）
       const brightness = (() => {
-        if (!isClosed || !engineResult?.ok || !engineResult.results) return 0
-        const r = engineResult.results.get(comp.id)
-        if (!r) return 0
-        const maxP = ((s.U || 6) ** 2) / 10
-        return Math.max(0.05, Math.min(1, r.power / maxP))
+        if (!isClosed) return 0
+        const rheo = s.components.find(c => c.type === 'rheostat')
+        if (rheo) {
+          const rr = Math.max(0, Math.min(50, rheo.props?.resistance ?? 0))
+          return 0.18 + 0.82 * (1 - rr / 50)
+        }
+        if (engineResult?.ok && engineResult.results) {
+          const r = engineResult.results.get(comp.id)
+          if (r && r.power != null) {
+            const maxP = ((s.U || 6) ** 2) / 10
+            const t = Math.max(0, Math.min(1, r.power / maxP))
+            return 0.18 + 0.82 * t
+          }
+        }
+        return 0
       })()
-      ctx.fillStyle = brightness > 0.15 ? '#FFEB3B' : '#FFFDE7'
-      ctx.strokeStyle = brightness > 0.15 ? '#F9A825' : '#bbb'; ctx.lineWidth = 2
+      const b = Math.max(0, Math.min(1, brightness))
+      const mix = b
+      const rC = Math.round(250 + (255 - 250) * mix)
+      const gC = Math.round(250 + (235 - 250) * mix)
+      const bC = Math.round(250 + (59 - 250) * mix)
+      ctx.fillStyle = `rgb(${rC},${gC},${bC})`
+      ctx.strokeStyle = b > 0.05 ? `rgb(${Math.round(180 + 69 * mix)},${Math.round(180 - 12 * mix)},${Math.round(180 - 140 * mix)})` : '#bbb'
+      ctx.lineWidth = 2
       ctx.beginPath(); ctx.arc(0, -6, 20, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.strokeStyle = brightness > 0.15 ? '#E65100' : '#999'; ctx.lineWidth = 1.5
+      ctx.strokeStyle = b > 0.05 ? `rgba(230,80,0,${0.35 + 0.65 * mix})` : '#999'
+      ctx.lineWidth = 1.5
       ctx.beginPath(); ctx.moveTo(-8, -14); ctx.lineTo(8, 2); ctx.stroke()
       ctx.beginPath(); ctx.moveTo(8, -14); ctx.lineTo(-8, 2); ctx.stroke()
       ctx.fillStyle = '#9E9E9E'; ctx.strokeStyle = '#616161'; ctx.lineWidth = 1
       ctx.beginPath(); ctx.roundRect(-10, 14, 20, 10, 2); ctx.fill(); ctx.stroke()
-      if (brightness > 0.15) {
-        const glow = ctx.createRadialGradient(0, -6, 15, 0, -6, 50)
-        glow.addColorStop(0, 'rgba(255,235,59,0.35)'); glow.addColorStop(1, 'rgba(255,235,59,0)')
-        ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, -6, 50, 0, Math.PI * 2); ctx.fill()
+      if (b > 0.08) {
+        const gr = 30 + 28 * mix
+        const glow = ctx.createRadialGradient(0, -6, 15, 0, -6, gr)
+        glow.addColorStop(0, `rgba(255,235,59,${0.12 + 0.35 * mix})`)
+        glow.addColorStop(1, 'rgba(255,235,59,0)')
+        ctx.fillStyle = glow
+        ctx.beginPath(); ctx.arc(0, -6, gr, 0, Math.PI * 2); ctx.fill()
       }
       ctx.fillStyle = '#F57F17'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
       ctx.fillText('灯泡', 0, 26)
