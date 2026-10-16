@@ -28,17 +28,14 @@
         function enableForceLandscape() {
           html.classList.add('force-landscape')
           html.classList.add('mode-landscape')
-          nudgeCanvases()
         }
 
         function disableForceLandscape() {
           html.classList.remove('force-landscape')
           syncMode()
-          nudgeCanvases()
         }
 
         // 强制横屏会改变布局尺寸；场景普遍监听 window.resize 重设 canvas 位图。
-        // 不发事件的话，canvas 仍停留在进实验前的宽高，画面被拉伸/裁切像死截图。
         function nudgeCanvases() {
           requestAnimationFrame(function () {
             window.dispatchEvent(new Event('resize'))
@@ -46,32 +43,61 @@
           })
         }
 
-        // 真横屏时清掉强制，避免双重
-        function onOrient() {
-          if (window.matchMedia('(orientation: landscape)').matches) {
+        function inExperiment() {
+          return document.body.classList.contains('in-experiment')
+        }
+
+        function isPhysLandscape() {
+          return window.matchMedia('(orientation: landscape)').matches && window.innerWidth <= 900
+        }
+
+        /** 实验中保持横屏：息屏/转屏/回前台后自动恢复，避免变成「竖版横屏」 */
+        function ensureExperimentLandscape() {
+          if (!inExperiment()) return
+          if (window.innerWidth > 900) {
+            // 桌面
             html.classList.remove('force-landscape')
+            syncMode()
+            return
           }
-          syncMode()
-          // 这里不要再 nudgeCanvases：nudge 会派发 resize，形成死循环
+          if (isPhysLandscape()) {
+            // 已物理横屏：去掉强制旋转，只保留横屏布局
+            html.classList.remove('force-landscape')
+            syncMode()
+          } else {
+            // 竖持手机：强制横屏铺满
+            enableForceLandscape()
+            syncMode()
+          }
+        }
+
+        function onOrient() {
+          ensureExperimentLandscape()
+          // 不要在这里 nudgeCanvases：会与 resize 形成循环
         }
         window.addEventListener('orientationchange', onOrient)
         window.addEventListener('resize', onOrient)
 
+        // 息屏再打开 / 切后台回来：恢复横屏并重绘
+        function onWake() {
+          ensureExperimentLandscape()
+          if (inExperiment()) nudgeCanvases()
+        }
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible') onWake()
+        })
+        window.addEventListener('pageshow', onWake)
+        window.addEventListener('focus', onWake)
+
         // 进实验：统一横屏；回目录由 LabPage 调 mimoExitLandscape
         window.mimoEnterLandscape = function () {
-          if (window.matchMedia('(orientation: landscape)').matches && window.innerWidth <= 900) {
-            html.classList.remove('force-landscape')
-            syncMode()
-            nudgeCanvases()
-            return
-          }
-          if (window.innerWidth <= 900) {
-            enableForceLandscape()
-          } else {
-            nudgeCanvases()
-          }
+          ensureExperimentLandscape()
+          nudgeCanvases()
         }
-        window.mimoExitLandscape = disableForceLandscape
+        window.mimoExitLandscape = function () {
+          disableForceLandscape()
+          nudgeCanvases()
+        }
         syncMode()
       })()
     </script>
