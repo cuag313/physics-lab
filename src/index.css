@@ -208,6 +208,28 @@ canvas {
 .scene-split {
   min-height: 0;
   min-width: 0;
+  position: relative;
+}
+
+/* 信息坞：桌面贴右；手机横屏做成抽屉，不遮电路 */
+.info-dock {
+  /* base styles in JSX; only tweaks here */
+}
+
+.info-dock-toggle {
+  touch-action: manipulation;
+}
+
+html.force-landscape .info-dock,
+html.mode-landscape .info-dock {
+  top: 36px;
+  bottom: 0;
+  width: min(280px, 78vw) !important;
+}
+
+html.force-landscape .scene-desc,
+html.mode-landscape .scene-desc {
+  display: none !important;
 }
 
 .scene-canvas {

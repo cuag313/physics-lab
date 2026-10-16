@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { eventToCanvas } from '../utils/pointerPos'
 import { CircuitGraph, CircuitSolver } from '../engine/index.js'
+import InfoDock from '../ui/InfoDock'
+import { fitLayout, drawPanel, wrapText } from '../ui/canvasLayout'
 
 // 模块级数据
 let dataStore = []
@@ -75,7 +77,8 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
   function renderDemo(ctx, W, H) {
     const s = S.current
     const on = s.switchClosed
-    const L = W * 0.06, Rt = W * 0.48, T = 85, B = H - 140
+    const lay = fitLayout(W, H)
+    const L = lay.circuit.L, Rt = lay.circuit.R, T = lay.circuit.T, B = lay.circuit.B
 
     let I = 0, U_b = 0, P = 0
     if (on) {
@@ -88,10 +91,9 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
       P = U_b * I
     }
 
-    ctx.fillStyle = '#333'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText(title, W / 2, 12)
+    ctx.fillStyle = '#333'; ctx.font = `bold ${lay.font.title}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    if (!lay.compact) ctx.fillText(title, W / 2, 12)
 
-    // 电路图
     const battX = L + (Rt - L) * 0.15
     const swX = L + (Rt - L) * 0.35
     const amX = L + (Rt - L) * 0.22
@@ -137,63 +139,40 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     drawLine(ctx, bulX + 22, volY, bulX + 16, volY, wc, 2)
     drawMeter(ctx, bulX, volY, 'V', on ? U_b / s.U_rated : 0, on ? U_b.toFixed(2) + 'V' : '', '#4CAF50')
 
-    ctx.fillStyle = '#555'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
+    ctx.fillStyle = '#555'; ctx.font = `${lay.font.label}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
     ctx.fillText('A', amX, T - 22)
     ctx.fillText('滑动变阻器', slX, T - 22)
     ctx.fillText('小灯泡 2.5V', bulX, T - 22)
     ctx.fillText('V', bulX, volY + 18)
     ctx.textBaseline = 'alphabetic'
 
-    // 操作气泡
-    const cx = (L + Rt) / 2, cy = (T + B) / 2 + 10
-    const bw = 240, bh = 92
-    ctx.fillStyle = 'rgba(255,253,230,0.95)'; ctx.strokeStyle = '#FFB300'; ctx.lineWidth = 1.5
-    ctx.beginPath(); ctx.roundRect(cx - bw/2, cy - bh/2, bw, bh, 10); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = 'rgba(255,253,230,0.95)'
-    ctx.beginPath(); ctx.moveTo(cx - 10, cy + bh/2); ctx.lineTo(cx + 10, cy + bh/2); ctx.lineTo(cx, cy + bh/2 + 10); ctx.closePath(); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#5D4037'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.font = 'bold 11px sans-serif'
-    ctx.fillText('📋 操作步骤', cx - bw/2 + 12, cy - bh/2 + 10)
-    ctx.font = '10px sans-serif'
-    const steps = [
-      '①  点击开关，闭合电路',
-      '②  点击滑动变阻器电阻体，调节分压',
-      '③  让灯泡电压 ≈ 2.5V → 点"记录"',
-      '④  再测低于/高于额定电压两组',
-    ]
-    for (let i = 0; i < steps.length; i++) ctx.fillText(steps[i], cx - bw/2 + 12, cy - bh/2 + 28 + i * 15)
-
-    // 右侧面板
-    const px = W * 0.52, py = 50, pw = W * 0.46, ph = H - 160
-    ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill()
-    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.stroke()
-    ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    let ky = py + 12
-    ctx.fillStyle = '#1565C0'; ctx.font = 'bold 12px sans-serif'
-    ctx.fillText('🎯 实验目的：', px + 14, ky)
-    ctx.font = '11px sans-serif'; ctx.fillStyle = '#444'
-    ctx.fillText('测量小灯泡在不同电压下的电功率 P=UI', px + 14 + 80, ky); ky += 24
-
-    ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'
-    ctx.fillText('📖 小灯泡（额定电压 2.5V）', px + 14, ky); ky += 22
-    const status = !on ? '断开' : U_b < s.U_rated * 0.8 ? '低于额定电压（偏暗）' : U_b < s.U_rated * 1.1 ? '正常发光（额定）' : '高于额定电压（过亮）'
+    const status = !on ? '断开' : U_b < s.U_rated * 0.8 ? '低于额定（偏暗）' : U_b < s.U_rated * 1.1 ? '正常发光' : '高于额定（过亮）'
+    const ro = lay.readout
+    const inner = drawPanel(ctx, ro, lay.compact ? null : '🎯 实验目的')
+    let ky = inner.y
+    if (!lay.compact) {
+      ctx.fillStyle = '#444'; ctx.font = `${lay.font.body}px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+      ky = wrapText(ctx, '测量小灯泡在不同电压下的电功率 P=UI', inner.x, ky, inner.w, 18) + 4
+      ctx.fillStyle = '#333'; ctx.font = `bold ${lay.font.body}px sans-serif`
+      ctx.fillText('📖 小灯泡（额定 2.5V）', inner.x, ky); ky += 22
+    }
     ctx.fillStyle = !on ? '#999' : U_b < s.U_rated * 0.8 ? '#1976D2' : U_b < s.U_rated * 1.1 ? '#4CAF50' : '#F44336'
-    ctx.font = 'bold 12px sans-serif'
-    ctx.fillText(status, px + 14, ky); ky += 22
-    ctx.fillStyle = '#444'; ctx.font = '12px monospace'
-    ctx.fillText(`U = ${U_b.toFixed(2)} V`, px + 14, ky); ky += 18
-    ctx.fillText(`I = ${I.toFixed(3)} A`, px + 14, ky); ky += 18
-    ctx.fillStyle = '#FF6F00'; ctx.font = 'bold 13px monospace'
-    ctx.fillText(`P = UI = ${P.toFixed(3)} W`, px + 14, ky); ky += 26
+    ctx.font = `bold ${lay.font.data}px sans-serif`
+    ctx.fillText(status, inner.x, ky); ky += lay.compact ? 20 : 22
+    ctx.fillStyle = '#444'; ctx.font = `${lay.font.data}px monospace`
+    ctx.fillText(`U = ${U_b.toFixed(2)} V`, inner.x, ky); ky += 18
+    ctx.fillText(`I = ${I.toFixed(3)} A`, inner.x, ky); ky += 18
+    ctx.fillStyle = '#FF6F00'; ctx.font = `bold ${lay.font.data + 1}px monospace`
+    ctx.fillText(`P = ${P.toFixed(3)} W`, inner.x, ky); ky += 22
 
-    if (dataStore.length > 0) {
+    if (!lay.compact && dataStore.length > 0) {
       ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'
-      ctx.fillText('📊 实验数据', px + 14, ky); ky += 16
+      ctx.fillText('📊 实验数据', inner.x, ky); ky += 16
       const colW = [35, 60, 60, 65, 80]
       const rowH = 17
       const tblW = colW.reduce((a, b) => a + b, 0)
-      const tblX = px + 14
-      const headers = ['序号', 'U(V)', 'I(A)', 'P(W)', '发光情况']
+      const tblX = inner.x
+      const headers = ['序号', 'U(V)', 'I(A)', 'P(W)', '发光']
       ctx.fillStyle = '#FFF8E1'; ctx.strokeStyle = '#FFD54F'; ctx.lineWidth = 1
       ctx.fillRect(tblX, ky, tblW, rowH); ctx.strokeRect(tblX, ky, tblW, rowH)
       ctx.fillStyle = '#E65100'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
@@ -213,32 +192,28 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
         ky += rowH
       }
       ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-      ky += 10
-      drawGraph(ctx, px + 14, ky, pw - 28, 130, dataStore, 'U (V)', 'P (W)', d => d.U, d => d.P, '#FF6F00')
-    } else {
-      ctx.fillStyle = '#888'; ctx.font = '11px sans-serif'
-      ctx.fillText('闭合开关 → 调节变阻器 → 点"记录"', px + 14, ky); ky += 18
-      ctx.fillText('建议测3组：低于额定、额定、高于额定电压', px + 14, ky)
+      ky += 8
+      drawGraph(ctx, inner.x, ky, inner.w, Math.max(80, inner.y + inner.h - ky), dataStore, 'U (V)', 'P (W)', d => d.U, d => d.P, '#FF6F00')
     }
     ctx.textBaseline = 'alphabetic'
 
-    // 底部按钮
-    const nY = H - 42
+    const nY = H - 32
     const recOk = on
-    ctx.fillStyle = recOk ? '#4CAF50' : '#bdbdbd'; ctx.beginPath(); ctx.roundRect(20, nY, 90, 30, 6); ctx.fill()
+    const btnH = 26
+    ctx.fillStyle = recOk ? '#4CAF50' : '#bdbdbd'; ctx.beginPath(); ctx.roundRect(16, nY, 84, btnH, 6); ctx.fill()
     ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText('📝 记录', 65, nY + 15)
-    if (recOk) canvasRef.current._clickAreas.push({ x: 20, y: nY, w: 90, h: 30, onClick: () => {
+    ctx.fillText('记录', 58, nY + btnH / 2)
+    if (recOk) canvasRef.current._clickAreas.push({ x: 16, y: nY, w: 84, h: btnH, onClick: () => {
       dataStore.push({ U: U_b, I, P }); forceUpdate(n => n + 1)
     }})
-    ctx.fillStyle = '#f0f0f0'; ctx.beginPath(); ctx.roundRect(120, nY, 70, 30, 6); ctx.fill()
-    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(120, nY, 70, 30, 6); ctx.stroke()
-    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.fillText('清除', 155, nY + 15)
-    canvasRef.current._clickAreas.push({ x: 120, y: nY, w: 70, h: 30, onClick: () => { dataStore = []; forceUpdate(n => n + 1) } })
-    ctx.fillStyle = '#f0f0f0'; ctx.beginPath(); ctx.roundRect(200, nY, 80, 30, 6); ctx.fill()
-    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(200, nY, 80, 30, 6); ctx.stroke()
-    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.fillText('↺ 重置', 240, nY + 15)
-    canvasRef.current._clickAreas.push({ x: 200, y: nY, w: 80, h: 30, onClick: () => { s.sliderR = 20; s.switchClosed = false; dataStore = []; forceUpdate(n => n + 1) } })
+    ctx.fillStyle = '#f0f0f0'; ctx.beginPath(); ctx.roundRect(110, nY, 64, btnH, 6); ctx.fill()
+    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(110, nY, 64, btnH, 6); ctx.stroke()
+    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.fillText('清除', 142, nY + btnH / 2)
+    canvasRef.current._clickAreas.push({ x: 110, y: nY, w: 64, h: btnH, onClick: () => { dataStore = []; forceUpdate(n => n + 1) } })
+    ctx.fillStyle = '#f0f0f0'; ctx.beginPath(); ctx.roundRect(184, nY, 72, btnH, 6); ctx.fill()
+    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(184, nY, 72, btnH, 6); ctx.stroke()
+    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.fillText('重置', 220, nY + btnH / 2)
+    canvasRef.current._clickAreas.push({ x: 184, y: nY, w: 72, h: btnH, onClick: () => { s.sliderR = 20; s.switchClosed = false; dataStore = []; forceUpdate(n => n + 1) } })
     ctx.textBaseline = 'alphabetic'
   }
 
@@ -908,10 +883,10 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
       <div style={st.topBar}>
         <span style={st.title}>{title}</span>
         <div style={st.topActions}>
-          <button style={tab === 1 ? st.tabA : st.tab} onClick={() => { S.current.tab = 1; setTab(1); forceUpdate(n => n + 1) }}>📖 实验演示</button>
-          <button style={tab === 2 ? st.tabA : st.tab} onClick={() => { S.current.tab = 2; setTab(2); forceUpdate(n => n + 1) }}>🔧 自己动手</button>
+          <button style={tab === 1 ? st.tabA : st.tab} onClick={() => { S.current.tab = 1; setTab(1); forceUpdate(n => n + 1) }}>实验演示</button>
+          <button style={tab === 2 ? st.tabA : st.tab} onClick={() => { S.current.tab = 2; setTab(2); forceUpdate(n => n + 1) }}>自己动手</button>
           <div style={{ flex: 1 }} />
-          <button style={st.btn} onClick={handleReset}>↺ 重置</button>
+          <button style={st.btn} onClick={handleReset}>重置</button>
         </div>
       </div>
       <div className="scene-split" style={st.main}>
@@ -919,11 +894,27 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
           onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
           onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} />
+        <InfoDock
+          purpose="测量小灯泡在不同电压下的电功率 P=UI，观察灯丝电阻随温度的变化。"
+          steps={[
+            '点击开关，闭合电路',
+            '点击滑动变阻器电阻体，调节分压',
+            '让灯泡电压 ≈ 2.5V，点「记录」',
+            '再测低于/高于额定电压两组数据',
+          ]}
+        >
+          <section>
+            <h3 style={{ fontSize: 12, color: '#1a5a8a', margin: '0 0 6px' }}>提示</h3>
+            <p style={{ margin: 0, lineHeight: 1.55, color: '#555' }}>
+              建议测 3 组：低于额定、额定、高于额定。画布右侧只显示实时读数，详细步骤在这里。
+            </p>
+          </section>
+        </InfoDock>
       </div>
       <div className="scene-desc" style={st.desc}>
         <b>{title}</b>
         <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
-          {tab === 1 ? '点击开关→点滑动变阻器电阻体调分压→记录3组数据' : '从器材栏拖入器材·点击接线柱连线·双击开关·拖动变阻器滑片'}
+          {tab === 1 ? '点开关→点变阻器调分压→记录数据' : '拖器材·点接线柱连线·双击开关'}
         </span>
       </div>
     </div>

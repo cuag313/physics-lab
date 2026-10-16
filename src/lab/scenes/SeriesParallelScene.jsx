@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
+import InfoDock from '../ui/InfoDock'
+import { fitLayout, drawPanel, wrapText } from '../ui/canvasLayout'
 import { CircuitGraph, CircuitSolver } from '../engine/index.js'
 
 /**
@@ -99,13 +101,14 @@ export default function SeriesParallelScene() {
     }
 
     // 标题
+    const lay = fitLayout(W, H)
     ctx.fillStyle = '#333'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
     const titles = { 1: '① 单灯泡 — 测电阻', 2: '② 两灯泡串联 — 电阻变大？', 3: '③ 两灯泡并联 — 电阻变小？' }
-    ctx.fillText(titles[s.step], W / 2, 12)
+    if (!lay.compact) ctx.fillText(titles[s.step], W / 2, 12)
 
     // 电路区域
-    const left = W * 0.08, right = W * 0.52
-    const top = 65, bottom = H - 180
+    const left = lay.circuit.L, right = lay.circuit.R
+    const top = lay.circuit.T, bottom = lay.circuit.B
     const midX = (left + right) / 2
     const wc = on ? '#1565C0' : '#999'
 
@@ -114,10 +117,10 @@ export default function SeriesParallelScene() {
     else drawParallelTwo(ctx, left, right, top, bottom, midX, wc, on, s, U, I, I1, I2, U1, U2, Rtotal)
 
     // 右侧：教学说明+数据
-    drawTeachingPanel(ctx, W, H, s, on, U, I, U1, U2, I1, I2, Rtotal)
+    drawTeachingPanel(ctx, W, H, s, on, U, I, U1, U2, I1, I2, Rtotal, lay)
 
     // 底部：步骤导航
-    drawStepNav(ctx, W, H, s)
+    drawStepNav(ctx, W, H, s, lay)
   }
 
   // ─── Step1: 单灯泡（伏安法拓扑：上边=变阻器→A表→灯泡，下边=电源+开关） ───
@@ -398,16 +401,29 @@ export default function SeriesParallelScene() {
   }
 
   // ─── 教学说明面板 ───
-  function drawTeachingPanel(ctx, W, H, s, on, U, I, U1, U2, I1, I2, Rtotal) {
-    const pw = W * 0.38, ph = H - 180, px = W * 0.58, py = 45
-    ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill()
-    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.stroke()
+  function drawTeachingPanel(ctx, W, H, s, on, U, I, U1, U2, I1, I2, Rtotal, layIn) {
+    const lay = layIn || fitLayout(W, H)
+    const ro = lay.readout
+    const inner = drawPanel(ctx, ro, lay.compact ? null : '说明')
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    let ky = inner.y
+    const px = inner.x - 14, pw = inner.w + 28, py = inner.y - 20
 
-    ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    let ky = py + 12
+    // 手机：只显示关键读数，长文走 InfoDock
+    if (lay.compact) {
+      ctx.font = `bold ${lay.font.data}px monospace`
+      ctx.fillStyle = '#333'
+      ctx.fillText(`U = ${U.toFixed(1)} V`, inner.x, ky); ky += 18
+      ctx.fillText(`I = ${I.toFixed(2)} A`, inner.x, ky); ky += 18
+      ctx.fillStyle = '#FF6F00'
+      ctx.fillText(`R = ${Rtotal.toFixed(1)} Ω`, inner.x, ky)
+      ctx.textBaseline = 'alphabetic'
+      return
+    }
 
+    ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'
     if (s.step === 1) {
-      ctx.fillText('📖 伏特表与安培表的使用', px + 14, ky); ky += 28
+      ctx.fillText('📖 伏特表与安培表的使用', inner.x, ky); ky += 28
       const items = [
         { t: '安培表 Ⓐ', bold: true },
         { t: '串联接入电路，测电流', color: '#E53935' },
@@ -1274,6 +1290,21 @@ export default function SeriesParallelScene() {
       onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
       onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} />
+      <InfoDock
+        purpose="探究串联电路电流规律和并联电路电压规律，理解电阻串并联的变化。"
+        steps={[
+          '① 单灯泡：用 V/A 表测电阻 R=U/I',
+          '② 两灯泡串联：总电阻变大，灯变暗',
+          '③ 两灯泡并联：总电阻变小，灯变亮',
+        ]}
+      >
+        <section>
+          <h3 style={{ fontSize: 12, color: '#1a5a8a', margin: '0 0 6px' }}>要点</h3>
+          <p style={{ margin: 0, lineHeight: 1.55, color: '#555' }}>
+            安培表串联、伏特表并联。手机上长说明收在这里，画布只留电路与读数。
+          </p>
+        </section>
+      </InfoDock>
     </SceneShell>
   )
 }
