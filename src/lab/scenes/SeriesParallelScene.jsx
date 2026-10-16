@@ -745,20 +745,14 @@ export default function SeriesParallelScene() {
       if (fc) {
         const ft = getTermPos(fc, s.connecting.termIdx)
         const tx = s.connecting.mx, ty = s.connecting.my
-        const dx = tx - ft.x, dy = ty - ft.y
-        const dist = Math.hypot(dx, dy) || 1
-        const ext = Math.max(24, Math.min(70, dist * 0.4))
-        const fDirX = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? -1 : 1) : 0
-        const fDirY = fDirX === 0 ? (dy >= 0 ? -1 : 1) : 0
+        const fOut = s.connecting.termIdx === 0 ? -1 : 1
+        const ext = 42
         ctx.strokeStyle = s.hoverTerm ? '#4CAF50' : s.wireColor
-        ctx.lineWidth = 1.8; ctx.lineCap = 'round'; ctx.setLineDash([6, 4])
+        ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.setLineDash([6, 4])
         ctx.beginPath()
         ctx.moveTo(ft.x, ft.y)
-        ctx.bezierCurveTo(
-          ft.x + fDirX * ext, ft.y + fDirY * ext,
-          tx - fDirX * ext * 0.6, ty - fDirY * ext * 0.6,
-          tx, ty
-        )
+        // 三次贝塞尔预览：从接线柱水平出线
+        ctx.bezierCurveTo(ft.x + fOut * ext, ft.y, tx + fOut * ext * 0.35, ty, tx, ty)
         ctx.stroke()
         ctx.setLineDash([]); ctx.lineCap = 'butt'
       }
@@ -1092,42 +1086,33 @@ export default function SeriesParallelScene() {
       ctx.fillStyle = '#333'; ctx.font = 'bold 10px monospace'
       ctx.fillText(isClosed ? `${volt.toFixed(1)}V` : '--', 0, 10)
     }
-    // 热点提示：左右端子可接线，中心可拖动
-    const hot = s.hoverTerm && s.hoverTerm.compId === comp.id
-    const src = s.connecting && s.connecting.compId === comp.id
-    for (let ti = 0; ti < 2; ti++) {
-      const tx = ti === 0 ? -40 : 40
-      const isSrc = src && s.connecting.termIdx === ti
-      const isTgt = hot && s.hoverTerm.termIdx === ti
-      if (isTgt) {
-        // 目标端点：变绿放大，提示松手即连
-        ctx.fillStyle = 'rgba(76,175,80,0.25)'
-        ctx.beginPath(); ctx.arc(tx, 0, 12, 0, Math.PI * 2); ctx.fill()
-        ctx.fillStyle = '#4CAF50'
-        ctx.beginPath(); ctx.arc(tx, 0, 7, 0, Math.PI * 2); ctx.fill()
-      } else if (isSrc) {
-        ctx.fillStyle = '#FF9800'
-        ctx.beginPath(); ctx.arc(tx, 0, 6, 0, Math.PI * 2); ctx.fill()
-      } else {
-        ctx.fillStyle = 'rgba(25,118,210,0.55)'
-        ctx.beginPath(); ctx.arc(tx, 0, 4, 0, Math.PI * 2); ctx.fill()
-      }
-      ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1
-      ctx.beginPath(); ctx.arc(tx, 0, isTgt ? 7 : isSrc ? 6 : 4, 0, Math.PI * 2); ctx.stroke()
-    }
     // 中心拖动把手
     ctx.fillStyle = 'rgba(0,0,0,0.12)'
     ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill()
     ctx.globalAlpha = 1; ctx.restore()
 
+    // 接线柱（绝对坐标，以柱为圆心）
     const terms = getTerminals(comp)
     for (let i = 0; i < terms.length; i++) {
       const t = terms[i]
       const hov = s.hoverTerm && s.hoverTerm.compId === comp.id && s.hoverTerm.termIdx === i
-      ctx.fillStyle = hov ? '#FF9800' : '#fff'
-      ctx.strokeStyle = hov ? '#E65100' : '#666'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.arc(t.x, t.y, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      if (hov) { ctx.strokeStyle = 'rgba(255,152,0,0.4)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(t.x, t.y, 13, 0, Math.PI * 2); ctx.stroke() }
+      const src = s.connecting && s.connecting.compId === comp.id && s.connecting.termIdx === i
+      // 明显的接线柱
+      if (hov) {
+        ctx.fillStyle = 'rgba(76,175,80,0.22)'
+        ctx.beginPath(); ctx.arc(t.x, t.y, 16, 0, Math.PI * 2); ctx.fill()
+        ctx.fillStyle = '#4CAF50'
+      } else if (src) {
+        ctx.fillStyle = '#FF9800'
+      } else {
+        ctx.fillStyle = '#fff'
+      }
+      ctx.strokeStyle = hov ? '#2E7D32' : src ? '#E65100' : '#455A64'
+      ctx.lineWidth = 2.5
+      ctx.beginPath(); ctx.arc(t.x, t.y, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+      // 柱心小孔
+      ctx.fillStyle = hov ? '#1B5E20' : src ? '#BF360C' : '#78909C'
+      ctx.beginPath(); ctx.arc(t.x, t.y, 3, 0, Math.PI * 2); ctx.fill()
     }
   }
 
@@ -1136,33 +1121,34 @@ export default function SeriesParallelScene() {
     const tc = S.current.components.find(c => c.id === wire.to.compId)
     if (!fc || !tc) return
     const f = getTermPos(fc, wire.from.termIdx), t = getTermPos(tc, wire.to.termIdx)
-    strokeBezierWire(ctx, f, t, wire.color || '#1565C0', wire.mid1X != null ? { x: wire.mid1X, y: wire.mid1Y } : null, wire.mid2X != null ? { x: wire.mid2X, y: wire.mid2Y } : null)
+    strokeBezierWire(
+      ctx, f, t, wire.color || '#1565C0',
+      wire.mid1X != null ? { x: wire.mid1X, y: wire.mid1Y } : null,
+      wire.mid2X != null ? { x: wire.mid2X, y: wire.mid2Y } : null,
+      wire.from.termIdx, wire.to.termIdx
+    )
   }
 
-  /** 三次贝塞尔连线：默认沿端子方向出线；可被 mid1/mid2 弯折 */
-  function strokeBezierWire(ctx, f, t, color, m1, m2) {
-    const dx = t.x - f.x, dy = t.y - f.y
-    const dist = Math.hypot(dx, dy) || 1
-    // 出线方向：水平优先，让电路更像原理图
-    const ext = Math.max(28, Math.min(90, dist * 0.38))
-    const fDirX = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? -1 : 1) : 0
-    const fDirY = fDirX === 0 ? (dy >= 0 ? -1 : 1) : 0
-    const tDirX = -fDirX, tDirY = -fDirY
-    const c1 = m1 || { x: f.x + fDirX * ext, y: f.y + fDirY * ext }
-    const c2 = m2 || { x: t.x + tDirX * ext, y: t.y + tDirY * ext }
+  /** 三次贝塞尔：从接线柱水平出线，曲线圆润 */
+  function strokeBezierWire(ctx, f, t, color, m1, m2, fIdx = 0, tIdx = 1) {
+    const ext = 42
+    // 左柱向左出线、右柱向右出线，再弯向目标（标准原理图走线）
+    const fOut = fIdx === 0 ? -1 : 1
+    const tOut = tIdx === 0 ? -1 : 1
+    const c1 = m1 || { x: f.x + fOut * ext, y: f.y }
+    const c2 = m2 || { x: t.x + tOut * ext, y: t.y }
     ctx.strokeStyle = color; ctx.lineWidth = 1.8; ctx.lineCap = 'round'
     ctx.beginPath()
     ctx.moveTo(f.x, f.y)
     ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, t.x, t.y)
     ctx.stroke()
     ctx.lineCap = 'butt'
-    // 弯折点手柄（可拖）
     if (m1 || m2) {
       ctx.fillStyle = 'rgba(21,101,192,0.85)'
       if (m1) { ctx.beginPath(); ctx.arc(m1.x, m1.y, 3.5, 0, Math.PI * 2); ctx.fill() }
       if (m2) { ctx.beginPath(); ctx.arc(m2.x, m2.y, 3.5, 0, Math.PI * 2); ctx.fill() }
     }
-    return { c1, c2, ext, fDirX, fDirY }
+    return { c1, c2 }
   }
 
   function checkCircuit() {
@@ -1219,35 +1205,40 @@ export default function SeriesParallelScene() {
   }
 
   function getTerminals(comp) {
+    // 接线柱在器材左右两端（以柱为圆心做热区）
     const c = Math.cos(comp.rotation || 0), sn = Math.sin(comp.rotation || 0)
-    return [{ x: comp.x - 40 * c, y: comp.y - 40 * sn }, { x: comp.x + 40 * c, y: comp.y + 40 * sn }]
+    const half = comp.type === 'battery' ? 38 : 40
+    return [
+      { x: comp.x - half * c, y: comp.y - half * sn },
+      { x: comp.x + half * c, y: comp.y + half * sn },
+    ]
   }
   function getTermPos(comp, idx) { return getTerminals(comp)[idx] }
 
-  /** 接线热点：左右端子，横向拉长（可向外偏一点），优先于拖动 */
+  /** 接线热点：以接线柱为圆心的圆形热区 */
   function findTerm(mx, my) {
+    const R = 24
     for (const comp of S.current.components) {
       const terms = getTerminals(comp)
       for (let i = 0; i < terms.length; i++) {
-        const dx = (mx - terms[i].x) / 36
-        const dy = (my - terms[i].y) / 22
-        if (dx * dx + dy * dy <= 1) return { compId: comp.id, termIdx: i }
+        const dx = mx - terms[i].x, dy = my - terms[i].y
+        if (dx * dx + dy * dy <= R * R) return { compId: comp.id, termIdx: i }
       }
     }
     return null
   }
 
-  /** 连线过程中的目标端点：吸附区更大，排除源元件 */
+  /** 连线过程中的目标端点：圆形吸附区更大，排除源元件 */
   function findTermNear(mx, my, exceptCompId) {
+    const R = 30
     let best = null, bestD = Infinity
     for (const comp of S.current.components) {
       if (comp.id === exceptCompId) continue
       const terms = getTerminals(comp)
       for (let i = 0; i < terms.length; i++) {
-        const dx = (mx - terms[i].x) / 44
-        const dy = (my - terms[i].y) / 30
+        const dx = mx - terms[i].x, dy = my - terms[i].y
         const d = dx * dx + dy * dy
-        if (d <= 1 && d < bestD) {
+        if (d <= R * R && d < bestD) {
           bestD = d
           best = { compId: comp.id, termIdx: i }
         }
