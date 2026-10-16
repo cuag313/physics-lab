@@ -1088,14 +1088,26 @@ export default function SeriesParallelScene() {
     }
     // 热点提示：左右端子可接线，中心可拖动
     const hot = s.hoverTerm && s.hoverTerm.compId === comp.id
-    // 端子
+    const src = s.connecting && s.connecting.compId === comp.id
     for (let ti = 0; ti < 2; ti++) {
       const tx = ti === 0 ? -40 : 40
-      const isHot = hot && s.hoverTerm.termIdx === ti
-      ctx.fillStyle = isHot ? 'rgba(76,175,80,0.95)' : 'rgba(25,118,210,0.55)'
-      ctx.beginPath(); ctx.arc(tx, 0, isHot ? 6 : 4, 0, Math.PI * 2); ctx.fill()
+      const isSrc = src && s.connecting.termIdx === ti
+      const isTgt = hot && s.hoverTerm.termIdx === ti
+      if (isTgt) {
+        // 目标端点：变绿放大，提示松手即连
+        ctx.fillStyle = 'rgba(76,175,80,0.25)'
+        ctx.beginPath(); ctx.arc(tx, 0, 12, 0, Math.PI * 2); ctx.fill()
+        ctx.fillStyle = '#4CAF50'
+        ctx.beginPath(); ctx.arc(tx, 0, 7, 0, Math.PI * 2); ctx.fill()
+      } else if (isSrc) {
+        ctx.fillStyle = '#FF9800'
+        ctx.beginPath(); ctx.arc(tx, 0, 6, 0, Math.PI * 2); ctx.fill()
+      } else {
+        ctx.fillStyle = 'rgba(25,118,210,0.55)'
+        ctx.beginPath(); ctx.arc(tx, 0, 4, 0, Math.PI * 2); ctx.fill()
+      }
       ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1
-      ctx.beginPath(); ctx.arc(tx, 0, isHot ? 6 : 4, 0, Math.PI * 2); ctx.stroke()
+      ctx.beginPath(); ctx.arc(tx, 0, isTgt ? 7 : isSrc ? 6 : 4, 0, Math.PI * 2); ctx.stroke()
     }
     // 中心拖动把手
     ctx.fillStyle = 'rgba(0,0,0,0.12)'
@@ -1219,6 +1231,25 @@ export default function SeriesParallelScene() {
     return null
   }
 
+  /** 连线过程中的目标端点：吸附区更大，排除源元件 */
+  function findTermNear(mx, my, exceptCompId) {
+    let best = null, bestD = Infinity
+    for (const comp of S.current.components) {
+      if (comp.id === exceptCompId) continue
+      const terms = getTerminals(comp)
+      for (let i = 0; i < terms.length; i++) {
+        const dx = (mx - terms[i].x) / 44
+        const dy = (my - terms[i].y) / 30
+        const d = dx * dx + dy * dy
+        if (d <= 1 && d < bestD) {
+          bestD = d
+          best = { compId: comp.id, termIdx: i }
+        }
+      }
+    }
+    return best
+  }
+
   /** 拖动热点：仅器材正中央，避免和端子抢 */
   function findComp(mx, my) {
     for (let i = S.current.components.length - 1; i >= 0; i--) {
@@ -1281,11 +1312,18 @@ export default function SeriesParallelScene() {
       const m1y = wire.mid1Y != null ? wire.mid1Y : f.y + ddy * 0.33
       const m2x = wire.mid2X != null ? wire.mid2X : f.x + ddx * 0.67
       const m2y = wire.mid2Y != null ? wire.mid2Y : f.y + ddy * 0.67
-      if ((x - m1x) ** 2 + (y - m1y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_1'; forceUpdate(n => n + 1); return }
-      if ((x - m2x) ** 2 + (y - m2y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_2'; forceUpdate(n => n + 1); return }
+      if ((x - m1x) ** 2 + (y - m1y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_1'; s.dragMoved = false; forceUpdate(n => n + 1); return }
+      if ((x - m2x) ** 2 + (y - m2y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_2'; s.dragMoved = false; forceUpdate(n => n + 1); return }
     }
+    // 中心拖动 / 点按开关
     const comp = findComp(x, y)
-    if (comp) { s.dragId = comp.id; s.dragOffX = x - comp.x; s.dragOffY = y - comp.y; forceUpdate(n => n + 1) }
+    if (comp) {
+      s.dragId = comp.id
+      s.dragOffX = x - comp.x; s.dragOffY = y - comp.y
+      s.dragMoved = false
+      s.dragStart = { x, y }
+      forceUpdate(n => n + 1)
+    }
   }, [])
 
   const handleMouseMove = useCallback((e) => {
@@ -1324,6 +1362,7 @@ export default function SeriesParallelScene() {
         const parts = s.dragId.split('_')
         const wire = s.wires.find(w => w.id === parseInt(parts[1]))
         if (wire) {
+          if (s.dragStart && Math.hypot(x - s.dragStart.x, y - s.dragStart.y) > 5) s.dragMoved = true
           if (parseInt(parts[2]) === 1) { wire.mid1X = x; wire.mid1Y = y }
           else { wire.mid2X = x; wire.mid2Y = y }
         }
@@ -1331,7 +1370,8 @@ export default function SeriesParallelScene() {
       }
       const c = s.components.find(c => c.id === s.dragId)
       if (c) {
-        // 自由拖 + 10px 轻微吸附，手感更稳
+        if (s.dragStart && Math.hypot(x - s.dragStart.x, y - s.dragStart.y) > 5) s.dragMoved = true
+        // 自由拖 + 5px 轻微吸附
         const nx = x - s.dragOffX, ny = y - s.dragOffY
         c.x = Math.round(nx / 5) * 5
         c.y = Math.round(ny / 5) * 5
@@ -1340,8 +1380,9 @@ export default function SeriesParallelScene() {
     }
     if (s.connecting) {
       s.connecting.mx = x; s.connecting.my = y
-      const t = findTerm(x, y); s.hoverTerm = t && t.compId !== s.connecting.compId ? t : null
-      canvasRef.current.style.cursor = s.hoverTerm ? 'crosshair' : 'default'
+      const t = findTermNear(x, y, s.connecting.compId)
+      s.hoverTerm = t
+      canvasRef.current.style.cursor = t ? 'crosshair' : 'default'
       return
     }
     const hoverTerm = findTerm(x, y), hoverComp = findComp(x, y)
@@ -1375,7 +1416,22 @@ export default function SeriesParallelScene() {
     }
     if (s.rheoDragging) { s.rheoDragging = false; forceUpdate(n => n + 1); return }
     if (s.tab2RheoDragId != null) { s.tab2RheoDragId = null; forceUpdate(n => n + 1); return }
-    if (s.dragId) { s.dragId = null; forceUpdate(n => n + 1); return }
+    if (s.dragId) {
+      const id = s.dragId
+      const moved = s.dragMoved
+      s.dragId = null; s.dragMoved = false; s.dragStart = null
+      // 轻点开关：切换通断（与中心拖动共存：拖过则只移动）
+      if (!moved && typeof id === 'number') {
+        const c = S.current.components.find(k => k.id === id)
+        if (c && c.type === 'switch') {
+          c.closed = c.closed === false
+          forceUpdate(n => n + 1)
+          return
+        }
+      }
+      forceUpdate(n => n + 1)
+      return
+    }
     if (s.connecting) {
       const t = s.hoverTerm
       if (t && t.compId !== s.connecting.compId) {
