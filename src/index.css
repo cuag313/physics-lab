@@ -211,20 +211,18 @@ canvas {
   position: relative;
 }
 
-/* 信息坞：桌面贴右；手机横屏做成抽屉，不遮电路 */
-.info-dock {
-  /* base styles in JSX; only tweaks here */
-}
-
-.info-dock-toggle {
+/* 信息气泡：右上角折叠胶囊 */
+.info-bubbles {
   touch-action: manipulation;
 }
 
-html.force-landscape .info-dock,
-html.mode-landscape .info-dock {
-  top: 36px;
-  bottom: 0;
-  width: min(280px, 78vw) !important;
+.info-bubble-chip {
+  touch-action: manipulation;
+  min-height: 32px;
+}
+
+.info-bubble-card {
+  text-align: left;
 }
 
 html.force-landscape .scene-desc,

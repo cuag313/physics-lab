@@ -1297,14 +1297,8 @@ export default function SeriesParallelScene() {
           '② 两灯泡串联：总电阻变大，灯变暗',
           '③ 两灯泡并联：总电阻变小，灯变亮',
         ]}
-      >
-        <section>
-          <h3 style={{ fontSize: 12, color: '#1a5a8a', margin: '0 0 6px' }}>要点</h3>
-          <p style={{ margin: 0, lineHeight: 1.55, color: '#555' }}>
-            安培表串联、伏特表并联。手机上长说明收在这里，画布只留电路与读数。
-          </p>
-        </section>
-      </InfoDock>
+        hint="安培表串联、伏特表并联。右侧胶囊可展开/收起说明。"
+      />
     </SceneShell>
   )
 }

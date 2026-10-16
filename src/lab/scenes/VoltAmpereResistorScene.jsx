@@ -902,14 +902,8 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
             '让灯泡电压 ≈ 2.5V，点「记录」',
             '再测低于/高于额定电压两组数据',
           ]}
-        >
-          <section>
-            <h3 style={{ fontSize: 12, color: '#1a5a8a', margin: '0 0 6px' }}>提示</h3>
-            <p style={{ margin: 0, lineHeight: 1.55, color: '#555' }}>
-              建议测 3 组：低于额定、额定、高于额定。画布右侧只显示实时读数，详细步骤在这里。
-            </p>
-          </section>
-        </InfoDock>
+          hint="建议测 3 组：低于额定、额定、高于额定。右侧胶囊可展开/收起说明。"
+        />
       </div>
       <div className="scene-desc" style={st.desc}>
         <b>{title}</b>
