@@ -1060,21 +1060,26 @@ export default function SeriesParallelScene() {
         if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
       }
       ctx.stroke()
-      // 金属滑杆（80px 行程，更易调）
+      // 金属滑杆 + 左右止点（与电路演示一致）
       ctx.strokeStyle = '#90A4AE'; ctx.lineWidth = 3
       ctx.beginPath(); ctx.moveTo(-40, -18); ctx.lineTo(40, -18); ctx.stroke()
-      // 刻度
-      for (let g = -40; g <= 40; g += 16) {
+      // 止点：左=0Ω（最亮），右=最大（最暗不灭）
+      ctx.fillStyle = '#37474F'
+      ctx.beginPath(); ctx.roundRect(-44, -26, 6, 16, 2); ctx.fill()
+      ctx.beginPath(); ctx.roundRect(38, -26, 6, 16, 2); ctx.fill()
+      for (let g = -32; g <= 32; g += 16) {
         ctx.strokeStyle = '#B0BEC5'; ctx.lineWidth = 1
         ctx.beginPath(); ctx.moveTo(g, -18); ctx.lineTo(g, -12); ctx.stroke()
       }
-      // 滑片：大箭头 + 圆点，更好抓
       const sliderX = -40 + (r / 50) * 80
       ctx.fillStyle = '#E65100'
-      ctx.beginPath(); ctx.moveTo(sliderX, -18); ctx.lineTo(sliderX - 7, -6); ctx.lineTo(sliderX + 7, -6); ctx.closePath(); ctx.fill()
-      ctx.beginPath(); ctx.arc(sliderX, -20, 6, 0, Math.PI * 2); ctx.fill()
+      ctx.beginPath(); ctx.moveTo(sliderX, -18); ctx.lineTo(sliderX - 8, -5); ctx.lineTo(sliderX + 8, -5); ctx.closePath(); ctx.fill()
+      ctx.beginPath(); ctx.arc(sliderX, -20, 7, 0, Math.PI * 2); ctx.fill()
       ctx.fillStyle = '#5D4037'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-      ctx.fillText(`变阻器 ${r}Ω`, 0, 14)
+      ctx.fillText(`${r}Ω`, 0, 16)
+      ctx.font = '8px sans-serif'; ctx.fillStyle = '#78909C'
+      ctx.fillText('亮', -40, 28)
+      ctx.fillText('暗', 40, 28)
     } else if (type === 'inductor') {
       // 电感：铜线绕在磁芯上
       ctx.fillStyle = '#ECEFF1'; ctx.strokeStyle = '#607D8B'; ctx.lineWidth = 2
@@ -1389,12 +1394,15 @@ export default function SeriesParallelScene() {
         return // 动画循环已每帧重绘，无需 forceUpdate
       }
     }
-    // Tab2 滑线变阻器滑片拖拽
+    // Tab2 滑线变阻器滑片拖拽（有左右止点）
     if (s.tab2RheoDragId != null) {
       const c = s.components.find(c => c.id === s.tab2RheoDragId)
       if (c) {
         const minX = c.x - 40, maxX = c.x + 40
-        const nx = Math.max(minX, Math.min(maxX, x))
+        let nx = Math.max(minX, Math.min(maxX, x))
+        // 止点吸附：贴到左/右端时锁定 0 / 50
+        if (nx <= minX + 4) nx = minX
+        if (nx >= maxX - 4) nx = maxX
         c.props = c.props || {}
         c.props.resistance = Math.round(((nx - minX) / (maxX - minX)) * 50)
       }
