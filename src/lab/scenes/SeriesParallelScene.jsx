@@ -1032,14 +1032,20 @@ export default function SeriesParallelScene() {
         if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
       }
       ctx.stroke()
-      // 金属滑杆
-      ctx.strokeStyle = '#90A4AE'; ctx.lineWidth = 2.5
-      ctx.beginPath(); ctx.moveTo(-38, -18); ctx.lineTo(38, -18); ctx.stroke()
-      // 滑片箭头（位置随r变化，0~50Ω → x=-30~+30）
-      const sliderX = -30 + (r / 50) * 60
+      // 金属滑杆（80px 行程，更易调）
+      ctx.strokeStyle = '#90A4AE'; ctx.lineWidth = 3
+      ctx.beginPath(); ctx.moveTo(-40, -18); ctx.lineTo(40, -18); ctx.stroke()
+      // 刻度
+      for (let g = -40; g <= 40; g += 16) {
+        ctx.strokeStyle = '#B0BEC5'; ctx.lineWidth = 1
+        ctx.beginPath(); ctx.moveTo(g, -18); ctx.lineTo(g, -12); ctx.stroke()
+      }
+      // 滑片：大箭头 + 圆点，更好抓
+      const sliderX = -40 + (r / 50) * 80
       ctx.fillStyle = '#E65100'
-      ctx.beginPath(); ctx.moveTo(sliderX, -18); ctx.lineTo(sliderX - 4, -10); ctx.lineTo(sliderX + 4, -10); ctx.closePath(); ctx.fill()
-      ctx.fillStyle = '#5D4037'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+      ctx.beginPath(); ctx.moveTo(sliderX, -18); ctx.lineTo(sliderX - 7, -6); ctx.lineTo(sliderX + 7, -6); ctx.closePath(); ctx.fill()
+      ctx.beginPath(); ctx.arc(sliderX, -20, 6, 0, Math.PI * 2); ctx.fill()
+      ctx.fillStyle = '#5D4037'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
       ctx.fillText(`变阻器 ${r}Ω`, 0, 14)
     } else if (type === 'inductor') {
       // 电感：铜线绕在磁芯上
@@ -1293,13 +1299,22 @@ export default function SeriesParallelScene() {
     }
     const term = findTerm(x, y)
     if (term) { s.connecting = { ...term, mx: x, my: y }; forceUpdate(n => n + 1); return }
-    // Tab2 滑线变阻器滑片拖拽（优先于元件整体拖拽）
+    // Tab2 滑线变阻器：滑杆/滑片整条都可拖，映射更灵敏
     for (const c of s.components) {
       if (c.type !== 'rheostat') continue
+      // 滑杆在元件上半部，整条 80px 轨道都可抓
+      const onBar = Math.abs(x - c.x) <= 48 && Math.abs(y - (c.y - 18)) <= 28
       const r = c.props?.resistance ?? 20
-      const sliderX = c.x - 30 + (r / 50) * 60
-      if (Math.abs(x - sliderX) < 12 && Math.abs(y - (c.y - 14)) < 15) {
-        s.tab2RheoDragId = c.id; return
+      const sliderX = c.x - 40 + (r / 50) * 80
+      const onHandle = Math.abs(x - sliderX) <= 16 && Math.abs(y - (c.y - 18)) <= 20
+      if (onBar || onHandle) {
+        s.tab2RheoDragId = c.id
+        // 立刻按当前位置写入，跟手感
+        const minX = c.x - 40, maxX = c.x + 40
+        const nx = Math.max(minX, Math.min(maxX, x))
+        c.props = c.props || {}
+        c.props.resistance = Math.round(((nx - minX) / (maxX - minX)) * 50)
+        return
       }
     }
     for (const wire of s.wires) {
@@ -1350,7 +1365,7 @@ export default function SeriesParallelScene() {
     if (s.tab2RheoDragId != null) {
       const c = s.components.find(c => c.id === s.tab2RheoDragId)
       if (c) {
-        const minX = c.x - 30, maxX = c.x + 30
+        const minX = c.x - 40, maxX = c.x + 40
         const nx = Math.max(minX, Math.min(maxX, x))
         c.props = c.props || {}
         c.props.resistance = Math.round(((nx - minX) / (maxX - minX)) * 50)
@@ -1457,9 +1472,20 @@ export default function SeriesParallelScene() {
 
   const handleDoubleClick = useCallback((e) => {
     if (S.current.tab !== 2) return
+    e.preventDefault()
     const { x, y } = getPos(e)
-    const comp = findComp(x, y)
-    if (comp && comp.type === 'switch') { comp.closed = comp.closed === false ? true : false; forceUpdate(n => n + 1) }
+    // 双击删除：热点放宽到整个元件（电脑右键删除仍保留）
+    let comp = findComp(x, y)
+    if (!comp) {
+      for (const c of S.current.components) {
+        if (Math.abs(x - c.x) < 52 && Math.abs(y - c.y) < 40) { comp = c; break }
+      }
+    }
+    if (comp) {
+      S.current.components = S.current.components.filter(k => k.id !== comp.id)
+      S.current.wires = S.current.wires.filter(w => w.from.compId !== comp.id && w.to.compId !== comp.id)
+      forceUpdate(n => n + 1)
+    }
   }, [])
 
   const handleReset = useCallback(() => {
@@ -1511,7 +1537,7 @@ export default function SeriesParallelScene() {
         />
       ) : (
         <InfoDock
-          hint="拖器材到画布 → 点端子连线 → 双击开关。右键删除器材。"
+          hint="拖器材到画布 → 点端子连线 → 轻点开关通断。双击删除器材（电脑也可右键）。滑杆可拖变阻器。"
           hintTitle="操作说明"
         />
       )}
