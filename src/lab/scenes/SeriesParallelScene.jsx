@@ -1405,8 +1405,39 @@ export default function SeriesParallelScene() {
     canvasRef.current.style.cursor = hoverComp ? 'grab' : hoverTerm ? 'pointer' : 'default'
   }, [])
 
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback((e) => {
     const s = S.current
+    // 记录抬起点，用于识别双击（手机触摸桥不触发原生 dblclick）
+    if (e) {
+      try { s._lastUpPos = getPos(e) } catch (_) { s._lastUpPos = null }
+    }
+    // 自记双击
+    const now = performance.now()
+    const upPos = s._lastUpPos
+    if (s.tab === 2 && upPos) {
+      const isDouble = s._lastUpT && (now - s._lastUpT) < 350
+        && s._lastUpPrev
+        && Math.hypot(upPos.x - s._lastUpPrev.x, upPos.y - s._lastUpPrev.y) < 28
+      if (isDouble && !s.dragMoved) {
+        // 双击删除
+        let comp = findComp(upPos.x, upPos.y)
+        if (!comp) {
+          for (const c of s.components) {
+            if (Math.abs(upPos.x - c.x) < 52 && Math.abs(upPos.y - c.y) < 40) { comp = c; break }
+          }
+        }
+        if (comp) {
+          s.components = s.components.filter(k => k.id !== comp.id)
+          s.wires = s.wires.filter(w => w.from.compId !== comp.id && w.to.compId !== comp.id)
+          s.dragId = null; s.connecting = null; s.palDrag = null
+          s._lastUpT = 0; s._lastUpPrev = null
+          forceUpdate(n => n + 1)
+          return
+        }
+      }
+      s._lastUpPrev = upPos
+      s._lastUpT = now
+    }
     if (s.palDrag) {
       const pd = s.palDrag
       s.palDrag = null
