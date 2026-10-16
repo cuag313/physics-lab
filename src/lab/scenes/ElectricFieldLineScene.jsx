@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
 
 /**
@@ -448,7 +449,7 @@ export default function ElectricFieldLineScene() {
   }
 
   // 交互
-  function getPos(e) { const r = canvasRef.current.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top } }
+  function getPos(e) { return eventToCanvas(canvasRef.current, e) }
   function handleMouseDown(e) {
     if (e.button !== 0) return
     const s = S.current; const { x, y } = getPos(e)

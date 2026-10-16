@@ -4,6 +4,7 @@
  */
 
 import { useRef, useEffect, useState, useCallback } from 'react'
+import { eventToCanvas } from '../utils/pointerPos'
 
 const ELASTIC_LIMIT_RATIO = 0.8
 const WALL_X = 70
@@ -513,10 +514,7 @@ export default function HookeLawScene() {
   }
 
   // ============ 交互 ============
-  function getPos(e) {
-    const r = canvasRef.current.getBoundingClientRect()
-    return [(e.touches ? e.touches[0].clientX : e.clientX) - r.left, (e.touches ? e.touches[0].clientY : e.clientY) - r.top]
-  }
+  function getPos(e) { const p = eventToCanvas(canvasRef.current, e); return [p.x, p.y] }
 
   const handlePointerDown = useCallback((e) => {
     const [sx, sy] = getPos(e), L = getLayout(), y = L.y

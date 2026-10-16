@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
 
 /**
@@ -697,8 +698,7 @@ export default function JouleLawScene() {
 
   // 事件
   function getPos(e) {
-    const rect = canvasRef.current.getBoundingClientRect()
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    return eventToCanvas(canvasRef.current, e)
   }
   function handleMouseDown(e) {
     if (e.button !== 0) return

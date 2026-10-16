@@ -408,7 +408,27 @@ html.force-landscape .lab-shell > div:first-child {
   flex-shrink: 0 !important;
   z-index: 50 !important;
   position: relative !important;
-  min-height: 40px;
+  min-height: 36px !important;
+  max-height: 40px !important;
+  overflow: hidden !important;
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
+}
+
+/* 手机横屏：底栏说明与顶栏重复，让位给画布 */
+html.force-landscape .scene-desc,
+html.force-landscape .lab-body > div > div:last-child[style*="border-top"] {
+  display: none !important;
+}
+
+html.force-landscape .lab-body {
+  font-size: 12px;
+}
+
+html.force-landscape .lab-header span,
+html.force-landscape .lab-header div {
+  font-size: 12px !important;
+  line-height: 1.2 !important;
 }
 
 /* 目录永远竖屏可滚，即使误入横屏类也要能看全 */

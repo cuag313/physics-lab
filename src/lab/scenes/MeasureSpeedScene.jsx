@@ -8,6 +8,7 @@
  */
 
 import { useRef, useEffect, useState, useCallback } from 'react'
+import { eventToCanvas } from '../utils/pointerPos'
 
 // 颜色
 const C = {
@@ -427,11 +428,7 @@ export default function MeasureSpeedScene() {
   }
 
   // ============ 交互 ============
-  function getPos(e) {
-    const r = canvasRef.current.getBoundingClientRect()
-    return [(e.touches ? e.touches[0].clientX : e.clientX) - r.left,
-            (e.touches ? e.touches[0].clientY : e.clientY) - r.top]
-  }
+  function getPos(e) { const p = eventToCanvas(canvasRef.current, e); return [p.x, p.y] }
 
   // 屏幕坐标 → 沿斜面距离 m
   function screenToRampDist(sx, sy) {

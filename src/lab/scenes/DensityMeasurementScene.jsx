@@ -4,6 +4,7 @@
  */
 
 import { useRef, useEffect, useState, useCallback } from 'react'
+import { eventToCanvas } from '../utils/pointerPos'
 
 const MATERIALS = {
   iron:    { name: '铁块', density: 7.87, mass: 78.7, volume: 10, color: '#5a5a5a', color2: '#787878', color3: '#4a4a4a' },
@@ -504,9 +505,8 @@ export default function DensityMeasurementScene() {
 
   // ============ 交互 ============
   function getPos(e) {
-    const r = canvasRef.current.getBoundingClientRect()
-    const t = e.touches?.[0] || e.changedTouches?.[0]
-    return [t ? t.clientX - r.left : e.clientX - r.left, t ? t.clientY - r.top : e.clientY - r.top]
+    const p = eventToCanvas(canvasRef.current, e)
+    return [p.x, p.y]
   }
 
   useEffect(() => {

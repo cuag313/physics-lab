@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
 
 /**
@@ -635,8 +636,7 @@ export default function OstersExperimentScene() {
   //  交互事件
   // ================================================================
   function getPos(e) {
-    const rect = canvasRef.current.getBoundingClientRect()
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    return eventToCanvas(canvasRef.current, e)
   }
   function findTerm(x, y) {
     for (const comp of S.current.components) {

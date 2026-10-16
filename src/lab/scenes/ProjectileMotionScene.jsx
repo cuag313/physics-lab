@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
+import { eventToCanvas } from '../utils/pointerPos'
 
 /**
  * ProjectileMotionScene — PhET Colorado 斜抛运动仿真复刻
@@ -640,10 +641,7 @@ export default function ProjectileMotionScene() {
   }
 
   // ============ 交互 ============
-  function getPos(e) {
-    const r = canvasRef.current.getBoundingClientRect()
-    return [e.clientX - r.left, e.clientY - r.top]
-  }
+  function getPos(e) { const p = eventToCanvas(canvasRef.current, e); return [p.x, p.y] }
 
   const handleMouseDown = useCallback((e) => {
     const [sx, sy] = getPos(e)

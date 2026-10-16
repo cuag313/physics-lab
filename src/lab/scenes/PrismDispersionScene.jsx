@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from 'react'
+import { eventToCanvas } from '../utils/pointerPos'
 import { SceneRenderer } from '../renderers/SceneRenderer'
 
 /**
@@ -85,8 +86,8 @@ export default function PrismDispersionScene() {
     loop()
 
     function getPos(e) {
-      const rect = canvas.getBoundingClientRect()
-      return [e.clientX - rect.left, e.clientY - rect.top]
+      const p = eventToCanvas(canvas, e)
+      return [p.x, p.y]
     }
 
     function onDown(e) {

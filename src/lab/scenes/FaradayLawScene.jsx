@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
 
 /**
@@ -510,7 +511,7 @@ export default function FaradayLawScene() {
   // ================================================================
   //  交互事件
   // ================================================================
-  function getPos(e) { const rect = canvasRef.current.getBoundingClientRect(); return { x: e.clientX - rect.left, y: e.clientY - rect.top } }
+  const getPos = (e) => eventToCanvas(canvasRef.current, e)
   function findTerm(x, y) { for (const comp of S.current.components) { for (let i = 0; i < 2; i++) { const t = getTermPos(comp, i); if (Math.abs(x - t.x) < 10 && Math.abs(y - t.y) < 10) return { compId: comp.id, portIndex: i } } } return null }
 
   function handleMouseDown(e) {

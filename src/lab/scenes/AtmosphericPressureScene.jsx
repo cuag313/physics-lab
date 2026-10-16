@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from 'react'
+import { eventToCanvas } from '../utils/pointerPos'
 
 const STD_ATM_PA = 101325
 const STD_HG_MM = 760
@@ -120,7 +121,7 @@ export default function AtmosphericPressureScene() {
     loop()
 
     // 拖拽
-    function pos(e) { const r = canvas.getBoundingClientRect(); const t = e.touches ? e.touches[0] : e; return { x: t.clientX - r.left, y: t.clientY - r.top } }
+    function pos(e) { return eventToCanvas(canvas, e) }
     function layout() {
       const tankY = H * 0.72, tbX = W * 0.42 + 35, tbY = tankY + S.current.offsetAnim
       return { tankY, tbX, tbY }

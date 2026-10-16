@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
+import { eventToCanvas } from '../utils/pointerPos'
 
 /**
  * SpringForceScene — 质量与弹簧：基础（双弹簧版）
@@ -480,7 +481,7 @@ export default function SpringForceScene() {
   }
 
   // ============ 【砝码拖拽交互】+【参考线拖拽】交互 ============
-  function getPos(e) { const r = canvasRef.current.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top] }
+  function getPos(e) { return eventToCanvas(canvasRef.current, e) }
 
   const handleMouseDown = useCallback((e) => {
     const [sx, sy] = getPos(e)

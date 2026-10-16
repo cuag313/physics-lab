@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { eventToCanvas } from '../utils/pointerPos'
 import { CircuitGraph, CircuitSolver } from '../engine/index.js'
 
 // 模块级数据
@@ -780,7 +781,7 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
   // ═══════════════════════════════════════════════════════════
   //  交互
   // ═══════════════════════════════════════════════════════════
-  const getPos = (e) => { const r = canvasRef.current.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top } }
+  const getPos = (e) => eventToCanvas(canvasRef.current, e)
 
   const handleMouseDown = useCallback((e) => {
     if (e.button !== 0) return
@@ -919,7 +920,7 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
           onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
           onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} />
       </div>
-      <div style={st.desc}>
+      <div className="scene-desc" style={st.desc}>
         <b>{title}</b>
         <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
           {tab === 1 ? '点击开关→点滑动变阻器电阻体调分压→记录3组数据' : '从器材栏拖入器材·点击接线柱连线·双击开关·拖动变阻器滑片'}
@@ -930,8 +931,8 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
 }
 
 const st = {
-  container: { display: 'flex', flexDirection: 'column', height: '100vh', maxHeight: '100vh', background: '#f0f4f8', color: '#333', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', overflow: 'hidden' },
-  topBar: { minHeight: 44, background: '#f5f5f5', borderBottom: '1px solid #ccc', display: 'flex', alignItems: 'center', padding: '0 12px', flexShrink: 0, gap: 12 },
+  container: { display: 'flex', flexDirection: 'column', height: '100%', maxHeight: '100%', background: '#f0f4f8', color: '#333', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', overflow: 'hidden' },
+  topBar: { minHeight: 36, background: '#f5f5f5', borderBottom: '1px solid #ccc', display: 'flex', alignItems: 'center', padding: '0 8px', flexShrink: 0, gap: 6 },
   title: { fontSize: 14, fontWeight: 600, color: '#333' },
   topActions: { display: 'flex', alignItems: 'center', gap: 6 },
   tab: { background: '#f0f0f0', color: '#666', border: '1px solid #ddd', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer' },

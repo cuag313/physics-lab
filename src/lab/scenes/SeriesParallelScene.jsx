@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
 import { CircuitGraph, CircuitSolver } from '../engine/index.js'
 
@@ -1098,7 +1099,7 @@ export default function SeriesParallelScene() {
     return null
   }
 
-  const getPos = (e) => { const r = canvasRef.current.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top } }
+  const getPos = (e) => eventToCanvas(canvasRef.current, e)
 
   const handleMouseDown = useCallback((e) => {
     if (e.button !== 0) return

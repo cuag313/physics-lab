@@ -91,7 +91,7 @@ export default function SceneShell({
         )}
       </div>
 
-      {desc && <div style={styles.desc}>{desc}</div>}
+      {desc && <div className="scene-desc" style={styles.desc}>{desc}</div>}
       {footer}
     </div>
   )

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
 
 /**
@@ -588,7 +589,7 @@ export default function CapacitorChargeScene() {
   }
 
   // 交互
-  function getPos(e) { const r = canvasRef.current.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top } }
+  function getPos(e) { return eventToCanvas(canvasRef.current, e) }
   function findTerm(x, y) { for (const c of S.current.components) { for (let i = 0; i < 2; i++) { const t = getTermPos(c, i); if (Math.abs(x - t.x) < 10 && Math.abs(y - t.y) < 10) return { compId: c.id, portIndex: i } } } return null }
   function handleMouseDown(e) { if (e.button !== 0) return; const s = S.current; const { x, y } = getPos(e); if (s.tab === 1) { for (const a of canvasRef.current._clickAreas) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(x, y); return } } return } for (const a of canvasRef.current._clickAreas || []) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(); return } } for (const a of canvasRef.current._palAreas) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { if (a.action === 'color') { s.wireColor = a.color; forceUpdate(n => n + 1); return } if (a.type) { s.components.push({ id: s.nextId++, type: a.type, x, y, closed: a.type === 'switch' ? false : true, props: {} }); s.dragId = s.nextId - 1; forceUpdate(n => n + 1); return } } } const term = findTerm(x, y); if (term) { s.connecting = { ...term, mx: x, my: y }; forceUpdate(n => n + 1); return } for (const c of s.components) { if (Math.abs(x - c.x) < 30 && Math.abs(y - c.y) < 25) { s.dragId = c.id; s.dragOffX = x - c.x; s.dragOffY = y - c.y; forceUpdate(n => n + 1); return } } }
   function handleMouseMove(e) { const s = S.current; const { x, y } = getPos(e); if (s.connecting) { s.connecting.mx = x; s.connecting.my = y; forceUpdate(n => n + 1); return } if (s.dragId == null) return; const c = s.components.find(c => c.id === s.dragId); if (c) { c.x = x - s.dragOffX; c.y = y - s.dragOffY; forceUpdate(n => n + 1) } }

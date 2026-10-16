@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
+import { eventToCanvas } from '../utils/pointerPos'
 import { PhysicsScene } from '../core/PhysicsScene'
 import { SceneRenderer } from '../renderers/SceneRenderer'
 import Toolbox from './Toolbox'
@@ -256,9 +257,7 @@ export default function ExperimentBench({ preset = null, title = '物理实验�
     const renderer = rendererRef.current
     if (!scene || !renderer) return
 
-    const rect = canvasRef.current.getBoundingClientRect()
-    const sx = e.clientX - rect.left
-    const sy = e.clientY - rect.top
+    const { x: sx, y: sy } = eventToCanvas(canvasRef.current, e)
     const [wx, wy] = renderer.screenToWorld(sx, sy)
     const interaction = interactionRef.current
 
@@ -413,9 +412,7 @@ export default function ExperimentBench({ preset = null, title = '物理实验�
     const renderer = rendererRef.current
     if (!renderer) return
 
-    const rect = canvasRef.current.getBoundingClientRect()
-    const sx = e.clientX - rect.left
-    const sy = e.clientY - rect.top
+    const { x: sx, y: sy } = eventToCanvas(canvasRef.current, e)
     const [wx, wy] = renderer.screenToWorld(sx, sy)
     const interaction = interactionRef.current
 
@@ -438,9 +435,7 @@ export default function ExperimentBench({ preset = null, title = '物理实验�
     const renderer = rendererRef.current
     if (!scene || !renderer) return
 
-    const rect = canvasRef.current.getBoundingClientRect()
-    const sx = e.clientX - rect.left
-    const sy = e.clientY - rect.top
+    const { x: sx, y: sy } = eventToCanvas(canvasRef.current, e)
     const interaction = interactionRef.current
 
     // 连线模式：松手
@@ -494,9 +489,7 @@ export default function ExperimentBench({ preset = null, title = '物理实验�
     const renderer = rendererRef.current
     if (!scene || !renderer) return
 
-    const rect = canvasRef.current.getBoundingClientRect()
-    const sx = e.clientX - rect.left
-    const sy = e.clientY - rect.top
+    const { x: sx, y: sy } = eventToCanvas(canvasRef.current, e)
     const [wx, wy] = renderer.screenToWorld(sx, sy)
     const inst = findInstrumentAt(wx, wy)
     if (inst && inst.type === 'switch') {

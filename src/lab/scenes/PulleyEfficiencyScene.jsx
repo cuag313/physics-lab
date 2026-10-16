@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
+import { eventToCanvas } from '../utils/pointerPos'
 
 /**
  * PulleyEfficiencyScene — 测量滑轮组机械效率（v12 绕线逻辑严格修正）
@@ -359,17 +360,7 @@ export default function PulleyEfficiencyScene() {
   }, [])
 
   // ============ 交互 ============
-  const getPos = useCallback((e) => {
-    const canvas = canvasRef.current
-    if (!canvas) return null
-    const rect = canvas.getBoundingClientRect()
-    const t = e.touches ? e.touches[0] : e
-    if (!t || t.clientX == null) return null
-    return {
-      x: (t.clientX - rect.left) * (canvas.width / rect.width),
-      y: (t.clientY - rect.top) * (canvas.height / rect.height),
-    }
-  }, [])
+  const getPos = useCallback((e) => eventToCanvas(canvasRef.current, e), [])
 
   const handleDown = useCallback((e) => {
     const pos = getPos(e)

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
 import BuilderPalette from '../ui/BuilderPalette'
 
@@ -507,7 +508,7 @@ export default function SimpleCircuitScene() {
   // ================================================================
   //  交互
   // ================================================================
-  const getPos = (e) => { const r = canvasRef.current.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top } }
+  const getPos = (e) => eventToCanvas(canvasRef.current, e)
 
   const handleMouseDown = useCallback((e) => {
     if (e.button !== 0) return
