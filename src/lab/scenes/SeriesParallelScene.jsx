@@ -177,13 +177,10 @@ export default function SeriesParallelScene() {
     ctx.fillStyle = '#1565C0'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     ctx.fillText('I', (ammX + bulbX) / 2, top - 12)
 
-    // 元件名标签：统一在元件正上方（与Step2/Step3一致）
+    // 元件名标签（电表符号内已有 A/V，不再重复标注）
     ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
     ctx.fillText('变阻器', rheoX, top - 22)
-    ctx.fillText('A', ammX, top - 22)
     ctx.fillText('L₁', bulbX, top - 22)
-    ctx.fillStyle = '#4CAF50'; ctx.font = '10px sans-serif'
-    ctx.fillText('V', voltX, volY - 22)
     // R=U/I 计算（变阻器串入不影响 R灯=U₁/I）
     if (on) {
       ctx.fillStyle = '#333'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
@@ -266,17 +263,12 @@ export default function SeriesParallelScene() {
     ctx.fillStyle = '#1565C0'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     ctx.fillText('I', (ammX + bulb1X) / 2, top - 12)
 
-    // 元件名标签：统一在元件正上方
+    // 元件名标签（电表符号内已有 A/V，不再重复标注）
     ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
     ctx.fillText('变阻器', rheoX, top - 22)
-    ctx.fillText('A', ammX, top - 22)
     ctx.fillText('L₁', bulb1X, top - 22)
     ctx.fillText('L₂', bulb2X, top - 22)
-    // V表标签：V1/V2 在表上方，V总在表下方
-    ctx.fillStyle = '#4CAF50'; ctx.font = '10px sans-serif'
-    ctx.fillText('V₁', bulb1X, volY1 - 22)
-    ctx.fillText('V₂', bulb2X, volY2 - 22)
-    ctx.fillStyle = '#9C27B0'
+    ctx.fillStyle = '#9C27B0'; ctx.font = '10px sans-serif'
     ctx.fillText('V总=V₁+V₂', vTotalX, volYT + 30)
 
     // 公式
@@ -366,13 +358,10 @@ export default function SeriesParallelScene() {
     ctx.fillText('I₁', (bulb1X + a1X) / 2, topY - 12)
     ctx.fillText('I₂', (bulb2X + a2X) / 2, midY - 12)
 
-    // 元件名标签：统一标在元件正上方
+    // 元件名标签（电表符号内已有 A/V，不再重复标注）
     ctx.fillStyle = '#555'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-    ctx.fillText('A', ammX, midY - 22)
     ctx.fillText('L₁', bulb1X, topY - 22)
-    ctx.fillText('A₁', a1X, topY - 22)
     ctx.fillText('L₂', bulb2X, midY - 22)
-    ctx.fillText('A₂', a2X, midY - 22)
     ctx.fillStyle = '#8D6E63'; ctx.font = '10px sans-serif'
     ctx.fillText('变阻器', rheoX, midY + 28)
 
