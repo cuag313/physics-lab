@@ -164,7 +164,7 @@ export default function SeriesParallelScene() {
     s._rheoX = rheoX; s._topY = top
     drawRheoSym(ctx, rheoX, top, s.sliderR)
     drawMeterInCircuit(ctx, ammX, top, 'A', on ? `${I.toFixed(2)}A` : '', '#E53935')
-    drawStdBulb(ctx, bulbX, top, on ? Math.max(0.15, Math.min(1, I * 1.1)) : 0)
+    drawStdBulb(ctx, bulbX, top, bulbBrightness(on, s))
     // 伏特表（只跨灯泡）
     const voltX = bulbX, volY = top + 45
     drawLine(ctx, bulbX - 16, top, bulbX - 16, volY, wc, 2)
@@ -230,7 +230,7 @@ export default function SeriesParallelScene() {
     s._rheoX = rheoX; s._topY = top
     drawRheoSym(ctx, rheoX, top, s.sliderR)
     drawMeterInCircuit(ctx, ammX, top, 'A', on ? `${I.toFixed(2)}A` : '', '#E53935')
-    const brightness = on ? Math.max(0.1, Math.min(1, I * 1.1)) : 0
+    const brightness = bulbBrightness(on, s)
     drawStdBulb(ctx, bulb1X, top, brightness)
     drawStdBulb(ctx, bulb2X, top, brightness)
 
@@ -341,8 +341,8 @@ export default function SeriesParallelScene() {
     s._rheoX = rheoX; s._topY = midY
     drawRheoSym(ctx, rheoX, midY, s.sliderR)
     drawMeterInCircuit(ctx, ammX, midY, 'A', on ? `干路 ${I.toFixed(2)}A` : '', '#E53935')
-    drawStdBulb(ctx, bulb1X, topY, on ? 0.9 : 0)
-    drawStdBulb(ctx, bulb2X, midY, on ? 0.9 : 0)
+    drawStdBulb(ctx, bulb1X, topY, bulbBrightness(on, s))
+    drawStdBulb(ctx, bulb2X, midY, bulbBrightness(on, s))
     drawMeterInCircuit(ctx, a1X, topY, 'A', on ? `A₁ ${I1.toFixed(2)}A` : '', '#FF9800')
     drawMeterInCircuit(ctx, a2X, midY, 'A', on ? `A₂ ${I2.toFixed(2)}A` : '', '#FF9800')
 
@@ -624,20 +624,37 @@ export default function SeriesParallelScene() {
     canvasRef.current._clickAreas.push({ x: x - 25, y: y - 25, w: 50, h: 50, onClick })
   }
 
+  /** 灯泡亮度：随滑动变阻器连续渐变（左 0Ω 最亮，右最大最暗但不熄灭） */
+  function bulbBrightness(on, s) {
+    if (!on) return 0
+    const r = Math.max(0, Math.min(50, s.sliderR ?? 0))
+    return 0.18 + 0.82 * (1 - r / 50)
+  }
+
   function drawStdBulb(ctx, x, y, brightness) {
-    const r = 14
-    ctx.fillStyle = brightness > 0.3 ? '#FFEB3B' : '#f5f5f5'
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
-    ctx.strokeStyle = brightness > 0.3 ? '#F9A825' : '#999'; ctx.lineWidth = 1.5
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke()
-    ctx.strokeStyle = brightness > 0.3 ? '#E65100' : '#999'; ctx.lineWidth = 1.5
-    const s = r * 0.55
+    const b = Math.max(0, Math.min(1, brightness || 0))
+    const lit = b > 0.05
+    const mix = lit ? b : 0
+    const rC = Math.round(245 + (255 - 245) * mix)
+    const gC = Math.round(245 + (235 - 245) * mix)
+    const bC = Math.round(245 + (59 - 245) * mix)
+    ctx.fillStyle = 'rgb(' + rC + ',' + gC + ',' + bC + ')'
+    const edge = lit ? 0.35 + 0.65 * mix : 0
+    ctx.strokeStyle = 'rgb(' + Math.round(153 + (249 - 153) * edge) + ',' + Math.round(153 + (168 - 153) * edge) + ',' + Math.round(153 + (40 - 153) * edge) + ')'
+    ctx.lineWidth = 1.5
+    ctx.beginPath(); ctx.arc(x, y, 14, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    ctx.strokeStyle = lit ? 'rgba(230,80,0,' + (0.4 + 0.6 * mix) + ')' : '#999'
+    ctx.lineWidth = 1.5
+    const s = 14 * 0.55
     ctx.beginPath(); ctx.moveTo(x - s, y - s); ctx.lineTo(x + s, y + s); ctx.stroke()
     ctx.beginPath(); ctx.moveTo(x + s, y - s); ctx.lineTo(x - s, y + s); ctx.stroke()
-    if (brightness > 0.3) {
-      const glow = ctx.createRadialGradient(x, y, r, x, y, r * 3)
-      glow.addColorStop(0, `rgba(255,235,59,${brightness * 0.3})`); glow.addColorStop(1, 'rgba(255,235,59,0)')
-      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, r * 3, 0, Math.PI * 2); ctx.fill()
+    if (lit && b > 0.08) {
+      const gr = 28 + 30 * mix
+      const glow = ctx.createRadialGradient(x, y, 14, x, y, gr)
+      glow.addColorStop(0, 'rgba(255,235,59,' + (0.12 + 0.35 * mix) + ')')
+      glow.addColorStop(1, 'rgba(255,235,59,0)')
+      ctx.fillStyle = glow
+      ctx.beginPath(); ctx.arc(x, y, gr, 0, Math.PI * 2); ctx.fill()
     }
   }
 
@@ -672,20 +689,7 @@ export default function SeriesParallelScene() {
 
   // 竖直灯泡（并联用）
   function drawStdBulbV(ctx, x, y, brightness) {
-    const r = 14
-    ctx.fillStyle = brightness > 0.3 ? '#FFEB3B' : '#f5f5f5'
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
-    ctx.strokeStyle = brightness > 0.3 ? '#F9A825' : '#999'; ctx.lineWidth = 1.5
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke()
-    ctx.strokeStyle = brightness > 0.3 ? '#E65100' : '#999'; ctx.lineWidth = 1.5
-    const s = r * 0.55
-    ctx.beginPath(); ctx.moveTo(x - s, y - s); ctx.lineTo(x + s, y + s); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(x + s, y - s); ctx.lineTo(x - s, y + s); ctx.stroke()
-    if (brightness > 0.3) {
-      const glow = ctx.createRadialGradient(x, y, r, x, y, r * 3)
-      glow.addColorStop(0, `rgba(255,235,59,${brightness * 0.3})`); glow.addColorStop(1, 'rgba(255,235,59,0)')
-      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, r * 3, 0, Math.PI * 2); ctx.fill()
-    }
+    drawStdBulb(ctx, x, y, brightness)
   }
 
   // 仪表符号（表盘内：字母居中，读数在圆内下方，不顶圆边）
