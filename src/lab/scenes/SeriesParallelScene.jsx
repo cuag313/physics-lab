@@ -744,9 +744,23 @@ export default function SeriesParallelScene() {
       const fc = s.components.find(c => c.id === s.connecting.compId)
       if (fc) {
         const ft = getTermPos(fc, s.connecting.termIdx)
-        ctx.strokeStyle = s.wireColor; ctx.lineWidth = 2; ctx.setLineDash([5, 5])
-        ctx.beginPath(); ctx.moveTo(ft.x, ft.y); ctx.lineTo(s.connecting.mx, s.connecting.my); ctx.stroke()
-        ctx.setLineDash([])
+        const tx = s.connecting.mx, ty = s.connecting.my
+        const dx = tx - ft.x, dy = ty - ft.y
+        const dist = Math.hypot(dx, dy) || 1
+        const ext = Math.max(24, Math.min(70, dist * 0.4))
+        const fDirX = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? -1 : 1) : 0
+        const fDirY = fDirX === 0 ? (dy >= 0 ? -1 : 1) : 0
+        ctx.strokeStyle = s.hoverTerm ? '#4CAF50' : s.wireColor
+        ctx.lineWidth = 1.8; ctx.lineCap = 'round'; ctx.setLineDash([6, 4])
+        ctx.beginPath()
+        ctx.moveTo(ft.x, ft.y)
+        ctx.bezierCurveTo(
+          ft.x + fDirX * ext, ft.y + fDirY * ext,
+          tx - fDirX * ext * 0.6, ty - fDirY * ext * 0.6,
+          tx, ty
+        )
+        ctx.stroke()
+        ctx.setLineDash([]); ctx.lineCap = 'butt'
       }
     }
 
@@ -1090,23 +1104,33 @@ export default function SeriesParallelScene() {
     const tc = S.current.components.find(c => c.id === wire.to.compId)
     if (!fc || !tc) return
     const f = getTermPos(fc, wire.from.termIdx), t = getTermPos(tc, wire.to.termIdx)
-    const color = wire.color || '#1565C0'
+    strokeBezierWire(ctx, f, t, wire.color || '#1565C0', wire.mid1X != null ? { x: wire.mid1X, y: wire.mid1Y } : null, wire.mid2X != null ? { x: wire.mid2X, y: wire.mid2Y } : null)
+  }
+
+  /** 三次贝塞尔连线：默认沿端子方向出线；可被 mid1/mid2 弯折 */
+  function strokeBezierWire(ctx, f, t, color, m1, m2) {
     const dx = t.x - f.x, dy = t.y - f.y
-    const dist = Math.sqrt(dx * dx + dy * dy)
-    const ext = Math.min(Math.abs(dx) * 0.5, 80)
-    const fDir = f.x < t.x ? -1 : 1
-    const tDir = f.x < t.x ? 1 : -1
+    const dist = Math.hypot(dx, dy) || 1
+    // 出线方向：水平优先，让电路更像原理图
+    const ext = Math.max(28, Math.min(90, dist * 0.38))
+    const fDirX = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? -1 : 1) : 0
+    const fDirY = fDirX === 0 ? (dy >= 0 ? -1 : 1) : 0
+    const tDirX = -fDirX, tDirY = -fDirY
+    const c1 = m1 || { x: f.x + fDirX * ext, y: f.y + fDirY * ext }
+    const c2 = m2 || { x: t.x + tDirX * ext, y: t.y + tDirY * ext }
     ctx.strokeStyle = color; ctx.lineWidth = 1.8; ctx.lineCap = 'round'
-    ctx.beginPath(); ctx.moveTo(f.x, f.y)
-    if (wire.mid1X != null) {
-      ctx.lineTo(wire.mid1X, wire.mid1Y)
-      if (wire.mid2X != null) ctx.lineTo(wire.mid2X, wire.mid2Y)
-      ctx.lineTo(t.x, t.y)
-    } else {
-      ctx.bezierCurveTo(f.x + fDir * ext, f.y, t.x + tDir * ext, t.y, t.x, t.y)
-    }
+    ctx.beginPath()
+    ctx.moveTo(f.x, f.y)
+    ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, t.x, t.y)
     ctx.stroke()
     ctx.lineCap = 'butt'
+    // 弯折点手柄（可拖）
+    if (m1 || m2) {
+      ctx.fillStyle = 'rgba(21,101,192,0.85)'
+      if (m1) { ctx.beginPath(); ctx.arc(m1.x, m1.y, 3.5, 0, Math.PI * 2); ctx.fill() }
+      if (m2) { ctx.beginPath(); ctx.arc(m2.x, m2.y, 3.5, 0, Math.PI * 2); ctx.fill() }
+    }
+    return { c1, c2, ext, fDirX, fDirY }
   }
 
   function checkCircuit() {
@@ -1171,7 +1195,7 @@ export default function SeriesParallelScene() {
     for (const comp of S.current.components) {
       const terms = getTerminals(comp)
       for (let i = 0; i < terms.length; i++) {
-        if ((mx - terms[i].x) ** 2 + (my - terms[i].y) ** 2 < 144) return { compId: comp.id, termIdx: i }
+        if ((mx - terms[i].x) ** 2 + (my - terms[i].y) ** 2 < 400) return { compId: comp.id, termIdx: i } // 热区 20px
       }
     }
     return null
@@ -1260,8 +1284,7 @@ export default function SeriesParallelScene() {
       if (Math.abs(dy) > 6) s.palDrag.moved = true
       if (s.palDrag.moved) {
         s._palScroll = s.palDrag.scroll0 - dy
-        forceUpdate(n => n + 1)
-        return
+        return // 动画循环已每帧重绘，无需 forceUpdate
       }
     }
     // Tab2 滑线变阻器滑片拖拽
@@ -1272,7 +1295,6 @@ export default function SeriesParallelScene() {
         const nx = Math.max(minX, Math.min(maxX, x))
         c.props = c.props || {}
         c.props.resistance = Math.round(((nx - minX) / (maxX - minX)) * 50)
-        forceUpdate(n => n + 1)
       }
       return
     }
@@ -1283,19 +1305,23 @@ export default function SeriesParallelScene() {
         if (wire) {
           if (parseInt(parts[2]) === 1) { wire.mid1X = x; wire.mid1Y = y }
           else { wire.mid2X = x; wire.mid2Y = y }
-          forceUpdate(n => n + 1)
         }
         return
       }
       const c = s.components.find(c => c.id === s.dragId)
-      if (c) { c.x = x - s.dragOffX; c.y = y - s.dragOffY; forceUpdate(n => n + 1) }
+      if (c) {
+        // 自由拖 + 10px 轻微吸附，手感更稳
+        const nx = x - s.dragOffX, ny = y - s.dragOffY
+        c.x = Math.round(nx / 5) * 5
+        c.y = Math.round(ny / 5) * 5
+      }
       return
     }
     if (s.connecting) {
       s.connecting.mx = x; s.connecting.my = y
       const t = findTerm(x, y); s.hoverTerm = t && t.compId !== s.connecting.compId ? t : null
       canvasRef.current.style.cursor = s.hoverTerm ? 'crosshair' : 'default'
-      forceUpdate(n => n + 1); return
+      return
     }
     const hoverTerm = findTerm(x, y), hoverComp = findComp(x, y)
     s.hoverTerm = hoverTerm
