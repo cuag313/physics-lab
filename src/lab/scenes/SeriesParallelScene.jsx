@@ -1086,6 +1086,20 @@ export default function SeriesParallelScene() {
       ctx.fillStyle = '#333'; ctx.font = 'bold 10px monospace'
       ctx.fillText(isClosed ? `${volt.toFixed(1)}V` : '--', 0, 10)
     }
+    // 热点提示：左右端子可接线，中心可拖动
+    const hot = s.hoverTerm && s.hoverTerm.compId === comp.id
+    // 端子
+    for (let ti = 0; ti < 2; ti++) {
+      const tx = ti === 0 ? -40 : 40
+      const isHot = hot && s.hoverTerm.termIdx === ti
+      ctx.fillStyle = isHot ? 'rgba(76,175,80,0.95)' : 'rgba(25,118,210,0.55)'
+      ctx.beginPath(); ctx.arc(tx, 0, isHot ? 6 : 4, 0, Math.PI * 2); ctx.fill()
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1
+      ctx.beginPath(); ctx.arc(tx, 0, isHot ? 6 : 4, 0, Math.PI * 2); ctx.stroke()
+    }
+    // 中心拖动把手
+    ctx.fillStyle = 'rgba(0,0,0,0.12)'
+    ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill()
     ctx.globalAlpha = 1; ctx.restore()
 
     const terms = getTerminals(comp)
@@ -1191,19 +1205,26 @@ export default function SeriesParallelScene() {
     return [{ x: comp.x - 40 * c, y: comp.y - 40 * sn }, { x: comp.x + 40 * c, y: comp.y + 40 * sn }]
   }
   function getTermPos(comp, idx) { return getTerminals(comp)[idx] }
+
+  /** 接线热点：左右端子，横向拉长（可向外偏一点），优先于拖动 */
   function findTerm(mx, my) {
     for (const comp of S.current.components) {
       const terms = getTerminals(comp)
       for (let i = 0; i < terms.length; i++) {
-        if ((mx - terms[i].x) ** 2 + (my - terms[i].y) ** 2 < 400) return { compId: comp.id, termIdx: i } // 热区 20px
+        const dx = (mx - terms[i].x) / 36
+        const dy = (my - terms[i].y) / 22
+        if (dx * dx + dy * dy <= 1) return { compId: comp.id, termIdx: i }
       }
     }
     return null
   }
+
+  /** 拖动热点：仅器材正中央，避免和端子抢 */
   function findComp(mx, my) {
     for (let i = S.current.components.length - 1; i >= 0; i--) {
       const c = S.current.components[i]
-      if (Math.abs(mx - c.x) < 45 && Math.abs(my - c.y) < 35) return c
+      const dx = mx - c.x, dy = my - c.y
+      if (dx * dx + dy * dy <= 24 * 24) return c
     }
     return null
   }
@@ -1334,13 +1355,15 @@ export default function SeriesParallelScene() {
       const pd = s.palDrag
       s.palDrag = null
       if (!pd.moved) {
-        // 轻点：命中器材则放置
+        // 轻点：命中器材则放到工作区中部（不落在器材栏上）
         for (const a of canvasRef.current._palAreas || []) {
           if (pd.x >= a.x && pd.x <= a.x + a.w && pd.y >= a.y && pd.y <= a.y + a.h) {
             if (a.action === 'color') { s.wireColor = a.color; forceUpdate(n => n + 1); return }
             if (a.type) {
               const id = s.nextId++
-              s.components.push({ id, type: a.type, x: pd.x, y: pd.y, rotation: 0, closed: true, props: a.type === 'rheostat' ? { resistance: 20 } : {} })
+              const wx = s._palRect ? s._palRect.x * 0.42 : pd.x
+              const wy = s._palRect ? s._palRect.y + s._palRect.h * 0.45 : pd.y
+              s.components.push({ id, type: a.type, x: wx, y: wy, rotation: 0, closed: true, props: a.type === 'rheostat' ? { resistance: 20 } : {} })
               s.dragId = id; s.dragOffX = 0; s.dragOffY = 0
             }
             break
