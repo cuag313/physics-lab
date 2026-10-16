@@ -28,11 +28,22 @@
         function enableForceLandscape() {
           html.classList.add('force-landscape')
           html.classList.add('mode-landscape')
+          nudgeCanvases()
         }
 
         function disableForceLandscape() {
           html.classList.remove('force-landscape')
           syncMode()
+          nudgeCanvases()
+        }
+
+        // 强制横屏会改变布局尺寸；场景普遍监听 window.resize 重设 canvas 位图。
+        // 不发事件的话，canvas 仍停留在进实验前的宽高，画面被拉伸/裁切像死截图。
+        function nudgeCanvases() {
+          requestAnimationFrame(function () {
+            window.dispatchEvent(new Event('resize'))
+            setTimeout(function () { window.dispatchEvent(new Event('resize')) }, 80)
+          })
         }
 
         // 真横屏时清掉强制，避免双重
@@ -41,6 +52,7 @@
             html.classList.remove('force-landscape')
           }
           syncMode()
+          // 这里不要再 nudgeCanvases：nudge 会派发 resize，形成死循环
         }
         window.addEventListener('orientationchange', onOrient)
         window.addEventListener('resize', onOrient)
@@ -50,10 +62,13 @@
           if (window.matchMedia('(orientation: landscape)').matches && window.innerWidth <= 900) {
             html.classList.remove('force-landscape')
             syncMode()
+            nudgeCanvases()
             return
           }
           if (window.innerWidth <= 900) {
             enableForceLandscape()
+          } else {
+            nudgeCanvases()
           }
         }
         window.mimoExitLandscape = disableForceLandscape

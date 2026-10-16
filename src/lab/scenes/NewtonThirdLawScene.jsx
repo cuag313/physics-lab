@@ -99,7 +99,7 @@ export default function NewtonThirdLawScene() {
       scale: 70,
       ox: 0, oy: 0,
       resize() {
-        const rect = canvas.getBoundingClientRect()
+        const rect = { width: canvas.clientWidth, height: canvas.clientHeight }
         canvas.width = rect.width * devicePixelRatio
         canvas.height = rect.height * devicePixelRatio
         this.ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0)

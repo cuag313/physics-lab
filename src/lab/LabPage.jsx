@@ -124,6 +124,8 @@ export default function LabPage({ onBack }) {
     if (exp.comingSoon) return
     setCurrentExperiment(exp)
     setShowCatalog(false)
+    // 同步进横屏，不靠 effect 延时（延时会被 StrictMode/重渲染 cleanup 清掉）
+    if (window.mimoEnterLandscape) window.mimoEnterLandscape()
   }, [])
 
   const handleBackToCatalog = useCallback(() => {
@@ -139,11 +141,8 @@ export default function LabPage({ onBack }) {
   useEffect(() => {
     if (currentExperiment && !showCatalog) {
       document.body.classList.add('in-experiment')
-      const t = setTimeout(() => {
-        if (window.mimoEnterLandscape) window.mimoEnterLandscape()
-      }, 50)
+      if (window.mimoEnterLandscape) window.mimoEnterLandscape()
       return () => {
-        clearTimeout(t)
         document.body.classList.remove('in-experiment')
       }
     }

@@ -371,6 +371,8 @@ html.mode-landscape {
 html.mode-landscape #root {
   width: 100% !important;
   height: 100% !important;
+  /* 必须压掉基础规则的 min-height:100dvh，否则竖屏视口高度会把容器撑爆 */
+  min-height: 0 !important;
   overflow: hidden !important;
 }
 
@@ -380,6 +382,8 @@ html.force-landscape #root {
   left: 100% !important;
   width: 100vh !important;
   height: 100vw !important;
+  min-height: 0 !important;
+  max-height: 100vw !important;
   transform: rotate(90deg) !important;
   transform-origin: top left !important;
   overflow: hidden !important;

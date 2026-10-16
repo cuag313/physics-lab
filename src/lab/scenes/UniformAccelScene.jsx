@@ -67,7 +67,7 @@ export default function UniformAccelScene() {
     const r = {
       canvas, ctx: canvas.getContext('2d'), screenW: 0, screenH: 0,
       resize() {
-        const rect = canvas.getBoundingClientRect()
+        const rect = { width: canvas.clientWidth, height: canvas.clientHeight }
         canvas.width = rect.width * devicePixelRatio
         canvas.height = rect.height * devicePixelRatio
         this.ctx.scale(devicePixelRatio, devicePixelRatio)

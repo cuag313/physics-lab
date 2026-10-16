@@ -76,7 +76,7 @@ export default function AtmosphericPressureScene() {
     const ctx = canvas.getContext('2d')
     let W = 0, H = 0
     function resize() {
-      const r = canvas.getBoundingClientRect()
+      const r = { width: canvas.clientWidth, height: canvas.clientHeight }
       const dpr = devicePixelRatio || 1
       canvas.width = Math.max(1, r.width * dpr)
       canvas.height = Math.max(1, r.height * dpr)

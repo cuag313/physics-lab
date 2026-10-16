@@ -89,7 +89,7 @@ export default function NewtonFirstLawScene() {
       scale: 90,
       ox: 0, oy: 0,
       resize() {
-        const rect = canvas.getBoundingClientRect()
+        const rect = { width: canvas.clientWidth, height: canvas.clientHeight }
         canvas.width = rect.width * devicePixelRatio
         canvas.height = rect.height * devicePixelRatio
         this.ctx.scale(devicePixelRatio, devicePixelRatio)

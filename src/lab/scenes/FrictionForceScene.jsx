@@ -104,7 +104,7 @@ export default function FrictionForceScene() {
       canvas, ctx: canvas.getContext('2d'),
       W: 0, H: 0, scale: 70, ox: 0, oy: 0,
       resize() {
-        const rect = canvas.getBoundingClientRect()
+        const rect = { width: canvas.clientWidth, height: canvas.clientHeight }
         canvas.width = rect.width; canvas.height = rect.height
         this.W = rect.width; this.H = rect.height
         this.ox = this.W * 0.4; this.oy = this.H * 0.58

@@ -59,7 +59,7 @@ export default function ParallelogramRuleScene({ preset }) {
       screenW: 0, screenH: 0, scale: 60,
       originX: 0, originY: 0,  // 由 autoFit 设置
       resize() {
-        const rect = canvas.getBoundingClientRect()
+        const rect = { width: canvas.clientWidth, height: canvas.clientHeight }
         canvas.width = rect.width * devicePixelRatio
         canvas.height = rect.height * devicePixelRatio
         this.ctx.scale(devicePixelRatio, devicePixelRatio)

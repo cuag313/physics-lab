@@ -90,7 +90,7 @@ export default function ProjectileMotionScene() {
     const ctx = canvas.getContext('2d')
 
     function resize() {
-      const r = canvas.getBoundingClientRect()
+      const r = { width: canvas.clientWidth, height: canvas.clientHeight }
       const dpr = devicePixelRatio || 1
       canvas.width = r.width * dpr
       canvas.height = r.height * dpr

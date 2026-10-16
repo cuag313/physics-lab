@@ -64,7 +64,7 @@ export default function SoundEchoScene() {
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     const dpr = window.devicePixelRatio || 1
-    const rect = canvas.getBoundingClientRect()
+    const rect = { width: canvas.clientWidth, height: canvas.clientHeight }
     canvas.width = rect.width * dpr
     canvas.height = rect.height * dpr
     ctx.scale(dpr, dpr)
