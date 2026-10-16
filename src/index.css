@@ -211,23 +211,72 @@ canvas {
   position: relative;
 }
 
-/* 信息气泡：右上角折叠胶囊 */
+/* 信息气泡：图标胶囊，悬停/点按显示标题 */
 .info-bubbles {
   touch-action: manipulation;
 }
 
 .info-bubble-chip {
   touch-action: manipulation;
-  min-height: 32px;
+  min-height: 36px;
+  min-width: 36px;
+}
+
+.info-bubble-chip:hover,
+.info-bubble-chip:focus,
+.info-bubble.is-open .info-bubble-chip {
+  width: auto !important;
+  padding-left: 10px !important;
+  padding-right: 12px !important;
 }
 
 .info-bubble-card {
   text-align: left;
 }
 
+/* 演示区尽量大：压缩非画布 chrome */
+html.force-landscape .scene-bar,
+html.mode-landscape .scene-bar {
+  min-height: 30px;
+  padding: 2px 8px !important;
+  gap: 6px;
+}
+
+html.force-landscape .scene-bar-head .scene-title,
+html.mode-landscape .scene-bar-head span:first-child {
+  display: none !important;
+}
+
+html.force-landscape .scene-bar-tabs .scene-tab,
+html.mode-landscape .scene-bar-tabs .scene-tab {
+  padding: 5px 8px !important;
+  min-height: 30px;
+  font-size: 12px;
+}
+
+html.force-landscape .scene-bar-extra {
+  padding: 2px 8px !important;
+}
+
+html.force-landscape .scene-bar-extra input[type='range'] {
+  height: 18px !important;
+}
+
 html.force-landscape .scene-desc,
 html.mode-landscape .scene-desc {
   display: none !important;
+}
+
+html.force-landscape .scene-shell .scene-main,
+html.mode-landscape .scene-shell .scene-main {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+html.force-landscape .lab-header,
+html.mode-landscape .lab-header {
+  min-height: 32px !important;
+  max-height: 34px !important;
 }
 
 .scene-canvas {

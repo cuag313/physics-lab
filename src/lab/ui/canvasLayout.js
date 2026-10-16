@@ -9,18 +9,18 @@ export function fitLayout(W, H) {
   if (compact) {
     return {
       compact: true,
-      // 电路区：上下少留白
-      circuit: { L: W * 0.04, R: W * 0.62, T: 28, B: H - 36 },
-      // 读数条
-      readout: { x: W * 0.64, y: 8, w: W * 0.34, h: H - 16 },
-      guide: null, // 说明走 InfoDock，不画在画布
-      font: { title: 12, label: 10, body: 11, data: 11 },
+      // 电路尽量宽、上下少留白
+      circuit: { L: W * 0.03, R: W * 0.68, T: 18, B: H - 28 },
+      // 右侧竖条只放读数
+      readout: { x: W * 0.72, y: 6, w: W * 0.26, h: H - 12 },
+      guide: null,
+      font: { title: 12, label: 9, body: 11, data: 11 },
     }
   }
   return {
     compact: false,
-    circuit: { L: W * 0.05, R: W * 0.52, T: 56, B: H - 48 },
-    readout: { x: W * 0.56, y: 48, w: W * 0.4, h: H - 88 },
+    circuit: { L: W * 0.04, R: W * 0.52, T: 48, B: H - 40 },
+    readout: { x: W * 0.56, y: 40, w: W * 0.4, h: H - 80 },
     guide: { w: 240, h: 92 },
     font: { title: 15, label: 10, body: 12, data: 12 },
   }

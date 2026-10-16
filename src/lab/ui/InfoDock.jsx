@@ -1,14 +1,11 @@
 /**
- * InfoDock — 可折叠浮动气泡说明
- *
- * 手机/电脑一致：
- * - 收起：右侧一列小胶囊（实验目的 / 操作手册 / 提示）
- * - 点开：该条下拉成浮动卡片，其它条自动收起（手风琴）
- * - 不占侧栏，不挡电路；再点胶囊或 × 收起
+ * InfoDock — 图标气泡（悬停/点按显示标题）
+ * 收起：一列小图标；点开：下拉卡片；同时只开一个
  */
 import { useState } from 'react'
 
-function Bubble({ id, icon, title, open, onToggle, children }) {
+function Chip({ id, icon, title, open, onToggle, children }) {
+  const [peek, setPeek] = useState(false)
   return (
     <div className={`info-bubble${open ? ' is-open' : ''}`} style={styles.wrap}>
       <button
@@ -16,14 +13,24 @@ function Bubble({ id, icon, title, open, onToggle, children }) {
         className="info-bubble-chip"
         style={styles.chip(open)}
         onClick={() => onToggle(id)}
+        onMouseEnter={() => setPeek(true)}
+        onMouseLeave={() => setPeek(false)}
+        onFocus={() => setPeek(true)}
+        onBlur={() => setPeek(false)}
+        onTouchStart={() => setPeek(true)}
         aria-expanded={open}
+        aria-label={title}
+        title={title}
       >
-        <span style={styles.chipIcon}>{icon}</span>
-        <span>{title}</span>
-        <span style={styles.chev}>{open ? '▲' : '▼'}</span>
+        <span style={styles.icon}>{icon}</span>
+        {(open || peek) && <span style={styles.label}>{title}</span>}
       </button>
       {open && (
         <div className="info-bubble-card" style={styles.card}>
+          <div style={styles.cardHead}>
+            <span style={styles.cardTitle}>{title}</span>
+            <button type="button" style={styles.x} onClick={() => onToggle(id)} aria-label="收起">×</button>
+          </div>
           <div style={styles.cardBody}>{children}</div>
         </div>
       )}
@@ -39,19 +46,14 @@ export default function InfoDock({
   hint,
   hintTitle = '提示',
   children,
-  defaultOpen = null, // 'purpose' | 'steps' | 'hint' | null
+  defaultOpen = null,
 }) {
   const [openId, setOpenId] = useState(defaultOpen)
   const toggle = (id) => setOpenId((cur) => (cur === id ? null : id))
 
   const items = []
   if (purpose) {
-    items.push({
-      id: 'purpose',
-      icon: '🎯',
-      title: purposeTitle,
-      body: <p style={styles.p}>{purpose}</p>,
-    })
+    items.push({ id: 'purpose', icon: '🎯', title: purposeTitle, body: <p style={styles.p}>{purpose}</p> })
   }
   if (steps && steps.length) {
     items.push({
@@ -60,9 +62,7 @@ export default function InfoDock({
       title: stepsTitle,
       body: (
         <ol style={styles.ol}>
-          {steps.map((s, i) => (
-            <li key={i} style={styles.li}>{s}</li>
-          ))}
+          {steps.map((s, i) => <li key={i} style={styles.li}>{s}</li>)}
         </ol>
       ),
     })
@@ -76,22 +76,14 @@ export default function InfoDock({
       body: typeof extra === 'string' ? <p style={styles.p}>{extra}</p> : extra,
     })
   }
-
   if (!items.length) return null
 
   return (
     <div className="info-bubbles" style={styles.rail}>
       {items.map((it) => (
-        <Bubble
-          key={it.id}
-          id={it.id}
-          icon={it.icon}
-          title={it.title}
-          open={openId === it.id}
-          onToggle={toggle}
-        >
+        <Chip key={it.id} id={it.id} icon={it.icon} title={it.title} open={openId === it.id} onToggle={toggle}>
           {it.body}
-        </Bubble>
+        </Chip>
       ))}
     </div>
   )
@@ -100,20 +92,19 @@ export default function InfoDock({
 const styles = {
   rail: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    right: 6,
+    bottom: 8,
     zIndex: 30,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'flex-end',
-    gap: 6,
+    gap: 8,
     pointerEvents: 'none',
   },
   wrap: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'flex-end',
-    maxWidth: 'min(280px, 70vw)',
     pointerEvents: 'auto',
   },
   chip: (open) => ({
@@ -121,36 +112,54 @@ const styles = {
     alignItems: 'center',
     gap: 4,
     border: '1px solid ' + (open ? '#4A90D9' : '#c5daf0'),
-    background: open ? '#4A90D9' : 'rgba(255,255,255,0.94)',
+    background: open ? '#4A90D9' : 'rgba(255,255,255,0.95)',
     color: open ? '#fff' : '#1a5a8a',
-    borderRadius: 16,
-    padding: '5px 10px',
-    fontSize: 11,
-    fontWeight: 600,
+    borderRadius: 20,
+    padding: 8,
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
     cursor: 'pointer',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+    boxShadow: '0 2px 10px rgba(0,0,0,0.16)',
+    overflow: 'hidden',
+    transition: 'width 0.15s ease, background 0.15s',
     whiteSpace: 'nowrap',
-    lineHeight: 1.2,
+    lineHeight: 1,
   }),
-  chipIcon: { fontSize: 12 },
-  chev: { fontSize: 9, opacity: 0.85, marginLeft: 2 },
+  icon: { fontSize: 16, flexShrink: 0 },
+  label: {
+    fontSize: 11,
+    fontWeight: 700,
+    maxWidth: 88,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  },
   card: {
-    marginTop: 4,
+    marginTop: 6,
     background: 'rgba(255,255,255,0.98)',
     border: '1px solid #d0d7de',
-    borderRadius: 10,
-    boxShadow: '0 6px 20px rgba(0,0,0,0.14)',
-    maxHeight: 'min(240px, 50vh)',
+    borderRadius: 12,
+    boxShadow: '0 8px 24px rgba(0,0,0,0.16)',
+    maxHeight: 'min(220px, 46vh)',
     overflow: 'auto',
     WebkitOverflowScrolling: 'touch',
-    width: 'min(260px, 68vw)',
+    width: 'min(260px, 72vw)',
   },
-  cardBody: {
-    padding: '10px 12px',
-    fontSize: 12,
-    color: '#444',
-    lineHeight: 1.55,
+  cardHead: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '8px 10px 4px',
+    position: 'sticky',
+    top: 0,
+    background: 'rgba(255,255,255,0.98)',
   },
+  cardTitle: { fontSize: 12, fontWeight: 700, color: '#1a5a8a' },
+  x: {
+    border: 'none', background: 'transparent', fontSize: 18, cursor: 'pointer',
+    color: '#666', width: 28, height: 28, lineHeight: 1,
+  },
+  cardBody: { padding: '4px 12px 12px', fontSize: 12, color: '#444', lineHeight: 1.55 },
   p: { margin: 0 },
   ol: { margin: 0, paddingLeft: 18 },
   li: { marginBottom: 5 },

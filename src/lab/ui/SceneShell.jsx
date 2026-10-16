@@ -1,31 +1,22 @@
 /**
  * SceneShell — 实验场景统一外壳
- *
- * 提炼自各 *Scene 自己拼的顶栏/底栏：
- *   标题 + 模式 Tab + 重置 + 可选控件 + 画布 + 可选说明条
- *
- * 目的：
- * 1. 交互一致（魔兔式：演示 / 自己动手 / 重置 固定位置）
- * 2. 新场景只写画布物理，不再复制顶栏
- * 3. 步骤与说明尽量走 DOM，便于移动端点击与缩放
+ * 手机横屏分行：Tab 一行 · 控件一行 · 重置一行，演示区尽量大
  */
-
 import ConclusionCard from './ConclusionCard'
 
 export default function SceneShell({
   title,
   tab = 1,
   onTabChange,
-  tab1Label = '📊 实验演示',
-  tab2Label = '🔧 自己动手',
+  tab1Label = '实验演示',
+  tab2Label = '自己动手',
   showTabs = true,
   onReset,
-  resetLabel = '↺ 重置',
+  resetLabel = '重置',
   toolbarExtra = null,
   desc = null,
   purpose = null,
   footer = null,
-  // 结论卡片（可选）
   conclusion = null,
   conclusionOpen = false,
   onConclusionToggle,
@@ -33,49 +24,47 @@ export default function SceneShell({
 }) {
   return (
     <div className="scene-shell" style={styles.container}>
-      <div style={styles.toolbar}>
+      {/* 行1：标题 + 重置 */}
+      <div className="scene-bar scene-bar-head" style={styles.bar}>
         <span style={styles.title}>{title}</span>
-        <div style={styles.actions}>
-          {showTabs && onTabChange && (
-            <>
-              <button
-                type="button"
-                style={tab === 1 ? styles.tabA : styles.tab}
-                onClick={() => onTabChange(1)}
-              >
-                {tab1Label}
-              </button>
-              <button
-                type="button"
-                style={tab === 2 ? styles.tabA : styles.tab}
-                onClick={() => onTabChange(2)}
-              >
-                {tab2Label}
-              </button>
-            </>
-          )}
-          {toolbarExtra && (
-            <div
-              className="scene-toolbar-extra"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                flexWrap: 'wrap',
-                minWidth: 0,
-              }}
-            >
-              {toolbarExtra}
-            </div>
-          )}
-          <div style={{ flex: 1 }} />
-          {onReset && (
-            <button type="button" style={styles.btn} onClick={onReset}>
-              {resetLabel}
-            </button>
-          )}
-        </div>
+        <div style={{ flex: 1 }} />
+        {onReset && (
+          <button type="button" className="scene-btn" style={styles.btn} onClick={onReset}>
+            {resetLabel}
+          </button>
+        )}
       </div>
+
+      {/* 行2：Tab 独占一行 */}
+      {showTabs && onTabChange && (
+        <div className="scene-bar scene-bar-tabs" style={styles.bar}>
+          <button
+            type="button"
+            className={`scene-tab${tab === 1 ? ' is-on' : ''}`}
+            style={tab === 1 ? styles.tabA : styles.tab}
+            onClick={() => onTabChange(1)}
+          >
+            {tab1Label}
+          </button>
+          <button
+            type="button"
+            className={`scene-tab${tab === 2 ? ' is-on' : ''}`}
+            style={tab === 2 ? styles.tabA : styles.tab}
+            onClick={() => onTabChange(2)}
+          >
+            {tab2Label}
+          </button>
+        </div>
+      )}
+
+      {/* 行3：参数控件独占一行 */}
+      {toolbarExtra && (
+        <div className="scene-bar scene-bar-extra" style={styles.bar}>
+          <div className="scene-toolbar-extra" style={styles.extra}>
+            {toolbarExtra}
+          </div>
+        </div>
+      )}
 
       {purpose && <div style={styles.purpose}>{purpose}</div>}
 
@@ -105,65 +94,70 @@ const styles = {
     minHeight: 0,
     background: '#f0f4f8',
     color: '#333',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
   },
-  toolbar: {
-    minHeight: 44,
-    background: '#f5f5f5',
-    borderBottom: '1px solid #ccc',
+  bar: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '0 12px',
+    gap: 8,
+    padding: '4px 10px',
+    background: '#f5f5f5',
+    borderBottom: '1px solid #ddd',
     flexShrink: 0,
+    minHeight: 36,
     flexWrap: 'wrap',
-    gap: 6,
   },
   title: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 600,
     color: '#333',
     whiteSpace: 'nowrap',
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    maxWidth: 'min(40vw, 220px)',
-    flexShrink: 0,
+    maxWidth: '55%',
   },
-  actions: {
+  extra: {
     display: 'flex',
     alignItems: 'center',
-    gap: 6,
+    gap: 10,
     flexWrap: 'wrap',
-    flex: 1,
     minWidth: 0,
+    width: '100%',
   },
   tab: {
-    background: '#f0f0f0',
-    color: '#666',
-    border: '1px solid #ddd',
-    borderRadius: 4,
-    padding: '5px 12px',
+    flex: 1,
+    background: '#fff',
+    color: '#555',
+    border: '1px solid #d0d7de',
+    borderRadius: 8,
+    padding: '8px 10px',
     fontSize: 12,
+    fontWeight: 600,
     cursor: 'pointer',
+    minHeight: 36,
   },
   tabA: {
+    flex: 1,
     background: '#4A90D9',
     color: '#fff',
     border: '1px solid #4A90D9',
-    borderRadius: 4,
-    padding: '5px 12px',
+    borderRadius: 8,
+    padding: '8px 10px',
     fontSize: 12,
-    cursor: 'pointer',
     fontWeight: 600,
+    cursor: 'pointer',
+    minHeight: 36,
   },
   btn: {
-    background: '#f0f0f0',
+    background: '#fff',
     color: '#333',
-    border: '1px solid #ddd',
-    borderRadius: 4,
-    padding: '5px 12px',
+    border: '1px solid #d0d7de',
+    borderRadius: 8,
+    padding: '6px 14px',
     fontSize: 12,
     cursor: 'pointer',
+    minHeight: 32,
+    flexShrink: 0,
   },
   purpose: {
     padding: '6px 14px',
@@ -180,12 +174,11 @@ const styles = {
     minHeight: 0,
     position: 'relative',
   },
-  // canvas 子元素在手机上由 .scene-canvas-fill 控高
   desc: {
-    padding: '8px 14px',
+    padding: '6px 12px',
     background: '#f5f5f5',
     borderTop: '1px solid #ccc',
-    fontSize: 13,
+    fontSize: 12,
     color: '#333',
     flexShrink: 0,
   },
