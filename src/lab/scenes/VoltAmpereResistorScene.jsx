@@ -848,15 +848,17 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
           onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
           onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} />
-        <InfoDock
-          purpose="测量小灯泡在不同电压下的电功率 P=UI。"
-          steps={[
-            '闭合开关，调变阻器分压',
-            'U≈2.5V 时点「记录」',
-            '再测偏低/偏高各一组',
-          ]}
-          hint="U=灯泡端电压（断开=0）。灯泡亮度随功率连续变化。"
-        />
+        {tab === 1 && (
+          <InfoDock
+            purpose="测量小灯泡在不同电压下的电功率 P=UI。"
+            steps={[
+              '闭合开关，调变阻器分压',
+              'U≈2.5V 时点「记录」',
+              '再测偏低/偏高各一组',
+            ]}
+            hint="U=灯泡端电压（断开=0）。灯泡亮度随功率连续变化。"
+          />
+        )}
       </div>
     </SceneShell>
   )
