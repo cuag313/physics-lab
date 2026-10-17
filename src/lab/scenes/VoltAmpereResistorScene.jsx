@@ -145,8 +145,9 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     drawMeter(ctx, bulX, volY, 'V', on ? U_b / s.U_rated : 0, on ? U_b.toFixed(2) + 'V' : '', '#4CAF50')
 
     ctx.fillStyle = '#555'; ctx.font = `${lay.font.label}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-    ctx.fillText('滑动变阻器', slX, T - 8)
-    ctx.fillText('小灯泡', bulX, T - 8)
+    // 标注在器材上方（灯泡半径约14，给足净空）
+    ctx.fillText('滑动变阻器', slX, T - 24)
+    ctx.fillText('小灯泡', bulX, T - 24)
     ctx.textBaseline = 'alphabetic'
 
     const status = !on ? '断开' : U_b < s.U_rated * 0.8 ? '低于额定' : U_b < s.U_rated * 1.1 ? '正常发光' : '高于额定'
