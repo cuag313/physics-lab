@@ -682,19 +682,23 @@ export default function ClosedCircuitOhmScene() {
   }
   function handleMouseMove(e) {
     const s = S.current; const { x, y } = getPos(e)
-    if (s.connecting) { s.connecting.mx = x; s.connecting.my = y; forceUpdate(n => n + 1); return }
+    // 拖拽只改 S.current，rAF 重绘 —— 不 forceUpdate
+    if (s.connecting) { s.connecting.mx = x; s.connecting.my = y; return }
     if (s.dragId == null) return
     if (typeof s.dragId === 'string' && s.dragId.startsWith('rheo_')) {
       const id = parseInt(s.dragId.split('_')[1])
       const comp = s.components.find(c => c.id === id)
-      if (comp) { const ratio = Math.max(0, Math.min(1, (x - (comp.x - 25)) / 50)); comp.props.resistance = Math.round(ratio * 50); forceUpdate(n => n + 1) }
+      if (comp) {
+        if (s.dragStart && Math.hypot(x - s.dragStart.x, y - s.dragStart.y) > 5) s.dragMoved = true
+        const ratio = Math.max(0, Math.min(1, (x - (comp.x - 25)) / 50))
+        comp.props.resistance = Math.round(ratio * 50)
+      }
       return
     }
     const comp = s.components.find(c => c.id === s.dragId)
     if (comp) {
       if (s.dragStart && Math.hypot(x - s.dragStart.x, y - s.dragStart.y) > 5) s.dragMoved = true
       comp.x = x - s.dragOffX; comp.y = y - s.dragOffY
-      forceUpdate(n => n + 1)
     }
   }
   function handleMouseUp(e) {

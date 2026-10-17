@@ -6,7 +6,7 @@ import InfoDock from '../ui/InfoDock'
 import BuilderPalette from '../ui/BuilderPalette'
 import { fitLayout, drawPanel } from '../ui/canvasLayout'
 import {
-  getTerminals, getTermPos, findTermAt,
+  getTerminals, getTermPos, findTermAt, findTermNear,
   strokeBezierWire, bezierCtrl,
   drawTerminal, findCompAt, findCompWide, mapSliderR,
   drawGuideBubble, drawBuilderSwitch,
@@ -897,7 +897,9 @@ export default function OhmsLawScene() {
           const props = {}
           if (a.type === 'rheostat') props.resistance = 20
           s.components.push({ id, type: a.type, x, y, rotation: 0, closed: a.type === 'switch' ? false : true, props })
-          s.dragId = id; s.dragOffX = 0; s.dragOffY = 0; forceUpdate(n => n + 1); return
+          s.dragId = id; s.dragOffX = 0; s.dragOffY = 0
+          s.dragMoved = false; s.dragStart = { x, y }
+          forceUpdate(n => n + 1); return
         }
       }
     }
@@ -922,12 +924,20 @@ export default function OhmsLawScene() {
       const ctrl = bezierCtrl(f, t, wire.from.termIdx, wire.to.termIdx,
         wire.mid1X != null ? { x: wire.mid1X, y: wire.mid1Y } : null,
         wire.mid2X != null ? { x: wire.mid2X, y: wire.mid2Y } : null)
-      if ((x - ctrl.m1x) ** 2 + (y - ctrl.m1y) ** 2 < 256) { s.dragId = 'wire_' + wire.id + '_1'; s.dragMoved = false; forceUpdate(n => n + 1); return }
-      if ((x - ctrl.m2x) ** 2 + (y - ctrl.m2y) ** 2 < 256) { s.dragId = 'wire_' + wire.id + '_2'; s.dragMoved = false; forceUpdate(n => n + 1); return }
+      if ((x - ctrl.m1x) ** 2 + (y - ctrl.m1y) ** 2 < 256) {
+        s.dragId = 'wire_' + wire.id + '_1'; s.dragMoved = false; s.dragStart = { x, y }
+        forceUpdate(n => n + 1); return
+      }
+      if ((x - ctrl.m2x) ** 2 + (y - ctrl.m2y) ** 2 < 256) {
+        s.dragId = 'wire_' + wire.id + '_2'; s.dragMoved = false; s.dragStart = { x, y }
+        forceUpdate(n => n + 1); return
+      }
     }
     const comp = findComp(x, y)
     if (comp) {
       s.dragId = comp.id; s.dragOffX = x - comp.x; s.dragOffY = y - comp.y
+      s.dragMoved = false; s.dragStart = { x, y }
+      forceUpdate(n => n + 1)
       s.dragMoved = false; s.dragStart = { x, y }
       forceUpdate(n => n + 1)
     }
@@ -936,14 +946,14 @@ export default function OhmsLawScene() {
   const handleMouseMove = useCallback((e) => {
     const s = S.current; const { x, y } = getPos(e)
     if (s.tab !== 2) return
+    // 拖拽只改 S.current，rAF 重绘 —— 不 forceUpdate
     if (s.dragId) {
       if (typeof s.dragId === 'string' && s.dragId.startsWith('rheo_')) {
         const compId = parseInt(s.dragId.slice(5))
         const comp = s.components.find(c => c.id === compId)
         if (comp) {
-          // 止点吸附：左=0Ω 右=50Ω
+          if (s.dragStart && Math.hypot(x - s.dragStart.x, y - s.dragStart.y) > 5) s.dragMoved = true
           comp.props.resistance = mapSliderR(x, comp.x - 30, comp.x + 30, 50)
-          forceUpdate(n => n + 1)
         }
         return
       }
@@ -951,20 +961,23 @@ export default function OhmsLawScene() {
         const parts = s.dragId.split('_')
         const wire = s.wires.find(w => w.id === parseInt(parts[1]))
         if (wire) {
+          if (s.dragStart && Math.hypot(x - s.dragStart.x, y - s.dragStart.y) > 5) s.dragMoved = true
           if (parseInt(parts[2]) === 1) { wire.mid1X = x; wire.mid1Y = y }
           else { wire.mid2X = x; wire.mid2Y = y }
-          forceUpdate(n => n + 1)
         }
         return
       }
-      const c = s.components.find(c => c.id === s.dragId)
-      if (c) { c.x = x - s.dragOffX; c.y = y - s.dragOffY; forceUpdate(n => n + 1) }
+      const c = s.components.find(k => k.id === s.dragId)
+      if (c) {
+        if (s.dragStart && Math.hypot(x - s.dragStart.x, y - s.dragStart.y) > 5) s.dragMoved = true
+        c.x = x - s.dragOffX; c.y = y - s.dragOffY
+      }
       return
     }
     if (s.connecting) {
       s.connecting.mx = x; s.connecting.my = y
-      const t = findTerm(x, y); s.hoverTerm = t && t.compId !== s.connecting.compId ? t : null
-      forceUpdate(n => n + 1); return
+      s.hoverTerm = findTermNear(S.current.components, x, y, s.connecting.compId)
+      return
     }
     s.hoverTerm = findTerm(x, y)
     canvasRef.current.style.cursor = s.hoverTerm ? 'crosshair' : findComp(x, y) ? 'grab' : 'default'

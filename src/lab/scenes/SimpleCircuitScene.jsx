@@ -499,8 +499,14 @@ export default function SimpleCircuitScene() {
       const ctrl = bezierCtrl(f, t, wire.from.termIdx, wire.to.termIdx,
         wire.mid1X != null ? { x: wire.mid1X, y: wire.mid1Y } : null,
         wire.mid2X != null ? { x: wire.mid2X, y: wire.mid2Y } : null)
-      if ((x - ctrl.m1x) ** 2 + (y - ctrl.m1y) ** 2 < 256) { s.dragId = 'wire_' + wire.id + '_1'; s.dragMoved = false; forceUpdate(n => n + 1); return }
-      if ((x - ctrl.m2x) ** 2 + (y - ctrl.m2y) ** 2 < 256) { s.dragId = 'wire_' + wire.id + '_2'; s.dragMoved = false; forceUpdate(n => n + 1); return }
+      if ((x - ctrl.m1x) ** 2 + (y - ctrl.m1y) ** 2 < 256) {
+        s.dragId = 'wire_' + wire.id + '_1'; s.dragMoved = false; s.dragStart = { x, y }
+        forceUpdate(n => n + 1); return
+      }
+      if ((x - ctrl.m2x) ** 2 + (y - ctrl.m2y) ** 2 < 256) {
+        s.dragId = 'wire_' + wire.id + '_2'; s.dragMoved = false; s.dragStart = { x, y }
+        forceUpdate(n => n + 1); return
+      }
     }
 
     // 器材拖拽（中央热区）
@@ -516,8 +522,8 @@ export default function SimpleCircuitScene() {
   const handleMouseMove = useCallback((e) => {
     const s = S.current; const { x, y } = getPos(e)
     if (s.tab !== 2) return
+    // 拖拽只改 S.current，rAF 重绘 —— 不 forceUpdate
     if (s.dragId) {
-      // 导线控制点拖拽
       if (typeof s.dragId === 'string' && s.dragId.startsWith('wire_')) {
         const parts = s.dragId.split('_')
         const wireId = parseInt(parts[1])
@@ -527,24 +533,20 @@ export default function SimpleCircuitScene() {
           if (s.dragStart && Math.hypot(x - s.dragStart.x, y - s.dragStart.y) > 5) s.dragMoved = true
           if (rivetIdx === 1) { wire.mid1X = x; wire.mid1Y = y }
           else { wire.mid2X = x; wire.mid2Y = y }
-          forceUpdate(n => n + 1)
         }
         return
       }
-      // 器材拖拽
       const c = s.components.find(k => k.id === s.dragId)
       if (c) {
         if (s.dragStart && Math.hypot(x - s.dragStart.x, y - s.dragStart.y) > 5) s.dragMoved = true
         c.x = x - s.dragOffX; c.y = y - s.dragOffY
-        forceUpdate(n => n + 1)
       }
       return
     }
     if (s.connecting) {
       s.connecting.mx = x; s.connecting.my = y
-      const t = findTermNear(S.current.components, x, y, s.connecting.compId)
-      s.hoverTerm = t
-      forceUpdate(n => n + 1); return
+      s.hoverTerm = findTermNear(S.current.components, x, y, s.connecting.compId)
+      return
     }
     s.hoverTerm = findTerm(x, y)
     canvasRef.current.style.cursor = s.hoverTerm ? 'crosshair' : findComp(x, y) ? 'grab' : 'default'

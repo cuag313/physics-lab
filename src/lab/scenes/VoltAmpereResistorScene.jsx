@@ -5,10 +5,10 @@ import SceneShell from '../ui/SceneShell'
 import InfoDock from '../ui/InfoDock'
 import { fitLayout, drawPanel, wrapText } from '../ui/canvasLayout'
 import {
-  getTerminals, getTermPos, findTermAt,
+  getTerminals, getTermPos, findTermAt, findTermNear,
   strokeBezierWire, strokeWirePreview,
   findCompAt, findCompWide, mapSliderR,
-  drawGuideBubble, drawBuilderSwitch,
+  drawGuideBubble, drawBuilderComp, drawRealisticIcon,
 } from '../ui/circuitKit'
 
 // 模块级数据
@@ -199,27 +199,35 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
       }
       ctx.textAlign = 'left'; ctx.textBaseline = 'top'
       ky += 8
-      drawGraph(ctx, inner.x, ky, inner.w, Math.max(80, inner.y + inner.h - ky), dataStore, 'U (V)', 'P (W)', d => d.U, d => d.P, '#FF6F00')
+      // 图高自适应，给底部按钮留出空间，避免重叠
+      const graphH = Math.max(60, inner.y + inner.h - ky - 40)
+      drawGraph(ctx, inner.x, ky, inner.w, graphH, dataStore, 'U (V)', 'P (W)', d => d.U, d => d.P, '#FF6F00')
     }
     ctx.textBaseline = 'alphabetic'
 
-    const nY = H - 32
+    // 按钮放在读数面板底部，不与左侧电路重叠
+    const nY = Math.min(H - 32, ro.y + ro.h - 32)
+    const btnX = ro.x
     const recOk = on
     const btnH = 26
-    ctx.fillStyle = recOk ? '#4CAF50' : '#bdbdbd'; ctx.beginPath(); ctx.roundRect(16, nY, 84, btnH, 6); ctx.fill()
+    const btnW = Math.min(72, (ro.w - 16) / 3)
+    ctx.fillStyle = recOk ? '#4CAF50' : '#bdbdbd'
+    ctx.beginPath(); ctx.roundRect(btnX, nY, btnW, btnH, 6); ctx.fill()
     ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText('记录', 58, nY + btnH / 2)
-    if (recOk) canvasRef.current._clickAreas.push({ x: 16, y: nY, w: 84, h: btnH, onClick: () => {
+    ctx.fillText('记录', btnX + btnW / 2, nY + btnH / 2)
+    if (recOk) canvasRef.current._clickAreas.push({ x: btnX, y: nY, w: btnW, h: btnH, onClick: () => {
       dataStore.push({ U: U_b, I, P }); forceUpdate(n => n + 1)
     }})
-    ctx.fillStyle = '#f0f0f0'; ctx.beginPath(); ctx.roundRect(110, nY, 64, btnH, 6); ctx.fill()
-    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(110, nY, 64, btnH, 6); ctx.stroke()
-    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.fillText('清除', 142, nY + btnH / 2)
-    canvasRef.current._clickAreas.push({ x: 110, y: nY, w: 64, h: btnH, onClick: () => { dataStore = []; forceUpdate(n => n + 1) } })
-    ctx.fillStyle = '#f0f0f0'; ctx.beginPath(); ctx.roundRect(184, nY, 72, btnH, 6); ctx.fill()
-    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(184, nY, 72, btnH, 6); ctx.stroke()
-    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.fillText('重置', 220, nY + btnH / 2)
-    canvasRef.current._clickAreas.push({ x: 184, y: nY, w: 72, h: btnH, onClick: () => { s.sliderR = 20; s.switchClosed = false; dataStore = []; forceUpdate(n => n + 1) } })
+    const bx2 = btnX + btnW + 8
+    ctx.fillStyle = '#f0f0f0'; ctx.beginPath(); ctx.roundRect(bx2, nY, btnW, btnH, 6); ctx.fill()
+    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(bx2, nY, btnW, btnH, 6); ctx.stroke()
+    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.fillText('清除', bx2 + btnW / 2, nY + btnH / 2)
+    canvasRef.current._clickAreas.push({ x: bx2, y: nY, w: btnW, h: btnH, onClick: () => { dataStore = []; forceUpdate(n => n + 1) } })
+    const bx3 = btnX + (btnW + 8) * 2
+    ctx.fillStyle = '#f0f0f0'; ctx.beginPath(); ctx.roundRect(bx3, nY, btnW, btnH, 6); ctx.fill()
+    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(bx3, nY, btnW, btnH, 6); ctx.stroke()
+    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.fillText('重置', bx3 + btnW / 2, nY + btnH / 2)
+    canvasRef.current._clickAreas.push({ x: bx3, y: nY, w: btnW, h: btnH, onClick: () => { s.sliderR = 20; s.switchClosed = false; dataStore = []; forceUpdate(n => n + 1) } })
     ctx.textBaseline = 'alphabetic'
   }
 
@@ -273,7 +281,7 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     }
     const circuit = checkCircuit()
     const eng = solveCircuit()
-    for (const comp of s.components) drawBComp(ctx, comp, s, circuit, eng)
+    for (const comp of s.components) drawBuilderComp(ctx, comp, s, circuit, eng)
 
     // 未连线红框
     const wiredIds = new Set()
@@ -342,7 +350,7 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     for (const item of items) {
       ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 38, 6); ctx.fill()
       ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 38, 6); ctx.stroke()
-      drawIcon(ctx, palX + 28, iy + 19, item.type)
+      drawRealisticIcon(ctx, palX + 28, iy + 19, item.type)
       ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
       ctx.fillText(item.name, palX + 50, iy + 19); ctx.textBaseline = 'alphabetic'
       canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: 38, type: item.type })
@@ -363,134 +371,6 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
       iy += 30
     }
     ctx.textBaseline = 'alphabetic'
-  }
-
-  function drawIcon(ctx, x, y, type) {
-    ctx.save(); ctx.translate(x, y)
-    if (type === 'battery') {
-      ctx.fillStyle = '#81C784'; ctx.strokeStyle = '#388E3C'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.roundRect(-14, -10, 28, 20, 3); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('+ −', 0, 0)
-    } else if (type === 'bulb') {
-      ctx.fillStyle = '#FFFDE7'; ctx.strokeStyle = '#F9A825'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.arc(0, -2, 10, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#9E9E9E'; ctx.fillRect(-5, 8, 10, 5)
-    } else if (type === 'switch') {
-      ctx.fillStyle = '#ECEFF1'; ctx.strokeStyle = '#90A4AE'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.roundRect(-14, -6, 28, 12, 3); ctx.fill(); ctx.stroke()
-      ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(5, -6); ctx.stroke(); ctx.lineCap = 'butt'
-    } else if (type === 'ammeter') {
-      ctx.fillStyle = '#FFEBEE'; ctx.strokeStyle = '#E53935'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#E53935'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('A', 0, 0)
-    } else if (type === 'voltmeter') {
-      ctx.fillStyle = '#E8F5E9'; ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#4CAF50'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('V', 0, 0)
-    } else if (type === 'rheostat') {
-      ctx.fillStyle = '#D7CCC8'; ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.roundRect(-14, -6, 28, 12, 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#E65100'; ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(-4, -5); ctx.lineTo(4, -5); ctx.closePath(); ctx.fill()
-    }
-    ctx.restore()
-  }
-
-  function drawBComp(ctx, comp, s, circuit, eng) {
-    const { x, y, type } = comp
-    const isClosed = eng ? eng.ok : (circuit && circuit.closed)
-    ctx.save(); ctx.translate(x, y)
-    if (s.dragId === comp.id) ctx.globalAlpha = 0.6
-
-    if (type === 'battery') {
-      const grd = ctx.createLinearGradient(-35, -22, 35, 22)
-      grd.addColorStop(0, '#A5D6A7'); grd.addColorStop(0.5, '#66BB6A'); grd.addColorStop(1, '#43A047')
-      ctx.fillStyle = grd; ctx.strokeStyle = '#2E7D32'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.roundRect(-35, -22, 70, 44, 6); ctx.fill(); ctx.stroke()
-      ctx.strokeStyle = '#1B5E20'; ctx.lineWidth = 2.5
-      ctx.beginPath(); ctx.moveTo(-14, -16); ctx.lineTo(-14, 16); ctx.stroke()
-      ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(14, -8); ctx.lineTo(14, 8); ctx.stroke()
-      ctx.fillStyle = '#E53935'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-      ctx.fillText('+', -40, -24)
-      ctx.fillStyle = '#333'; ctx.font = 'bold 15px sans-serif'
-      ctx.fillText('−', 40, -16)
-      ctx.textBaseline = 'alphabetic'
-    } else if (type === 'bulb') {
-      const brightness = (() => {
-        if (!isClosed || !eng?.ok || !eng.results) return 0
-        const r = eng.results.get(comp.id)
-        if (!r) return 0
-        const maxP = (Math.pow(s.U, 2)) / 10
-        return Math.max(0.05, Math.min(1, r.power / maxP))
-      })()
-      ctx.fillStyle = brightness > 0.15 ? '#FFEB3B' : '#FFFDE7'
-      ctx.strokeStyle = brightness > 0.15 ? '#F9A825' : '#bbb'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.arc(0, -6, 20, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.strokeStyle = brightness > 0.15 ? '#E65100' : '#999'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.moveTo(-8, -14); ctx.lineTo(8, 2); ctx.stroke()
-      ctx.beginPath(); ctx.moveTo(8, -14); ctx.lineTo(-8, 2); ctx.stroke()
-      ctx.fillStyle = '#9E9E9E'; ctx.strokeStyle = '#616161'; ctx.lineWidth = 1
-      ctx.beginPath(); ctx.roundRect(-10, 14, 20, 10, 2); ctx.fill(); ctx.stroke()
-      if (brightness > 0.15) {
-        const glow = ctx.createRadialGradient(0, -6, 15, 0, -6, 50)
-        glow.addColorStop(0, 'rgba(255,235,59,0.35)'); glow.addColorStop(1, 'rgba(255,235,59,0)')
-        ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, -6, 50, 0, Math.PI * 2); ctx.fill()
-      }
-      ctx.fillStyle = '#F57F17'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-      ctx.fillText('小灯泡', 0, 26)
-    } else if (type === 'switch') {
-      drawBuilderSwitch(ctx, comp.closed)
-    } else if (type === 'ammeter') {
-      const r = (isClosed && eng?.ok && eng.results) ? eng.results.get(comp.id) : null
-      const cur = r ? r.current : 0
-      ctx.fillStyle = '#FFCDD2'; ctx.strokeStyle = '#E53935'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.arc(0, 0, 26, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#B71C1C'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('A', 0, -8)
-      ctx.fillStyle = '#333'; ctx.font = 'bold 10px monospace'
-      ctx.fillText(isClosed ? `${Math.abs(cur).toFixed(2)}A` : '--', 0, 10)
-    } else if (type === 'voltmeter') {
-      const r = (isClosed && eng?.ok && eng.results) ? eng.results.get(comp.id) : null
-      const volt = r ? Math.abs(r.voltage) : 0
-      ctx.fillStyle = '#C8E6C9'; ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.arc(0, 0, 26, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#1B5E20'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('V', 0, -8)
-      ctx.fillStyle = '#333'; ctx.font = 'bold 10px monospace'
-      ctx.fillText(isClosed ? `${volt.toFixed(1)}V` : '--', 0, 10)
-    } else if (type === 'rheostat') {
-      const Rv = (comp.props && comp.props.resistance != null) ? comp.props.resistance : 20
-      const minX = -30, maxX = 30
-      const sliderX = minX + (Rv / 50) * (maxX - minX)
-      ctx.fillStyle = '#EFEBE9'; ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.roundRect(-34, -14, 68, 28, 4); ctx.fill(); ctx.stroke()
-      ctx.strokeStyle = '#5D4037'; ctx.lineWidth = 1.2
-      ctx.beginPath(); ctx.moveTo(-30, 0)
-      for (let i = 0; i < 10; i++) { const px = -30 + i*6, py = (i%2===0)?-4:4; if (i>0) ctx.lineTo(px, py) }
-      ctx.lineTo(30, 0); ctx.stroke()
-      ctx.strokeStyle = '#78909C'; ctx.lineWidth = 2.5
-      ctx.beginPath(); ctx.moveTo(-34, -18); ctx.lineTo(34, -18); ctx.stroke()
-      ctx.fillStyle = '#FB8C00'; ctx.strokeStyle = '#E65100'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.roundRect(sliderX - 6, -22, 12, 8, 2); ctx.fill(); ctx.stroke()
-      ctx.strokeStyle = '#E65100'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.moveTo(sliderX, -14); ctx.lineTo(sliderX, -4); ctx.stroke()
-      ctx.fillStyle = '#333'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-      ctx.fillText(`变阻器 ${Rv}Ω`, 0, 16)
-    }
-    ctx.globalAlpha = 1; ctx.restore()
-    // 接线柱
-    const terms = getTerminals(comp)
-    for (let i = 0; i < terms.length; i++) {
-      const t = terms[i]
-      const hov = s.hoverTerm && s.hoverTerm.compId === comp.id && s.hoverTerm.termIdx === i
-      ctx.fillStyle = hov ? '#FF9800' : '#fff'
-      ctx.strokeStyle = hov ? '#E65100' : '#666'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.arc(t.x, t.y, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      if (hov) { ctx.strokeStyle = 'rgba(255,152,0,0.4)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(t.x, t.y, 13, 0, Math.PI * 2); ctx.stroke() }
-    }
   }
 
   function drawBWire(ctx, wire) {
@@ -724,7 +604,9 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
           const props = {}
           if (a.type === 'rheostat') props.resistance = 20
           s.components.push({ id, type: a.type, x, y, rotation: 0, closed: a.type === 'switch' ? false : true, props })
-          s.dragId = id; s.dragOffX = 0; s.dragOffY = 0; forceUpdate(n => n + 1); return
+          s.dragId = id; s.dragOffX = 0; s.dragOffY = 0
+          s.dragMoved = false; s.dragStart = { x, y }
+          forceUpdate(n => n + 1); return
         }
       }
     }
@@ -733,7 +615,9 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
       const Rv = (comp.props && comp.props.resistance != null) ? comp.props.resistance : 20
       const sliderX = comp.x - 30 + (Rv / 50) * 60
       if (Math.abs(x - sliderX) < 12 && Math.abs(y - (comp.y - 18)) < 15) {
-        s.dragId = 'rheo_' + comp.id; forceUpdate(n => n + 1); return
+        s.dragId = 'rheo_' + comp.id
+        s.dragMoved = false; s.dragStart = { x, y }
+        forceUpdate(n => n + 1); return
       }
     }
     const term = findTerm(x, y)
@@ -742,25 +626,34 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
       const fc = s.components.find(c => c.id === wire.from.compId)
       const tc = s.components.find(c => c.id === wire.to.compId)
       if (!fc || !tc) continue
-      if (wire.mid1X != null && (x - wire.mid1X) ** 2 + (y - wire.mid1Y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_1'; forceUpdate(n => n + 1); return }
-      if (wire.mid2X != null && (x - wire.mid2X) ** 2 + (y - wire.mid2Y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_2'; forceUpdate(n => n + 1); return }
+      if (wire.mid1X != null && (x - wire.mid1X) ** 2 + (y - wire.mid1Y) ** 2 < 256) {
+        s.dragId = 'wire_' + wire.id + '_1'; s.dragMoved = false; s.dragStart = { x, y }
+        forceUpdate(n => n + 1); return
+      }
+      if (wire.mid2X != null && (x - wire.mid2X) ** 2 + (y - wire.mid2Y) ** 2 < 256) {
+        s.dragId = 'wire_' + wire.id + '_2'; s.dragMoved = false; s.dragStart = { x, y }
+        forceUpdate(n => n + 1); return
+      }
     }
     const comp = findComp(x, y)
-    if (comp) { s.dragId = comp.id; s.dragOffX = x - comp.x; s.dragOffY = y - comp.y; forceUpdate(n => n + 1) }
+    if (comp) {
+      s.dragId = comp.id; s.dragOffX = x - comp.x; s.dragOffY = y - comp.y
+      s.dragMoved = false; s.dragStart = { x, y }
+      forceUpdate(n => n + 1)
+    }
   }, [])
 
   const handleMouseMove = useCallback((e) => {
     const s = S.current; const { x, y } = getPos(e)
     if (s.tab !== 2) return
+    // 拖拽过程只改 S.current，rAF 每帧重绘 —— 不 forceUpdate，避免电脑端卡顿
     if (s.dragId) {
       if (typeof s.dragId === 'string' && s.dragId.startsWith('rheo_')) {
         const compId = parseInt(s.dragId.slice(5))
         const comp = s.components.find(c => c.id === compId)
         if (comp) {
-          const minX = comp.x - 30, maxX = comp.x + 30
-          const nx = Math.max(minX, Math.min(maxX, x))
-          comp.props.resistance = Math.round(((nx - minX) / (maxX - minX)) * 50)
-          forceUpdate(n => n + 1)
+          if (s.dragStart && Math.hypot(x - s.dragStart.x, y - s.dragStart.y) > 5) s.dragMoved = true
+          comp.props.resistance = mapSliderR(x, comp.x - 30, comp.x + 30, 50)
         }
         return
       }
@@ -768,20 +661,23 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
         const parts = s.dragId.split('_')
         const wire = s.wires.find(w => w.id === parseInt(parts[1]))
         if (wire) {
+          if (s.dragStart && Math.hypot(x - s.dragStart.x, y - s.dragStart.y) > 5) s.dragMoved = true
           if (parseInt(parts[2]) === 1) { wire.mid1X = x; wire.mid1Y = y }
           else { wire.mid2X = x; wire.mid2Y = y }
-          forceUpdate(n => n + 1)
         }
         return
       }
-      const c = s.components.find(c => c.id === s.dragId)
-      if (c) { c.x = x - s.dragOffX; c.y = y - s.dragOffY; forceUpdate(n => n + 1) }
+      const c = s.components.find(k => k.id === s.dragId)
+      if (c) {
+        if (s.dragStart && Math.hypot(x - s.dragStart.x, y - s.dragStart.y) > 5) s.dragMoved = true
+        c.x = x - s.dragOffX; c.y = y - s.dragOffY
+      }
       return
     }
     if (s.connecting) {
       s.connecting.mx = x; s.connecting.my = y
-      const t = findTerm(x, y); s.hoverTerm = t && t.compId !== s.connecting.compId ? t : null
-      forceUpdate(n => n + 1); return
+      s.hoverTerm = findTermNear(s.components, x, y, s.connecting.compId)
+      return
     }
     s.hoverTerm = findTerm(x, y)
     canvasRef.current.style.cursor = s.hoverTerm ? 'crosshair' : findComp(x, y) ? 'grab' : 'default'
