@@ -98,9 +98,7 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
       P = U_b * I
     }
 
-    ctx.fillStyle = '#333'; ctx.font = `bold ${lay.font.title}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    if (!lay.compact) ctx.fillText(title, W / 2, 12)
-
+    // 标题由 SceneShell 底栏显示，画布不再重复绘制，避免与器材标注重叠
     const battX = L + (Rt - L) * 0.15
     const swX = L + (Rt - L) * 0.35
     const amX = L + (Rt - L) * 0.22
@@ -147,9 +145,8 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     drawMeter(ctx, bulX, volY, 'V', on ? U_b / s.U_rated : 0, on ? U_b.toFixed(2) + 'V' : '', '#4CAF50')
 
     ctx.fillStyle = '#555'; ctx.font = `${lay.font.label}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-    ctx.fillText('滑动变阻器', slX, T - 22)
-    ctx.fillText('小灯泡 2.5V', bulX, T - 22)
-    // 电表符号内已有 A/V，不重复标注
+    ctx.fillText('滑动变阻器', slX, T - 8)
+    ctx.fillText('小灯泡', bulX, T - 8)
     ctx.textBaseline = 'alphabetic'
 
     const status = !on ? '断开' : U_b < s.U_rated * 0.8 ? '低于额定' : U_b < s.U_rated * 1.1 ? '正常发光' : '高于额定'
