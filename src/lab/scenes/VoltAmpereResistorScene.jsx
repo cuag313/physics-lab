@@ -152,18 +152,14 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     // 电表符号内已有 A/V，不重复标注
     ctx.textBaseline = 'alphabetic'
 
-    const status = !on ? '断开' : U_b < s.U_rated * 0.8 ? '低于额定（偏暗）' : U_b < s.U_rated * 1.1 ? '正常发光' : '高于额定（过亮）'
+    const status = !on ? '断开' : U_b < s.U_rated * 0.8 ? '低于额定' : U_b < s.U_rated * 1.1 ? '正常发光' : '高于额定'
     const ro = lay.readout
-    const inner = drawPanel(ctx, ro, lay.compact ? null : '🎯 实验目的')
+    // 读数面板只放数据；实验目的/步骤用右侧 InfoDock 气泡
+    const inner = drawPanel(ctx, ro, null)
     let ky = inner.y
-    if (!lay.compact) {
-      ctx.fillStyle = '#444'; ctx.font = `${lay.font.body}px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-      ky = wrapText(ctx, '测量小灯泡在不同电压下的电功率 P=UI', inner.x, ky, inner.w, 18) + 4
-      ctx.fillStyle = '#333'; ctx.font = `bold ${lay.font.body}px sans-serif`
-      ctx.fillText('📖 小灯泡（额定 2.5V）', inner.x, ky); ky += 22
-    }
     ctx.fillStyle = !on ? '#999' : U_b < s.U_rated * 0.8 ? '#1976D2' : U_b < s.U_rated * 1.1 ? '#4CAF50' : '#F44336'
     ctx.font = `bold ${lay.font.data}px sans-serif`
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top'
     ctx.fillText(status, inner.x, ky); ky += lay.compact ? 20 : 22
     ctx.fillStyle = '#444'; ctx.font = `${lay.font.data}px monospace`
     ctx.fillText(`U = ${U_b.toFixed(2)} V`, inner.x, ky); ky += 18
@@ -205,12 +201,12 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     }
     ctx.textBaseline = 'alphabetic'
 
-    // 按钮放在读数面板底部，不与左侧电路重叠
+    // 简洁操作：只保留「记录」+「清空」；重置用顶部 SceneShell 按钮
     const nY = Math.min(H - 32, ro.y + ro.h - 32)
     const btnX = ro.x
     const recOk = on
-    const btnH = 26
-    const btnW = Math.min(72, (ro.w - 16) / 3)
+    const btnH = 28
+    const btnW = Math.min(70, (ro.w - 12) / 2)
     ctx.fillStyle = recOk ? '#4CAF50' : '#bdbdbd'
     ctx.beginPath(); ctx.roundRect(btnX, nY, btnW, btnH, 6); ctx.fill()
     ctx.fillStyle = '#fff'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
@@ -221,13 +217,8 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     const bx2 = btnX + btnW + 8
     ctx.fillStyle = '#f0f0f0'; ctx.beginPath(); ctx.roundRect(bx2, nY, btnW, btnH, 6); ctx.fill()
     ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(bx2, nY, btnW, btnH, 6); ctx.stroke()
-    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.fillText('清除', bx2 + btnW / 2, nY + btnH / 2)
+    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.fillText('清空', bx2 + btnW / 2, nY + btnH / 2)
     canvasRef.current._clickAreas.push({ x: bx2, y: nY, w: btnW, h: btnH, onClick: () => { dataStore = []; forceUpdate(n => n + 1) } })
-    const bx3 = btnX + (btnW + 8) * 2
-    ctx.fillStyle = '#f0f0f0'; ctx.beginPath(); ctx.roundRect(bx3, nY, btnW, btnH, 6); ctx.fill()
-    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(bx3, nY, btnW, btnH, 6); ctx.stroke()
-    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.fillText('重置', bx3 + btnW / 2, nY + btnH / 2)
-    canvasRef.current._clickAreas.push({ x: bx3, y: nY, w: btnW, h: btnH, onClick: () => { s.sliderR = 20; s.switchClosed = false; dataStore = []; forceUpdate(n => n + 1) } })
     ctx.textBaseline = 'alphabetic'
   }
 
@@ -332,45 +323,72 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
       canvasRef.current._clickAreas.push(g)
     }
 
-    // 器材栏
-    const palX = W - palW - 10
+    // 器材栏：右侧单列，可上下滑动（与串并联一致）
+    {
+    const palX = W - palW - 8
     ctx.fillStyle = '#f8f9fa'; ctx.beginPath(); ctx.roundRect(palX, cvY, palW, cvH, 8); ctx.fill()
     ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX, cvY, palW, cvH, 8); ctx.stroke()
-    ctx.fillStyle = '#333'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('🧰 电学器材', palX + 10, cvY + 10)
+    ctx.save()
+    ctx.beginPath(); ctx.rect(palX + 2, cvY + 2, palW - 4, cvH - 4); ctx.clip()
+    ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('电学器材', palX + 10, cvY + 6)
+
     const items = [
       { type: 'battery', name: '电源' },
       { type: 'switch', name: '开关' },
-      { type: 'rheostat', name: '滑动变阻器' },
-      { type: 'ammeter', name: '电流表 A' },
-      { type: 'bulb', name: '小灯泡' },
-      { type: 'voltmeter', name: '电压表 V' },
+      { type: 'rheostat', name: '变阻' },
+      { type: 'ammeter', name: 'A表' },
+      { type: 'bulb', name: '灯泡' },
+      { type: 'voltmeter', name: 'V表' },
     ]
-    let iy = cvY + 35
+    const rowH = lay.compact ? 34 : 38
+    const gap = 4
+    const contentH = items.length * (rowH + gap) + 90
+    const viewH = cvH - 28
+    const maxScroll = Math.max(0, contentH - viewH)
+    if (s._palScroll == null) s._palScroll = 0
+    s._palScroll = Math.max(0, Math.min(maxScroll, s._palScroll))
+    s._palMaxScroll = maxScroll
+
+    let iy = cvY + 28 - s._palScroll
     for (const item of items) {
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 38, 6); ctx.fill()
-      ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 38, 6); ctx.stroke()
-      drawRealisticIcon(ctx, palX + 28, iy + 19, item.type)
-      ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(item.name, palX + 50, iy + 19); ctx.textBaseline = 'alphabetic'
-      canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: 38, type: item.type })
-      iy += 42
+      if (iy + rowH > cvY && iy < cvY + cvH) {
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, rowH, 6); ctx.fill()
+        ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, rowH, 6); ctx.stroke()
+        drawRealisticIcon(ctx, palX + 28, iy + rowH / 2, item.type)
+        ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+        ctx.fillText(item.name, palX + 50, iy + rowH / 2); ctx.textBaseline = 'alphabetic'
+      }
+      canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: rowH, type: item.type })
+      iy += rowH + gap
     }
-    iy += 10
+
+    iy += 8
     ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('导线颜色：', palX + 10, iy); iy += 20
-    for (const wc of [{ color: '#F44336', name: '红线' }, { color: '#FFC107', name: '黄线' }, { color: '#4CAF50', name: '绿线' }]) {
+    ctx.fillText('导线：', palX + 10, iy); iy += 18
+    for (const wc of [{ color: '#F44336', name: '红' }, { color: '#FFC107', name: '黄' }, { color: '#4CAF50', name: '绿' }]) {
       const active = s.wireColor === wc.color
-      ctx.fillStyle = active ? '#e3f2fd' : '#fff'
-      ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 26, 4); ctx.fill()
-      if (active) { ctx.strokeStyle = wc.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 26, 4); ctx.stroke() }
-      ctx.fillStyle = wc.color; ctx.fillRect(palX + 14, iy + 8, 30, 10)
-      ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(wc.name, palX + 52, iy + 13); ctx.textBaseline = 'alphabetic'
-      canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: 26, action: 'color', color: wc.color })
-      iy += 30
+      if (iy + 24 > cvY && iy < cvY + cvH) {
+        ctx.fillStyle = active ? '#e3f2fd' : '#fff'
+        ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 24, 4); ctx.fill()
+        if (active) { ctx.strokeStyle = wc.color; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(palX + 6, iy, palW - 12, 24, 4); ctx.stroke() }
+        ctx.fillStyle = wc.color; ctx.fillRect(palX + 14, iy + 7, 28, 10)
+        ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+        ctx.fillText(wc.name, palX + 52, iy + 12); ctx.textBaseline = 'alphabetic'
+      }
+      canvasRef.current._palAreas.push({ x: palX + 6, y: iy, w: palW - 12, h: 24, action: 'color', color: wc.color })
+      iy += 28
     }
+    ctx.restore()
+    if (maxScroll > 0) {
+      const th = Math.max(24, (viewH / contentH) * viewH)
+      const ty = cvY + 28 + (s._palScroll / maxScroll) * (viewH - th)
+      ctx.fillStyle = 'rgba(0,0,0,0.18)'
+      ctx.beginPath(); ctx.roundRect(palX + palW - 5, ty, 3, th, 2); ctx.fill()
+    }
+    s._palRect = { x: palX, y: cvY, w: palW, h: cvH }
     ctx.textBaseline = 'alphabetic'
+    }
   }
 
   function drawBWire(ctx, wire) {
@@ -596,6 +614,11 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     for (const a of canvasRef.current._clickAreas || []) {
       if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(); return }
     }
+    // 器材栏：按下记录，拖动=滑动列表，轻点=放置器材
+    if (s._palRect && x >= s._palRect.x && x <= s._palRect.x + s._palRect.w && y >= s._palRect.y && y <= s._palRect.y + s._palRect.h) {
+      s.palDrag = { y0: y, scroll0: s._palScroll || 0, moved: false, x, y }
+      return
+    }
     for (const a of canvasRef.current._palAreas) {
       if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) {
         if (a.action === 'color') { s.wireColor = a.color; forceUpdate(n => n + 1); return }
@@ -646,6 +669,15 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
   const handleMouseMove = useCallback((e) => {
     const s = S.current; const { x, y } = getPos(e)
     if (s.tab !== 2) return
+    // 器材栏滑动（手机）
+    if (s.palDrag) {
+      const dy = y - s.palDrag.y0
+      if (Math.abs(dy) > 6) s.palDrag.moved = true
+      if (s.palDrag.moved) {
+        s._palScroll = s.palDrag.scroll0 - dy
+      }
+      return
+    }
     // 拖拽过程只改 S.current，rAF 每帧重绘 —— 不 forceUpdate，避免电脑端卡顿
     if (s.dragId) {
       if (typeof s.dragId === 'string' && s.dragId.startsWith('rheo_')) {
@@ -709,6 +741,31 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
       s._lastUpPrev = upPos
       s._lastUpT = now
     }
+    if (s.palDrag) {
+      const pd = s.palDrag
+      s.palDrag = null
+      if (!pd.moved) {
+        // 轻点：命中器材则放到工作区中部
+        for (const a of canvasRef.current._palAreas || []) {
+          if (pd.x >= a.x && pd.x <= a.x + a.w && pd.y >= a.y && pd.y <= a.y + a.h) {
+            if (a.action === 'color') { s.wireColor = a.color; forceUpdate(n => n + 1); return }
+            if (a.type) {
+              const id = s.nextId++
+              const props = {}
+              if (a.type === 'rheostat') props.resistance = 20
+              const wx = s._palRect ? s._palRect.x * 0.42 : pd.x
+              const wy = s._palRect ? s._palRect.y + s._palRect.h * 0.45 : pd.y
+              s.components.push({ id, type: a.type, x: wx, y: wy, rotation: 0, closed: a.type === 'switch' ? false : true, props })
+              s.dragId = id; s.dragOffX = 0; s.dragOffY = 0
+              s.dragMoved = false; s.dragStart = { x: wx, y: wy }
+            }
+            break
+          }
+        }
+      }
+      forceUpdate(n => n + 1)
+      return
+    }
     if (s.dragId) {
       const id = s.dragId
       const moved = s.dragMoved
@@ -764,6 +821,8 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
 
   const handleReset = useCallback(() => {
     S.current.components = []; S.current.wires = []; S.current.dragId = null; S.current.connecting = null
+    S.current.switchClosed = false; S.current.sliderR = 20
+    dataStore = []
     forceUpdate(n => n + 1)
   }, [])
 
@@ -772,14 +831,14 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
       title={title}
       tab={tab}
       onTabChange={(t) => { S.current.tab = t; setTab(t); forceUpdate(n => n + 1) }}
-      tab1Label="📖 实验演示"
-      tab2Label="🔧 自己动手"
+      tab1Label="实验演示"
+      tab2Label="自己动手"
       onReset={handleReset}
       desc={(
         <>
           <b>{title}</b>
           <span style={{ marginLeft: 12, color: '#555', fontSize: 12 }}>
-            {tab === 1 ? '点开关→点变阻器调分压→记录数据' : '拖器材·点接线柱连线·轻点开关通断·双击删除'}
+            {tab === 1 ? '点开关 · 调变阻器 · 记录' : '拖器材 · 点接线柱连线'}
           </span>
         </>
       )}
@@ -790,14 +849,13 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
           onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
           onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick} />
         <InfoDock
-          purpose="测量小灯泡在不同电压下的电功率 P=UI，观察灯丝电阻随温度的变化。"
+          purpose="测量小灯泡在不同电压下的电功率 P=UI。"
           steps={[
-            '点击开关，闭合电路',
-            '点击滑动变阻器电阻体，调节分压',
-            '让灯泡电压 ≈ 2.5V，点「记录」',
-            '再测低于/高于额定电压两组数据',
+            '闭合开关，调变阻器分压',
+            'U≈2.5V 时点「记录」',
+            '再测偏低/偏高各一组',
           ]}
-          hint="建议测 3 组：低于额定、额定、高于额定。U=灯泡端电压（断开=0）。"
+          hint="U=灯泡端电压（断开=0）。灯泡亮度随功率连续变化。"
         />
       </div>
     </SceneShell>
