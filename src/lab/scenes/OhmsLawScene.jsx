@@ -9,6 +9,7 @@ import {
   getTerminals, getTermPos, findTermAt,
   strokeBezierWire, bezierCtrl,
   drawTerminal, findCompAt, findCompWide, mapSliderR,
+  drawGuideBubble, drawBuilderSwitch,
 } from '../ui/circuitKit'
 
 // 模块级数据（跨渲染保留，不被组件重渲染重置）
@@ -196,24 +197,7 @@ export default function OhmsLawScene() {
     ctx.fillText('滑动变阻器', sliderX, top - 22)
     ctx.fillText(`R=${s.R}Ω`, resistorX, top - 22)
     ctx.textBaseline = 'alphabetic'
-
-    // 操作手册气泡（电路图中央）
-    const cx = (left + right) / 2, cy = (top + bottom) / 2 + 10
-    const bubbleW = 230, bubbleH = 92
-    ctx.fillStyle = 'rgba(255,253,230,0.95)'; ctx.strokeStyle = '#FFB300'; ctx.lineWidth = 1.5
-    ctx.beginPath(); ctx.roundRect(cx - bubbleW / 2, cy - bubbleH / 2, bubbleW, bubbleH, 10); ctx.fill(); ctx.stroke()
-    // 小尖角
-    ctx.fillStyle = 'rgba(255,253,230,0.95)'; ctx.strokeStyle = '#FFB300'; ctx.lineWidth = 1.5
-    ctx.beginPath(); ctx.moveTo(cx - 10, cy + bubbleH / 2); ctx.lineTo(cx + 10, cy + bubbleH / 2); ctx.lineTo(cx, cy + bubbleH / 2 + 10); ctx.closePath(); ctx.fill(); ctx.stroke()
-    // 文字
-    ctx.fillStyle = '#5D4037'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.font = 'bold 11px sans-serif'
-    ctx.fillText('📋 操作步骤', cx - bubbleW / 2 + 12, cy - bubbleH / 2 + 10)
-    ctx.font = '10px sans-serif'; ctx.fillStyle = '#6D4C41'
-    const steps = s.step === 1
-      ? ['①  点击开关，闭合电路', '②  点击滑动变阻器电阻体，调节分压', '③  记录电表读数 → 点"记录"', '④  重复 3 次以上，看 I-U 图']
-      : ['①  点击开关，闭合电路', '②  点电阻旁 ± 按钮，更换 R', '③  记录电表读数 → 点"记录"', '④  重复 3 次以上，看 I-R 图']
-    for (let i = 0; i < steps.length; i++) ctx.fillText(steps[i], cx - bubbleW / 2 + 12, cy - bubbleH / 2 + 28 + i * 15)
+    // 操作步骤已移至 InfoDock / 左上角气泡，不再遮挡电路中央
   }
 
   // ─── 右侧：数据表格+图像 ───
@@ -617,6 +601,7 @@ export default function OhmsLawScene() {
   // ================================================================
   function renderBuilder(ctx, W, H) {
     const s = S.current
+    const lay = fitLayout(W, H)
     const cvX = 10, cvY = 16, cvW = W - 20, cvH = H - 40
 
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(cvX, cvY, cvW, cvH, 8); ctx.fill()
@@ -630,14 +615,21 @@ export default function OhmsLawScene() {
       const fc = s.components.find(c => c.id === s.connecting.compId)
       if (fc) {
         const ft = getTermPos(fc, s.connecting.termIdx)
-        ctx.strokeStyle = s.wireColor; ctx.lineWidth = 2; ctx.setLineDash([5, 5])
-        ctx.beginPath(); ctx.moveTo(ft.x, ft.y); ctx.lineTo(s.connecting.mx, s.connecting.my); ctx.stroke()
-        ctx.setLineDash([])
+        strokeWirePreview(ctx, ft, { x: s.connecting.mx, y: s.connecting.my }, s.wireColor, s.connecting.termIdx)
       }
     }
     const circuit = checkCircuit()
     const engineResult = solveSceneCircuit()
     for (const comp of s.components) drawBuilderComp(ctx, comp, s, circuit, engineResult)
+
+    // 操作说明：固定左上角
+    {
+      const lines = ['拖器材到画布', '点端子连线', '轻点开关通断', '双击删除器材', '滑杆拖变阻器']
+      const g = drawGuideBubble(ctx, cvX, cvY, lay.compact, s._guideExpanded, lines, () => {
+        s._guideExpanded = !s._guideExpanded; forceUpdate(n => n + 1)
+      })
+      canvasRef.current._clickAreas.push(g)
+    }
 
     // 标出所有未连线的元件（红色虚线框+提示）
     const wiredIds = new Set()
@@ -703,20 +695,7 @@ export default function OhmsLawScene() {
       ctx.fillStyle = '#F57F17'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
       ctx.fillText('灯泡', 0, 26)
     } else if (type === 'switch') {
-      const sw = comp.closed !== false
-      ctx.fillStyle = '#ECEFF1'; ctx.strokeStyle = '#78909C'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.roundRect(-36, -16, 72, 32, 6); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#546E7A'; ctx.beginPath(); ctx.arc(-24, 0, 5, 0, Math.PI * 2); ctx.fill()
-      ctx.beginPath(); ctx.arc(24, 0, 5, 0, Math.PI * 2); ctx.fill()
-      if (sw) {
-        ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 3.5; ctx.lineCap = 'round'
-        ctx.beginPath(); ctx.moveTo(-24, 0); ctx.lineTo(24, 0); ctx.stroke(); ctx.lineCap = 'butt'
-      } else {
-        ctx.strokeStyle = '#F44336'; ctx.lineWidth = 3.5; ctx.lineCap = 'round'
-        ctx.beginPath(); ctx.moveTo(-24, 0); ctx.lineTo(16, -18); ctx.stroke(); ctx.lineCap = 'butt'
-      }
-      ctx.fillStyle = sw ? '#4CAF50' : '#F44336'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-      ctx.fillText(sw ? 'ON' : 'OFF', 0, 18)
+      drawBuilderSwitch(ctx, comp.closed)
     } else if (type === 'resistor') {
       ctx.fillStyle = '#EFEBE9'; ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 2
       ctx.beginPath(); ctx.roundRect(-34, -14, 68, 28, 4); ctx.fill(); ctx.stroke()

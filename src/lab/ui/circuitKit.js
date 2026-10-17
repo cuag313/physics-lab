@@ -207,3 +207,66 @@ export function findCompWide(components, mx, my) {
   }
   return null
 }
+
+/**
+ * 操作说明气泡：固定在实验区左上角（不遮挡电路器材）
+ * compact 手机：更窄更矮；桌面：略宽。可折叠。
+ * 返回 clickAreas 条目，由调用方 push 到 canvas._clickAreas
+ */
+export function drawGuideBubble(ctx, cvX, cvY, compact, expanded, lines, onClick) {
+  const bw = compact ? 88 : 210
+  const bh = expanded ? (compact ? 110 : 28 + lines.length * 16 + 8) : (compact ? 26 : 28)
+  const bx = cvX + 10, by = cvY + 10
+  ctx.fillStyle = 'rgba(255,255,255,0.95)'
+  ctx.strokeStyle = '#1976D2'
+  ctx.lineWidth = 1
+  ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6); ctx.fill(); ctx.stroke()
+  if (compact) {
+    ctx.fillStyle = '#1976D2'; ctx.font = 'bold 11px sans-serif'
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText(expanded ? '收起 ▲' : '操作说明 ▼', bx + bw / 2, by + 13)
+    if (expanded) {
+      ctx.fillStyle = 'rgba(255,255,255,0.96)'; ctx.strokeStyle = '#c5daf0'
+      ctx.beginPath(); ctx.roundRect(bx, by + 28, bw, lines.length * 18 + 8, 6); ctx.fill(); ctx.stroke()
+      ctx.fillStyle = '#333'; ctx.font = '10px sans-serif'
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+      for (let i = 0; i < lines.length; i++) ctx.fillText('· ' + lines[i], bx + 8, by + 34 + i * 18)
+    }
+  } else {
+    ctx.fillStyle = '#1976D2'; ctx.font = 'bold 11px sans-serif'
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('📖 操作说明', bx + 8, by + 7)
+    ctx.textAlign = 'right'; ctx.font = '10px sans-serif'
+    ctx.fillText(expanded ? '收起 ▲' : '展开 ▼', bx + bw - 8, by + 8)
+    if (expanded) {
+      ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'
+      ctx.textAlign = 'left'
+      for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], bx + 12, by + 30 + i * 16)
+    }
+  }
+  ctx.textBaseline = 'alphabetic'
+  return { x: bx, y: by, w: bw, h: expanded && compact ? 28 : 28, onClick }
+}
+
+/** 串并联同款开关（插头式：底座+两接线柱+闸刀） */
+export function drawBuilderSwitch(ctx, closed) {
+  const sw = closed !== false
+  ctx.fillStyle = '#ECEFF1'; ctx.strokeStyle = '#78909C'; ctx.lineWidth = 2
+  ctx.beginPath(); ctx.roundRect(-36, -16, 72, 32, 6); ctx.fill(); ctx.stroke()
+  // 接线柱（插头脚）
+  ctx.fillStyle = '#546E7A'
+  ctx.beginPath(); ctx.arc(-24, 0, 5, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.arc(24, 0, 5, 0, Math.PI * 2); ctx.fill()
+  // 闸刀
+  if (sw) {
+    ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 3.5; ctx.lineCap = 'round'
+    ctx.beginPath(); ctx.moveTo(-24, 0); ctx.lineTo(24, 0); ctx.stroke(); ctx.lineCap = 'butt'
+  } else {
+    ctx.strokeStyle = '#F44336'; ctx.lineWidth = 3.5; ctx.lineCap = 'round'
+    ctx.beginPath(); ctx.moveTo(-24, 0); ctx.lineTo(16, -18); ctx.stroke(); ctx.lineCap = 'butt'
+  }
+  ctx.fillStyle = sw ? '#4CAF50' : '#F44336'
+  ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+  ctx.fillText(sw ? 'ON' : 'OFF', 0, 18)
+  ctx.textBaseline = 'alphabetic'
+}

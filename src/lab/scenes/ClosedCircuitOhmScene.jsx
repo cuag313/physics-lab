@@ -5,6 +5,7 @@ import InfoDock from '../ui/InfoDock'
 import { fitLayout } from '../ui/canvasLayout'
 import {
   strokeBezierWire, strokeWirePreview,
+  drawGuideBubble, drawBuilderSwitch,
 } from '../ui/circuitKit'
 
 /**
@@ -475,21 +476,14 @@ export default function ClosedCircuitOhmScene() {
 
     for (const comp of s.components) drawComp(ctx, comp)
 
-    // 操作说明
-    const bx = 22, by = H - 130, bw2 = palX - 50
-    ctx.fillStyle = 'rgba(255,252,240,0.95)'; ctx.strokeStyle = '#ddd'
-    ctx.beginPath(); ctx.roundRect(bx, by, bw2, s._guideOpen ? 118 : 36, 6); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#5D4037'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-    ctx.fillText('📋 操作说明', bx + 10, by + 18)
-    ctx.textAlign = 'right'
-    ctx.fillText(s._guideOpen ? '收起 ▲' : '展开 ▼', bx + bw2 - 10, by + 18)
-    canvasRef.current._clickAreas.push({ x: bx - 5, y: by - 3, w: bw2 + 10, h: 42, onClick: () => { s._guideOpen = !s._guideOpen; forceUpdate(n => n + 1) } })
-    if (s._guideOpen) {
-      ctx.textAlign = 'left'; ctx.font = '10px sans-serif'
-      const lines = ['① 拖入器材到画布', '② 点击接线柱连线', '③ 双击开关通断', '④ 右键删除器材', '⑤ 观察电流表和电压表读数']
-      for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], bx + 10, by + 40 + i * 15)
+    // 操作说明：固定左上角（不遮挡器材）
+    {
+      const lines = ['拖入器材到画布', '点击接线柱连线', '轻点开关通断', '双击删除器材', '观察电流表和电压表读数']
+      const g = drawGuideBubble(ctx, 10, 10, false, s._guideOpen, lines, () => {
+        s._guideOpen = !s._guideOpen; forceUpdate(n => n + 1)
+      })
+      canvasRef.current._clickAreas.push(g)
     }
-    ctx.textBaseline = 'alphabetic'
 
     drawPalette(ctx, palX, 10, palW, H - 20)
   }
@@ -543,10 +537,13 @@ export default function ClosedCircuitOhmScene() {
       ctx.fillStyle = '#4CAF50'; ctx.strokeStyle = '#2E7D32'
       ctx.fillRect(-10, -7, 20, 14); ctx.strokeRect(-10, -7, 20, 14)
     } else if (type === 'switch') {
-      ctx.strokeStyle = '#666'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.moveTo(-7, 0); ctx.lineTo(5, -4); ctx.stroke()
-      ctx.fillStyle = '#666'; ctx.beginPath(); ctx.arc(-7, 0, 2, 0, Math.PI * 2); ctx.fill()
-      ctx.beginPath(); ctx.arc(7, 0, 2, 0, Math.PI * 2); ctx.fill()
+      // 插头式开关缩略图（与串并联一致）
+      ctx.fillStyle = '#ECEFF1'; ctx.strokeStyle = '#90A4AE'; ctx.lineWidth = 1.5
+      ctx.beginPath(); ctx.roundRect(-14, -6, 28, 12, 3); ctx.fill(); ctx.stroke()
+      ctx.fillStyle = '#666'; ctx.beginPath(); ctx.arc(-8, 0, 2.5, 0, Math.PI * 2); ctx.fill()
+      ctx.beginPath(); ctx.arc(8, 0, 2.5, 0, Math.PI * 2); ctx.fill()
+      ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2; ctx.lineCap = 'round'
+      ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(5, -6); ctx.stroke(); ctx.lineCap = 'butt'
     } else if (type === 'ammeter') {
       ctx.fillStyle = '#fff'; ctx.strokeStyle = '#E53935'; ctx.lineWidth = 2
       ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
@@ -575,7 +572,7 @@ export default function ClosedCircuitOhmScene() {
 
   function getTermPos(comp, portIndex) {
     if (comp.type === 'battery') return { x: comp.x + (portIndex === 0 ? -18 : 18), y: comp.y }
-    if (comp.type === 'switch') return { x: comp.x + (portIndex === 0 ? -15 : 15), y: comp.y }
+    if (comp.type === 'switch') return { x: comp.x + (portIndex === 0 ? -24 : 24), y: comp.y }
     if (comp.type === 'ammeter') return { x: comp.x + (portIndex === 0 ? -16 : 16), y: comp.y }
     if (comp.type === 'voltmeter') return { x: comp.x + (portIndex === 0 ? -16 : 16), y: comp.y }
     if (comp.type === 'rheostat') return { x: comp.x + (portIndex === 0 ? -25 : 25), y: comp.y }
@@ -593,12 +590,7 @@ export default function ClosedCircuitOhmScene() {
       ctx.fillStyle = '#fff'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center'
       ctx.fillText('12V', 0, 3)
     } else if (comp.type === 'switch') {
-      ctx.strokeStyle = comp.closed ? '#4CAF50' : '#F44336'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(-15, 0); ctx.lineTo(10, comp.closed ? 0 : -10); ctx.stroke()
-      ctx.lineCap = 'butt'
-      ctx.fillStyle = '#333'
-      ctx.beginPath(); ctx.arc(-15, 0, 3, 0, Math.PI * 2); ctx.fill()
-      ctx.beginPath(); ctx.arc(15, 0, 3, 0, Math.PI * 2); ctx.fill()
+      drawBuilderSwitch(ctx, comp.closed)
     } else if (comp.type === 'ammeter') {
       ctx.fillStyle = '#fff'; ctx.strokeStyle = '#E53935'; ctx.lineWidth = 2
       ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill(); ctx.stroke()

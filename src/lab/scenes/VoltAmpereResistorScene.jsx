@@ -8,6 +8,7 @@ import {
   getTerminals, getTermPos, findTermAt,
   strokeBezierWire, strokeWirePreview,
   findCompAt, findCompWide, mapSliderR,
+  drawGuideBubble, drawBuilderSwitch,
 } from '../ui/circuitKit'
 
 // 模块级数据
@@ -253,8 +254,9 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
   // ═══════════════════════════════════════════════════════════
   function renderBuilder(ctx, W, H) {
     const s = S.current
-    const palW = 170
-    const cvX = 10, cvY = 60, cvW = W - palW - 30, cvH = H - 120
+    const lay = fitLayout(W, H)
+    const palW = lay.compact ? 112 : 170
+    const cvX = 4, cvY = 4, cvW = W - palW - 16, cvH = H - 8
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(cvX, cvY, cvW, cvH, 8); ctx.fill()
     ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(cvX, cvY, cvW, cvH, 8); ctx.stroke()
     ctx.strokeStyle = '#f0f0f0'; ctx.lineWidth = 0.5
@@ -305,35 +307,21 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
     ctx.fillText(statusText, cvX + 12, cvY + cvH - 25)
 
-    // 操作说明气泡（右上角，可折叠）
+    // 操作说明：固定在实验区左上角（不遮挡器材）
     {
-      const bw2 = 200, bh2 = s._guideOpen ? 196 : 40
-      const bx = cvX + cvW - bw2 - 12, by = cvY + 10
-      ctx.fillStyle = 'rgba(255,253,230,0.95)'; ctx.strokeStyle = '#FFB300'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.roundRect(bx, by, bw2, bh2, 8); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#5D4037'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText('📋 操作说明', bx + 10, by + 20)
-      ctx.textAlign = 'right'
-      ctx.fillText(s._guideOpen ? '收起 ▲' : '展开 ▼', bx + bw2 - 10, by + 20)
-      canvasRef.current._clickAreas.push({ x: bx - 5, y: by - 5, w: bw2 + 10, h: 45, onClick: () => { s._guideOpen = !s._guideOpen; forceUpdate(n => n + 1) } })
-      if (s._guideOpen) {
-        ctx.textAlign = 'left'; ctx.font = '10px sans-serif'
-        const lines = [
-          '①  从右侧器材栏拖入器材',
-          '②  点击接线柱（小圆圈）开始连线',
-          '③  点击另一端子完成导线',
-          '④  拖动变阻器滑片调阻值',
-          '⑤  双击开关切换通断',
-          '⑥  右键删除器材/导线',
-          '⑦  参照 Tab1 电路图接线：',
-          '    电源→开关→A表→变阻器→灯泡',
-          '    V表并联在灯泡两端',
-        ]
-        for (let i = 0; i < lines.length; i++) {
-          ctx.fillText(lines[i], bx + 10, by + 44 + i * 16)
-        }
-      }
-      ctx.textBaseline = 'alphabetic'
+      const lines = [
+        '①  从右侧器材栏拖入器材',
+        '②  点击接线柱开始连线',
+        '③  点击另一端子完成导线',
+        '④  拖动变阻器滑片调阻值',
+        '⑤  轻点开关通断，双击删除',
+        '⑥  电源→开关→A表→变阻器→灯泡',
+        '    V表并联在灯泡两端',
+      ]
+      const g = drawGuideBubble(ctx, cvX, cvY, lay?.compact, s._guideOpen, lines, () => {
+        s._guideOpen = !s._guideOpen; forceUpdate(n => n + 1)
+      })
+      canvasRef.current._clickAreas.push(g)
     }
 
     // 器材栏
@@ -454,20 +442,7 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
       ctx.fillStyle = '#F57F17'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
       ctx.fillText('小灯泡', 0, 26)
     } else if (type === 'switch') {
-      const sw = comp.closed !== false
-      ctx.fillStyle = '#ECEFF1'; ctx.strokeStyle = '#78909C'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.roundRect(-36, -16, 72, 32, 6); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#546E7A'; ctx.beginPath(); ctx.arc(-24, 0, 5, 0, Math.PI * 2); ctx.fill()
-      ctx.beginPath(); ctx.arc(24, 0, 5, 0, Math.PI * 2); ctx.fill()
-      if (sw) {
-        ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 3.5; ctx.lineCap = 'round'
-        ctx.beginPath(); ctx.moveTo(-24, 0); ctx.lineTo(24, 0); ctx.stroke(); ctx.lineCap = 'butt'
-      } else {
-        ctx.strokeStyle = '#F44336'; ctx.lineWidth = 3.5; ctx.lineCap = 'round'
-        ctx.beginPath(); ctx.moveTo(-24, 0); ctx.lineTo(16, -18); ctx.stroke(); ctx.lineCap = 'butt'
-      }
-      ctx.fillStyle = sw ? '#4CAF50' : '#F44336'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-      ctx.fillText(sw ? 'ON' : 'OFF', 0, 18)
+      drawBuilderSwitch(ctx, comp.closed)
     } else if (type === 'ammeter') {
       const r = (isClosed && eng?.ok && eng.results) ? eng.results.get(comp.id) : null
       const cur = r ? r.current : 0
