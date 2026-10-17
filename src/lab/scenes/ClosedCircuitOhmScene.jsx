@@ -1,6 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
 import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
+import InfoDock from '../ui/InfoDock'
+import { fitLayout } from '../ui/canvasLayout'
+import {
+  strokeBezierWire, strokeWirePreview,
+} from '../ui/circuitKit'
 
 /**
  * ClosedCircuitOhmScene — 闭合电路欧姆定律
@@ -126,13 +131,15 @@ export default function ClosedCircuitOhmScene() {
     ctx.fillStyle = '#1565C0'; ctx.font = 'bold 11px sans-serif'
     ctx.fillText('🎯 实验目的：理解闭合电路欧姆定律 ε=I(R+r)，掌握路端电压与电流关系', W / 2, 70)
 
-    // ─── 电路图（左中部）───
-    const cx = W * 0.22, cy = H * 0.42
+    // ─── 电路图（fitLayout 左侧）───
+    const lay = fitLayout(W, H)
+    const cx = (lay.circuit.L + lay.circuit.R) / 2
+    const cy = (lay.circuit.T + lay.circuit.B) / 2
     drawCircuit(ctx, cx, cy, s, info)
 
-    // ─── U-I 图像（右中部）───
+    // ─── U-I 图像（右侧）───
     if (s.step >= 2) {
-      const gx = W * 0.52, gy = 80, gw = W * 0.42, gh = H * 0.42
+      const gx = lay.readout.x, gy = lay.readout.y, gw = lay.readout.w, gh = lay.readout.h * 0.55
       drawUIGraph(ctx, gx, gy, gw, gh, s, info)
     }
 
@@ -159,8 +166,8 @@ export default function ClosedCircuitOhmScene() {
     ctx.fillText(`I=${info.I.toFixed(2)}A  U=${info.U.toFixed(2)}V`, 465, barY)
     ctx.textBaseline = 'alphabetic'
 
-    // 右侧面板
-    drawRightPanel(ctx, W * 0.56, H * 0.42 + 30, W - W * 0.56 - 25, H - H * 0.42 - 65, s, info)
+    // 右侧面板（fitLayout）
+    drawRightPanel(ctx, lay.readout.x, lay.readout.y + (s.step >= 2 ? lay.readout.h * 0.55 + 8 : 0), lay.readout.w, lay.readout.h * (s.step >= 2 ? 0.4 : 0.9), s, info)
   }
 
   // ─── 电路图 ───
@@ -455,17 +462,14 @@ export default function ClosedCircuitOhmScene() {
       if (!c1 || !c2) continue
       const p1 = getTermPos(c1, wire.from.portIndex)
       const p2 = getTermPos(c2, wire.to.portIndex)
-      ctx.strokeStyle = wire.color || s.wireColor; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke()
-      ctx.lineCap = 'butt'
+      // 三次贝塞尔：从接线柱水平出线
+      strokeBezierWire(ctx, p1, p2, wire.color || s.wireColor, null, null, wire.from.portIndex, wire.to.portIndex)
     }
     if (s.connecting) {
       const c1 = s.components.find(c => c.id === s.connecting.compId)
       if (c1) {
         const p1 = getTermPos(c1, s.connecting.portIndex)
-        ctx.strokeStyle = '#FF9800'; ctx.lineWidth = 2; ctx.setLineDash([5, 4])
-        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(s.connecting.mx, s.connecting.my); ctx.stroke()
-        ctx.setLineDash([])
+        strokeWirePreview(ctx, p1, { x: s.connecting.mx, y: s.connecting.my }, '#FF9800', s.connecting.portIndex)
       }
     }
 
@@ -677,7 +681,11 @@ export default function ClosedCircuitOhmScene() {
     const term = findTerm(x, y)
     if (term) { s.connecting = { ...term, mx: x, my: y }; forceUpdate(n => n + 1); return }
     for (const comp of s.components) {
-      if (Math.abs(x - comp.x) < 30 && Math.abs(y - comp.y) < 25) { s.dragId = comp.id; s.dragOffX = x - comp.x; s.dragOffY = y - comp.y; forceUpdate(n => n + 1); return }
+      if (Math.abs(x - comp.x) < 30 && Math.abs(y - comp.y) < 25) {
+        s.dragId = comp.id; s.dragOffX = x - comp.x; s.dragOffY = y - comp.y
+        s.dragMoved = false; s.dragStart = { x, y }
+        forceUpdate(n => n + 1); return
+      }
     }
   }
   function handleMouseMove(e) {
@@ -691,10 +699,38 @@ export default function ClosedCircuitOhmScene() {
       return
     }
     const comp = s.components.find(c => c.id === s.dragId)
-    if (comp) { comp.x = x - s.dragOffX; comp.y = y - s.dragOffY; forceUpdate(n => n + 1) }
+    if (comp) {
+      if (s.dragStart && Math.hypot(x - s.dragStart.x, y - s.dragStart.y) > 5) s.dragMoved = true
+      comp.x = x - s.dragOffX; comp.y = y - s.dragOffY
+      forceUpdate(n => n + 1)
+    }
   }
   function handleMouseUp(e) {
     const s = S.current; const { x, y } = getPos(e)
+    if (e) {
+      try { s._lastUpPos = getPos(e) } catch (_) { s._lastUpPos = null }
+    }
+    // 自记双击删除
+    const now = performance.now()
+    const upPos = s._lastUpPos
+    if (upPos) {
+      const isDouble = s._lastUpT && (now - s._lastUpT) < 350
+        && s._lastUpPrev
+        && Math.hypot(upPos.x - s._lastUpPrev.x, upPos.y - s._lastUpPrev.y) < 28
+      if (isDouble && !s.dragMoved) {
+        let comp = s.components.find(c => Math.abs(upPos.x - c.x) < 52 && Math.abs(upPos.y - c.y) < 40)
+        if (comp) {
+          s.components = s.components.filter(k => k.id !== comp.id)
+          s.wires = s.wires.filter(w => w.from.compId !== comp.id && w.to.compId !== comp.id)
+          s.dragId = null; s.connecting = null
+          s._lastUpT = 0; s._lastUpPrev = null
+          forceUpdate(n => n + 1)
+          return
+        }
+      }
+      s._lastUpPrev = upPos
+      s._lastUpT = now
+    }
     if (s.connecting) {
       const term = findTerm(x, y)
       if (term && !(term.compId === s.connecting.compId && term.portIndex === s.connecting.portIndex)) {
@@ -706,12 +742,29 @@ export default function ClosedCircuitOhmScene() {
       }
       s.connecting = null; forceUpdate(n => n + 1); return
     }
+    // 轻点开关：切换通断
+    if (s.dragId != null && !s.dragMoved) {
+      const comp = s.components.find(c => c.id === s.dragId)
+      if (comp && comp.type === 'switch') {
+        comp.closed = !comp.closed
+        s.dragId = null
+        forceUpdate(n => n + 1)
+        return
+      }
+    }
     s.dragId = null
+    s.dragMoved = false
   }
   function handleDoubleClick(e) {
+    e.preventDefault()
     const s = S.current; const { x, y } = getPos(e)
-    const comp = s.components.find(c => Math.abs(x - c.x) < 25 && Math.abs(y - c.y) < 25 && c.type === 'switch')
-    if (comp) { comp.closed = !comp.closed; forceUpdate(n => n + 1) }
+    // 双击删除
+    const comp = s.components.find(c => Math.abs(x - c.x) < 52 && Math.abs(y - c.y) < 40)
+    if (comp) {
+      s.components = s.components.filter(k => k.id !== comp.id)
+      s.wires = s.wires.filter(w => w.from.compId !== comp.id && w.to.compId !== comp.id)
+      forceUpdate(n => n + 1)
+    }
   }
   function handleContextMenu(e) {
     e.preventDefault()
@@ -730,18 +783,43 @@ export default function ClosedCircuitOhmScene() {
       title="闭合电路欧姆定律"
       tab={tab}
       onTabChange={(t) => { S.current.tab = t; setTab(t); forceUpdate(n => n + 1) }}
-      tab1Label="📊 实验演示"
+      tab1Label="📖 实验演示"
       tab2Label="🔧 自己动手"
+      onReset={() => {
+        S.current.components = []; S.current.wires = []; S.current.switchClosed = false
+        S.current.dragId = null; S.current.connecting = null; S.current.records = []
+        forceUpdate(n => n + 1)
+      }}
+      desc={(
+        <>
+          <b>闭合电路欧姆定律</b>
+          <span style={{ marginLeft: 12, color: '#555', fontSize: 12 }}>
+            ε = I(R+r) · 路端电压 U = ε − Ir
+          </span>
+        </>
+      )}
     >
-      <canvas
-      ref={canvasRef}
-      style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onDoubleClick={handleDoubleClick}
-      onContextMenu={handleContextMenu}
-      />
+      <div style={{ display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0, width: '100%' }}>
+        <canvas
+          ref={canvasRef}
+          className="canvas-fill"
+          style={{ width: '100%', flex: 1, minHeight: 0, display: 'block', touchAction: 'none' }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onDoubleClick={handleDoubleClick}
+          onContextMenu={handleContextMenu}
+        />
+        <InfoDock
+          purpose="理解闭合电路欧姆定律 ε=I(R+r)，掌握路端电压与电流关系。"
+          steps={[
+            '① 基本概念：ε = 内压降 U\' + 路端电压 U',
+            '② 调外阻 R，观测 U = ε − Ir',
+            '③ 记录多组 U、I，作 U-I 图求 ε 和 r',
+          ]}
+          hint="开关断开时 I=0，路端电压 U=ε。闭合后 U 随 I 增大而减小。"
+        />
+      </div>
     </SceneShell>
   )
 }

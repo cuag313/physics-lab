@@ -1,8 +1,14 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { eventToCanvas } from '../utils/pointerPos'
 import { CircuitGraph, CircuitSolver } from '../engine/index.js'
+import SceneShell from '../ui/SceneShell'
 import InfoDock from '../ui/InfoDock'
 import { fitLayout, drawPanel, wrapText } from '../ui/canvasLayout'
+import {
+  getTerminals, getTermPos, findTermAt,
+  strokeBezierWire, strokeWirePreview,
+  findCompAt, findCompWide, mapSliderR,
+} from '../ui/circuitKit'
 
 // 模块级数据
 let dataStore = []
@@ -127,8 +133,8 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     canvasRef.current._clickAreas.push({
       x: slX - 30, y: T - 22, w: 60, h: 34,
       onClick: (mx) => {
-        const r = Math.max(0, Math.min(1, (mx - (slX - 24)) / 48))
-        s.sliderR = Math.round(r * 50)
+        // 止点吸附：左=0Ω 右=50Ω
+        s.sliderR = mapSliderR(mx, slX - 24, slX + 24, 50)
       }
     })
 
@@ -140,10 +146,9 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     drawMeter(ctx, bulX, volY, 'V', on ? U_b / s.U_rated : 0, on ? U_b.toFixed(2) + 'V' : '', '#4CAF50')
 
     ctx.fillStyle = '#555'; ctx.font = `${lay.font.label}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-    ctx.fillText('A', amX, T - 22)
     ctx.fillText('滑动变阻器', slX, T - 22)
     ctx.fillText('小灯泡 2.5V', bulX, T - 22)
-    ctx.fillText('V', bulX, volY + 18)
+    // 电表符号内已有 A/V，不重复标注
     ctx.textBaseline = 'alphabetic'
 
     const status = !on ? '断开' : U_b < s.U_rated * 0.8 ? '低于额定（偏暗）' : U_b < s.U_rated * 1.1 ? '正常发光' : '高于额定（过亮）'
@@ -261,9 +266,7 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
       const fc = s.components.find(c => c.id === s.connecting.compId)
       if (fc) {
         const ft = getTermPos(fc, s.connecting.termIdx)
-        ctx.strokeStyle = s.wireColor; ctx.lineWidth = 2; ctx.setLineDash([5, 5])
-        ctx.beginPath(); ctx.moveTo(ft.x, ft.y); ctx.lineTo(s.connecting.mx, s.connecting.my); ctx.stroke()
-        ctx.setLineDash([])
+        strokeWirePreview(ctx, ft, { x: s.connecting.mx, y: s.connecting.my }, s.wireColor, s.connecting.termIdx)
       }
     }
     const circuit = checkCircuit()
@@ -520,29 +523,12 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     const tc = S.current.components.find(c => c.id === wire.to.compId)
     if (!fc || !tc) return
     const f = getTermPos(fc, wire.from.termIdx), t = getTermPos(tc, wire.to.termIdx)
-    const color = wire.color || '#1565C0'
-    ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
-    ctx.beginPath(); ctx.moveTo(f.x, f.y)
-    if (wire.mid1X != null) {
-      ctx.lineTo(wire.mid1X, wire.mid1Y)
-      if (wire.mid2X != null) ctx.lineTo(wire.mid2X, wire.mid2Y)
-      ctx.lineTo(t.x, t.y)
-    } else {
-      const dx = t.x - f.x
-      const ext = Math.min(Math.abs(dx) * 0.5, 80)
-      const fDir = f.x < t.x ? -1 : 1
-      const tDir = f.x < t.x ? 1 : -1
-      ctx.bezierCurveTo(f.x + fDir * ext, f.y, t.x + tDir * ext, t.y, t.x, t.y)
-    }
-    ctx.stroke(); ctx.lineCap = 'butt'
-    if (wire.mid1X != null) {
-      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(wire.mid1X, wire.mid1Y, 5, 0, Math.PI * 2); ctx.fill()
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(wire.mid1X, wire.mid1Y, 2.5, 0, Math.PI * 2); ctx.fill()
-    }
-    if (wire.mid2X != null) {
-      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(wire.mid2X, wire.mid2Y, 5, 0, Math.PI * 2); ctx.fill()
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(wire.mid2X, wire.mid2Y, 2.5, 0, Math.PI * 2); ctx.fill()
-    }
+    strokeBezierWire(
+      ctx, f, t, wire.color || '#1565C0',
+      wire.mid1X != null ? { x: wire.mid1X, y: wire.mid1Y } : null,
+      wire.mid2X != null ? { x: wire.mid2X, y: wire.mid2Y } : null,
+      wire.from.termIdx, wire.to.termIdx
+    )
   }
 
   function checkCircuit() {
@@ -613,25 +599,12 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     }
   }
 
-  function getTerminals(comp) {
-    return [{ x: comp.x - 40, y: comp.y }, { x: comp.x + 40, y: comp.y }]
-  }
-  function getTermPos(comp, idx) { return getTerminals(comp)[idx] }
+  // getTerminals / getTermPos / findTermAt / findCompAt 从 circuitKit 导入
   function findTerm(mx, my) {
-    for (const comp of S.current.components) {
-      const terms = getTerminals(comp)
-      for (let i = 0; i < terms.length; i++) {
-        if ((mx - terms[i].x) ** 2 + (my - terms[i].y) ** 2 < 144) return { compId: comp.id, termIdx: i }
-      }
-    }
-    return null
+    return findTermAt(S.current.components, mx, my)
   }
   function findComp(mx, my) {
-    for (let i = S.current.components.length - 1; i >= 0; i--) {
-      const c = S.current.components[i]
-      if (Math.abs(mx - c.x) < 45 && Math.abs(my - c.y) < 35) return c
-    }
-    return null
+    return findCompAt(S.current.components, mx, my)
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -726,26 +699,25 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
   function drawBulb(ctx, x, y, P) {
     const r = 14
     const Pmax = 0.75
-    const brightness = Math.min(P / Pmax, 1.2)
-    const levels = [
-      { min: 0, bg: '#f0f0f0', fg: '#bbb', glow: 0 },
-      { min: 0.1, bg: '#FFFDE7', fg: '#E0C860', glow: 0.12 },
-      { min: 0.25, bg: '#FFF9C4', fg: '#D4A800', glow: 0.25 },
-      { min: 0.5, bg: '#FFF59D', fg: '#C68A00', glow: 0.45 },
-      { min: 0.75, bg: '#FFEE58', fg: '#B76000', glow: 0.65 },
-      { min: 1.0, bg: '#FFEB3B', fg: '#E65100', glow: 0.85 },
-    ]
-    let lv = levels[0]
-    for (const l of levels) { if (brightness >= l.min) lv = l }
-    if (lv.glow > 0) {
+    // 连续渐变：P=0 最暗，P≥Pmax 最亮
+    const b = Math.max(0, Math.min(1, P / Pmax))
+    const mix = b
+    const rC = Math.round(245 + (255 - 245) * mix)
+    const gC = Math.round(245 + (235 - 245) * mix)
+    const bC = Math.round(245 + (59 - 245) * mix)
+    if (b > 0.05) {
       const glow = ctx.createRadialGradient(x, y, r * 0.5, x, y, r * 3)
-      glow.addColorStop(0, 'rgba(255,235,59,' + (lv.glow * 0.5) + ')')
+      glow.addColorStop(0, 'rgba(255,235,59,' + (0.12 + 0.45 * mix) + ')')
       glow.addColorStop(1, 'rgba(255,235,59,0)')
       ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, r * 3, 0, Math.PI * 2); ctx.fill()
     }
-    ctx.fillStyle = lv.bg; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
-    ctx.strokeStyle = lv.fg; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke()
-    ctx.strokeStyle = lv.fg; ctx.lineWidth = 1.5
+    ctx.fillStyle = 'rgb(' + rC + ',' + gC + ',' + bC + ')'
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
+    const edge = b > 0.05 ? 0.35 + 0.65 * mix : 0
+    ctx.strokeStyle = 'rgb(' + Math.round(153 + (249 - 153) * edge) + ',' + Math.round(153 + (168 - 153) * edge) + ',' + Math.round(153 + (40 - 153) * edge) + ')'
+    ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke()
+    ctx.strokeStyle = b > 0.05 ? 'rgba(230,80,0,' + (0.4 + 0.6 * mix) + ')' : '#999'
+    ctx.lineWidth = 1.5
     const s2 = r * 0.55
     ctx.beginPath(); ctx.moveTo(x - s2, y - s2); ctx.lineTo(x + s2, y + s2); ctx.stroke()
     ctx.beginPath(); ctx.moveTo(x + s2, y - s2); ctx.lineTo(x - s2, y + s2); ctx.stroke()
@@ -840,9 +812,48 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     canvasRef.current.style.cursor = s.hoverTerm ? 'crosshair' : findComp(x, y) ? 'grab' : 'default'
   }, [])
 
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback((e) => {
     const s = S.current
-    if (s.dragId) { s.dragId = null; forceUpdate(n => n + 1); return }
+    if (e) {
+      try { s._lastUpPos = getPos(e) } catch (_) { s._lastUpPos = null }
+    }
+    const now = performance.now()
+    const upPos = s._lastUpPos
+    if (s.tab === 2 && upPos) {
+      const isDouble = s._lastUpT && (now - s._lastUpT) < 350
+        && s._lastUpPrev
+        && Math.hypot(upPos.x - s._lastUpPrev.x, upPos.y - s._lastUpPrev.y) < 28
+      if (isDouble && !s.dragMoved) {
+        let comp = findComp(upPos.x, upPos.y)
+        if (!comp) comp = findCompWide(S.current.components, upPos.x, upPos.y)
+        if (comp) {
+          s.components = s.components.filter(k => k.id !== comp.id)
+          s.wires = s.wires.filter(w => w.from.compId !== comp.id && w.to.compId !== comp.id)
+          s.dragId = null; s.connecting = null
+          s._lastUpT = 0; s._lastUpPrev = null
+          forceUpdate(n => n + 1)
+          return
+        }
+      }
+      s._lastUpPrev = upPos
+      s._lastUpT = now
+    }
+    if (s.dragId) {
+      const id = s.dragId
+      const moved = s.dragMoved
+      s.dragId = null; s.dragMoved = false; s.dragStart = null
+      // 轻点开关：切换通断
+      if (!moved && typeof id === 'number') {
+        const c = s.components.find(k => k.id === id)
+        if (c && c.type === 'switch') {
+          c.closed = c.closed === false
+          forceUpdate(n => n + 1)
+          return
+        }
+      }
+      forceUpdate(n => n + 1)
+      return
+    }
     if (s.connecting) {
       const t = s.hoverTerm
       if (t && t.compId !== s.connecting.compId) {
@@ -868,9 +879,16 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
 
   const handleDoubleClick = useCallback((e) => {
     if (S.current.tab !== 2) return
+    e.preventDefault()
     const { x, y } = getPos(e)
-    const comp = findComp(x, y)
-    if (comp && comp.type === 'switch') { comp.closed = comp.closed === false ? true : false; forceUpdate(n => n + 1) }
+    // 双击删除
+    let comp = findComp(x, y)
+    if (!comp) comp = findCompWide(S.current.components, x, y)
+    if (comp) {
+      S.current.components = S.current.components.filter(c => c.id !== comp.id)
+      S.current.wires = S.current.wires.filter(w => w.from.compId !== comp.id && w.to.compId !== comp.id)
+      forceUpdate(n => n + 1)
+    }
   }, [])
 
   const handleReset = useCallback(() => {
@@ -879,17 +897,23 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
   }, [])
 
   return (
-    <div style={st.container}>
-      <div style={st.topBar}>
-        <span style={st.title}>{title}</span>
-        <div style={st.topActions}>
-          <button style={tab === 1 ? st.tabA : st.tab} onClick={() => { S.current.tab = 1; setTab(1); forceUpdate(n => n + 1) }}>实验演示</button>
-          <button style={tab === 2 ? st.tabA : st.tab} onClick={() => { S.current.tab = 2; setTab(2); forceUpdate(n => n + 1) }}>自己动手</button>
-          <div style={{ flex: 1 }} />
-          <button style={st.btn} onClick={handleReset}>重置</button>
-        </div>
-      </div>
-      <div className="scene-split" style={st.main}>
+    <SceneShell
+      title={title}
+      tab={tab}
+      onTabChange={(t) => { S.current.tab = t; setTab(t); forceUpdate(n => n + 1) }}
+      tab1Label="📖 实验演示"
+      tab2Label="🔧 自己动手"
+      onReset={handleReset}
+      desc={(
+        <>
+          <b>{title}</b>
+          <span style={{ marginLeft: 12, color: '#555', fontSize: 12 }}>
+            {tab === 1 ? '点开关→点变阻器调分压→记录数据' : '拖器材·点接线柱连线·轻点开关通断·双击删除'}
+          </span>
+        </>
+      )}
+    >
+      <div className="scene-split" style={{ display: 'flex', flex: 1, minHeight: 0, width: '100%' }}>
         <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }}
           onMouseDown={handleMouseDown} onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
@@ -902,27 +926,9 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
             '让灯泡电压 ≈ 2.5V，点「记录」',
             '再测低于/高于额定电压两组数据',
           ]}
-          hint="建议测 3 组：低于额定、额定、高于额定。右侧胶囊可展开/收起说明。"
+          hint="建议测 3 组：低于额定、额定、高于额定。U=灯泡端电压（断开=0）。"
         />
       </div>
-      <div className="scene-desc" style={st.desc}>
-        <b>{title}</b>
-        <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
-          {tab === 1 ? '点开关→点变阻器调分压→记录数据' : '拖器材·点接线柱连线·双击开关'}
-        </span>
-      </div>
-    </div>
+    </SceneShell>
   )
-}
-
-const st = {
-  container: { display: 'flex', flexDirection: 'column', height: '100%', maxHeight: '100%', background: '#f0f4f8', color: '#333', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif', overflow: 'hidden' },
-  topBar: { minHeight: 36, background: '#f5f5f5', borderBottom: '1px solid #ccc', display: 'flex', alignItems: 'center', padding: '0 8px', flexShrink: 0, gap: 6 },
-  title: { fontSize: 14, fontWeight: 600, color: '#333' },
-  topActions: { display: 'flex', alignItems: 'center', gap: 6 },
-  tab: { background: '#f0f0f0', color: '#666', border: '1px solid #ddd', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer' },
-  tabA: { background: '#4A90D9', color: '#fff', border: '1px solid #4A90D9', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer', fontWeight: 600 },
-  btn: { background: '#f0f0f0', color: '#333', border: '1px solid #ddd', borderRadius: 4, padding: '5px 12px', fontSize: 12, cursor: 'pointer' },
-  main: { flex: 1, display: 'flex', overflow: 'hidden' },
-  desc: { padding: '8px 14px', background: '#f5f5f5', borderTop: '1px solid #ccc', fontSize: 13, color: '#333', flexShrink: 0 },
 }

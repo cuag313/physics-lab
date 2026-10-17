@@ -2,7 +2,14 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { eventToCanvas } from '../utils/pointerPos'
 import { CircuitGraph, CircuitSolver } from '../engine/index.js'
 import SceneShell from '../ui/SceneShell'
+import InfoDock from '../ui/InfoDock'
 import BuilderPalette from '../ui/BuilderPalette'
+import { fitLayout, drawPanel } from '../ui/canvasLayout'
+import {
+  getTerminals, getTermPos, findTermAt,
+  strokeBezierWire, bezierCtrl,
+  drawTerminal, findCompAt, findCompWide, mapSliderR,
+} from '../ui/circuitKit'
 
 // 模块级数据（跨渲染保留，不被组件重渲染重置）
 let dataIUStore = []
@@ -44,7 +51,7 @@ export default function OhmsLawScene() {
   })
 
   const [tab, setTab] = useState(1)
-  const [step, setStep] = useState(1)
+  const [, setStep] = useState(1)
   const [, forceUpdate] = useState(0)
   const [conclusionOpen, setConclusionOpen] = useState(false)
 
@@ -82,10 +89,11 @@ export default function OhmsLawScene() {
   function renderDemo(ctx, W, H) {
     const s = S.current
     const on = s.switchClosed
-    const circuitLeft = W * 0.06, circuitRight = W * 0.48
-    const circuitTop = 85, circuitBottom = H - 140
+    const lay = fitLayout(W, H)
+    const circuitLeft = lay.circuit.L, circuitRight = lay.circuit.R
+    const circuitTop = lay.circuit.T, circuitBottom = lay.circuit.B
 
-    // 计算电路
+    // 计算电路（断开时 U_R=0）
     let I = 0, U_R = 0, U_slider = 0
     if (on) {
       const Rtotal = s.R + s.sliderR
@@ -97,16 +105,16 @@ export default function OhmsLawScene() {
     // 标题
     ctx.fillStyle = '#333'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
     const titles = { 1: '① R不变，改变U → I∝U', 2: '② U不变，改变R → I∝1/R' }
-    ctx.fillText(titles[s.step], W / 2, 12)
+    if (!lay.compact) ctx.fillText(titles[s.step], W / 2, 12)
 
     // 电路图
     drawCircuit(ctx, circuitLeft, circuitRight, circuitTop, circuitBottom, on, s, I, U_R, U_slider)
 
-    // 右侧：数据+图像
-    drawRightPanel(ctx, W, H, s, on, I, U_R)
+    // 右侧：数据+图像（fitLayout）
+    drawRightPanel(ctx, W, H, s, on, I, U_R, lay)
 
     // 底部步骤导航
-    drawStepNav(ctx, W, H, s)
+    drawStepNav(ctx, W, H, s, lay)
   }
 
   function drawCircuit(ctx, left, right, top, bottom, on, s, I, U_R, U_slider) {
@@ -183,9 +191,8 @@ export default function OhmsLawScene() {
     drawLine(ctx, resistorX + 22, volY, resistorX + 16, volY, wc, 2)
     drawMeterInCircuit(ctx, resistorX, volY, 'V', on ? `${U_R.toFixed(2)}V` : '', '#4CAF50')
 
-    // 标注
+    // 标注（电表符号内已有 A/V，不重复标注）
     ctx.fillStyle = '#555'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-    ctx.fillText('A', amX, top - 22)
     ctx.fillText('滑动变阻器', sliderX, top - 22)
     ctx.fillText(`R=${s.R}Ω`, resistorX, top - 22)
     ctx.textBaseline = 'alphabetic'
@@ -210,23 +217,48 @@ export default function OhmsLawScene() {
   }
 
   // ─── 右侧：数据表格+图像 ───
-  function drawRightPanel(ctx, W, H, s, on, I, U_R) {
+  function drawRightPanel(ctx, W, H, s, on, I, U_R, layIn) {
     s = S.current
-    const px = W * 0.52, py = 50, pw = W * 0.46, ph = H - 160
-    ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.fill()
-    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(px, py, pw, ph, 8); ctx.stroke()
+    const lay = layIn || fitLayout(W, H)
+    const ro = lay.readout
+    const inner = drawPanel(ctx, ro, lay.compact ? null : '📖 实验数据')
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    let ky = inner.y
+    let px = inner.x
+    let pw = inner.w
 
-    ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    let ky = py + 12
+    // 手机：紧凑读数
+    if (lay.compact) {
+      const Ub = on ? U_R : 0
+      const Ib = on ? I : 0
+      ctx.font = `bold ${lay.font.data}px monospace`
+      ctx.fillStyle = '#333'
+      ctx.fillText(`U = ${Ub.toFixed(2)} V`, px, ky); ky += 18
+      ctx.fillText(`I = ${Ib.toFixed(3)} A`, px, ky); ky += 18
+      ctx.fillStyle = '#FF6F00'
+      ctx.fillText(`R = ${s.R} Ω`, px, ky); ky += 18
+      ctx.fillStyle = '#888'
+      ctx.font = `${lay.font.body}px sans-serif`
+      ctx.fillText(`R滑 ${s.sliderR}Ω`, px, ky); ky += 16
+      ctx.fillStyle = on ? '#2E7D32' : '#888'
+      ctx.font = `bold ${lay.font.body}px sans-serif`
+      ctx.fillText(on ? '● 闭合' : '○ 断开 U=0', px, ky)
+      ctx.textBaseline = 'alphabetic'
+      return
+    }
+
+    // 以下沿用 px+14 对齐
+    px = inner.x - 14
+    pw = inner.w + 28
 
     // 实验目的（单行收窄）
     ctx.fillStyle = '#1565C0'; ctx.font = 'bold 12px sans-serif'
-    ctx.fillText('🎯 实验目的：', px + 14, ky)
+    ctx.fillText('🎯 实验目的：', px, ky)
     ctx.font = '11px sans-serif'; ctx.fillStyle = '#444'
     const aim = s.step === 1
       ? '保持 R 不变，改变 U，研究 I 与 U 关系'
       : '保持 U 不变，改变 R，研究 I 与 R 关系'
-    ctx.fillText(aim, px + 14 + 80, ky); ky += 24
+    ctx.fillText(aim, px + 80, ky); ky += 24
 
     if (s.step === 1) {
       ctx.fillText('📖 探究 I 与 U 的关系（R不变）', px + 14, ky); ky += 26
@@ -388,13 +420,34 @@ export default function OhmsLawScene() {
   }
 
   // ─── 步骤导航 ───
-  function drawStepNav(ctx, W, H, s) {
+  function drawStepNav(ctx, W, H, s, layIn) {
+    const lay = layIn || fitLayout(W, H)
+    const steps = [
+      { n: 1, label: '① R不变 → I∝U', short: '①' },
+      { n: 2, label: '② U不变 → I∝1/R', short: '②' },
+    ]
+    if (lay.compact) {
+      const bw = 36, bh = 30, x = W - 42
+      let y = H * 0.18
+      steps.forEach((st) => {
+        const active = s.step === st.n
+        ctx.fillStyle = active ? '#FF9800' : '#ffffffcc'
+        ctx.beginPath(); ctx.roundRect(x, y, bw, bh, 6); ctx.fill()
+        ctx.strokeStyle = active ? '#E65100' : '#d0d7de'; ctx.lineWidth = 1
+        ctx.beginPath(); ctx.roundRect(x, y, bw, bh, 6); ctx.stroke()
+        ctx.fillStyle = active ? '#fff' : '#555'
+        ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.fillText(st.short, x + bw / 2, y + bh / 2)
+        canvasRef.current._clickAreas.push({ x, y, w: bw, h: bh, onClick: () => {
+          S.current.step = st.n; S.current.switchClosed = false; S.current.sliderR = 0; setStep(st.n); forceUpdate(n => n + 1)
+        }})
+        y += bh + 8
+      })
+      ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic'
+      return
+    }
     const navY = H - 36
     ctx.font = '12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    const steps = [
-      { n: 1, label: '① R不变 → I∝U' },
-      { n: 2, label: '② U不变 → I∝1/R' },
-    ]
     const totalW = 280, startX = (W * 0.52 - totalW) / 2
     steps.forEach((st, i) => {
       const bx = startX + i * 145
@@ -501,11 +554,15 @@ export default function OhmsLawScene() {
   }
 
   function drawSlidingRheostat(ctx, x, y, R, maxR) {
-    // 电阻丝（矩形）
+    // 电阻丝（矩形）+ 左右止点标记
     ctx.fillStyle = '#D7CCC8'; ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 2
     ctx.beginPath(); ctx.roundRect(x - 24, y - 10, 48, 20, 3); ctx.fill(); ctx.stroke()
-    // 滑片位置
-    const ratio = R / maxR
+    // 止点
+    ctx.fillStyle = '#999'
+    ctx.fillRect(x - 26, y - 12, 2, 24)
+    ctx.fillRect(x + 24, y - 12, 2, 24)
+    // 滑片位置（左=0Ω，右=maxR）
+    const ratio = Math.max(0, Math.min(1, R / maxR))
     const sliderX = x - 24 + ratio * 48
     ctx.fillStyle = '#546E7A'; ctx.strokeStyle = '#37474F'; ctx.lineWidth = 1.5
     ctx.beginPath(); ctx.moveTo(sliderX, y - 16); ctx.lineTo(sliderX - 6, y - 10); ctx.lineTo(sliderX + 6, y - 10); ctx.closePath(); ctx.fill(); ctx.stroke()
@@ -737,15 +794,13 @@ export default function OhmsLawScene() {
 
     ctx.globalAlpha = 1; ctx.restore()
 
-    // 接线柱
+    // 接线柱：圆形热区
     const terms = getTerminals(comp)
     for (let i = 0; i < terms.length; i++) {
       const t = terms[i]
       const hov = s.hoverTerm && s.hoverTerm.compId === comp.id && s.hoverTerm.termIdx === i
-      ctx.fillStyle = hov ? '#FF9800' : '#fff'
-      ctx.strokeStyle = hov ? '#E65100' : '#666'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.arc(t.x, t.y, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      if (hov) { ctx.strokeStyle = 'rgba(255,152,0,0.4)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(t.x, t.y, 13, 0, Math.PI * 2); ctx.stroke() }
+      const src = s.connecting && s.connecting.compId === comp.id && s.connecting.termIdx === i
+      drawTerminal(ctx, t, hov, src)
     }
   }
 
@@ -754,29 +809,12 @@ export default function OhmsLawScene() {
     const tc = S.current.components.find(c => c.id === wire.to.compId)
     if (!fc || !tc) return
     const f = getTermPos(fc, wire.from.termIdx), t = getTermPos(tc, wire.to.termIdx)
-    const color = wire.color || '#1565C0'
-    ctx.strokeStyle = color; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
-    ctx.beginPath(); ctx.moveTo(f.x, f.y)
-    if (wire.mid1X != null) {
-      ctx.lineTo(wire.mid1X, wire.mid1Y)
-      if (wire.mid2X != null) ctx.lineTo(wire.mid2X, wire.mid2Y)
-      ctx.lineTo(t.x, t.y)
-    } else {
-      const dx = t.x - f.x
-      const ext = Math.min(Math.abs(dx) * 0.5, 80)
-      const fDir = f.x < t.x ? -1 : 1
-      const tDir = f.x < t.x ? 1 : -1
-      ctx.bezierCurveTo(f.x + fDir * ext, f.y, t.x + tDir * ext, t.y, t.x, t.y)
-    }
-    ctx.stroke(); ctx.lineCap = 'butt'
-    if (wire.mid1X != null) {
-      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(wire.mid1X, wire.mid1Y, 5, 0, Math.PI * 2); ctx.fill()
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(wire.mid1X, wire.mid1Y, 2.5, 0, Math.PI * 2); ctx.fill()
-    }
-    if (wire.mid2X != null) {
-      ctx.fillStyle = color; ctx.beginPath(); ctx.arc(wire.mid2X, wire.mid2Y, 5, 0, Math.PI * 2); ctx.fill()
-      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(wire.mid2X, wire.mid2Y, 2.5, 0, Math.PI * 2); ctx.fill()
-    }
+    strokeBezierWire(
+      ctx, f, t, wire.color || '#1565C0',
+      wire.mid1X != null ? { x: wire.mid1X, y: wire.mid1Y } : null,
+      wire.mid2X != null ? { x: wire.mid2X, y: wire.mid2Y } : null,
+      wire.from.termIdx, wire.to.termIdx
+    )
   }
 
   function checkCircuit() {
@@ -855,26 +893,12 @@ export default function OhmsLawScene() {
     }
   }
 
-  function getTerminals(comp) {
-    const c = Math.cos(comp.rotation || 0), sn = Math.sin(comp.rotation || 0)
-    return [{ x: comp.x - 40 * c, y: comp.y - 40 * sn }, { x: comp.x + 40 * c, y: comp.y + 40 * sn }]
-  }
-  function getTermPos(comp, idx) { return getTerminals(comp)[idx] }
+  // getTerminals / getTermPos / findTermAt / findCompAt 从 circuitKit 导入
   function findTerm(mx, my) {
-    for (const comp of S.current.components) {
-      const terms = getTerminals(comp)
-      for (let i = 0; i < terms.length; i++) {
-        if ((mx - terms[i].x) ** 2 + (my - terms[i].y) ** 2 < 144) return { compId: comp.id, termIdx: i }
-      }
-    }
-    return null
+    return findTermAt(S.current.components, mx, my)
   }
   function findComp(mx, my) {
-    for (let i = S.current.components.length - 1; i >= 0; i--) {
-      const c = S.current.components[i]
-      if (Math.abs(mx - c.x) < 45 && Math.abs(my - c.y) < 35) return c
-    }
-    return null
+    return findCompAt(S.current.components, mx, my)
   }
 
   const getPos = (e) => eventToCanvas(canvasRef.current, e)
@@ -893,37 +917,41 @@ export default function OhmsLawScene() {
           const id = s.nextId++
           const props = {}
           if (a.type === 'rheostat') props.resistance = 20
-          s.components.push({ id, type: a.type, x, y, rotation: 0, closed: true, props })
+          s.components.push({ id, type: a.type, x, y, rotation: 0, closed: a.type === 'switch' ? false : true, props })
           s.dragId = id; s.dragOffX = 0; s.dragOffY = 0; forceUpdate(n => n + 1); return
         }
       }
     }
-    // 先检测是否点中滑线变阻器的滑片
+    // 先检测是否点中滑线变阻器的滑片（带止点）
     for (const comp of s.components) {
       if (comp.type !== 'rheostat') continue
       const Rv = (comp.props && comp.props.resistance != null) ? comp.props.resistance : 20
       const sliderX = comp.x - 30 + (Rv / 50) * 60
-      if (Math.abs(x - sliderX) < 12 && Math.abs(y - (comp.y - 18)) < 15) {
+      if (Math.abs(x - sliderX) < 16 && Math.abs(y - (comp.y - 18)) < 20) {
         s.dragId = 'rheo_' + comp.id
+        s.dragMoved = false; s.dragStart = { x, y }
         forceUpdate(n => n + 1); return
       }
     }
     const term = findTerm(x, y)
-    if (term) { s.connecting = { ...term, mx: x, my: y }; forceUpdate(n => n + 1); return }
+    if (term) { s.connecting = { ...term, mx: x, my: y }; s.dragMoved = false; forceUpdate(n => n + 1); return }
     for (const wire of s.wires) {
       const fc = s.components.find(c => c.id === wire.from.compId)
       const tc = s.components.find(c => c.id === wire.to.compId)
       if (!fc || !tc) continue
       const f = getTermPos(fc, wire.from.termIdx), t = getTermPos(tc, wire.to.termIdx)
-      if (wire.mid1X != null) {
-        if ((x - wire.mid1X) ** 2 + (y - wire.mid1Y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_1'; forceUpdate(n => n + 1); return }
-      }
-      if (wire.mid2X != null) {
-        if ((x - wire.mid2X) ** 2 + (y - wire.mid2Y) ** 2 < 144) { s.dragId = 'wire_' + wire.id + '_2'; forceUpdate(n => n + 1); return }
-      }
+      const ctrl = bezierCtrl(f, t, wire.from.termIdx, wire.to.termIdx,
+        wire.mid1X != null ? { x: wire.mid1X, y: wire.mid1Y } : null,
+        wire.mid2X != null ? { x: wire.mid2X, y: wire.mid2Y } : null)
+      if ((x - ctrl.m1x) ** 2 + (y - ctrl.m1y) ** 2 < 256) { s.dragId = 'wire_' + wire.id + '_1'; s.dragMoved = false; forceUpdate(n => n + 1); return }
+      if ((x - ctrl.m2x) ** 2 + (y - ctrl.m2y) ** 2 < 256) { s.dragId = 'wire_' + wire.id + '_2'; s.dragMoved = false; forceUpdate(n => n + 1); return }
     }
     const comp = findComp(x, y)
-    if (comp) { s.dragId = comp.id; s.dragOffX = x - comp.x; s.dragOffY = y - comp.y; forceUpdate(n => n + 1) }
+    if (comp) {
+      s.dragId = comp.id; s.dragOffX = x - comp.x; s.dragOffY = y - comp.y
+      s.dragMoved = false; s.dragStart = { x, y }
+      forceUpdate(n => n + 1)
+    }
   }, [])
 
   const handleMouseMove = useCallback((e) => {
@@ -934,9 +962,8 @@ export default function OhmsLawScene() {
         const compId = parseInt(s.dragId.slice(5))
         const comp = s.components.find(c => c.id === compId)
         if (comp) {
-          const minX = comp.x - 30, maxX = comp.x + 30
-          const nx = Math.max(minX, Math.min(maxX, x))
-          comp.props.resistance = Math.round(((nx - minX) / (maxX - minX)) * 50)
+          // 止点吸附：左=0Ω 右=50Ω
+          comp.props.resistance = mapSliderR(x, comp.x - 30, comp.x + 30, 50)
           forceUpdate(n => n + 1)
         }
         return
@@ -964,9 +991,48 @@ export default function OhmsLawScene() {
     canvasRef.current.style.cursor = s.hoverTerm ? 'crosshair' : findComp(x, y) ? 'grab' : 'default'
   }, [])
 
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback((e) => {
     const s = S.current
-    if (s.dragId) { s.dragId = null; forceUpdate(n => n + 1); return }
+    if (e) {
+      try { s._lastUpPos = getPos(e) } catch (_) { s._lastUpPos = null }
+    }
+    const now = performance.now()
+    const upPos = s._lastUpPos
+    if (s.tab === 2 && upPos) {
+      const isDouble = s._lastUpT && (now - s._lastUpT) < 350
+        && s._lastUpPrev
+        && Math.hypot(upPos.x - s._lastUpPrev.x, upPos.y - s._lastUpPrev.y) < 28
+      if (isDouble && !s.dragMoved) {
+        let comp = findComp(upPos.x, upPos.y)
+        if (!comp) comp = findCompWide(S.current.components, upPos.x, upPos.y)
+        if (comp) {
+          s.components = s.components.filter(k => k.id !== comp.id)
+          s.wires = s.wires.filter(w => w.from.compId !== comp.id && w.to.compId !== comp.id)
+          s.dragId = null; s.connecting = null
+          s._lastUpT = 0; s._lastUpPrev = null
+          forceUpdate(n => n + 1)
+          return
+        }
+      }
+      s._lastUpPrev = upPos
+      s._lastUpT = now
+    }
+    if (s.dragId) {
+      const id = s.dragId
+      const moved = s.dragMoved
+      s.dragId = null; s.dragMoved = false; s.dragStart = null
+      // 轻点开关：切换通断
+      if (!moved && typeof id === 'number') {
+        const c = s.components.find(k => k.id === id)
+        if (c && c.type === 'switch') {
+          c.closed = c.closed === false
+          forceUpdate(n => n + 1)
+          return
+        }
+      }
+      forceUpdate(n => n + 1)
+      return
+    }
     if (s.connecting) {
       const t = s.hoverTerm
       if (t && t.compId !== s.connecting.compId) {
@@ -992,9 +1058,16 @@ export default function OhmsLawScene() {
 
   const handleDoubleClick = useCallback((e) => {
     if (S.current.tab !== 2) return
+    e.preventDefault()
     const { x, y } = getPos(e)
-    const comp = findComp(x, y)
-    if (comp && comp.type === 'switch') { comp.closed = comp.closed === false ? true : false; forceUpdate(n => n + 1) }
+    // 双击删除：热点放宽到整个元件
+    let comp = findComp(x, y)
+    if (!comp) comp = findCompWide(S.current.components, x, y)
+    if (comp) {
+      S.current.components = S.current.components.filter(c => c.id !== comp.id)
+      S.current.wires = S.current.wires.filter(w => w.from.compId !== comp.id && w.to.compId !== comp.id)
+      forceUpdate(n => n + 1)
+    }
   }, [])
 
   const handleReset = useCallback(() => {
@@ -1055,6 +1128,22 @@ export default function OhmsLawScene() {
           onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
           onContextMenu={handleContextMenu} onDoubleClick={handleDoubleClick}
         />
+        {tab === 1 ? (
+          <InfoDock
+            purpose="探究电流与电压、电阻的关系（控制变量法）。"
+            steps={[
+              '① R不变，改变U，记录 I，看 I-U 图',
+              '② U不变，改变R，记录 I，看 I-R 图',
+              '闭合开关 → 调参 → 点「记录」',
+            ]}
+            hint="U=灯泡/电阻端电压（断开=0）。变阻器限流，左0Ω最亮/右最大最暗不灭。"
+          />
+        ) : (
+          <InfoDock
+            hint="拖器材到画布 → 点端子连线 → 轻点开关通断。双击删除器材。滑杆可拖变阻器。"
+            hintTitle="操作说明"
+          />
+        )}
         {tab === 2 && (
           <BuilderPalette side="right"
             items={[
@@ -1073,7 +1162,7 @@ export default function OhmsLawScene() {
               const r = canvasRef.current.getBoundingClientRect()
               const n = s.components.length
               const id = s.nextId++
-              s.components.push({ id, type, x: r.width * 0.35 + (n % 3) * 90, y: r.height * 0.4 + (Math.floor(n / 3) % 3) * 80, rotation: 0, closed: true })
+              s.components.push({ id, type, x: r.width * 0.35 + (n % 3) * 90, y: r.height * 0.4 + (Math.floor(n / 3) % 3) * 80, rotation: 0, closed: type === 'switch' ? false : true })
               s.dragId = id; s.dragOffX = 0; s.dragOffY = 0
               s.guideDismissed = true
               forceUpdate(v => v + 1)
