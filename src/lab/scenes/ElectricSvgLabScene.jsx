@@ -90,10 +90,6 @@ const CSS = `
 .esvg-3d-readout .name{color:#94a3b8}
 .esvg-3d-readout .val{font-weight:600;font-variant-numeric:tabular-nums}
 .esvg-3d-readout .hint{margin-top:2px;font-size:11px;color:#64748b;text-align:right}
-/* 3D 操作提示：不遮挡器材，只交代双击/点柱这两条交互 */
-.esvg-3d-hint{position:absolute;left:24px;bottom:88px;z-index:19;
-  padding:5px 10px;border-radius:8px;background:rgba(15,23,42,.62);
-  font-size:12px;color:#cbd5e1;pointer-events:none;white-space:nowrap}
 /* 选中器材后的操作条：读数 / 拆开看内部（比双击更可发现） */
 .esvg-3d-actions{position:absolute;right:24px;bottom:24px;z-index:21;display:flex;gap:8px}
 .esvg-3d-actions button{padding:7px 12px;border-radius:8px;border:1px solid rgba(148,163,184,.45);
@@ -1164,9 +1160,6 @@ export default function ElectricSvgLabScene() {
                   </div>
                 )
               })()}
-              <div className="esvg-3d-hint">
-                点接线柱拉出导线（再点另一柱即可连上）· 双击电表看读数 · 双击器材拆开看内部
-              </div>
               {(() => {
                 // 选中某件器材 → 浮出操作条（读数 / 拆开看内部），比双击更可发现
                 const c = selected && selected.kind === 'comp' ? comps.find((x) => x.id === selected.id) : null
@@ -1324,7 +1317,11 @@ export default function ElectricSvgLabScene() {
               <li><b>多用电表</b>：双击切换电压 / 电流 / 欧姆档，表盘 LCD 显示读数。</li>
               <li><b>保险丝</b>：电流超过额定值时熔丝中间熔断、电路断路；双击保险丝换新。</li>
               <li><b>电阻箱</b>：点击拨盘（×1k / ×100 / ×10 / ×1）进位，读数实时变化。</li>
+              <li><b>连线（3D）</b>：点一根接线柱拉出导线，再点另一根即连上（也可以按住拖到柱上松手）；落在空白处不会取消，点同一根柱 / 右键 / Esc 放弃。导线可单击选中后换色，Delete 删线重连。</li>
+              <li><b>找线</b>：3D 里导线按「射线到线段的最近距离」放宽了拾取容差，细线也点得中。</li>
               <li><b>看内部</b>：点顶部「内部结构」，剖视显示各元件内部构造（碳棒、锌筒、灯丝、线圈、电阻丝…）。</li>
+              <li><b>单件剖开（3D）</b>：双击某件器材只剖开这一件；或选中后点右下「拆开 / 合上」。</li>
+              <li><b>数字读数（3D）</b>：点顶部「🔢 读数」，所有电表的实时数值直接列在画面右上。</li>
             </ul>
             <ul>
               <li>电池组 3V（内阻 0.1Ω） · 小灯泡 5Ω（额定 3V / 1.8W） · 家庭电源 220V</li>
