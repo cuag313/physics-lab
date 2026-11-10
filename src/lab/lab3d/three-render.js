@@ -69,6 +69,9 @@ export function createLabRenderer(container, opt = {}) {
   const CH = opt.CH ?? 1100
   const BULB_RATED = opt.bulbRated ?? 1.8
   const RHEO = opt.rheoTrack || { x0: 20, x1: 181 } // 滑变电阻丝轨道（器材局部 px）
+  // 滑变当前接法（left-wire / right-wire / full-wire / short / open）：
+  // 由场景按实际接线柱算出后回调，用于 3D 贴图上的「有效电阻丝高亮」
+  const rheoModeOf = opt.rheoModeOf || (() => 'open')
 
   /* ── 基础：渲染器 / 场景 / 相机 ── */
   const renderer = new THREE.WebGLRenderer({ antialias: true })
@@ -251,6 +254,12 @@ export function createLabRenderer(container, opt = {}) {
     return shapeKeyOf(c) + '|' + Math.round((c.f ?? 0.4) * 50)
   }
 
+  /** 完整重建指纹：滑变额外带上「接法」，接法变了才需要换高亮段 */
+  const keyOf = (c) => stateKeyOf(c) + (c.type === 'rheostat' ? '|' + rheoModeOf(c.id) : '')
+
+  /** 传给器材 render() 的动态量：目前只有滑变的接法模式 */
+  const dynOf = (c) => (c.type === 'rheostat' ? { mode: rheoModeOf(c.id) } : {})
+
   /**
    * 滑片拖动限速：f 每变 2% 就重建一次（光栅化 + 挤出 + 换贴图）会卡顿闪烁，
    * 故对「形状没变、只有 f 变」的滑变重建限流，并在停止拖动后补一次最终值。
@@ -267,7 +276,7 @@ export function createLabRenderer(container, opt = {}) {
       const entry = equips.get(id)
       const c = latestComps.find((x) => x.id === id)
       if (!entry || !c) return
-      if (entry.key !== stateKeyOf(c)) rebuildComp(c)
+      if (entry.key !== keyOf(c)) rebuildComp(c)
     }, F_THROTTLE_MS)
     trailTimers.set(id, timer)
   }
@@ -299,7 +308,7 @@ export function createLabRenderer(container, opt = {}) {
   async function rebuildComp(c) {
     const entry = equips.get(c.id) || makeEntry(c)
     equips.set(c.id, entry)
-    const key = stateKeyOf(c)
+    const key = keyOf(c)
     if (entry.key === key && entry.build) return entry
     entry.key = key
     entry.shapeKey = shapeKeyOf(c)
@@ -310,7 +319,7 @@ export function createLabRenderer(container, opt = {}) {
     if (!t || !t.render) return entry
     let svgString
     try {
-      svgString = t.render(c, {}) // 中性动态（表针另行用 3D 指针驱动）
+      svgString = t.render(c, dynOf(c)) // 中性动态（表针另行用 3D 指针驱动）
     } catch (e) {
       console.warn('[lab3d] render() 失败：', c.type, e)
       return entry
@@ -433,7 +442,7 @@ export function createLabRenderer(container, opt = {}) {
       alive.add(c.id)
       const entry = equips.get(c.id)
       if (entry) entry.f = c.f ?? 0.4
-      if (!entry || entry.key !== stateKeyOf(c)) {
+      if (!entry || entry.key !== keyOf(c)) {
         // 滑片拖动：形状不变、只有 f 变 → 限速重建，停止后补最终值
         if (entry && entry.build && c.type === 'rheostat' && entry.shapeKey === shapeKeyOf(c)) {
           const now = performance.now()

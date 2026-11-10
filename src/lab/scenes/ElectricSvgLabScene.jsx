@@ -702,6 +702,15 @@ export default function ElectricSvgLabScene() {
         },
         // 滑变电阻丝轨道（与 2D RHEO_TRACK 同一常量）
         rheoTrack: RHEO_TRACK,
+        // 滑变当前接法 → 3D 贴图的「有效电阻丝高亮」（与 2D 的 dynOf 同一定义）
+        rheoModeOf: (id) => {
+          const wired = new Set()
+          for (const w of wiresRef.current) {
+            if (w.a.startsWith(id + ':')) wired.add(w.a.split(':')[1])
+            if (w.b.startsWith(id + ':')) wired.add(w.b.split(':')[1])
+          }
+          return rheostatMode(wired)
+        },
       })
     } catch (err) {
       // WebGL 不可用等初始化失败：回退平面画布，不阻断实验
