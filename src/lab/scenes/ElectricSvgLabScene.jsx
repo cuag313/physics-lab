@@ -791,6 +791,11 @@ export default function ElectricSvgLabScene() {
     labApiRef.current?.setXray(dissect)
   }, [dissect, view3d])
 
+  /* ── 导线颜色联动：色块改动要同步给 3D（否则 3D 里新建的线永远是初始红色） ── */
+  useEffect(() => {
+    labApiRef.current?.setWireColor?.(wireColor)
+  }, [wireColor, view3d])
+
   /* ── 选中联动：selected → OutlinePass 高亮轮廓（req 10） ── */
   useEffect(() => {
     labApiRef.current?.setSelection(selected)
@@ -1030,9 +1035,17 @@ export default function ElectricSvgLabScene() {
                 title={`${c.label}色导线`}
                 onClick={() => {
                   setWireColor(c.hex)
-                  if (selected && selected.kind === 'wire') {
-                    setWires((ws) => ws.map((w) => (w.id === selected.id ? { ...w, color: c.hex } : w)))
-                  }
+                  labApiRef.current?.setWireColor(c.hex)
+                  setWires((ws) => {
+                    if (selected && selected.kind === 'wire') {
+                      return ws.map((w) => (w.id === selected.id ? { ...w, color: c.hex } : w))
+                    }
+                    // 没选中导线时，直接改桌面上所有导线（3D 里点线不好选中，
+                    // 不给这条"整盘换色"的路，用户会以为颜色按钮坏了）
+                    if (!ws.length) return ws
+                    setToast(`导线已统一为${c.label}色`)
+                    return ws.map((w) => ({ ...w, color: c.hex }))
+                  })
                 }}
                 style={{
                   width: 20, height: 20, borderRadius: '50%', background: c.hex, cursor: 'pointer',

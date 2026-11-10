@@ -26,6 +26,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
 import { buildEquipment } from './svg-extrude-loader.js'
 import { buildSolid, SOLID_TYPES } from './solidEquipment.js'
 import { VerletWire } from './verlet-wire.js'
@@ -122,6 +123,19 @@ export function createLabRenderer(container, opt = {}) {
   const scene = new THREE.Scene()
   scene.background = new THREE.Color('#e8eef6')
 
+  /* ── 环境反射：没有 envMap 时金属会被渲染成死黑，实物感全丢 ── */
+  try {
+    const pmrem = new THREE.PMREMGenerator(renderer)
+    const room = new RoomEnvironment()
+    const envRT = pmrem.fromScene(room, 0.04)
+    scene.environment = envRT.texture
+    scene.environmentIntensity = 0.5
+    pmrem.dispose()
+    room.dispose?.()
+  } catch (e) {
+    console.warn('[lab3d] 环境贴图生成失败（材质会偏暗）：', e)
+  }
+
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 220)
   const camTarget = new THREE.Vector3(0, 0.55, 0)
   let camDist = CAM_DIST0
@@ -137,7 +151,7 @@ export function createLabRenderer(container, opt = {}) {
   applyCamera()
 
   /* ── 教学课件灯光：柔和定向光 + 软阴影 + 冷补光 ── */
-  scene.add(new THREE.AmbientLight('#dde7f4', 0.92))
+  scene.add(new THREE.AmbientLight('#dde7f4', 0.68))
   const key = new THREE.DirectionalLight('#fff7ea', 1.55)
   key.position.set(7, 13, 9)
   key.castShadow = true
@@ -343,7 +357,10 @@ export function createLabRenderer(container, opt = {}) {
     const th = entry.build ? entry.build.thickness : 0.1
     const stand = !!(entry.build && entry.build.stand)
     for (const tm of t.terminals) {
-      const g = new THREE.SphereGeometry((TERM_SNAP_PX * SCALE) / 2, 8, 6)
+      // 命中球直径按"柱本身的粗细"给（不再用磁吸半径），
+      // 否则电流表三柱间距只有 0.35 世界单位，0.26 半径的球会互相盖住，
+      // 点中间柱命中左柱 —— 这是"连线不灵"的直接原因
+      const g = new THREE.SphereGeometry(0.085, 8, 6)
       // colorWrite:false —— 只参与射线检测，永不画像素；
       // keepOpacity 防止透视开关把它复位成可见白球
       const m = new THREE.MeshBasicMaterial({
@@ -472,12 +489,31 @@ export function createLabRenderer(container, opt = {}) {
 
   /* ── 透视（X-ray） ── */
   let xrayOn = false
+  // 新建导线的默认颜色：由场景的"导线颜色"按钮实时改写（不再固定）
+  let defaultWireColor = opt.wireColor || '#c0392b'
+  function setWireColor(hex) {
+    if (hex) defaultWireColor = hex
+  }
   function applyXrayTo(entry, on) {
     if (!entry.build) return
-    // 实体模型本来就是"看得见的零件"，不做整组半透明：
-    // 反复切 transparent/needsUpdate 会把表盘贴图洗成一块灰板
+    // 实体模型本来就没有 outer 外壳网格：改为只把 build.shell（真正的壳件）
+    // 变半透明，内部零件从一开始就摆在壳里，透出来就是"剖视"。
+    // 绝不能整组遍历——表盘贴图会被反复重编译洗成灰板。
     if (!entry.build.outer) {
-      if (entry.build.inner) entry.build.inner.visible = on
+      if (entry.build.shell) {
+        for (const m of entry.build.shell) {
+          const mat = m.material
+          if (!mat || mat.userData.keepOpacity) continue
+          mat.transparent = on
+          mat.opacity = on ? 0.16 : 1
+          mat.depthWrite = !on
+          mat.needsUpdate = true
+        }
+      }
+      // 表盘/玻璃挡在动圈前面：剖视时直接隐藏（不碰它们的材质，免得贴图被洗白）
+      if (entry.build.panel) {
+        for (const m of entry.build.panel) m.visible = !on
+      }
       return
     }
     const mats = Array.isArray(entry.build.outer.material)
@@ -533,7 +569,7 @@ export function createLabRenderer(container, opt = {}) {
   }
 
   function wireColorFor(w, solved) {
-    const base = new THREE.Color(w.color || opt.wireColor || '#c0392b')
+    const base = new THREE.Color(w.color || defaultWireColor)
     const I = Math.abs((solved && solved._wireI && solved._wireI[w.id]) || 0)
     if (I > 0.02) base.lerp(new THREE.Color('#f59e0b'), Math.min(0.62, I * 0.32))
     return base
@@ -666,7 +702,7 @@ export function createLabRenderer(container, opt = {}) {
       aliveW.add(w.id)
       let rec = wires.get(w.id)
       if (!rec) {
-        const vw = new VerletWire({ color: w.color || opt.wireColor || '#c0392b' })
+        const vw = new VerletWire({ color: w.color || defaultWireColor })
         vw.mesh.userData.wireId = w.id
         labTableGroup.add(vw.mesh)
         rec = { id: w.id, wire: vw, a: w.a, b: w.b, seeded: false }
@@ -792,11 +828,11 @@ export function createLabRenderer(container, opt = {}) {
   }
 
   /** 接线柱磁吸：找距光标最近且在半径内的柱 */
-  function snapTerminal(e) {
+  function snapTerminal(e, maxPx = TERM_SNAP_PX) {
     const p = rayTable(e)
     if (!p) return null
     let best = null
-    let bestD = (TERM_SNAP_PX * SCALE) ** 2
+    let bestD = (maxPx * SCALE) ** 2
     for (const en of equips.values()) {
       for (const [tid, s] of en.hotspots) {
         s.getWorldPosition(tmpV2)
@@ -817,11 +853,16 @@ export function createLabRenderer(container, opt = {}) {
     tween = null // 用户接管相机
     const hit = pick(e)
 
-    // 接线中：命中柱 → 完成接线
+    // 接线中：命中柱 → 完成接线；没直接命中就退到"地面最近柱"软吸附
     if (pending) {
-      if (hit && hit.kind === 'terminal') {
+      let target = hit && hit.kind === 'terminal' ? hit : null
+      if (!target) {
+        const snap = snapTerminal(e)
+        if (snap) target = { kind: 'terminal', compId: snap.compId, tid: snap.tid }
+      }
+      if (target) {
         const a = pending.cid + ':' + pending.tid
-        const b = hit.compId + ':' + hit.tid
+        const b = target.compId + ':' + target.tid
         if (a !== b) opt.onWireConnect && opt.onWireConnect(a, b)
       }
       cancelPending()
@@ -830,7 +871,7 @@ export function createLabRenderer(container, opt = {}) {
 
     if (hit && hit.kind === 'terminal') {
       // 起线
-      const wire = new VerletWire({ color: opt.wireColor || '#c0392b', count: 14 })
+      const wire = new VerletWire({ color: defaultWireColor, count: 14 })
       labTableGroup.add(wire.mesh)
       pending = {
         cid: hit.compId,
@@ -841,6 +882,25 @@ export function createLabRenderer(container, opt = {}) {
       }
       pointerDownInfo = null
       return
+    }
+
+    // 没直接戳中柱本体，但光标就压在柱边上（20px 内）→ 也算起线，
+    // 免得用户"明明点在柱上却没反应"
+    if (!hit || hit.kind === 'comp') {
+      const near = snapTerminal(e, 20)
+      if (near) {
+        const wire = new VerletWire({ color: defaultWireColor, count: 14 })
+        labTableGroup.add(wire.mesh)
+        pending = {
+          cid: near.compId,
+          tid: near.tid,
+          wire,
+          cursor: near.pos.clone(),
+          seeded: false,
+        }
+        pointerDownInfo = null
+        return
+      }
     }
 
     if (hit && hit.kind === 'wire') {
@@ -1131,8 +1191,10 @@ export function createLabRenderer(container, opt = {}) {
   return {
     /** 同步 comps/wires/solved（React 状态变更时调用） */
     sync,
-    /** 透视：外壳半透明 + 显示 inner */
+    /** 透视：外壳件半透明，壳内零件（电芯/磁钢/动圈/游丝）透出来 */
     setXray,
+    /** 改写新建导线的默认颜色（场景里点色块时调用） */
+    setWireColor,
     /** 选中高亮（OutlinePass） */
     setSelection,
     /** 相机回到默认视角（tween） */
