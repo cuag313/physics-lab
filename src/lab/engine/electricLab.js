@@ -49,6 +49,9 @@ export const CFG = {
   RELAY_CONTACT_R: 0.001,       // 触点闭合电阻（Ω）
   MAINS_V: 220,                 // 市电电压有效值（V，按直流等效建模）
   MAINS_R: 0.1,                 // 市电电源内阻（Ω）
+  // 单相电能表：1↔3 是电流线圈（计量相线），2↔4 是零线直通
+  METER_COIL_R: 0.02,           // 电流线圈电阻（Ω）
+  METER_LINE_R: 0.001,          // 零线直通段电阻（Ω）
 }
 
 /** 电阻箱拨盘 → 阻值（dials: [×1k, ×100, ×10, ×1]，各位 0~9） */
@@ -78,6 +81,7 @@ export const TERM_IDS = {
   resBox: ['a', 'b'],                // 电阻箱：两接线柱
   multimeter: ['com', 'in'],         // 多用电表：com(黑) / in(红，V·Ω·A 共用)
   relay: ['ct1', 'ct2', 'ck1', 'ck2'], // 触点 ×2 + 线圈 ×2
+  energyMeter: ['i1', 'i2', 'o1', 'o2'], // 单相电能表：1/2 进线，3/4 出线（1-3 电流线圈，2-4 零线直通）
   mains: ['n', 'l'],                 // 家庭电源：零线 N / 火线 L
 }
 
@@ -347,6 +351,16 @@ export function solveCircuit(comps, wires, opts) {
       b[a] -= CFG.MAINS_V * g
       b[bb] += CFG.MAINS_V * g
       els.push({ kind: 'V', a, b: bb, V: CFG.MAINS_V, r: CFG.MAINS_R, comp: c, tA: 'n', tB: 'l' })
+    } else if (c.type === 'energyMeter') {
+      // 单相电能表：1↔3 串电流线圈（相线），2↔4 零线直通
+      const p1 = netOf(c, 'i1')
+      const p3 = netOf(c, 'o1')
+      const n2 = netOf(c, 'i2')
+      const n4 = netOf(c, 'o2')
+      stampR(A, p1, p3, CFG.METER_COIL_R)
+      els.push({ kind: 'R', a: p1, b: p3, R: CFG.METER_COIL_R, comp: c, tA: 'i1', tB: 'o1', role: 'coil' })
+      stampR(A, n2, n4, CFG.METER_LINE_R)
+      els.push({ kind: 'R', a: n2, b: n4, R: CFG.METER_LINE_R, comp: c, tA: 'i2', tB: 'o2', role: 'line' })
     }
     }
 
@@ -451,6 +465,12 @@ export function solveCircuit(comps, wires, opts) {
         o._pulled = !!rState.get(c.id)
       } else {
         o._I = Math.abs(I)
+      }
+    } else if (c.type === 'energyMeter') {
+      // 只取电流线圈那一路；零线直通段的电流不是计量量
+      if (e.role === 'coil') {
+        o._I = Math.abs(I)
+        o._Vd = Math.abs(v[e.a] - v[e.b])
       }
     }
   }

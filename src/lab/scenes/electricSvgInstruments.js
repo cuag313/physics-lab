@@ -231,6 +231,21 @@ const INNER = {
       <text class="plabel" x="85" y="76">接地线（黄绿）</text>
       <text class="plabel" x="85" y="118">进户线 · 220V 50Hz</text>`
   },
+  energyMeter() {
+    return `
+      <!-- 电能表剖视：电流线圈 / 电压线圈 + 铝转盘 + 制动磁铁 + 计数器齿轮 -->
+      <rect x="30" y="34" width="14" height="30" rx="3" fill="#b45309" stroke="#78350f" stroke-width="1.2"/>
+      <path d="M37 34 V24 M37 64 V74" stroke="#b45309" stroke-width="2"/>
+      <text class="plabel" x="37" y="20">电流线圈</text>
+      <rect x="46" y="34" width="10" height="26" rx="2" fill="#a16207" stroke="#78350f" stroke-width="1"/>
+      <text class="plabel" x="52" y="20">电压线圈</text>
+      <circle cx="95" cy="66" r="28" fill="none" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <text class="plabel" x="95" y="104">铝转盘（涡流驱动力矩）</text>
+      <rect x="118" y="44" width="12" height="44" rx="2" fill="#e11d48" opacity=".75"/>
+      <text class="plabel" x="124" y="40">制动磁铁</text>
+      <path d="M130 66 H152" stroke="#8a6a3c" stroke-width="2"/>
+      <text class="plabel" x="156" y="70" text-anchor="end">齿轮 → 计数器</text>`
+  },
   resBox() {
     return `
       <!-- 电阻箱剖视：盘式电阻 + 刷片 -->
@@ -872,6 +887,69 @@ export const TYPES = {
       ${termDotSVG(52, 108, true, 'N')}
       ${termDotSVG(118, 108, false, 'L')}
       ${noteChipSVG(85, 122, 'L 火线 · N 零线', '#fbbf24', 112)}
+    </svg>` }
+  },
+
+  /* ── 单相电能表（仓库无实拍图，按实物 1:1 绘：铝转盘窗 + 6 位计数器 + 1/2/3/4 四柱） ── */
+  energyMeter: {
+    label: '电能表', w: 190, h: 150,
+    terminals: [
+      { id: 'i1', label: '1', name: '进线 1（相线）', x: 40, y: 132 },
+      { id: 'i2', label: '2', name: '进线 2（零线）', x: 76, y: 132 },
+      { id: 'o1', label: '3', name: '出线 3（相线）', x: 114, y: 132 },
+      { id: 'o2', label: '4', name: '出线 4（零线）', x: 150, y: 132 },
+    ],
+    render(c, dyn = {}) {
+      const kwh = Math.max(0, Number(dyn.kwh ?? c.kwh0 ?? 0))
+      const I = Math.abs(Number(dyn.I) || 0)
+      // 5 位整数 + 1 位小数（红色），与机械表同款
+      const digits = String(Math.floor(kwh * 10) % 1000000).padStart(6, '0')
+      // 铝盘转速 ∝ 干路电流；无电流时静止（真实表断电不转）
+      const dur = I > 0.005 ? Math.max(0.3, 0.6 / Math.max(I, 0.02)) : 0
+      const spin = dur
+        ? `<animateTransform attributeName="transform" type="rotate" from="0 62 66" to="360 62 66" dur="${dur.toFixed(2)}s" repeatCount="indefinite"/>`
+        : ''
+      const cells = digits.split('').map((d, i) => {
+        const x = 106 + i * 12
+        const red = i === digits.length - 1
+        return `<rect x="${x}" y="46" width="10.5" height="16" rx="1.5" fill="${red ? '#7f1d1d' : '#0f172a'}"/>`
+          + `<text x="${x + 5.25}" y="58.5" text-anchor="middle" font-size="12" font-family="ui-monospace,Consolas,monospace" fill="${red ? '#fecaca' : '#e5eef7'}">${d}</text>`
+      }).join('')
+      return `
+    <svg width="190" height="150" viewBox="0 0 190 150">
+      <defs>
+        <linearGradient id="es-em-case" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#f4f7fb"/><stop offset="100%" stop-color="#d5dde8"/>
+        </linearGradient>
+      </defs>
+      ${fitInner(190, 150, 190, 150, INNER.energyMeter())}
+      <g class="casing">
+        <rect x="3" y="4" width="184" height="132" rx="9" fill="url(#es-em-case)" stroke="#b9c3d1" stroke-width="1.6"/>
+        <rect x="3" y="4" width="184" height="132" rx="9" fill="none" stroke="#ffffff" stroke-width="1" opacity=".75"/>
+        <rect x="11" y="10" width="168" height="17" rx="4" fill="#334155"/>
+        <text x="95" y="22.5" text-anchor="middle" font-size="9.5" fill="#dbeafe"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">单相电能表 · 220V 10(40)A</text>
+        <circle cx="62" cy="66" r="29" fill="#0b1220" stroke="#8b98a9" stroke-width="2"/>
+        <g>
+          ${spin}
+          <circle cx="62" cy="66" r="26" fill="#e8edf4"/>
+          <path d="M62 40 A26 26 0 0 1 88 66 L62 66 Z" fill="#9fb0c4" opacity=".8"/>
+          <rect x="58" y="41" width="8" height="13" rx="2" fill="#1f2937"/>
+          <circle cx="62" cy="66" r="2.6" fill="#64748b"/>
+        </g>
+        <rect x="100" y="42" width="78" height="24" rx="3" fill="#0b1220" stroke="#8b98a9" stroke-width="1.4"/>
+        <text x="139" y="74" text-anchor="middle" font-size="8" fill="#64748b">kW·h</text>
+        <text x="62" y="104" text-anchor="middle" font-size="8.5" fill="#475569"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${I > 0.005 ? `I = ${I.toFixed(2)} A · 600r/kWh` : '无电流 · 转盘静止'}</text>
+        <rect x="14" y="116" width="162" height="18" rx="4" fill="#c3ccd8" opacity=".55"/>
+      </g>
+      ${cells}
+      ${termDotsSVG([
+        { x: 40, y: 132, label: '1', dark: true },
+        { x: 76, y: 132, label: '2', dark: true },
+        { x: 114, y: 132, label: '3', dark: false },
+        { x: 150, y: 132, label: '4', dark: false },
+      ])}
     </svg>` }
   },
 

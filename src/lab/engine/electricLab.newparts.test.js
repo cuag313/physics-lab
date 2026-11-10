@@ -13,7 +13,7 @@ const near = (a, b, tol = 1e-3) => Math.abs(a - b) <= tol
 describe('TERM_IDS 注册', () => {
   it('全部新类型都有接线柱定义', () => {
     for (const t of ['resistor5', 'resistor10', 'resistor15', 'switch2', 'motor', 'diode',
-      'fuse', 'testPencil', 'electroscope', 'resBox', 'multimeter', 'relay', 'mains']) {
+      'fuse', 'testPencil', 'electroscope', 'resBox', 'multimeter', 'relay', 'mains', 'energyMeter']) {
       expect(TERM_IDS[t], t).toBeTruthy()
       expect(TERM_IDS[t].length).toBeGreaterThan(1)
     }
@@ -222,5 +222,28 @@ describe('小电动机 / 家庭电源', () => {
       [{ id: 1, type: 'mains' }, { id: 2, type: 'resistor15' }],
       [{ id: 1, a: '1:l', b: '2:a' }, { id: 2, a: '2:b', b: '1:n' }])
     expect(near(out[2]._I, 220 / 15.1, 1e-2)).toBe(true)
+  })
+})
+
+describe('单相电能表', () => {
+  it('1↔3 是电流线圈：串进回路后干路电流按线圈电阻算', () => {
+    const out = loop(
+      [{ id: 1, type: 'mains' }, { id: 2, type: 'energyMeter' }, { id: 3, type: 'resistor15' }],
+      [
+        { id: 1, a: '1:l', b: '2:i1' },   // 相线进 1
+        { id: 2, a: '2:o1', b: '3:a' },   // 3 出线 → 负载
+        { id: 3, a: '3:b', b: '2:i2' },   // 负载回零线进 2
+        { id: 4, a: '2:o2', b: '1:n' },   // 4 出线回电源零线
+      ])
+    // 回路总电阻 = 线圈 0.02 + 零线段 0.001 + 负载 15 + 电源内阻 0.1
+    expect(near(out[2]._I, 220 / 15.121, 1e-2)).toBe(true)
+    expect(near(out[3]._I, 220 / 15.121, 1e-2)).toBe(true)
+  })
+
+  it('只接 1、2 两根进线（3、4 悬空）时电流线圈开路，不计量', () => {
+    const out = loop(
+      [{ id: 1, type: 'battery' }, { id: 2, type: 'energyMeter' }],
+      [{ id: 1, a: '1:p', b: '2:i1' }, { id: 2, a: '2:i2', b: '1:n' }])
+    expect(out[2]._I).toBeLessThan(1e-6)
   })
 })

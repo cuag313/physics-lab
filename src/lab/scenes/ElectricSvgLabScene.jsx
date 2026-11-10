@@ -220,7 +220,7 @@ const PALETTE_ICONS = {
 const PALETTE_GROUPS = [
   { title: '基础器材', keys: ['battery', 'bulb', 'switch', 'ammeter', 'voltmeter', 'rheostat'] },
   { title: '初中必做实验', keys: ['resistor5', 'resistor10', 'resistor15', 'switch2', 'motor', 'diode'] },
-  { title: '家庭电路', keys: ['fuse', 'testPencil', 'electroscope', 'mains'] },
+  { title: '家庭电路', keys: ['mains', 'energyMeter', 'fuse', 'testPencil', 'electroscope'] },
   { title: '高中拓展', keys: ['resBox', 'multimeter', 'relay'] },
 ]
 
@@ -330,6 +330,10 @@ export default function ElectricSvgLabScene() {
   const pathRefs = useRef(new Map())    // wireId → SVGPathElement
   const solvedRef = useRef(null)        // 最新求解结果（rAF 读取导线电流）
   const wireFxRef = useRef(new Map())   // wireId → dashoffset 累计值（电流动画）
+  const meterKwhRef = useRef({})        // 电能表 id → 累计电量（kW·h）
+  const meterAccRef = useRef(0)         // 计数器刷新节流（秒）
+  const [meterTick, setMeterTick] = useState(0) // 每秒触发一次重渲染，刷新计数器读数
+  void meterTick
   const previewChainRef = useRef(null)
   const previewPathRef = useRef(null)
   const previewTipRef = useRef(null)    // 拉线时的鼠标点
@@ -753,6 +757,34 @@ export default function ElectricSvgLabScene() {
       const cs = compsRef.current
       const wireI = (solvedRef.current && solvedRef.current._wireI) || {}
       const fx = wireFxRef.current
+
+      // ── 电能表计量：按负载总功率积分；转盘由 SVG 自转，计数器每秒刷一次 ──
+      const sv = solvedRef.current
+      if (sv) {
+        const meters = cs.filter((x) => x.type === 'energyMeter')
+        if (meters.length) {
+          let pTot = 0
+          for (const k in sv) {
+            if (k === '_wireI' || k === 'diagnostics') continue
+            pTot += sv[k]?._P || 0
+          }
+          const km = meterKwhRef.current
+          let moved = false
+          for (const m of meters) {
+            if (km[m.id] === undefined) km[m.id] = Number(m.kwh0) || 0
+            const I = Math.abs(sv[m.id]?._I || 0)
+            if (I > 1e-4) {
+              km[m.id] += (pTot * dt) / 3.6e6 // W·s → kW·h
+              moved = true
+            }
+          }
+          meterAccRef.current += dt
+          if (moved && meterAccRef.current >= 1) {
+            meterAccRef.current = 0
+            setMeterTick((t) => t + 1)
+          }
+        }
+      }
       for (const w of wiresRef.current) {
         const ch = chainsRef.current.get(w.id)
         if (!ch) continue
@@ -821,6 +853,10 @@ export default function ElectricSvgLabScene() {
     if (c.type === 'testPencil') return { glow: !!o._glow }
     if (c.type === 'electroscope') return { angle: Math.max(0, Math.min(1, (o._V || 0) / 8)) }
     if (c.type === 'relay') return { pulled: !!o._pulled }
+    if (c.type === 'energyMeter') {
+      const kwh = meterKwhRef.current[c.id] ?? (Number(c.kwh0) || 0)
+      return { kwh, I: o._I || 0 }
+    }
     if (c.type === 'multimeter') {
       const mode = c.mode === 'A' || c.mode === 'Ω' ? c.mode : 'V'
       return { value: mode === 'A' ? o._I : mode === 'Ω' ? o._R : o._V }
