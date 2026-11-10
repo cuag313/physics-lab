@@ -89,7 +89,7 @@ export function createLabRenderer(container, opt = {}) {
 
   /* ── 基础：渲染器 / 场景 / 相机 ── */
   const renderer = new THREE.WebGLRenderer({ antialias: true })
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1))
+  renderer.setPixelRatio(Math.min(2, Math.max(1.5, window.devicePixelRatio || 1)))
   renderer.shadowMap.enabled = true
   renderer.shadowMap.type = THREE.PCFSoftShadowMap
   renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -130,7 +130,7 @@ export function createLabRenderer(container, opt = {}) {
     const room = new RoomEnvironment()
     const envRT = pmrem.fromScene(room, 0.04)
     scene.environment = envRT.texture
-    scene.environmentIntensity = 0.5
+    scene.environmentIntensity = 0.38
     pmrem.dispose()
     room.dispose?.()
   } catch (e) {
@@ -157,8 +157,8 @@ export function createLabRenderer(container, opt = {}) {
   applyCamera()
 
   /* ── 教学课件灯光：柔和定向光 + 软阴影 + 冷补光 ── */
-  scene.add(new THREE.AmbientLight('#dde7f4', 0.68))
-  const key = new THREE.DirectionalLight('#fff7ea', 1.55)
+  scene.add(new THREE.AmbientLight('#e6edf8', 0.62))
+  const key = new THREE.DirectionalLight('#fff7ea', 1.32)
   key.position.set(7, 13, 9)
   key.castShadow = true
   key.shadow.mapSize.set(2048, 2048)
@@ -171,7 +171,7 @@ export function createLabRenderer(container, opt = {}) {
   key.shadow.bias = -0.0006
   key.shadow.radius = 4
   scene.add(key)
-  const fill = new THREE.DirectionalLight('#cfe0ff', 0.55)
+  const fill = new THREE.DirectionalLight('#dbe6f7', 0.38)
   fill.position.set(-9, 7, -8)
   scene.add(fill)
 
@@ -196,16 +196,24 @@ export function createLabRenderer(container, opt = {}) {
   table.receiveShadow = true
   labTableGroup.add(table)
 
-  /* ── 后处理：仅 OutlinePass（选中高亮），不做 bloom/景深 ── */
-  const composer = new EffectComposer(renderer)
+  /* ── 后处理：仅 OutlinePass（选中高亮），不做 bloom/景深 ──
+     关键：EffectComposer 默认用自己的无抗锯齿 RenderTarget，WebGLRenderer 的
+     antialias:true 对它是无效的 —— 这正是画面锯齿重的原因。这里显式给一个
+     4x 多采样的 RT，锯齿才真正消失。 */
+  const composerRT = new THREE.WebGLRenderTarget(1, 1, {
+    samples: 4,
+    type: THREE.HalfFloatType,
+  })
+  const composer = new EffectComposer(renderer, composerRT)
   composer.addPass(new RenderPass(scene, camera))
   const outline = new OutlinePass(new THREE.Vector2(1, 1), scene, camera)
-  outline.edgeStrength = 3.4
-  outline.edgeGlow = 0.22
-  outline.edgeThickness = 1.35
+  // 描边只做"选中提示"，不能发光晕：原来的 edgeGlow 0.22 + 强蓝会在器材边缘糊出一圈光
+  outline.edgeStrength = 2.4
+  outline.edgeGlow = 0.06
+  outline.edgeThickness = 1.1
   outline.pulsePeriod = 0
   outline.visibleEdgeColor.set('#2563eb')
-  outline.hiddenEdgeColor.set('#93c5fd')
+  outline.hiddenEdgeColor.set('#7aa7d8')
   composer.addPass(outline)
   composer.addPass(new OutputPass())
 
