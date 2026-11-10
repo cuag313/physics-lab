@@ -68,6 +68,7 @@ export function createLabRenderer(container, opt = {}) {
   const CW = opt.CW ?? 1800
   const CH = opt.CH ?? 1100
   const BULB_RATED = opt.bulbRated ?? 1.8
+  const RHEO = opt.rheoTrack || { x0: 20, x1: 181 } // 滑变电阻丝轨道（器材局部 px）
 
   /* ── 基础：渲染器 / 场景 / 相机 ── */
   const renderer = new THREE.WebGLRenderer({ antialias: true })
@@ -233,17 +234,42 @@ export function createLabRenderer(container, opt = {}) {
     }
   }
 
-  /** 状态指纹：决定是否需要重建材材贴图（开关/滑片/拨盘/档位等） */
-  function stateKeyOf(c) {
+  /** 形状指纹：不含滑片阻值。变了才需要重新光栅化 + 挤出几何 */
+  function shapeKeyOf(c) {
     return [
       c.type,
       c.closed ? 1 : 0,
-      Math.round((c.f ?? 0.4) * 50),
       c.pos ?? 0,
       c.blown ? 1 : 0,
       c.mode || '-',
       Array.isArray(c.dials) ? c.dials.join('') : '-',
     ].join('|')
+  }
+
+  /** 状态指纹（形状 + 滑片位置）：决定是否需要重建器材贴图 */
+  function stateKeyOf(c) {
+    return shapeKeyOf(c) + '|' + Math.round((c.f ?? 0.4) * 50)
+  }
+
+  /**
+   * 滑片拖动限速：f 每变 2% 就重建一次（光栅化 + 挤出 + 换贴图）会卡顿闪烁，
+   * 故对「形状没变、只有 f 变」的滑变重建限流，并在停止拖动后补一次最终值。
+   */
+  const F_THROTTLE_MS = 120
+  const trailTimers = new Map() // compId → trailing timer
+  let latestComps = []
+
+  function scheduleTrail(id) {
+    const prev = trailTimers.get(id)
+    if (prev) clearTimeout(prev)
+    const timer = setTimeout(() => {
+      trailTimers.delete(id)
+      const entry = equips.get(id)
+      const c = latestComps.find((x) => x.id === id)
+      if (!entry || !c) return
+      if (entry.key !== stateKeyOf(c)) rebuildComp(c)
+    }, F_THROTTLE_MS)
+    trailTimers.set(id, timer)
   }
 
   /** 装配接线柱磁吸热区（透明小球，射线拾取用） */
@@ -276,6 +302,8 @@ export function createLabRenderer(container, opt = {}) {
     const key = stateKeyOf(c)
     if (entry.key === key && entry.build) return entry
     entry.key = key
+    entry.shapeKey = shapeKeyOf(c)
+    entry.lastBuildAt = performance.now()
     const token = ++entry.buildToken
 
     const t = TYPES[c.type]
@@ -397,13 +425,23 @@ export function createLabRenderer(container, opt = {}) {
   }
   function sync(state) {
     const { comps = [], wires: wireList = [], solved = {} } = state || {}
+    latestComps = comps
 
     // 1) 器材：增删改
     const alive = new Set()
     for (const c of comps) {
       alive.add(c.id)
       const entry = equips.get(c.id)
+      if (entry) entry.f = c.f ?? 0.4
       if (!entry || entry.key !== stateKeyOf(c)) {
+        // 滑片拖动：形状不变、只有 f 变 → 限速重建，停止后补最终值
+        if (entry && entry.build && c.type === 'rheostat' && entry.shapeKey === shapeKeyOf(c)) {
+          const now = performance.now()
+          if (now - (entry.lastBuildAt || 0) < F_THROTTLE_MS) {
+            scheduleTrail(c.id)
+            continue
+          }
+        }
         rebuildComp(c) // 异步，完成时自挂载
       } else if (entry.group && !isCompActive(c.id)) {
         entry.group.position.copy(compToLocal(c))
@@ -412,6 +450,11 @@ export function createLabRenderer(container, opt = {}) {
     }
     for (const [id, entry] of equips) {
       if (!alive.has(id)) {
+        const tt = trailTimers.get(id)
+        if (tt) {
+          clearTimeout(tt)
+          trailTimers.delete(id)
+        }
         if (entry.group) {
           labTableGroup.remove(entry.group)
           disposeGroup(entry.group)
@@ -428,10 +471,13 @@ export function createLabRenderer(container, opt = {}) {
       if (entry.build.pointer) {
         const isA = c.type === 'ammeter'
         const fs = o._fs ?? (isA ? 0.6 : 3)
-        const val = Math.abs(isA ? o._I || 0 : o._V || 0)
-        const frac = Math.max(0, Math.min(1, val / (fs || 1)))
+        const raw = isA ? (o._I || 0) : (o._V || 0)
+        let frac = Math.max(0, Math.min(1, Math.abs(raw) / (fs || 1)))
+        if (o._over) frac = 1.06 // 超量程：指针顶到限位（左右都顶）
+        let deg = NEEDLE_BASE_DEG + frac * NEEDLE_SPAN_DEG
+        if (o._rev || raw < 0) deg = -deg // 接反：指针反向偏转
         // SVG 转角顺时针为正；表格平面里 -z 朝上，故取负号
-        entry.build.pointer.rotation.y = -((NEEDLE_BASE_DEG + frac * NEEDLE_SPAN_DEG) * Math.PI) / 180
+        entry.build.pointer.rotation.y = -(deg * Math.PI) / 180
       }
       if (c.type === 'bulb') {
         const bright = (o._P || 0) > 0 ? Math.min(1, o._P / BULB_RATED) : 0
@@ -617,10 +663,31 @@ export function createLabRenderer(container, opt = {}) {
       opt.onSelect && opt.onSelect({ kind: 'comp', id: hit.compId })
       const local = rayTable(e)
       const en = equips.get(hit.compId)
+      const ty = en ? en.type : ''
+      const t = TYPES[ty] || null
+
+      // 滑变：按在滑块附近 → 拖滑片；按在别处 → 仍是拖器材
+      let slide = false
+      if (en && en.group && ty === 'rheostat') {
+        const pl = en.group.worldToLocal(hit.point.clone())
+        const px = pl.x / SCALE + (t ? t.w / 2 : 100)
+        const py = pl.z / SCALE + (t ? t.h / 2 : 60)
+        const fNow = en.f ?? 0.4
+        const knobX = RHEO.x0 + fNow * (RHEO.x1 - RHEO.x0)
+        slide = Math.abs(px - knobX) < 26 && py < (t ? t.h : 120) * 0.62
+      }
+
+      // 开关：轻点即通断（按住拖动仍可挪位）
+      const isSwitch = ty === 'switch' || ty === 'switch2'
+
+      let mode = e.shiftKey ? 'rot-comp' : 'move'
+      if (!e.shiftKey && slide) mode = 'slide'
+      else if (!e.shiftKey && isSwitch) mode = 'tap'
+
       pointerDownInfo = {
         x: e.clientX,
         y: e.clientY,
-        mode: e.shiftKey ? 'rot-comp' : 'move',
+        mode,
         compId: hit.compId,
         // 抓取偏移：光标点相对器材底面中心（拖动时器材不跳到光标下）
         grabX: local && en ? local.x - en.group.position.x : 0,
@@ -664,6 +731,26 @@ export function createLabRenderer(container, opt = {}) {
     if (!info) return
     const dx = e.clientX - info.x
     const dy = e.clientY - info.y
+
+    if (info.mode === 'tap') {
+      info.moved = Math.max(info.moved, Math.abs(dx) + Math.abs(dy))
+      return
+    }
+    if (info.mode === 'slide') {
+      const en = equips.get(info.compId)
+      if (!en || !en.group) return
+      const p = rayTable(e)
+      if (!p) return
+      const world = labTableGroup.localToWorld(p.clone())
+      const pl = en.group.worldToLocal(world)
+      const t = TYPES[en.type]
+      const px = pl.x / SCALE + (t ? t.w / 2 : 100)
+      const f = Math.max(0, Math.min(1, (px - RHEO.x0) / (RHEO.x1 - RHEO.x0)))
+      en.f = f
+      info.moved = Math.max(info.moved, Math.abs(dx) + Math.abs(dy))
+      opt.onSlider && opt.onSlider(en.id, f)
+      return
+    }
 
     if (info.mode === 'rotate') {
       rot.yaw = info.yaw0 + dx * ROT_YAW_K
@@ -721,6 +808,20 @@ export function createLabRenderer(container, opt = {}) {
       if ((info.moved || 0) < 6) resetCamera()
       return
     }
+    if (info.mode === 'tap') {
+      // 轻点开关 → 通断翻转（位移超过阈值则视为挪位，不切换）
+      if ((info.moved || 0) < 6) opt.onSwitch && opt.onSwitch(info.compId)
+      return
+    }
+    if (info.mode === 'slide') {
+      // 滑片拖动收尾：解除限速并确认最终位置，保证松手后立即渲染到位
+      const en = equips.get(info.compId)
+      if (en) {
+        en.lastBuildAt = 0
+        opt.onSlider && opt.onSlider(en.id, en.f ?? 0.4)
+      }
+      return
+    }
     if (info.mode === 'move' || info.mode === 'rot-comp') {
       // 点击器材：仅选中（已处理）
     }
@@ -731,6 +832,9 @@ export function createLabRenderer(container, opt = {}) {
     if (!hit || hit.kind !== 'comp') return
     const en = equips.get(hit.compId)
     if (!en || !en.build) return
+    // 双击电表盘：切换读数显示（与 2D 轻点语义一致），随后再拉近相机
+    const ty = TYPES[en.type]
+    if (ty && ty.meter) opt.onMeterRead && opt.onMeterRead(en.id)
     // 目标：表针枢轴（无表针则取器材中心顶面）
     const t = TYPES[en.type]
     let target = new THREE.Vector3()
@@ -861,6 +965,8 @@ export function createLabRenderer(container, opt = {}) {
     dispose() {
       cancelAnimationFrame(raf)
       ro.disconnect()
+      for (const tt of trailTimers.values()) clearTimeout(tt)
+      trailTimers.clear()
       el.removeEventListener('pointerdown', onDown)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)

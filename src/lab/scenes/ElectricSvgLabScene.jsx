@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { solveCircuit, circuitStatus, CFG, TERM_IDS } from '../engine/electricLab.js'
 import { TYPES, RHEO_TRACK, FIG, rheostatMode } from './electricSvgInstruments.js'
+import { createLabRenderer } from '../lab3d/three-render.js'
 
 const CW = 1800, CH = 1100
 
@@ -319,6 +320,7 @@ export default function ElectricSvgLabScene() {
   const [ghost, setGhost] = useState(null)         // {type, x, y}
   const [toast, setToast] = useState('就绪')
   const [wireColor, setWireColor] = useState(WIRE_COLORS[0].hex)
+  const [view3d, setView3d] = useState(false)  // false=平面画布，true=3D 实验台（交互验收通过前默认 2D）
   const uidRef = useRef(1)
   const dragRef = useRef(null)
   const lastUpRef = useRef(null)
@@ -333,6 +335,9 @@ export default function ElectricSvgLabScene() {
   const previewTipRef = useRef(null)    // 拉线时的鼠标点
   const canvasRef = useRef(null)
   const stageRef = useRef(null)
+  const lab3dRef = useRef(null)          // 3D 实验台容器（view3d 时挂载）
+  const labApiRef = useRef(null)         // createLabRenderer 实例
+  const handlersRef = useRef({})         // 3D 回调转发目标（始终持有最新闭包）
   compsRef.current = comps
   wiresRef.current = wires
 
@@ -413,6 +418,9 @@ export default function ElectricSvgLabScene() {
       return ws.concat({ id: uidRef.current++, a, b, color: color || wireColor })
     })
   }, [wireColor])
+
+  // 3D 回调转发：渲染器只在挂载时捕获一次回调，经此转发保证永远拿到最新闭包
+  handlersRef.current = { addWire }
 
   const removeComp = useCallback((id) => {
     setComps((cs) => cs.filter((c) => c.id !== id))
@@ -571,6 +579,35 @@ export default function ElectricSvgLabScene() {
     }
   }
 
+  /* ── 轻点语义（2D 画布与 3D 实验台共用同一份实现） ──
+     开关=通断；单刀双掷=换掷；电表/保险丝/多用电表=双击切换；其余=选中/取消 */
+  const tapComp = useCallback((c, isDouble) => {
+    if (!c) return
+    if (c.type === 'switch') {
+      setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, closed: !x.closed } : x)))
+      setSelected({ kind: 'comp', id: c.id })
+    } else if (c.type === 'switch2') {
+      // 单刀双掷：轻点刀闸切换掷点
+      setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, pos: (x.pos ?? 0) === 1 ? 0 : 1 } : x)))
+      setSelected({ kind: 'comp', id: c.id })
+    } else if (c.type === 'multimeter' && isDouble) {
+      const next = { V: 'A', A: 'Ω', 'Ω': 'V' }
+      setComps((cs) => cs.map((x) => {
+        if (x.id !== c.id) return x
+        const cur = x.mode === 'A' || x.mode === 'Ω' ? x.mode : 'V'
+        return { ...x, mode: next[cur] }
+      }))
+      setToast('多用电表档位已切换')
+    } else if (c.type === 'fuse' && isDouble) {
+      setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, blown: false } : x)))
+      setToast('保险丝已换新')
+    } else if (T(c) && T(c).meter && isDouble) {
+      setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, showRead: !x.showRead } : x)))
+    } else {
+      setSelected((s) => (s && s.kind === 'comp' && s.id === c.id ? null : { kind: 'comp', id: c.id }))
+    }
+  }, [])
+
   const onUp = (e) => {
     window.removeEventListener('pointermove', onMove)
     window.removeEventListener('pointerup', onUp)
@@ -581,8 +618,11 @@ export default function ElectricSvgLabScene() {
       const sr = stageRef.current.getBoundingClientRect()
       if (e.clientX >= sr.left && e.clientX <= sr.right && e.clientY >= sr.top && e.clientY <= sr.bottom) {
         const t = TYPES[d.type]
-        const p = canvasPoint(e)
-        addComp(d.type, p.x - t.w / 2, p.y - t.h / 2)
+        // 3D 台面：射线换算到 2D 画布坐标（clientToCanvasXY）；平面画布：直接取画布坐标
+        const p = labApiRef.current
+          ? labApiRef.current.clientToCanvasXY(e.clientX, e.clientY)
+          : (canvasRef.current ? canvasPoint(e) : null)
+        if (p) addComp(d.type, p.x - t.w / 2, p.y - t.h / 2)
       }
       setGhost(null)
       return
@@ -590,34 +630,11 @@ export default function ElectricSvgLabScene() {
     if (d && d.kind === 'move') {
       if (!d.moved) {
         const c = compsRef.current.find((x) => x.id === d.compId)
-        // 轻点语义：开关=通断；电表=双击显读数；其余=选中/取消
         const now = performance.now()
         const last = lastUpRef.current
         const isDouble = !!(last && now - last.t < 350 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 28)
         lastUpRef.current = { t: now, x: e.clientX, y: e.clientY }
-        if (c && c.type === 'switch') {
-          setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, closed: !x.closed } : x)))
-          setSelected({ kind: 'comp', id: c.id })
-        } else if (c && c.type === 'switch2') {
-          // 单刀双掷：轻点刀闸切换掷点
-          setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, pos: (x.pos ?? 0) === 1 ? 0 : 1 } : x)))
-          setSelected({ kind: 'comp', id: c.id })
-        } else if (c && c.type === 'multimeter' && isDouble) {
-          const next = { V: 'A', A: 'Ω', 'Ω': 'V' }
-          setComps((cs) => cs.map((x) => {
-            if (x.id !== c.id) return x
-            const cur = x.mode === 'A' || x.mode === 'Ω' ? x.mode : 'V'
-            return { ...x, mode: next[cur] }
-          }))
-          setToast('多用电表档位已切换')
-        } else if (c && c.type === 'fuse' && isDouble) {
-          setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, blown: false } : x)))
-          setToast('保险丝已换新')
-        } else if (c && T(c).meter && isDouble) {
-          setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, showRead: !x.showRead } : x)))
-        } else {
-          setSelected((s) => (s && s.kind === 'comp' && s.id === d.compId ? null : { kind: 'comp', id: d.compId }))
-        }
+        tapComp(c, isDouble)
       }
       return
     }
@@ -636,6 +653,85 @@ export default function ElectricSvgLabScene() {
     window.addEventListener('keydown', kd)
     return () => window.removeEventListener('keydown', kd)
   }, [selected, removeComp])
+
+  /* ── 3D 实验台：挂载 / 卸载（createLabRenderer 只在切入 3D 时创建一次） ── */
+  useEffect(() => {
+    if (!view3d) return undefined
+    const container = lab3dRef.current
+    if (!container) return undefined
+    let api
+    try {
+      api = createLabRenderer(container, {
+        TYPES,
+        CW,
+        CH,
+        bulbRated: CFG.BULB_RATED,
+        wireColor: WIRE_COLORS[0].hex,
+        // 器材拖动：回写 2D 坐标（与平面画布共享同一份 comps 状态，req 8）
+        onCompMove: (id, x, y) => setComps((cs) => cs.map((c) => {
+          if (c.id !== id) return c
+          const t = TYPES[c.type]
+          return {
+            ...c,
+            x: Math.max(-10, Math.min(CW - t.w + 10, Math.round(x))),
+            y: Math.max(-10, Math.min(CH - t.h + 10, Math.round(y))),
+          }
+        })),
+        // Shift 拖动：绕竖直 Y 自转（存 c.rot，2D 渲染忽略该字段）
+        onCompRotate: (id, rot) => setComps((cs) => cs.map((c) => (c.id === id ? { ...c, rot } : c))),
+        // 选中联动：3D OutlinePass ↔ 2D selected
+        onSelect: (sel) => setSelected(sel),
+        // 接线完成：'cid:tid' 键与场景 wires 键格式完全一致（req 6 保留接线语义）
+        onWireConnect: (a, b) => {
+          const [ca, ta] = a.split(':')
+          const [cb, tb] = b.split(':')
+          handlersRef.current.addWire({ cid: +ca, tid: ta }, { cid: +cb, tid: tb })
+        },
+        onWireDelete: (id) => setWires((ws) => ws.filter((w) => w.id !== id)),
+        // 轻点开关 → 通断（复用 2D 同一份 tapComp）
+        onSwitch: (id) => {
+          const c = compsRef.current.find((x) => x.id === id)
+          if (c) tapComp(c, false)
+        },
+        // 拖滑片 → 连续更新 f（只改状态，几何重建交给 stateKey 分层）
+        onSlider: (id, f) => setComps((cs) => cs.map((c) => (c.id === id ? { ...c, f } : c))),
+        // 双击表盘 → 切换读数（复用 2D 同一份 tapComp）
+        onMeterRead: (id) => {
+          const c = compsRef.current.find((x) => x.id === id)
+          if (c) tapComp(c, true)
+        },
+        // 滑变电阻丝轨道（与 2D RHEO_TRACK 同一常量）
+        rheoTrack: RHEO_TRACK,
+      })
+    } catch (err) {
+      // WebGL 不可用等初始化失败：回退平面画布，不阻断实验
+      console.warn('[lab3d] 初始化失败，回退平面画布：', err)
+      setToast('3D 实验台初始化失败（WebGL 不可用），已回退平面画布')
+      setView3d(false)
+      return undefined
+    }
+    labApiRef.current = api
+    return () => {
+      api.dispose()
+      labApiRef.current = null
+    }
+  }, [view3d])
+
+  /* ── comps/wires/solved → 3D 同步（求解输出驱动指针角度与灯泡亮度，req 8） ── */
+  useEffect(() => {
+    if (!labApiRef.current) return
+    labApiRef.current.sync({ comps, wires, solved })
+  }, [comps, wires, solved, view3d])
+
+  /* ── 剖视联动：dissect → X-ray（外壳半透明 + 显示 inner，再次点击恢复，req 7） ── */
+  useEffect(() => {
+    labApiRef.current?.setXray(dissect)
+  }, [dissect, view3d])
+
+  /* ── 选中联动：selected → OutlinePass 高亮轮廓（req 10） ── */
+  useEffect(() => {
+    labApiRef.current?.setSelection(selected)
+  }, [selected, view3d])
 
   /* ── Verlet 粒子链逐帧松弛：导线随元件移动实时下垂；dashoffset 电流动画 ── */
   useEffect(() => {
@@ -796,6 +892,9 @@ export default function ElectricSvgLabScene() {
               />
             ))}
           </div>
+          {/* 视图切换（req 9）：平面画布 / 3D 实验台 随时互切 */}
+          <button type="button" className={`btn${view3d ? '' : ' on'}`} onClick={() => setView3d(false)} title="切回 2D 平面画布（调试）">📐 平面画布</button>
+          <button type="button" className={`btn${view3d ? ' on' : ''}`} onClick={() => setView3d(true)} title="可旋转 3D 实验台">🧊 3D 实验台</button>
           <button type="button" className={`btn${dissect ? ' on' : ''}`} onClick={() => setDissect((d) => !d)}>
             {dissect ? '🔍 内部结构（开）' : '🔍 内部结构'}
           </button>
@@ -835,6 +934,10 @@ export default function ElectricSvgLabScene() {
         </aside>
 
         <main className="esvg-stage" ref={stageRef}>
+          {view3d ? (
+            /* 3D 实验台容器：替换 2D 画布区域（同一位置二选一显示） */
+            <div className="esvg-lab3d" ref={lab3dRef} />
+          ) : (
           <div className={`esvg-canvas${dissect ? ' dissect' : ''}`} ref={canvasRef}>
             {/* 导线层（Verlet 粒子链 + 电流动画） */}
             <svg className={`esvg-wirelayer${shorted ? ' short' : ''}`} width={CW} height={CH}>
@@ -924,6 +1027,7 @@ export default function ElectricSvgLabScene() {
               })}
             </div>
           </div>
+          )}
         </main>
       </div>
 
