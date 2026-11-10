@@ -381,6 +381,37 @@ export function createLabRenderer(container, opt = {}) {
     trailTimers.set(id, timer)
   }
 
+  /* ── 悬停提示 ──
+     连线之所以"不灵敏"，一半原因是没有反馈：用户不知道光标到底压在哪根柱上。
+     光标进入接线柱热区时亮一个小青绿光点 + 光标变手型，点击/松手成线才有准头。 */
+  let hoverKey = null
+  function glowOf(key) {
+    if (!key) return null
+    const en = equips.get(key.compId)
+    const s = en && en.hotspots.get(key.tid)
+    return s && s.children && s.children[0] ? s.children[0] : null
+  }
+  function setHoverKey(key) {
+    if (key && hoverKey && key.compId === hoverKey.compId && key.tid === hoverKey.tid) return
+    if (!key && !hoverKey) return
+    const old = glowOf(hoverKey)
+    if (old) old.visible = false
+    hoverKey = key
+    const now = glowOf(key)
+    if (now) now.visible = true
+    renderer.domElement.style.cursor = key ? 'pointer' : ''
+  }
+  /** 轻量拾取：只测接线柱热区，不动整个场景 */
+  function hoverHotspotAt(e) {
+    setRay(e)
+    const hs = []
+    for (const en of equips.values()) for (const s of en.hotspots.values()) hs.push(s)
+    if (!hs.length) return null
+    const hit = raycaster.intersectObjects(hs, false)
+    if (!hit.length) return null
+    return { compId: hit[0].object.userData.compId, tid: hit[0].object.userData.tid }
+  }
+
   /** 装配接线柱磁吸热区（透明小球，射线拾取用） */
   function attachHotspots(entry) {
     const t = TYPES[entry.type]
@@ -423,6 +454,21 @@ export function createLabRenderer(container, opt = {}) {
       s.userData.role = 'terminal'
       s.userData.compId = entry.id
       s.userData.tid = tm.id
+      // 悬停高亮球：默认不可见、不参与拾取（raycast 置空，避免它挡住柱本身）
+      const glow = new THREE.Mesh(
+        new THREE.SphereGeometry(0.1, 10, 8),
+        new THREE.MeshBasicMaterial({
+          color: '#7df0bd',
+          transparent: true,
+          opacity: 0.5,
+          depthWrite: false,
+        })
+      )
+      glow.visible = false
+      glow.raycast = () => {}
+      glow.userData.role = 'terminalGlow'
+      glow.userData.keepOpacity = true
+      s.add(glow)
       entry.group.add(s)
       entry.hotspots.set(tm.id, s)
     }
@@ -1016,6 +1062,7 @@ export function createLabRenderer(container, opt = {}) {
 
     if (hit && hit.kind === 'terminal') {
       // 起线
+      setHoverKey({ compId: hit.compId, tid: hit.tid })
       const wire = new VerletWire({ color: defaultWireColor, count: 14 })
       labTableGroup.add(wire.mesh)
       pending = {
@@ -1106,6 +1153,7 @@ export function createLabRenderer(container, opt = {}) {
       if (snap) {
         pending.cursor.copy(snap.pos)
         pending.snap = snap
+        setHoverKey({ compId: snap.compId, tid: snap.tid })
       } else {
         const p = rayTable(e)
         if (p) {
@@ -1113,11 +1161,16 @@ export function createLabRenderer(container, opt = {}) {
           pending.cursor.y = 0.28
           pending.snap = null
         }
+        setHoverKey(null)
       }
       return
     }
     const info = pointerDownInfo
-    if (!info) return
+    if (!info) {
+      // 空手移动：光标压在哪根柱上就点亮哪里
+      setHoverKey(hoverHotspotAt(e))
+      return
+    }
     const dx = e.clientX - info.x
     const dy = e.clientY - info.y
 
@@ -1310,6 +1363,9 @@ export function createLabRenderer(container, opt = {}) {
   el.addEventListener('pointerdown', onDown)
   window.addEventListener('pointermove', onMove)
   window.addEventListener('pointerup', onUp)
+  // 光标移出画布：把悬停光点收掉，否则停在柱上出去后一直亮着
+  const onLeave = () => setHoverKey(null)
+  el.addEventListener('pointerleave', onLeave)
   el.addEventListener('dblclick', onDblClick)
   el.addEventListener('wheel', onWheel, { passive: false })
   window.addEventListener('keydown', onKey)
@@ -1432,6 +1488,7 @@ export function createLabRenderer(container, opt = {}) {
       for (const tt of trailTimers.values()) clearTimeout(tt)
       trailTimers.clear()
       el.removeEventListener('pointerdown', onDown)
+      el.removeEventListener('pointerleave', onLeave)
       orbitPad.removeEventListener('pointerdown', onPadDown)
       orbitPad.remove()
       window.removeEventListener('pointermove', onMove)
