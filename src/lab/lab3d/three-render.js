@@ -28,6 +28,7 @@ import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { buildEquipment } from './svg-extrude-loader.js'
 import { VerletWire } from './verlet-wire.js'
+import { bulbTempColor } from '../scenes/electricSvgInstruments.js'
 
 /* ── 尺度与手感常量 ─────────────────────────────────────────────── */
 const SCALE = 0.01           // 2D 画布 px → 世界单位（1800px ≈ 18 单位）
@@ -490,14 +491,16 @@ export function createLabRenderer(container, opt = {}) {
       }
       if (c.type === 'bulb') {
         const bright = (o._P || 0) > 0 ? Math.min(1, o._P / BULB_RATED) : 0
+        // 灯丝色温与 2D 共用同一份色表：暗红 → 橙红 → 亮黄 → 刺白
+        const { core } = bulbTempColor(bright)
         const mats = Array.isArray(entry.build.outer.material)
           ? entry.build.outer.material
           : [entry.build.outer.material]
         for (const m of mats) {
           if (!m.emissiveMap && m.map) m.emissiveMap = m.map
           m.emissive = m.emissive || new THREE.Color(0, 0, 0)
-          m.emissive.setRGB(1, 0.93, 0.62)
-          m.emissiveIntensity = bright * 1.25
+          m.emissive.setRGB(core[0] / 255, core[1] / 255, core[2] / 255)
+          m.emissiveIntensity = bright * 1.4
         }
       }
     }

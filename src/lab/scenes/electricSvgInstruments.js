@@ -31,6 +31,31 @@ export function rheostatMode(wired) {
   return 'full-wire'
 }
 
+/**
+ * 灯丝温度色阶（对照帧理：暗红 → 橙红 → 亮黄 → 刺眼白）。
+ * 2D SVG 光晕与 3D emissive 共用这一份，避免两套色表分家。
+ * 每档：[功率比阈值, 灯丝芯色, 外围光晕色]，颜色为 0~255 RGB。
+ */
+export const BULB_STAGE = [
+  [0.0, [104, 112, 124], [104, 112, 124]], // 断路：冷灰
+  [0.18, [127, 29, 29], [220, 38, 38]],     // 暗红（低电流）
+  [0.42, [194, 65, 12], [249, 115, 22]],    // 橙红
+  [0.68, [251, 191, 36], [251, 191, 36]],   // 亮黄
+  [1.0, [255, 253, 235], [255, 255, 240]],  // 刺眼白（额定）
+]
+
+/** 按功率比取灯丝色温：{ core, halo } 均为 [r,g,b]（0~255），档间线性插值 */
+export function bulbTempColor(bright) {
+  const k = Math.max(0, Math.min(1, Number(bright) || 0))
+  let si = 0
+  while (si < BULB_STAGE.length - 2 && k > BULB_STAGE[si + 1][0]) si++
+  const [t0, c0, h0] = BULB_STAGE[si]
+  const [t1, c1, h1] = BULB_STAGE[si + 1]
+  const u = t1 > t0 ? Math.max(0, Math.min(1, (k - t0) / (t1 - t0))) : 0
+  const mix = (a, b) => a.map((v, j) => Math.round(v + (b[j] - v) * u))
+  return { core: mix(c0, c1), halo: mix(h0, h1) }
+}
+
 /** 源实验的内部结构图按比例居中嵌入 */
 function fitInner(sw, sh, w, h, body) {
   const k = Math.min(w / sw, h / sh)
@@ -437,22 +462,8 @@ export const TYPES = {
       const bright = Math.max(0, Math.min(1, Number(dyn.bright) || 0))
       const over = !!dyn.over // 超过额定功率：刺白 + 闪烁警示
 
-      // 灯丝色温四档（对照帧理：暗红 → 橙红 → 亮黄 → 刺眼白），档间线性插值
-      const STAGE = [
-        [0.0, [104, 112, 124], [104, 112, 124]], // 断路：冷灰
-        [0.18, [127, 29, 29], [220, 38, 38]],     // 暗红（低电流）
-        [0.42, [194, 65, 12], [249, 115, 22]],    // 橙红
-        [0.68, [251, 191, 36], [251, 191, 36]],   // 亮黄
-        [1.0, [255, 253, 235], [255, 255, 240]],  // 刺眼白（额定）
-      ]
-      let si = 0
-      while (si < STAGE.length - 2 && bright > STAGE[si + 1][0]) si++
-      const t0 = STAGE[si][0], c0 = STAGE[si][1], h0 = STAGE[si][2]
-      const t1 = STAGE[si + 1][0], c1 = STAGE[si + 1][1], h1 = STAGE[si + 1][2]
-      const u = t1 > t0 ? Math.max(0, Math.min(1, (bright - t0) / (t1 - t0))) : 0
-      const mix = (a, b) => a.map((v, j) => Math.round(v + (b[j] - v) * u))
-      const core = mix(c0, c1)
-      const halo = mix(h0, h1)
+      // 灯丝色温四档：与 3D emissive 共用同一份 BULB_STAGE（见文件头）
+      const { core, halo } = bulbTempColor(bright)
       const rgb = (a) => `rgb(${a[0]},${a[1]},${a[2]})`
 
       // 渐变 id 必须按器材 + 亮度唯一，否则同一文档里多只亮度不同的灯泡会串色
