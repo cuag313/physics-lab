@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
+import { symSwitch, symMeter, symHalf, SYM_INK } from '../render/symbols.js'
 
 /**
  * ElectromagneticInductionScene — 电磁感应（法拉第实验）
@@ -145,25 +146,38 @@ export default function ElectromagneticInductionScene() {
 
     const swX = circL + span * 0.5
 
-    ctx.strokeStyle = wc; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
+    // 标准电路符号：导线断开留缺口，横平竖直
+    const scale = 1
+    const lw = 2 * scale + 0.6
+    const hSw = symHalf('switch', scale)
+    const hG = symHalf('meter', scale)
+    const gY = (circTop + circBottom) / 2
+    const ink = on ? SYM_INK : '#7c8a93'
+    ctx.strokeStyle = wc; ctx.lineWidth = lw; ctx.lineCap = 'round'
     // 顶边（导轨1）
     ctx.beginPath(); ctx.moveTo(circL, circTop); ctx.lineTo(circR, circTop); ctx.stroke()
-    // 右边（接检流计）
-    ctx.beginPath(); ctx.moveTo(circR, circTop); ctx.lineTo(circR, circBottom); ctx.stroke()
-    // 底边（导轨2 + 开关）
-    ctx.beginPath(); ctx.moveTo(circR, circBottom); ctx.lineTo(swX + 18, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(swX - 18, circBottom); ctx.lineTo(circL, circBottom); ctx.stroke()
+    // 右边（接检流计，断开留缺口）
+    ctx.beginPath(); ctx.moveTo(circR, circTop); ctx.lineTo(circR, gY - hG); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(circR, gY + hG); ctx.lineTo(circR, circBottom); ctx.stroke()
+    // 底边（导轨2 + 开关，断开留缺口）
+    ctx.beginPath(); ctx.moveTo(circR, circBottom); ctx.lineTo(swX + hSw, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(swX - hSw, circBottom); ctx.lineTo(circL, circBottom); ctx.stroke()
     // 左边（接导体棒）
     ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(circL, circTop); ctx.stroke()
     ctx.lineCap = 'butt'
 
-    // 导体棒（感应电源，ε = BLv，左竖边）
+    // 导体棒（感应电源，ε = BLv，左竖边，教具插图保持不变）
     drawBarSource(ctx, circL, circTop, circBottom, info.emf, on)
-    // 检流计（G，右竖边，检测感应电流）
-    drawGalvanometer(ctx, circR, (circTop + circBottom) / 2, info)
-    // 开关
-    drawSwitch(ctx, swX, circBottom, on, () => {
-      S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1)
+    // 检流计（G，标准电表符号）
+    symMeter(ctx, circR, gY, { kind: 'G', scale, ink })
+    ctx.fillStyle = '#333'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    ctx.fillText(info.emf !== 0 ? info.emf.toFixed(2) + 'V' : '0', circR + hG + 6, gY)
+    ctx.textBaseline = 'alphabetic'
+    // 开关（标准符号）
+    symSwitch(ctx, swX, circBottom, { closed: on, scale, ink })
+    canvasRef.current._clickAreas.push({
+      x: swX - hSw - 10, y: circBottom - 22, w: (hSw + 10) * 2, h: 44,
+      onClick: () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) }
     })
 
     // 感应电流流动
@@ -357,39 +371,6 @@ export default function ElectromagneticInductionScene() {
     ctx.fillText('导体棒', x, mid - 6)
     ctx.fillStyle = '#333'; ctx.font = '10px sans-serif'; ctx.textBaseline = 'top'
     ctx.fillText(`ε=${emf.toFixed(2)}V`, x, mid + 6)
-    ctx.textBaseline = 'alphabetic'
-  }
-
-  // 检流计（G，检测感应电流）
-  function drawGalvanometer(ctx, x, y, info) {
-    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#2E7D32'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.arc(x, y, 18, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#2E7D32'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText('G', x, y - 4)
-    ctx.font = 'bold 10px monospace'
-    ctx.fillText(info.emf !== 0 ? info.emf.toFixed(2) + 'V' : '0', x, y + 8)
-    ctx.textBaseline = 'alphabetic'
-  }
-
-  function drawSwitch(ctx, x, y, on, onClick) {
-    ctx.fillStyle = '#666'
-    ctx.beginPath(); ctx.arc(x - 18, y, 4, 0, Math.PI * 2); ctx.fill()
-    ctx.beginPath(); ctx.arc(x + 18, y, 4, 0, Math.PI * 2); ctx.fill()
-    ctx.strokeStyle = '#999'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.moveTo(x - 22, y); ctx.lineTo(x - 18, y); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(x + 18, y); ctx.lineTo(x + 22, y); ctx.stroke()
-    if (on) {
-      ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 3; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(x - 18, y); ctx.lineTo(x + 18, y); ctx.stroke()
-    } else {
-      ctx.strokeStyle = '#F44336'; ctx.lineWidth = 3; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(x - 18, y); ctx.lineTo(x + 8, y - 18); ctx.stroke()
-    }
-    ctx.lineCap = 'butt'
-    ctx.fillStyle = on ? '#4CAF50' : '#F44336'
-    ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText(on ? 'ON' : 'OFF', x, y + 8)
-    canvasRef.current._clickAreas.push({ x: x - 25, y: y - 25, w: 50, h: 50, onClick })
     ctx.textBaseline = 'alphabetic'
   }
 

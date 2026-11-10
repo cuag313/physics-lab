@@ -18,24 +18,23 @@ import {
   Resistor3D,
   Rheostat3D,
   Wire3D,
-} from '../three/ElectricInstruments3D'
+} from '../three/ImageInstruments3D'
 
 function CircuitRig({ closed, voltage, slider, brightness, current, onToggle }) {
   const wires = useMemo(() => {
-    const V = voltage
     return [
-      // 电池 + → 开关
-      { color: '#e53935', points: [[1.7, 0.55, 0], [2.35, 0.7, 0], [2.7, 0.35, 0]] },
-      // 开关 → 电流表
-      { color: '#e53935', points: [[3.55, 0.35, 0], [3.9, 0.7, 0], [3.7, 0.45, 0.35]] },
-      // 电流表 → 灯泡
-      { color: '#e53935', points: [[3.35, 0.45, 0.55], [2.8, 0.85, 0.7], [1.95, 0.45, 0.7]] },
-      // 灯泡 → 变阻器
-      { color: '#e53935', points: [[1.35, 0.45, 0.7], [0.6, 0.85, 0.5], [0.55, 0.35, 0.15]] },
-      // 变阻器 → 电池 −
-      { color: '#1565c0', points: [[-1.25, 0.35, 0], [-1.85, 0.75, -0.15], [-2.1, 0.55, 0]] },
+      // 电池 + → 开关（左柱）
+      { color: '#e53935', points: [[-1.9, 1.05, 0], [-0.2, 0.8, -0.4], [1.5, 0.22, 0]] },
+      // 开关（右柱）→ 电流表 −
+      { color: '#e53935', points: [[2.7, 0.22, 0], [2.55, 0.16, 0.55]] },
+      // 电流表 3A → 灯泡 +
+      { color: '#e53935', points: [[3.25, 0.16, 0.55], [1.5, 0.16, 0.85]] },
+      // 灯泡 − → 变阻器（右柱）
+      { color: '#e53935', points: [[0.9, 0.16, 0.85], [-0.5, 0.16, 0.2]] },
+      // 变阻器（左柱）→ 电池 −
+      { color: '#1565c0', points: [[-1.9, 0.16, 0.2], [-2.5, 1.05, 0]] },
     ]
-  }, [voltage])
+  }, [])
 
   return (
     <group>
@@ -78,11 +77,11 @@ function CircuitRig({ closed, voltage, slider, brightness, current, onToggle }) 
       />
       <Wire3D
         color="#4caf50"
-        points={[[1.55, 0.55, 1.0], [1.1, 0.9, 1.35], [0.65, 0.55, 1.6]]}
+        points={[[1.5, 0.16, 0.85], [0.7, 0.16, 1.6]]}
       />
       <Wire3D
         color="#4caf50"
-        points={[[-0.05, 0.55, 1.6], [0.5, 0.9, 1.25], [1.0, 0.55, 0.95]]}
+        points={[[-0.1, 0.16, 1.6], [0.9, 0.16, 0.85]]}
       />
     </group>
   )

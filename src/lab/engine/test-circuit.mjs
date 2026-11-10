@@ -38,7 +38,7 @@ function test(name, ok, detail = '') {
     const I = ammR.current
     const expected_I = 6 / 25  // 0.24A
     test('伏安法-电流≈0.24A', Math.abs(Math.abs(I) - expected_I) < 0.001, `got ${I.toFixed(4)}`)
-    test('伏安法-灯泡电压≈3.6V', Math.abs(bulbR.voltage - 3.6) < 0.01, `got ${bulbR.voltage.toFixed(3)}`)
+    test('伏安法-灯泡电压≈3.6V', Math.abs(Math.abs(bulbR.voltage) - 3.6) < 0.01, `got ${bulbR.voltage.toFixed(3)}`)
   }
 }
 
@@ -146,7 +146,18 @@ function test(name, ok, detail = '') {
   const g = new CircuitGraph()
   g.addComponent('battery', 0, 0, { voltage: 6 })
   const v = g.validate()
-  test('缺少灯泡-应报错', !v.ok && v.reason.includes('灯泡'), v.reason)
+  test('缺少负载-应报错', !v.ok && v.reason.includes('缺少负载'), v.reason)
+}
+
+// ── 测试8b：纯电阻电路（无灯泡）应通过 ──
+{
+  const g = new CircuitGraph()
+  const bat = g.addComponent('battery', 0, 0, { voltage: 6 })
+  const res = g.addComponent('resistor', 0, 0, { resistance: 10 })
+  g.addWire({ componentId: bat.id, portIndex: 1 }, { componentId: res.id, portIndex: 1 })
+  g.addWire({ componentId: res.id, portIndex: 0 }, { componentId: bat.id, portIndex: 0 })
+  const v = g.validate()
+  test('纯电阻电路-应通过', v.ok, v.reason)
 }
 
 // ── 测试9：元件未连线 ──

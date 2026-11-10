@@ -5,111 +5,9 @@
  * 点击目录中的实验卡片直接进入对应实验
  */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, Suspense } from 'react'
 import ExperimentBench from './ui/ExperimentBench'
-import ConvexLensImaging from './scenes/ConvexLensImaging'
-import ConcaveLensImaging from './scenes/ConcaveLensImaging'
-import ReflectionLawScene from './scenes/ReflectionLawScene'
-import PlaneMirrorImageScene from './scenes/PlaneMirrorImageScene'
-import GlassRefractionScene from './scenes/GlassRefractionScene'
-import InterferenceDiffractionScene from './scenes/InterferenceDiffractionScene'
-import PrismDispersionScene from './scenes/PrismDispersionScene'
-import LeverBalanceScene from './scenes/LeverBalanceScene'
-import FrictionForceScene from './scenes/FrictionForceScene'
-import ProjectileMotionScene from './scenes/ProjectileMotionScene'
-import NewtonSecondLawScene from './scenes/NewtonSecondLawScene'
-import SpringForceScene from './scenes/SpringForceScene'
-import HookeLawScene from './scenes/HookeLawScene'
-import DensityMeasurementScene from './scenes/DensityMeasurementScene'
-import UniformAccelScene from './scenes/UniformAccelScene'
-import ParallelogramRuleScene from './scenes/ParallelogramRuleScene'
-import ArchimedesPrincipleScene from './scenes/ArchimedesPrincipleScene'
-import PressureEffectScene from './scenes/PressureEffectScene'
-import LiquidPressureScene from './scenes/LiquidPressureScene'
-import PulleyEfficiencyScene from './scenes/PulleyEfficiencyScene'
-import EnergyConservationScene from './scenes/EnergyConservationScene'
-import CollisionLabScene from './scenes/CollisionLabScene'
-import MeasureSpeedScene from './scenes/MeasureSpeedScene'
-import FloatSinkScene from './scenes/FloatSinkScene'
-import PascalPrincipleScene from './scenes/PascalPrincipleScene'
-import AtmosphericPressureScene from './scenes/AtmosphericPressureScene'
-import BernoulliPrincipleScene from './scenes/BernoulliPrincipleScene'
-import NewtonFirstLawScene from './scenes/NewtonFirstLawScene'
-import NewtonThirdLawScene from './scenes/NewtonThirdLawScene'
-import CircularMotionScene from './scenes/CircularMotionScene'
-import GalileoFreeFallScene from './scenes/GalileoFreeFallScene'
-import KeplerLawsScene from './scenes/KeplerLawsScene'
-import UniversalGravitationScene from './scenes/UniversalGravitationScene'
-import PendulumScene from './scenes/PendulumScene'
-import SimpleHarmonicMotionScene from './scenes/SimpleHarmonicMotionScene'
-import CosmicVelocityScene from './scenes/CosmicVelocityScene'
-import RocketScene from './scenes/RocketScene'
-import SoundWaveScene from './scenes/SoundWaveScene'
-import SoundPropagationScene from './scenes/SoundPropagationScene'
-import SoundPitchScene from './scenes/SoundPitchScene'
-import SoundLoudnessScene from './scenes/SoundLoudnessScene'
-import SoundTimbreScene from './scenes/SoundTimbreScene'
-import SoundNoiseScene from './scenes/SoundNoiseScene'
-import SoundResonanceScene from './scenes/SoundResonanceScene'
-import SoundStringScene from './scenes/SoundStringScene'
-import SoundPipeScene from './scenes/SoundPipeScene'
-import SoundDopplerScene from './scenes/SoundDopplerScene'
-import SoundInterferenceScene from './scenes/SoundInterferenceScene'
-import SoundEchoScene from './scenes/SoundEchoScene'
-import PhotoelectricScene from './scenes/PhotoelectricScene'
-import RutherfordScene from './scenes/RutherfordScene'
-import BohrScene from './scenes/BohrScene'
-import RadioactiveDecayScene from './scenes/RadioactiveDecayScene'
-import BlackbodyScene from './scenes/BlackbodyScene'
-import ElectronDoubleSlitScene from './scenes/ElectronDoubleSlitScene'
-import NuclearReactionScene from './scenes/NuclearReactionScene'
-import RelativityScene from './scenes/RelativityScene'
-import ComptonScene from './scenes/ComptonScene'
-import OhmsLawScene from './scenes/OhmsLawScene'
-import VoltAmpereResistorScene from './scenes/VoltAmpereResistorScene'
-import BrownianMotionScene from './scenes/BrownianMotionScene'
-import GasLawsScene from './scenes/GasLawsScene'
-import ThermodynamicsFirstScene from './scenes/ThermodynamicsFirstScene'
-import CarnotEngineScene from './scenes/CarnotEngineScene'
-import ElectricEnergyScene from './scenes/ElectricEnergyScene'
-import OstersExperimentScene from './scenes/OstersExperimentScene'
-import ElectricMotorScene from './scenes/ElectricMotorScene'
-import ElectromagneticInductionScene from './scenes/ElectromagneticInductionScene'
-import CoulombLawScene from './scenes/CoulombLawScene'
-import ElectricFieldLineScene from './scenes/ElectricFieldLineScene'
-import ElectricPotentialScene from './scenes/ElectricPotentialScene'
-import CapacitorChargeScene from './scenes/CapacitorChargeScene'
-import ClosedCircuitOhmScene from './scenes/ClosedCircuitOhmScene'
-import SimpleCircuitScene from './scenes/SimpleCircuitScene'
-import SeriesParallelScene from './scenes/SeriesParallelScene'
-import MeterConversionScene from './scenes/MeterConversionScene'
-import FaradayLawScene from './scenes/FaradayLawScene'
-import SelfInductionScene from './scenes/SelfInductionScene'
-import AlternatingCurrentScene from './scenes/AlternatingCurrentScene'
-import LorentzForceScene from './scenes/LorentzForceScene'
-import HallEffectScene from './scenes/HallEffectScene'
-import JouleLawScene from './scenes/JouleLawScene'
-import ElectromagnetScene from './scenes/ElectromagnetScene'
-import EmfInternalResistanceScene from './scenes/EmfInternalResistanceScene'
-import MultimeterScene from './scenes/MultimeterScene'
-import AmpereForceScene from './scenes/AmpereForceScene'
-import LenzLawScene from './scenes/LenzLawScene'
-import MeltingCurveScene from './scenes/MeltingCurveScene'
-import BoilingWaterScene from './scenes/BoilingWaterScene'
-import SpecificHeatScene from './scenes/SpecificHeatScene'
-import DiffusionScene from './scenes/DiffusionScene'
-import EvaporationScene from './scenes/EvaporationScene'
-import PhaseChangeScene from './scenes/PhaseChangeScene'
-import OilFilmMethodScene from './scenes/OilFilmMethodScene'
-import MillikanScene from './scenes/MillikanScene'
-import RefractionLawScene from './scenes/RefractionLawScene'
-import TotalInternalReflectionScene from './scenes/TotalInternalReflectionScene'
-import LightPolarizationScene from './scenes/LightPolarizationScene'
-import TransformerScene from './scenes/TransformerScene'
-import ElectricFieldDeflectionScene from './scenes/ElectricFieldDeflectionScene'
-import BulbIVCurveScene from './scenes/BulbIVCurveScene'
-import VoltAmpereMethodHSScene from './scenes/VoltAmpereMethodHSScene'
-import ElectricLab3DScene from './scenes/ElectricLab3DScene'
+import { getScene } from './scenes/registry'
 import { PRESETS } from './scenes'
 import { EXPERIMENT_CATALOG, CATEGORIES, DIFFICULTY_LABELS } from './scenes/catalog'
 
@@ -340,7 +238,10 @@ export default function LabPage({ onBack }) {
     )
   }
 
-  // 实验台
+  // 实验台：查注册表拿懒加载组件；未实现的 key 回落到通用实验台
+  const sceneEntry = getScene(currentExperiment?.key)
+  const SceneComp = sceneEntry?.Component ?? null
+
   return (
     <div className="lab-shell" style={styles.labContainer}>
       <div className="lab-header" style={styles.labHeader}>
@@ -369,226 +270,10 @@ export default function LabPage({ onBack }) {
       </div>
 
       <div className="lab-body" style={styles.labBody}>
-        {currentExperiment?.key === 'convexLensImaging' ? (
-          <ConvexLensImaging
-            preset={{ focalLength: 1.0 }}
-          />
-        ) : currentExperiment?.key === 'concaveLensImaging' ? (
-          <ConcaveLensImaging
-            preset={{ focalLength: 1.0 }}
-          />
-        ) : currentExperiment?.key === 'reflectionLaw' ? (
-          <ReflectionLawScene
-            preset={{ mirrorAngle: 90 }}
-          />
-        ) : currentExperiment?.key === 'planeMirrorImage' ? (
-          <PlaneMirrorImageScene
-            preset={{ objX: -3, objH: 1.0 }}
-          />
-        ) : currentExperiment?.key === 'glassRefraction' ? (
-          <GlassRefractionScene
-            preset={{ n: 1.5 }}
-          />
-        ) : currentExperiment?.key === 'interferenceDiffraction' ? (
-          <InterferenceDiffractionScene />
-        ) : currentExperiment?.key === 'prismDispersion' ? (
-          <PrismDispersionScene />
-        ) : currentExperiment?.key === 'leverBalance' ? (
-          <LeverBalanceScene />
-        ) : currentExperiment?.key === 'frictionForce' ? (
-          <FrictionForceScene />
-        ) : currentExperiment?.key === 'projectileMotion' ? (
-          <ProjectileMotionScene />
-        ) : currentExperiment?.key === 'newtonSecondLaw' ? (
-          <NewtonSecondLawScene />
-        ) : currentExperiment?.key === 'springForce' ? (
-          <SpringForceScene />
-        ) : currentExperiment?.key === 'hookeLaw' ? (
-          <HookeLawScene />
-        ) : currentExperiment?.key === 'densityMeasurement' ? (
-          <DensityMeasurementScene />
-        ) : currentExperiment?.key === 'uniformAccel' ? (
-          <UniformAccelScene />
-        ) : currentExperiment?.key === 'parallelogramRule' ? (
-          <ParallelogramRuleScene />
-        ) : currentExperiment?.key === 'archimedesPrinciple' ? (
-          <ArchimedesPrincipleScene />
-        ) : currentExperiment?.key === 'floatSink' ? (
-          <FloatSinkScene />
-        ) : currentExperiment?.key === 'pressureEffect' ? (
-          <PressureEffectScene />
-        ) : currentExperiment?.key === 'liquidPressure' ? (
-          <LiquidPressureScene />
-        ) : currentExperiment?.key === 'pascalPrinciple' ? (
-          <PascalPrincipleScene />
-        ) : currentExperiment?.key === 'atmosphericPressure' ? (
-          <AtmosphericPressureScene />
-        ) : currentExperiment?.key === 'bernoulliPrinciple' ? (
-          <BernoulliPrincipleScene />
-        ) : currentExperiment?.key === 'pulleyEfficiency' ? (
-          <PulleyEfficiencyScene />
-        ) : currentExperiment?.key === 'energyConservation' ? (
-          <EnergyConservationScene />
-        ) : currentExperiment?.key === 'collisionLab' ? (
-          <CollisionLabScene defaultTab="lab" />
-        ) : currentExperiment?.key === 'momentumConservation' ? (
-          <CollisionLabScene defaultTab="conservation" />
-        ) : currentExperiment?.key === 'newtonFirstLaw' ? (
-          <NewtonFirstLawScene />
-        ) : currentExperiment?.key === 'newtonThirdLaw' ? (
-          <NewtonThirdLawScene />
-        ) : currentExperiment?.key === 'circularMotion' ? (
-          <CircularMotionScene />
-        ) : currentExperiment?.key === 'galileoFreeFall' ? (
-          <GalileoFreeFallScene />
-        ) : currentExperiment?.key === 'keplerLaws' ? (
-          <KeplerLawsScene />
-        ) : currentExperiment?.key === 'universalGravitation' ? (
-          <UniversalGravitationScene />
-        ) : currentExperiment?.key === 'pendulum' ? (
-          <PendulumScene />
-        ) : currentExperiment?.key === 'simpleHarmonicMotion' ? (
-          <SimpleHarmonicMotionScene />
-        ) : currentExperiment?.key === 'cosmicVelocity' ? (
-          <CosmicVelocityScene />
-        ) : currentExperiment?.key === 'rocket' ? (
-          <RocketScene />
-        ) : currentExperiment?.key === 'soundWave' ? (
-          <SoundWaveScene />
-        ) : currentExperiment?.key === 'soundPropagation' ? (
-          <SoundPropagationScene />
-        ) : currentExperiment?.key === 'soundPitch' ? (
-          <SoundPitchScene />
-        ) : currentExperiment?.key === 'soundLoudness' ? (
-          <SoundLoudnessScene />
-        ) : currentExperiment?.key === 'soundTimbre' ? (
-          <SoundTimbreScene />
-        ) : currentExperiment?.key === 'soundNoise' ? (
-          <SoundNoiseScene />
-        ) : currentExperiment?.key === 'soundResonance' ? (
-          <SoundResonanceScene />
-        ) : currentExperiment?.key === 'soundString' ? (
-          <SoundStringScene />
-        ) : currentExperiment?.key === 'soundPipe' ? (
-          <SoundPipeScene />
-        ) : currentExperiment?.key === 'soundDoppler' ? (
-          <SoundDopplerScene />
-        ) : currentExperiment?.key === 'soundInterference' ? (
-          <SoundInterferenceScene />
-        ) : currentExperiment?.key === 'soundEcho' ? (
-          <SoundEchoScene />
-        ) : currentExperiment?.key === 'photoelectric' ? (
-          <PhotoelectricScene />
-        ) : currentExperiment?.key === 'rutherford' ? (
-          <RutherfordScene />
-        ) : currentExperiment?.key === 'bohr' ? (
-          <BohrScene />
-        ) : currentExperiment?.key === 'radioactiveDecay' ? (
-          <RadioactiveDecayScene />
-        ) : currentExperiment?.key === 'blackbody' ? (
-          <BlackbodyScene />
-        ) : currentExperiment?.key === 'electronDoubleSlit' ? (
-          <ElectronDoubleSlitScene />
-        ) : currentExperiment?.key === 'nuclearReaction' ? (
-          <NuclearReactionScene />
-        ) : currentExperiment?.key === 'relativity' ? (
-          <RelativityScene />
-        ) : currentExperiment?.key === 'compton' ? (
-          <ComptonScene />
-        ) : currentExperiment?.key === 'millikan' ? (
-          <MillikanScene />
-        ) : currentExperiment?.key === 'meltingCurve' ? (
-          <MeltingCurveScene />
-        ) : currentExperiment?.key === 'boilingWater' ? (
-          <BoilingWaterScene />
-        ) : currentExperiment?.key === 'specificHeat' ? (
-          <SpecificHeatScene />
-        ) : currentExperiment?.key === 'brownianMotion' ? (
-          <BrownianMotionScene />
-        ) : currentExperiment?.key === 'diffusion' ? (
-          <DiffusionScene />
-        ) : currentExperiment?.key === 'evaporation' ? (
-          <EvaporationScene />
-        ) : currentExperiment?.key === 'phaseChange' ? (
-          <PhaseChangeScene />
-        ) : currentExperiment?.key === 'oilFilmMethod' ? (
-          <OilFilmMethodScene />
-        ) : currentExperiment?.key === 'gasLaws' ? (
-          <GasLawsScene />
-        ) : currentExperiment?.key === 'thermodynamicsFirst' ? (
-          <ThermodynamicsFirstScene />
-        ) : currentExperiment?.key === 'carnotEngine' ? (
-          <CarnotEngineScene />
-        ) : currentExperiment?.key === 'electricEnergy' ? (
-          <ElectricEnergyScene />
-        ) : currentExperiment?.key === 'ostersExperiment' ? (
-          <OstersExperimentScene />
-        ) : currentExperiment?.key === 'electricMotor' ? (
-          <ElectricMotorScene />
-        ) : currentExperiment?.key === 'electromagneticInduction' ? (
-          <ElectromagneticInductionScene />
-        ) : currentExperiment?.key === 'coulombLaw' ? (
-          <CoulombLawScene />
-        ) : currentExperiment?.key === 'electricFieldLine' ? (
-          <ElectricFieldLineScene />
-        ) : currentExperiment?.key === 'electricPotential' ? (
-          <ElectricPotentialScene />
-        ) : currentExperiment?.key === 'capacitorCharge' ? (
-          <CapacitorChargeScene />
-        ) : currentExperiment?.key === 'closedCircuitOhm' ? (
-          <ClosedCircuitOhmScene />
-        ) : currentExperiment?.key === 'simpleCircuit' ? (
-          <SimpleCircuitScene />
-        ) : currentExperiment?.key === 'seriesParallel' ? (
-          <SeriesParallelScene />
-        ) : currentExperiment?.key === 'meterConversion' ? (
-          <MeterConversionScene />
-        ) : currentExperiment?.key === 'faradayLaw' ? (
-          <FaradayLawScene />
-        ) : currentExperiment?.key === 'selfInduction' ? (
-          <SelfInductionScene />
-        ) : currentExperiment?.key === 'alternatingCurrent' ? (
-          <AlternatingCurrentScene />
-        ) : currentExperiment?.key === 'lorentzForce' ? (
-          <LorentzForceScene />
-        ) : currentExperiment?.key === 'hallEffect' ? (
-          <HallEffectScene />
-        ) : currentExperiment?.key === 'jouleLaw' ? (
-          <JouleLawScene />
-        ) : currentExperiment?.key === 'electromagnet' ? (
-          <ElectromagnetScene />
-        ) : currentExperiment?.key === 'emfInternalResistance' ? (
-          <EmfInternalResistanceScene />
-        ) : currentExperiment?.key === 'ohmsLaw' ? (
-          <OhmsLawScene />
-        ) : currentExperiment?.key === 'bulbPower' ? (
-          <VoltAmpereResistorScene title={currentExperiment?.key === 'voltAmpereResistor' ? '伏安法测定值电阻' : '伏安法测小灯泡电功率'} />
-        ) : currentExperiment?.key === 'voltAmpereResistor' ? (
-          <VoltAmpereResistorScene />
-        ) : currentExperiment?.key === 'multimeter' ? (
-          <MultimeterScene />
-        ) : currentExperiment?.key === 'ampereForce' ? (
-          <AmpereForceScene />
-        ) : currentExperiment?.key === 'lenzLaw' ? (
-          <LenzLawScene />
-        ) : currentExperiment?.key === 'measureSpeed' ? (
-          <MeasureSpeedScene />
-        ) : currentExperiment?.key === 'refractionLaw' ? (
-          <RefractionLawScene />
-        ) : currentExperiment?.key === 'totalInternalReflection' ? (
-          <TotalInternalReflectionScene />
-        ) : currentExperiment?.key === 'lightPolarization' ? (
-          <LightPolarizationScene />
-        ) : currentExperiment?.key === 'transformer' ? (
-          <TransformerScene />
-        ) : currentExperiment?.key === 'electricFieldDeflection' ? (
-          <ElectricFieldDeflectionScene />
-        ) : currentExperiment?.key === 'bulbIVCurve' ? (
-          <BulbIVCurveScene />
-        ) : currentExperiment?.key === 'voltAmpereMethodHS' ? (
-          <VoltAmpereMethodHSScene />
-        ) : currentExperiment?.key === 'electricLab3D' ? (
-          <ElectricLab3DScene />
+        {SceneComp ? (
+          <Suspense fallback={<SceneFallback />}>
+            <SceneComp {...sceneEntry.props} />
+          </Suspense>
         ) : (
           <ExperimentBench
             preset={getPreset()}
@@ -598,6 +283,16 @@ export default function LabPage({ onBack }) {
           />
         )}
       </div>
+    </div>
+  )
+}
+
+/** 懒加载占位：该实验的 chunk 下载期间显示 */
+function SceneFallback() {
+  return (
+    <div className="scene-fallback" style={styles.sceneFallback}>
+      <span className="scene-fallback-dot" />
+      <span>正在加载实验…</span>
     </div>
   )
 }
@@ -857,6 +552,16 @@ const styles = {
     whiteSpace: 'nowrap',
     overflow: 'visible',
     alignItems: 'center',
+  },
+  sceneFallback: {
+    flex: 1,
+    minHeight: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    fontSize: 13,
+    color: '#8b949e',
   },
   labBody: {
     flex: 1,

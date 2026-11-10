@@ -50,3 +50,14 @@ classify_log.json
 NB3DDemo-main-decrypted.js
 nul
 *.log
+# ---- 检查点前排除（2026-11-10）----
+shot-*.png
+cmp2-*.png
+step1-*.png
+step1b-*
+_focus-*.png
+tab2_*.png
+*.aigc-tmp-*
+assets-gen/
+public/assets/equipment/_backup/
+.mimocode/

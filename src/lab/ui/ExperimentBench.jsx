@@ -553,7 +553,6 @@ export default function ExperimentBench({ preset = null, title = '物理实验�
 
     const bulb = new Bulb()
     bulb.x = 1.5; bulb.y = 1.2
-    bulb.setParam('resistance', 10)
 
     scene.addInstrument(battery)
     scene.addInstrument(rheostat)
@@ -561,7 +560,7 @@ export default function ExperimentBench({ preset = null, title = '物理实验�
     scene.addInstrument(bulb)
 
     // 自动连线：电池正极→电流表正极
-    scene.completeWiring(battery, battery.getPort('pos'), ammeter, ammeter.getPort('pos'))
+    scene.completeWiring(battery, battery.getPort('pos'), ammeter, ammeter.getPort('mid'))
     // 电流表负极→滑变器左端
     scene.completeWiring(ammeter, ammeter.getPort('neg'), rheostat, rheostat.getPort('left'))
     // 滑变器滑片P→灯泡右端（P和左端之间是实际接入的电阻）

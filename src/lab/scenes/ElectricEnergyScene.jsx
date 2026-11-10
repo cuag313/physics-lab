@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
+import { symBattery, symSwitch, symHalf, SYM_INK } from '../render/symbols.js'
 
 /**
  * ElectricEnergyScene — 电功与电能表
@@ -148,17 +149,23 @@ export default function ElectricEnergyScene() {
     const meterTx1 = meterCx - 90, meterTx2 = meterCx + 90, meterTy = meterCy + 85
 
     // 导线（串联回路：电源→用电器→开关→电能表→电源）
-    ctx.strokeStyle = wc; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
+    // 标准电路符号：导线断开留缺口，横平竖直
+    const scale = 1
+    const lw = 2 * scale + 0.6
+    const hBat = symHalf('battery', scale, 1)
+    const hSw = symHalf('switch', scale)
+    const ink = on ? SYM_INK : '#7c8a93'
+    ctx.strokeStyle = wc; ctx.lineWidth = lw; ctx.lineCap = 'round'
     // 电能表到顶角
     ctx.beginPath(); ctx.moveTo(meterTx1, meterTy); ctx.lineTo(circL, circTop); ctx.stroke()
     ctx.beginPath(); ctx.moveTo(meterTx2, meterTy); ctx.lineTo(circR, circTop); ctx.stroke()
     // 左边
     ctx.beginPath(); ctx.moveTo(circL, circTop); ctx.lineTo(circL, circBottom); ctx.stroke()
-    // 底边：电源→用电器→开关
-    ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(battX - 30, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(battX + 30, circBottom); ctx.lineTo(loadX - 35, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(loadX + 35, circBottom); ctx.lineTo(swX - 18, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(swX + 18, circBottom); ctx.lineTo(circR, circBottom); ctx.stroke()
+    // 底边：电源→用电器→开关（用电器=负载教具，缺口由 drawLoad 端子决定）
+    ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(battX - hBat, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(battX + hBat, circBottom); ctx.lineTo(loadX - 35, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(loadX + 35, circBottom); ctx.lineTo(swX - hSw, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(swX + hSw, circBottom); ctx.lineTo(circR, circBottom); ctx.stroke()
     // 右边
     ctx.beginPath(); ctx.moveTo(circR, circBottom); ctx.lineTo(circR, circTop); ctx.stroke()
     ctx.lineCap = 'butt'
@@ -166,23 +173,28 @@ export default function ElectricEnergyScene() {
     // 电流流动
     if (on) {
       const path = [
-        { x: battX + 30, y: circBottom }, { x: loadX - 35, y: circBottom },
-        { x: loadX + 35, y: circBottom }, { x: swX - 18, y: circBottom },
-        { x: swX + 18, y: circBottom }, { x: circR, y: circBottom },
+        { x: battX + hBat, y: circBottom }, { x: loadX - 35, y: circBottom },
+        { x: loadX + 35, y: circBottom }, { x: swX - hSw, y: circBottom },
+        { x: swX + hSw, y: circBottom }, { x: circR, y: circBottom },
         { x: circR, y: circTop }, { x: meterTx2, y: meterTy },
         { x: meterTx1, y: meterTy }, { x: circL, y: circTop },
-        { x: circL, y: circBottom }, { x: battX - 30, y: circBottom },
+        { x: circL, y: circBottom }, { x: battX - hBat, y: circBottom },
       ]
       drawCurrentFlow(ctx, path)
     }
 
-    // 电源
-    drawBatteryGroup(ctx, battX, circBottom)
-    // 负载（用电器）
+    // 电源（标准符号，+ 在左）
+    symBattery(ctx, battX, circBottom, { n: 1, scale, ink, flip: true })
+    ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText('电源 220V', battX, circBottom + 18)
+    ctx.textBaseline = 'alphabetic'
+    // 负载（用电器，教具插图保持不变）
     drawLoad(ctx, loadX, circBottom, on, info.P)
-    // 开关
-    drawSwitch(ctx, swX, circBottom, on, () => {
-      S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1)
+    // 开关（标准符号）
+    symSwitch(ctx, swX, circBottom, { closed: on, scale, ink })
+    canvasRef.current._clickAreas.push({
+      x: swX - hSw - 10, y: circBottom - 22, w: (hSw + 10) * 2, h: 44,
+      onClick: () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) }
     })
     // 电能表接线柱
     for (const tx of [meterTx1, meterTx2]) {
@@ -283,27 +295,6 @@ export default function ElectricEnergyScene() {
     }
   }
 
-  // ─── 电源 ───
-  function drawBatteryGroup(ctx, x, y) {
-    // 引线
-    ctx.lineWidth = 2; ctx.strokeStyle = '#333'
-    ctx.beginPath(); ctx.moveTo(x - 30, y); ctx.lineTo(x - 12, y); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(x + 12, y); ctx.lineTo(x + 30, y); ctx.stroke()
-    // 极板（长正短负）
-    ctx.lineWidth = 2.5
-    ctx.beginPath(); ctx.moveTo(x - 8, y - 14); ctx.lineTo(x - 8, y + 14); ctx.stroke()
-    ctx.lineWidth = 5
-    ctx.beginPath(); ctx.moveTo(x + 2, y - 7); ctx.lineTo(x + 2, y + 7); ctx.stroke()
-    // 标注
-    ctx.fillStyle = '#E53935'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-    ctx.fillText('+', x - 8, y - 16)
-    ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'
-    ctx.fillText('−', x + 8, y - 12)
-    ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textBaseline = 'top'
-    ctx.fillText('电源 220V', x, y + 20)
-    ctx.textBaseline = 'alphabetic'
-  }
-
   function drawMiniSlider(ctx, x, y, w, ratio, onChange) {
     ctx.strokeStyle = '#bbb'; ctx.lineWidth = 3
     ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w, y); ctx.stroke()
@@ -338,28 +329,6 @@ export default function ElectricEnergyScene() {
         dist -= segLens[i]
       }
     }
-  }
-
-  function drawSwitch(ctx, x, y, on, onClick) {
-    ctx.fillStyle = '#666'
-    ctx.beginPath(); ctx.arc(x - 18, y, 4, 0, Math.PI * 2); ctx.fill()
-    ctx.beginPath(); ctx.arc(x + 18, y, 4, 0, Math.PI * 2); ctx.fill()
-    ctx.strokeStyle = '#999'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.moveTo(x - 22, y); ctx.lineTo(x - 18, y); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(x + 18, y); ctx.lineTo(x + 22, y); ctx.stroke()
-    if (on) {
-      ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 3; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(x - 18, y); ctx.lineTo(x + 18, y); ctx.stroke()
-    } else {
-      ctx.strokeStyle = '#F44336'; ctx.lineWidth = 3; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(x - 18, y); ctx.lineTo(x + 8, y - 18); ctx.stroke()
-    }
-    ctx.lineCap = 'butt'
-    ctx.fillStyle = on ? '#4CAF50' : '#F44336'
-    ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText(on ? 'ON' : 'OFF', x, y + 8)
-    canvasRef.current._clickAreas.push({ x: x - 25, y: y - 25, w: 50, h: 50, onClick })
-    ctx.textBaseline = 'alphabetic'
   }
 
   // ─── 右侧面板 ───

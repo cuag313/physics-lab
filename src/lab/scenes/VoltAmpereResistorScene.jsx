@@ -3,13 +3,22 @@ import { eventToCanvas } from '../utils/pointerPos'
 import { CircuitGraph, CircuitSolver } from '../engine/index.js'
 import SceneShell from '../ui/SceneShell'
 import InfoDock from '../ui/InfoDock'
-import { fitLayout, drawPanel, wrapText } from '../ui/canvasLayout'
+import { fitLayout, drawPanel } from '../ui/canvasLayout'
 import {
   getTerminals, getTermPos, findTermAt, findTermNear,
-  strokeBezierWire, strokeWirePreview,
   findCompAt, findCompWide, mapSliderR,
-  drawGuideBubble, drawBuilderComp, drawRealisticIcon,
+  drawGuideBubble, drawRealisticIcon,
 } from '../ui/circuitKit'
+// ── 渲染层：Tab1 标准电路符号 ──
+import { symBattery, symSwitch, symRheostat, symMeter, symBulb, symHalf, SYM_INK } from '../render/symbols.js'
+// ── 渲染层：Tab2 写实教具（深色桌面 + 照片级器材 + 胶皮导线 + 阻尼指针）──
+import { drawBench, drawWorkArea } from '../render/workbench.js'
+import {
+  drawBattery, drawBulb, drawSwitch, drawResistor, drawRheostat, drawMeter,
+  drawTerminal as drawPost, needleRatio, rheostatSliderX,
+} from '../render/parts.js'
+import { wirePath, drawWire, drawWirePreview, drawFlow, flowSpeed } from '../render/wire.js'
+import { stepNeedle, resetNeedles } from '../render/needle.js'
 
 // 模块级数据
 let dataStore = []
@@ -62,7 +71,15 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
       },
     }
     R.resize(); canvasRef.current._R = R
-    const loop = () => { S.current.time += 1 / 60; render(R); animRef.current = requestAnimationFrame(loop) }
+    let last = performance.now()
+    const loop = (now) => {
+      const dt = Math.min(0.05, Math.max(0, (now - last) / 1000) || 1 / 60)
+      last = now
+      S.current.time += dt
+      S.current.dt = dt
+      render(R)
+      animRef.current = requestAnimationFrame(loop)
+    }
     animRef.current = requestAnimationFrame(loop)
     window.addEventListener('resize', R.resize.bind(R))
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current) }
@@ -71,7 +88,12 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
   function render(R) {
     const ctx = R.ctx, W = R.W, H = R.H
     ctx.clearRect(0, 0, W, H)
-    ctx.fillStyle = '#f0f4f8'; ctx.fillRect(0, 0, W, H)
+    if (S.current.tab === 1) {
+      ctx.fillStyle = '#f0f4f8'; ctx.fillRect(0, 0, W, H)
+    } else {
+      // Tab2：深色实验桌面（写实器材 + 环境光 + 暗角）
+      drawBench(ctx, W, H, { time: S.current.time })
+    }
     canvasRef.current._clickAreas = []
     canvasRef.current._palAreas = []
     if (S.current.tab === 1) renderDemo(ctx, W, H)
@@ -98,56 +120,115 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
       P = U_b * I
     }
 
-    // 标题由 SceneShell 底栏显示，画布不再重复绘制，避免与器材标注重叠
-    const battX = L + (Rt - L) * 0.15
-    const swX = L + (Rt - L) * 0.35
-    const amX = L + (Rt - L) * 0.22
-    const slX = L + (Rt - L) * 0.5
-    const bulX = L + (Rt - L) * 0.8
-    const wc = on ? '#1565C0' : '#999'
+    // ── 电路图坐标系：在 lay.circuit 内居中、适度缩小（教科书电路图观感）──
+    const areaW = Rt - L, areaH = B - T
+    const loopW = Math.min(areaW * 0.76, 520)
+    const scale = Math.max(0.55, Math.min(1.1, loopW / 480))
+    const loopH = loopW * 0.42
+    const gateD = loopH * 0.55
+    const chipUp = 40 * scale, chipDn = 38 * scale
+    const x0 = L + (areaW - loopW) / 2
+    const y0 = T + Math.max(chipUp + 4, (areaH - (loopH + chipUp + chipDn)) / 2) + chipUp
+    const x1 = x0 + loopW, y1 = y0 + loopH
 
-    drawLine(ctx, L, T, Rt, T, wc, 2.5)
-    drawLine(ctx, Rt, T, Rt, B, wc, 2.5)
-    drawLine(ctx, L, T, L, B, wc, 2.5)
-    drawLine(ctx, L, B, battX - 36, B, wc, 2.5)
-    drawLine(ctx, battX + 36, B, swX - 18, B, wc, 2.5)
-    drawLine(ctx, swX + 18, B, Rt, B, wc, 2.5)
-    drawLine(ctx, L, T, amX - 18, T, wc, 2.5)
-    drawLine(ctx, amX + 18, T, slX - 24, T, wc, 2.5)
-    drawLine(ctx, slX + 24, T, bulX - 16, T, wc, 2.5)
-    drawLine(ctx, bulX + 16, T, Rt, T, wc, 2.5)
+    // 三列布局：左=电源/A表，中=开关/滑变，右=灯泡+V表门形
+    const colL = x0 + loopW * 0.15, colM = x0 + loopW * 0.50, colR = x0 + loopW * 0.82
+    const battX = colL, amX = colL
+    const swX = colM, slX = colM
+    const bulX = colR
 
+    const wc = on ? '#1565C0' : '#9aa7b1'
+    const ink = on ? SYM_INK : '#7c8a93'
+    const lw = 2 * scale + 0.6
+
+    // 符号在导线上占用的半宽（导线据此断开留缺口）
+    const hBat = symHalf('battery', scale, 3)
+    const hSw = symHalf('switch', scale)
+    const hAm = symHalf('meter', scale)
+    const hRheo = symHalf('rheostat', scale)
+    const hBulb = symHalf('bulb', scale)
+    const hVol = hAm
+
+    // ── 导线（横平竖直，符号处留缺口）──
+    // 下边：电源 + 开关
+    drawLine(ctx, x0, y1, battX - hBat, y1, wc, lw)
+    drawLine(ctx, battX + hBat, y1, swX - hSw, y1, wc, lw)
+    drawLine(ctx, swX + hSw, y1, x1, y1, wc, lw)
+    // 上边：A表 + 滑动变阻器 + 灯泡
+    drawLine(ctx, x0, y0, amX - hAm, y0, wc, lw)
+    drawLine(ctx, amX + hAm, y0, slX - hRheo, y0, wc, lw)
+    drawLine(ctx, slX + hRheo, y0, bulX - hBulb, y0, wc, lw)
+    drawLine(ctx, bulX + hBulb, y0, x1, y0, wc, lw)
+    // 左右两边
+    drawLine(ctx, x0, y0, x0, y1, wc, lw)
+    drawLine(ctx, x1, y0, x1, y1, wc, lw)
+
+    // 电压表门形：从灯泡两侧引下，接 V 表
+    const volY = y0 + gateD
+    const tap = hBulb + 12 * scale
+    drawLine(ctx, bulX - tap, y0, bulX - tap, volY, wc, lw)
+    drawLine(ctx, bulX + tap, y0, bulX + tap, volY, wc, lw)
+    drawLine(ctx, bulX - tap, volY, bulX - hVol, volY, wc, lw)
+    drawLine(ctx, bulX + hVol, volY, bulX + tap, volY, wc, lw)
+    // 并联引出点
+    for (const jx of [bulX - tap, bulX + tap]) {
+      ctx.fillStyle = wc
+      ctx.beginPath(); ctx.arc(jx, y0, 3, 0, Math.PI * 2); ctx.fill()
+    }
+
+    // ── 电流流动（先画，后压符号）──
     if (on) drawFlow(ctx, [
-      { x: battX + 36, y: B }, { x: swX, y: B }, { x: Rt, y: B },
-      { x: Rt, y: T }, { x: bulX, y: T }, { x: slX, y: T },
-      { x: amX, y: T }, { x: L, y: T }, { x: L, y: B }, { x: battX - 36, y: B },
+      { x: battX + hBat, y: y1 }, { x: swX, y: y1 }, { x: x1, y: y1 },
+      { x: x1, y: y0 }, { x: bulX, y: y0 }, { x: slX, y: y0 },
+      { x: amX, y: y0 }, { x: x0, y: y0 }, { x: x0, y: y1 }, { x: battX - hBat, y: y1 },
     ], s.time)
 
-    drawBatteryPack(ctx, battX, B)
-    drawSwitchSym(ctx, swX, B, on, () => { s.switchClosed = !s.switchClosed; forceUpdate(n => n + 1) })
-    drawMeter(ctx, amX, T, 'A', on ? I / 0.6 : 0, on ? I.toFixed(3) + 'A' : '', '#E53935')
-    drawRheo(ctx, slX, T, s.sliderR, 50)
-    drawBulb(ctx, bulX, T, P)
-
+    // ── 电路符号（标准教科书画法）──
+    // 电源：3 节、+ 在左（flip），保持既有流向语义
+    symBattery(ctx, battX, y1, { n: 3, scale, ink, flip: true })
+    symSwitch(ctx, swX, y1, { closed: on, scale, ink })
+    // 开关整块可点（通断）
     canvasRef.current._clickAreas.push({
-      x: slX - 30, y: T - 22, w: 60, h: 34,
+      x: swX - hSw - 12, y: y1 - 22, w: (hSw + 12) * 2, h: 44,
+      onClick: () => { s.switchClosed = !s.switchClosed; forceUpdate(n => n + 1) }
+    })
+    symMeter(ctx, amX, y0, { kind: 'A', scale, ink })
+    // 滑片箭头随 sliderR 移动
+    symRheostat(ctx, slX, y0, { scale, ink, ratio: s.sliderR / 50 })
+    // 灯泡：先画通电辉光，再压符号
+    if (on && P > 0) {
+      const glow = Math.min(1, P / (s.U_rated * s.U_rated / bulbR(s.U_rated)))
+      const gr = 22 + 22 * glow
+      const g = ctx.createRadialGradient(bulX, y0, 2, bulX, y0, gr)
+      g.addColorStop(0, `rgba(255,235,59,${0.12 + 0.38 * glow})`)
+      g.addColorStop(1, 'rgba(255,235,59,0)')
+      ctx.fillStyle = g
+      ctx.beginPath(); ctx.arc(bulX, y0, gr, 0, Math.PI * 2); ctx.fill()
+    }
+    symBulb(ctx, bulX, y0, { scale, ink })
+    symMeter(ctx, bulX, volY, { kind: 'V', scale, ink })
+
+    // 读数（原仪表数字改为小标签，贴在各自符号旁）
+    const readFont = Math.max(9, Math.round(11 * scale))
+    ctx.font = `bold ${readFont}px monospace`; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillStyle = '#C62828'
+    ctx.fillText(on ? I.toFixed(3) + 'A' : '—', amX, y0 + hAm + 6 * scale)
+    ctx.fillStyle = '#2E7D32'
+    ctx.fillText(on ? U_b.toFixed(2) + 'V' : '—', bulX, volY + hVol + 6 * scale)
+
+    // 滑动变阻器点击调阻（映射到符号自身宽度，止点吸附）
+    canvasRef.current._clickAreas.push({
+      x: slX - hRheo - 10, y: y0 - 30 * scale, w: (hRheo + 10) * 2, h: 56,
       onClick: (mx) => {
-        // 止点吸附：左=0Ω 右=50Ω
-        s.sliderR = mapSliderR(mx, slX - 24, slX + 24, 50)
+        const ratio = Math.max(0, Math.min(1, (mx - (slX - hRheo)) / (hRheo * 2)))
+        s.sliderR = Math.round(ratio * 50)
       }
     })
 
-    const volY = T + 55
-    drawLine(ctx, bulX - 16, T, bulX - 16, volY, wc, 2)
-    drawLine(ctx, bulX + 16, T, bulX + 16, volY, wc, 2)
-    drawLine(ctx, bulX - 16, volY, bulX - 22, volY, wc, 2)
-    drawLine(ctx, bulX + 22, volY, bulX + 16, volY, wc, 2)
-    drawMeter(ctx, bulX, volY, 'V', on ? U_b / s.U_rated : 0, on ? U_b.toFixed(2) + 'V' : '', '#4CAF50')
-
     ctx.fillStyle = '#555'; ctx.font = `${lay.font.label}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-    // 标注在器材上方（灯泡半径约14，给足净空）
-    ctx.fillText('滑动变阻器', slX, T - 24)
-    ctx.fillText('小灯泡', bulX, T - 24)
+    // 标注在符号上方（给足净空）
+    ctx.fillText('滑动变阻器', slX, y0 - 32 * scale)
+    ctx.fillText('小灯泡', bulX, y0 - 32 * scale)
     ctx.textBaseline = 'alphabetic'
 
     const status = !on ? '断开' : U_b < s.U_rated * 0.8 ? '低于额定' : U_b < s.U_rated * 1.1 ? '正常发光' : '高于额定'
@@ -254,40 +335,55 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     const lay = fitLayout(W, H)
     const palW = lay.compact ? 112 : 170
     const cvX = 4, cvY = 4, cvW = W - palW - 16, cvH = H - 8
-    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.roundRect(cvX, cvY, cvW, cvH, 8); ctx.fill()
-    ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(cvX, cvY, cvW, cvH, 8); ctx.stroke()
-    ctx.strokeStyle = '#f0f0f0'; ctx.lineWidth = 0.5
-    for (let gx = cvX + 25; gx < cvX + cvW; gx += 25) { ctx.beginPath(); ctx.moveTo(gx, cvY); ctx.lineTo(gx, cvY + cvH); ctx.stroke() }
-    for (let gy = cvY + 25; gy < cvY + cvH; gy += 25) { ctx.beginPath(); ctx.moveTo(cvX, gy); ctx.lineTo(cvX + cvW, gy); ctx.stroke() }
+    const area = { x: cvX, y: cvY, w: cvW, h: cvH }
 
-    for (const wire of s.wires) drawBWire(ctx, wire)
+    // 先求解：导线与器材都要读电流/电压
+    const eng = solveCircuit()
+
+    // ① 工作区垫板：电路导通时微微提亮，暗示"有电"
+    drawWorkArea(ctx, area, { glow: eng.ok ? 1 : 0 })
+
+    // ② 导线（压在器材下面，符合真实接线顺序）
+    for (const wire of s.wires) drawBWire(ctx, wire, eng)
+
+    // ③ 连线预览：吸附到接线柱时整条变绿
     if (s.connecting) {
       const fc = s.components.find(c => c.id === s.connecting.compId)
       if (fc) {
         const ft = getTermPos(fc, s.connecting.termIdx)
-        strokeWirePreview(ctx, ft, { x: s.connecting.mx, y: s.connecting.my }, s.wireColor, s.connecting.termIdx)
+        const snap = s.hoverTerm
+        const target = snap
+          ? getTermPos(s.components.find(c => c.id === snap.compId), snap.termIdx)
+          : { x: s.connecting.mx, y: s.connecting.my }
+        const path = wirePath(ft, target, s.connecting.termIdx, snap ? snap.termIdx : 1)
+        drawWirePreview(ctx, path, { snapped: !!snap })
       }
     }
-    const circuit = checkCircuit()
-    const eng = solveCircuit()
-    for (const comp of s.components) drawBuilderComp(ctx, comp, s, circuit, eng)
 
-    // 未连线红框
+    // ④ 元件（含表盘指针动力学）
+    for (const comp of s.components) drawBuilderComp(ctx, comp, s, eng)
+
+    // ⑤ 未连线提示（深色背景下用柔和虚线框）
     const wiredIds = new Set()
     for (const w of s.wires) { wiredIds.add(w.from.compId); wiredIds.add(w.to.compId) }
-    ctx.strokeStyle = '#F44336'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3])
+    ctx.save()
+    ctx.setLineDash([4, 4])
+    ctx.strokeStyle = 'rgba(255,140,120,0.5)'
+    ctx.lineWidth = 1.2
+    ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
     for (const comp of s.components) {
       if (wiredIds.has(comp.id)) continue
       ctx.strokeRect(comp.x - 45, comp.y - 35, 90, 70)
       ctx.setLineDash([])
-      ctx.fillStyle = '#F44336'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
+      ctx.fillStyle = 'rgba(255,160,140,0.85)'
       ctx.fillText('未连线', comp.x, comp.y - 38)
-      ctx.setLineDash([4, 3])
+      ctx.setLineDash([4, 4])
     }
-    ctx.setLineDash([])
+    ctx.restore()
 
-    let statusText = eng.ok ? '✅ ' + eng.reason : '❌ ' + (eng.reason || circuit.reason)
-    let statusColor = eng.ok ? '#4CAF50' : '#F44336'
+    // ⑥ 底部状态行（浅色文字 + 状态语义色）
+    let statusText = eng.ok ? eng.reason : (eng.reason || '电路未闭合')
+    let statusColor = eng.ok ? '#3ddc84' : '#ff9d95'
     // 短路检测：A表电流过大（>0.8A）且灯泡功率≈0
     if (eng.ok && eng.results) {
       let totalI = 0, bulbP = 0
@@ -296,8 +392,8 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
         if (r.power != null) bulbP = Math.max(bulbP, r.power)
       }
       if (totalI > 0.8 && bulbP < 0.01) {
-        statusText = '⚠️ 短路！电流过大，灯泡被短路'
-        statusColor = '#FF5722'
+        statusText = '⚠ 短路：电流过大，灯泡被短路'
+        statusColor = '#ff4b3e'
       }
     }
     ctx.fillStyle = statusColor
@@ -337,6 +433,7 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
       { type: 'rheostat', name: '变阻' },
       { type: 'ammeter', name: 'A表' },
       { type: 'bulb', name: '灯泡' },
+      { type: 'resistor', name: '电阻' },
       { type: 'voltmeter', name: 'V表' },
     ]
     const rowH = lay.compact ? 34 : 38
@@ -389,51 +486,122 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     }
   }
 
-  function drawBWire(ctx, wire) {
+  function drawBWire(ctx, wire, eng) {
     const fc = S.current.components.find(c => c.id === wire.from.compId)
     const tc = S.current.components.find(c => c.id === wire.to.compId)
     if (!fc || !tc) return
     const f = getTermPos(fc, wire.from.termIdx), t = getTermPos(tc, wire.to.termIdx)
-    strokeBezierWire(
-      ctx, f, t, wire.color || '#1565C0',
+    const path = wirePath(
+      f, t, wire.from.termIdx, wire.to.termIdx,
       wire.mid1X != null ? { x: wire.mid1X, y: wire.mid1Y } : null,
       wire.mid2X != null ? { x: wire.mid2X, y: wire.mid2Y } : null,
-      wire.from.termIdx, wire.to.termIdx
     )
+    // 导线电流：串联回路里导线电流即其所连元件的电流
+    let amp = 0
+    if (eng && eng.ok && eng.results) {
+      const r = eng.results.get(wire.from.compId)
+      if (r && typeof r.current === 'number') amp = Math.abs(r.current)
+    }
+    const live = amp > 1e-4
+    drawWire(ctx, path, {
+      color: wire.color || '#e53935',
+      width: 3.6,
+      energized: live,
+      dim: !eng.ok,
+    })
+    // 电流粒子：相位按电流速度累加（通电才有）
+    if (live && S.current.showFlow !== false) {
+      if (!S.current._flow) S.current._flow = new Map()
+      let ph = S.current._flow.get(wire.id) || 0
+      ph = (ph + (S.current.dt || 1 / 60) * flowSpeed(amp)) % 1
+      S.current._flow.set(wire.id, ph)
+      drawFlow(ctx, path, { phase: ph, dir: 1, current: amp, mode: 'I', spacing: 34 })
+    }
   }
 
-  function checkCircuit() {
-    const s = S.current
-    const batteries = s.components.filter(c => c.type === 'battery')
-    const switches_ = s.components.filter(c => c.type === 'switch')
-    if (batteries.length === 0) return { closed: false, reason: '需要电源' }
-    const hasLoad = s.components.some(c => c.type === 'bulb' || c.type === 'rheostat')
-    if (!hasLoad) return { closed: false, reason: '需要负载（灯泡/变阻器）' }
-    const adj = {}
-    for (const comp of s.components) adj[comp.id] = new Set()
-    for (const wire of s.wires) {
-      adj[wire.from.compId]?.add(wire.to.compId)
-      adj[wire.to.compId]?.add(wire.from.compId)
+  // ═══════════════════════════════════════════════════════════
+  //  Tab 2 元件（照片级写实：parts.js 教具 + 阻尼指针）
+  // ═══════════════════════════════════════════════════════════
+  function drawBuilderComp(ctx, comp, s, eng) {
+    const { x, y, type } = comp
+    const isClosed = !!(eng && eng.ok)
+    const res = isClosed && eng.results ? eng.results.get(comp.id) : null
+
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.rotate(comp.rotation || 0)
+    if (s.dragId === comp.id) ctx.globalAlpha = 0.85
+
+    if (type === 'battery') {
+      drawBattery(ctx, { voltage: batteryVoltage(comp, s) })
+    } else if (type === 'bulb') {
+      const st = bulbState(comp, res)
+      drawBulb(ctx, { brightness: st.brightness, overload: st.overload })
+    } else if (type === 'switch') {
+      drawSwitch(ctx, { closed: comp.closed !== false })
+    } else if (type === 'resistor') {
+      drawResistor(ctx, { resistance: (comp.props && comp.props.resistance != null) ? comp.props.resistance : 10 })
+    } else if (type === 'rheostat') {
+      drawRheostat(ctx, { R: rheostatValue(comp), maxR: RHEO_MAX, dragging: s.dragId === 'rheo_' + comp.id })
+    } else if (type === 'ammeter' || type === 'voltmeter') {
+      const kind = type === 'ammeter' ? 'A' : 'V'
+      const raw = res ? (kind === 'A' ? res.current : res.voltage) : 0
+      const reversed = raw > 1e-6 // 黑柱接高电位 = 反接 → 指针反向偏转
+      const value = Math.abs(raw)
+      const range = meterRangeOf(comp, kind)
+      const target = (reversed ? -1 : 1) * needleRatio(value, range)
+      const needle = stepNeedle(`${comp.id}:${kind}:${range}`, target, s.dt || 1 / 60)
+      drawMeter(ctx, { kind, value, range, needle, over: !reversed && value > range * 1.02 })
     }
-    const allConnected = s.components.every(c => adj[c.id]?.size >= 2)
-    if (!allConnected) return { closed: false, reason: '电路未闭合' }
-    const battery = batteries[0]
-    const visited = new Set(); let hasLoop = false
-    function dfs(node, depth) {
-      if (depth > 0 && node === battery.id) { hasLoop = true; return }
-      if (visited.has(node) || depth > s.components.length) return
-      visited.add(node)
-      for (const next of adj[node] || []) dfs(next, depth + 1)
+
+    ctx.globalAlpha = 1
+    ctx.restore()
+
+    // 接线柱（电表自己画了红黑柱，避免重复）
+    const terms = getTerminals(comp)
+    for (let i = 0; i < terms.length; i++) {
+      if (type === 'ammeter' || type === 'voltmeter') continue
+      const t = terms[i]
+      const hov = s.hoverTerm && s.hoverTerm.compId === comp.id && s.hoverTerm.termIdx === i
+      const src = s.connecting && s.connecting.compId === comp.id && s.connecting.termIdx === i
+      drawPost(ctx, { x: t.x, y: t.y, color: terminalColor(type, i), hover: hov, active: src })
     }
-    dfs(battery.id, 0)
-    if (!hasLoop) return { closed: false, reason: '电路未形成闭合回路' }
-    for (const sw of switches_) { if (sw.closed === false) return { closed: false, reason: '开关断开' } }
-    return { closed: true, reason: '电路正常' }
+  }
+
+  // ── 写实器材参数读取（对标 OhmsLawScene 的写实渲染层）──
+  const RHEO_MAX = 50
+  const batteryVoltage = (c, s) => (typeof c.props?.voltage === 'number' ? c.props.voltage : s.U)
+  const rheostatValue = (c) => (typeof c.props?.resistance === 'number' ? c.props.resistance : 20)
+
+  /** 灯泡工作状态：亮度按「实际功率/额定功率」折算，灯丝先暗红再白炽 */
+  function bulbState(comp, res) {
+    const R = typeof comp.props?.resistance === 'number' ? comp.props.resistance : 8.3
+    const ratedV = typeof comp.props?.ratedV === 'number' ? comp.props.ratedV : 2.5
+    const ratedP = (ratedV * ratedV) / Math.max(R, 0.1)
+    const P = res ? Math.abs(res.power) : 0
+    const ratio = ratedP > 0 ? P / ratedP : 0
+    const brightness = ratio > 0 ? Math.min(1, Math.pow(ratio, 0.45)) : 0
+    const overload = ratio > 1.4 ? Math.min(1, (ratio - 1.4) / 2.4) : 0
+    return { brightness, overload, power: P, ratio }
+  }
+
+  /** 电表量程：A 0~0.6A / V 0~3V（教学常用小量程） */
+  function meterRangeOf(comp, kind) {
+    const r = comp.props?.range
+    return typeof r === 'number' && r > 0 ? r : (kind === 'A' ? 0.6 : 3)
+  }
+
+  /** 接线柱极帽颜色：电源/电表分红黑，其余裸铜 */
+  function terminalColor(type, idx) {
+    if (type === 'battery' || type === 'ammeter' || type === 'voltmeter') {
+      return idx === 1 ? '#c62828' : '#1b1b1b'
+    }
+    return null
   }
 
   function solveCircuit() {
     const s = S.current
-    const ALLOWED = new Set(['battery', 'bulb', 'switch', 'rheostat', 'ammeter', 'voltmeter'])
+    const ALLOWED = new Set(['battery', 'bulb', 'switch', 'resistor', 'rheostat', 'ammeter', 'voltmeter'])
     const before = s.components.length
     s.components = s.components.filter(c => ALLOWED.has(c.type))
     if (s.components.length !== before) {
@@ -445,6 +613,7 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     for (const comp of s.components) {
       const props = {}
       if (comp.type === 'bulb') props.resistance = 8.3
+      if (comp.type === 'resistor') props.resistance = (comp.props && comp.props.resistance != null) ? comp.props.resistance : 10
       if (comp.type === 'rheostat') props.resistance = (comp.props && comp.props.resistance != null) ? comp.props.resistance : 20
       if (comp.type === 'switch') props.closed = comp.closed !== false
       if (comp.type === 'battery') props.voltage = s.U
@@ -505,96 +674,6 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
       }
     }
   }
-  function drawBatteryPack(ctx, x, y) {
-    ctx.strokeStyle = '#333'; ctx.lineWidth = 2; ctx.lineCap = 'butt'
-    for (let i = 0; i < 3; i++) {
-      const cx = x - 20 + i * 16
-      ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(cx - 4, y - 14); ctx.lineTo(cx - 4, y + 14); ctx.stroke()
-      ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(cx + 4, y - 7); ctx.lineTo(cx + 4, y + 7); ctx.stroke()
-    }
-    ctx.fillStyle = '#E53935'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-    ctx.fillText('+', x - 24, y - 16)
-    ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'
-    ctx.fillText('−', x + 28, y - 7)
-    ctx.font = '10px sans-serif'; ctx.fillStyle = '#555'; ctx.textBaseline = 'top'
-    ctx.fillText('电池组 4.5V', x, y + 18)
-    ctx.textBaseline = 'alphabetic'
-  }
-  function drawSwitchSym(ctx, x, y, on, onClick) {
-    ctx.fillStyle = '#666'; ctx.beginPath(); ctx.arc(x - 18, y, 4, 0, Math.PI * 2); ctx.fill()
-    ctx.beginPath(); ctx.arc(x + 18, y, 4, 0, Math.PI * 2); ctx.fill()
-    if (on) {
-      ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 3; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(x - 18, y); ctx.lineTo(x + 18, y); ctx.stroke(); ctx.lineCap = 'butt'
-    } else {
-      ctx.strokeStyle = '#F44336'; ctx.lineWidth = 3; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(x - 18, y); ctx.lineTo(x + 10, y - 20); ctx.stroke(); ctx.lineCap = 'butt'
-    }
-    ctx.fillStyle = on ? '#4CAF50' : '#F44336'; ctx.font = 'bold 10px sans-serif'
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText(on ? 'ON' : 'OFF', x, y + 8)
-    ctx.textBaseline = 'alphabetic'
-    canvasRef.current._clickAreas.push({ x: x - 25, y: y - 25, w: 50, h: 50, onClick })
-  }
-  function drawMeter(ctx, x, y, type, frac, reading, color) {
-    const r = 22
-    ctx.fillStyle = '#fff'; ctx.strokeStyle = color; ctx.lineWidth = 2.5
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = color; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText(type, x, y + 8)
-    const clamped = Math.min(Math.max(frac, 0), 1)
-    const a = (210 + clamped * 120) * Math.PI / 180
-    ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5; ctx.lineCap = 'round'
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * (r - 6), y + Math.sin(a) * (r - 6)); ctx.stroke()
-    ctx.lineCap = 'butt'
-    ctx.fillStyle = '#333'; ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill()
-    if (reading) {
-      ctx.fillStyle = '#333'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-      ctx.fillText(reading, x, y + 10)
-    }
-    ctx.textBaseline = 'alphabetic'
-  }
-  function drawRheo(ctx, x, y, R, maxR) {
-    ctx.fillStyle = '#D7CCC8'; ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.roundRect(x - 24, y - 10, 48, 20, 3); ctx.fill(); ctx.stroke()
-    const ratio = R / maxR, baseX = x - 24 + ratio * 48, baseY = y - 10
-    const tipX = baseX + 14, tipY = baseY - 14
-    ctx.strokeStyle = '#546E7A'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-    ctx.beginPath(); ctx.moveTo(baseX, baseY); ctx.lineTo(tipX, tipY); ctx.stroke(); ctx.lineCap = 'butt'
-    ctx.fillStyle = '#546E7A'
-    ctx.beginPath(); ctx.moveTo(tipX, tipY); ctx.lineTo(tipX - 7, tipY + 2); ctx.lineTo(tipX - 2, tipY + 7); ctx.closePath(); ctx.fill()
-    ctx.fillStyle = '#333'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText(R + 'Ω', x, y + 12)
-    ctx.textBaseline = 'alphabetic'
-  }
-  function drawBulb(ctx, x, y, P) {
-    const r = 14
-    const Pmax = 0.75
-    // 连续渐变：P=0 最暗，P≥Pmax 最亮
-    const b = Math.max(0, Math.min(1, P / Pmax))
-    const mix = b
-    const rC = Math.round(245 + (255 - 245) * mix)
-    const gC = Math.round(245 + (235 - 245) * mix)
-    const bC = Math.round(245 + (59 - 245) * mix)
-    if (b > 0.05) {
-      const glow = ctx.createRadialGradient(x, y, r * 0.5, x, y, r * 3)
-      glow.addColorStop(0, 'rgba(255,235,59,' + (0.12 + 0.45 * mix) + ')')
-      glow.addColorStop(1, 'rgba(255,235,59,0)')
-      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y, r * 3, 0, Math.PI * 2); ctx.fill()
-    }
-    ctx.fillStyle = 'rgb(' + rC + ',' + gC + ',' + bC + ')'
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
-    const edge = b > 0.05 ? 0.35 + 0.65 * mix : 0
-    ctx.strokeStyle = 'rgb(' + Math.round(153 + (249 - 153) * edge) + ',' + Math.round(153 + (168 - 153) * edge) + ',' + Math.round(153 + (40 - 153) * edge) + ')'
-    ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke()
-    ctx.strokeStyle = b > 0.05 ? 'rgba(230,80,0,' + (0.4 + 0.6 * mix) + ')' : '#999'
-    ctx.lineWidth = 1.5
-    const s2 = r * 0.55
-    ctx.beginPath(); ctx.moveTo(x - s2, y - s2); ctx.lineTo(x + s2, y + s2); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(x + s2, y - s2); ctx.lineTo(x - s2, y + s2); ctx.stroke()
-    ctx.fillStyle = '#9E9E9E'; ctx.strokeStyle = '#616161'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.roundRect(x - 8, y + r, 16, 8, 2); ctx.fill(); ctx.stroke()
-  }
 
   // ═══════════════════════════════════════════════════════════
   //  交互
@@ -624,6 +703,7 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
           const id = s.nextId++
           const props = {}
           if (a.type === 'rheostat') props.resistance = 20
+          if (a.type === 'resistor') props.resistance = 10
           s.components.push({ id, type: a.type, x, y, rotation: 0, closed: a.type === 'switch' ? false : true, props })
           s.dragId = id; s.dragOffX = 0; s.dragOffY = 0
           s.dragMoved = false; s.dragStart = { x, y }
@@ -634,8 +714,8 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
     for (const comp of s.components) {
       if (comp.type !== 'rheostat') continue
       const Rv = (comp.props && comp.props.resistance != null) ? comp.props.resistance : 20
-      const sliderX = comp.x - 30 + (Rv / 50) * 60
-      if (Math.abs(x - sliderX) < 12 && Math.abs(y - (comp.y - 18)) < 15) {
+      const sliderX = comp.x + rheostatSliderX(Rv, RHEO_MAX)
+      if (Math.abs(x - sliderX) < 14 && Math.abs(y - (comp.y - 16)) < 16) {
         s.dragId = 'rheo_' + comp.id
         s.dragMoved = false; s.dragStart = { x, y }
         forceUpdate(n => n + 1); return
@@ -683,7 +763,7 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
         const comp = s.components.find(c => c.id === compId)
         if (comp) {
           if (s.dragStart && Math.hypot(x - s.dragStart.x, y - s.dragStart.y) > 5) s.dragMoved = true
-          comp.props.resistance = mapSliderR(x, comp.x - 30, comp.x + 30, 50)
+          comp.props.resistance = mapSliderR(x, comp.x - 26, comp.x + 26, 50)
         }
         return
       }
@@ -751,6 +831,7 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
               const id = s.nextId++
               const props = {}
               if (a.type === 'rheostat') props.resistance = 20
+              if (a.type === 'resistor') props.resistance = 10
               const wx = s._palRect ? s._palRect.x * 0.42 : pd.x
               const wy = s._palRect ? s._palRect.y + s._palRect.h * 0.45 : pd.y
               s.components.push({ id, type: a.type, x: wx, y: wy, rotation: 0, closed: a.type === 'switch' ? false : true, props })
@@ -820,6 +901,8 @@ export default function VoltAmpereResistorScene({ title = '伏安法测小灯泡
   const handleReset = useCallback(() => {
     S.current.components = []; S.current.wires = []; S.current.dragId = null; S.current.connecting = null
     S.current.switchClosed = false; S.current.sliderR = 20
+    S.current._flow = null
+    resetNeedles()
     dataStore = []
     forceUpdate(n => n + 1)
   }, [])

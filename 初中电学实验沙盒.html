@@ -1,0 +1,1665 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>初中电学实验沙盒 · Vanilla Three.js</title>
+<link rel="icon" href="data:," />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #e8eaed; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
+    color: #2b2f36;
+  }
+  #c { display: block; width: 100%; height: 100%; touch-action: none; }
+
+  /* ---- 极简悬浮 UI ---- */
+  .panel {
+    position: fixed; z-index: 10;
+    background: rgba(32, 38, 46, 0.86);
+    color: #eef2f6;
+    border: 1px solid rgba(255,255,255,0.10);
+    border-radius: 12px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: 0 8px 28px rgba(20,28,40,0.22);
+    user-select: none;
+  }
+  #topPanel {
+    top: 14px; right: 14px;
+    padding: 12px 14px;
+    display: flex; flex-direction: column; gap: 8px;
+    min-width: 168px;
+  }
+  #topPanel h1 {
+    font-size: 13px; font-weight: 600; letter-spacing: 0.5px;
+    color: #cfe3ff; margin-bottom: 2px;
+  }
+  .btn {
+    appearance: none; border: 1px solid rgba(255,255,255,0.14);
+    background: rgba(255,255,255,0.08);
+    color: #eef2f6;
+    font-size: 12px; line-height: 1;
+    padding: 9px 10px; border-radius: 8px;
+    cursor: pointer; text-align: left;
+    transition: background .15s ease, transform .08s ease;
+  }
+  .btn:hover { background: rgba(120,180,255,0.22); }
+  .btn:active { transform: scale(0.97); }
+  .btn.primary { background: rgba(80,150,255,0.30); border-color: rgba(120,180,255,0.45); }
+  .btn.danger:hover { background: rgba(255,90,90,0.28); }
+
+  #palette {
+    top: 14px; left: 14px;
+    padding: 12px 12px 10px;
+    display: flex; flex-direction: column; gap: 7px;
+    width: 132px;
+  }
+  #palette h2 { font-size: 12px; font-weight: 600; color: #ffd9a0; letter-spacing: 1px; margin-bottom: 2px; }
+  .pbtn {
+    appearance: none; border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.07);
+    color: #f2f5f8; font-size: 12px;
+    padding: 8px 8px; border-radius: 8px; cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+    transition: background .15s ease;
+  }
+  .pbtn:hover { background: rgba(120,180,255,0.22); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 auto; }
+
+  #hint {
+    left: 14px; bottom: 14px;
+    padding: 10px 12px; max-width: 340px;
+    font-size: 11px; line-height: 1.75; color: #d5dde6;
+  }
+  #hint b { color: #9fd0ff; font-weight: 600; }
+
+  #selBar {
+    bottom: 14px; right: 14px;
+    padding: 10px 12px;
+    display: none; flex-direction: column; gap: 7px;
+    min-width: 168px;
+  }
+  #selBar.show { display: flex; }
+  #selBar .title { font-size: 12px; color: #ffd9a0; font-weight: 600; }
+  .row { display: flex; gap: 7px; }
+  .row .btn { flex: 1; text-align: center; padding: 8px 6px; }
+
+  #toast {
+    position: fixed; left: 50%; top: 22px; transform: translateX(-50%) translateY(-8px);
+    background: rgba(32,38,46,0.92); color: #fff;
+    padding: 9px 16px; border-radius: 999px; font-size: 12.5px;
+    opacity: 0; pointer-events: none; transition: all .25s ease; z-index: 20;
+    border: 1px solid rgba(255,255,255,0.12);
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  #stateChip {
+    position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+    background: rgba(32,38,46,0.82); color: #cfe3ff;
+    border: 1px solid rgba(255,255,255,0.10);
+    padding: 7px 16px; border-radius: 999px; font-size: 12px; z-index: 10;
+    letter-spacing: 0.4px;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="panel" id="palette">
+  <h2>器材库</h2>
+  <button class="pbtn" data-add="battery"><span class="dot" style="background:#c94f4f"></span>电源</button>
+  <button class="pbtn" data-add="bulb"><span class="dot" style="background:#f5c26b"></span>小灯泡</button>
+  <button class="pbtn" data-add="resistor"><span class="dot" style="background:#cbb287"></span>定值电阻</button>
+  <button class="pbtn" data-add="switch"><span class="dot" style="background:#7fae6c"></span>开关</button>
+  <button class="pbtn" data-add="ammeter"><span class="dot" style="background:#6b9fd4"></span>电流表</button>
+  <button class="pbtn" data-add="voltmeter"><span class="dot" style="background:#b48ead"></span>电压表</button>
+</div>
+
+<div class="panel" id="topPanel">
+  <h1>电学实验沙盒</h1>
+  <button class="btn primary" id="btnReset">重置场景</button>
+  <button class="btn" id="btnClearWires">清除全部导线</button>
+  <button class="btn" id="btnExport">导出电路拓扑 JSON</button>
+</div>
+
+<div class="panel" id="hint">
+  <b>空白拖拽</b> 旋转整个台面　<b>滚轮</b> 缩放<br/>
+  <b>拖器材</b> 贴面移动　<b>右键拖器材</b> 自身旋转<br/>
+  <b>点外壳</b> 透明看内部　<b>点闸刀</b> 开合开关<br/>
+  <b>从接线柱拖出</b> 拉 Verlet 软导线，自动磁吸<br/>
+  <b>Delete</b> 删除选中器材 / 导线
+</div>
+
+<div class="panel" id="selBar">
+  <div class="title" id="selTitle">已选中</div>
+  <div class="row">
+    <button class="btn" id="btnRotL">↺ 转</button>
+    <button class="btn" id="btnRotR">↻ 转</button>
+  </div>
+  <button class="btn danger" id="btnDel">删除器材（含连线）</button>
+</div>
+
+<div id="toast"></div>
+<div id="stateChip">电路状态：未连接</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+/* =====================================================================
+ * 初中电学实验沙盒 · Vanilla Three.js 单文件实现
+ * ---------------------------------------------------------------------
+ * 分层架构（各层解耦，方便后续替换 GLB / 升级 SPICE）：
+ *   [1] Verlet 软导线模块        —— 粒子链 + 约束，独立于器材/拾取
+ *   [2] 程序化器材工厂           —— shell / inner 双层，可整体替换 GLB
+ *   [3] 接线柱磁吸吸附           —— findSnapTerminal 独立函数
+ *   [4] 电路拓扑 + 逻辑连通仿真  —— buildTopology / evalCircuit 独立函数
+ *   [5] 交互状态机               —— 射线拾取，区分旋转台面/拖器材/拉线
+ * 坐标约定：所有物理与摆放均在 tableGroup 的【局部坐标系】中进行，
+ *          因此旋转台面不影响 Verlet 仿真，也不改变器材局部关系。
+ * ===================================================================== */
+
+// ========== 0. 全局常量 ==========
+const SNAP_RADIUS = 0.42;          // 接线柱磁吸半径（局部单位）
+const WIRE_SEG = 22;               // 每根导线的 Verlet 粒子数（性能优先）
+const WIRE_ITER = 5;               // 每帧约束迭代次数
+const WIRE_RADIUS = 0.035;         // 管状导线半径
+const CLICK_THRESHOLD = 5;         // 单击 / 拖拽位移阈值（像素）
+const TABLE_Y = 0.18;              // 台面上表面高度（局部 y）
+const WIRE_COLOR_IDLE   = new THREE.Color(0x1c1c1e);
+const WIRE_COLOR_ON     = new THREE.Color(0x7dd3fc);
+const WIRE_COLOR_SHORT  = new THREE.Color(0xef4444);
+const GLOW_COLOR        = new THREE.Color(0xffd27a);
+
+// ========== 1. 渲染器 / 场景 / 相机 / 光源 ==========
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xe8eaed);
+scene.fog = new THREE.Fog(0xe8eaed, 28, 60);
+
+// 固定俯视斜角相机；滚轮只改变相机距离，不影响台面局部坐标系
+const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 120);
+const CAM_TARGET = new THREE.Vector3(0, 0.4, 0);
+const camSpherical = { radius: 12.2, theta: 0.62, phi: 0.92 }; // phi: 与 y 轴夹角
+function applyCamera() {
+  const r = camSpherical.radius, th = camSpherical.theta, ph = camSpherical.phi;
+  camera.position.set(
+    CAM_TARGET.x + r * Math.sin(ph) * Math.sin(th),
+    CAM_TARGET.y + r * Math.cos(ph),
+    CAM_TARGET.z + r * Math.sin(ph) * Math.cos(th)
+  );
+  camera.lookAt(CAM_TARGET);
+}
+applyCamera();
+
+// 柔和环境光 + 方向光（开阴影，透明外壳时内部结构清晰可见）
+scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa4b0, 0.72));
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.15);
+keyLight.position.set(8, 13, 7);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(2048, 2048);
+keyLight.shadow.camera.near = 1;
+keyLight.shadow.camera.far = 40;
+keyLight.shadow.camera.left = -12;
+keyLight.shadow.camera.right = 12;
+keyLight.shadow.camera.top = 12;
+keyLight.shadow.camera.bottom = -12;
+keyLight.shadow.bias = -0.0006;
+scene.add(keyLight);
+const fillLight = new THREE.DirectionalLight(0xdde8ff, 0.38);
+fillLight.position.set(-7, 6, -5);
+scene.add(fillLight);
+
+// ========== 2. 台面（整体旋转 Group）==========
+// 台面是一个 Group：拖空白处 → tableGroup 整体旋转，器材/导线自动跟随
+const tableGroup = new THREE.Group();
+scene.add(tableGroup);
+
+const tableMat = new THREE.MeshStandardMaterial({
+  color: 0xd7dade, roughness: 0.88, metalness: 0.02
+});
+const table = new THREE.Mesh(new THREE.BoxGeometry(12, 0.36, 8.4), tableMat);
+table.position.y = -0.18; // 上表面正好在 y = 0
+table.receiveShadow = true;
+tableGroup.add(table);
+
+// 台面细边框，增强体积感
+const rimMat = new THREE.MeshStandardMaterial({ color: 0xb9bec6, roughness: 0.7, metalness: 0.08 });
+const rim = new THREE.Mesh(new THREE.BoxGeometry(12.16, 0.10, 8.56), rimMat);
+rim.position.y = -0.38;
+rim.receiveShadow = true;
+tableGroup.add(rim);
+
+// 地面（仅接收阴影）
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(80, 80),
+  new THREE.MeshStandardMaterial({ color: 0xe2e5e9, roughness: 1 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -1.6;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// =====================================================================
+// [1] Verlet 软导线模块（独立封装，与器材/拾取解耦）
+// =====================================================================
+
+/**
+ * VerletChain —— 粒子链软体约束
+ * 仅负责物理积分与距离约束，不知道器材/接线柱的存在。
+ * 外部通过 setPin(i, pos) 固定端点（例如吸附到接线柱）。
+ */
+class VerletChain {
+  constructor(positions, segLen) {
+    this.segLen = segLen;
+    this.particles = positions.map((p) => ({
+      pos: p.clone(),
+      prev: p.clone(),
+      pinned: false
+    }));
+    this.links = [];
+    for (let i = 0; i < this.particles.length - 1; i++) {
+      this.links.push([i, i + 1, segLen]);
+    }
+  }
+  pin(i, worldPos) {
+    const p = this.particles[i];
+    if (!p) return;
+    p.pinned = true;
+    p.pos.copy(worldPos);
+    p.prev.copy(worldPos);
+  }
+  unpin(i) {
+    if (this.particles[i]) this.particles[i].pinned = false;
+  }
+  /** 单步 Verlet 积分 + 约束松弛（重力沿局部 -Y，导线垂落在台面上） */
+  step(dt, gravity, damping) {
+    const g = gravity, d = damping;
+    for (const p of this.particles) {
+      if (p.pinned) continue;
+      const vx = (p.pos.x - p.prev.x) * d;
+      const vy = (p.pos.y - p.prev.y) * d;
+      const vz = (p.pos.z - p.prev.z) * d;
+      p.prev.copy(p.pos);
+      p.pos.x += vx;
+      p.pos.y += vy + g * dt * dt;
+      p.pos.z += vz;
+    }
+    for (let k = 0; k < WIRE_ITER; k++) this.satisfy();
+  }
+  satisfy() {
+    for (const [a, b, rest] of this.links) {
+      const pa = this.particles[a], pb = this.particles[b];
+      const dx = pb.pos.x - pa.pos.x;
+      const dy = pb.pos.y - pa.pos.y;
+      const dz = pb.pos.z - pa.pos.z;
+      const len = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-6;
+      const diff = (len - rest) / len;
+      const wa = pa.pinned ? 0 : 1, wb = pb.pinned ? 0 : 1;
+      const wsum = wa + wb;
+      if (wsum === 0) continue;
+      const ox = dx * diff, oy = dy * diff, oz = dz * diff;
+      if (wa) { pa.pos.x += ox * (wa / wsum); pa.pos.y += oy * (wa / wsum); pa.pos.z += oz * (wa / wsum); }
+      if (wb) { pb.pos.x -= ox * (wb / wsum); pb.pos.y -= oy * (wb / wsum); pb.pos.z -= oz * (wb / wsum); }
+    }
+  }
+  /** 粒子被抬出桌面时压回台面上方，防止穿透 */
+  clampToTable(minY) {
+    for (const p of this.particles) {
+      if (!p.pinned && p.pos.y < minY) {
+        p.pos.y = minY;
+        // 摩擦：限制水平残余速度
+        p.prev.x += (p.pos.x - p.prev.x) * 0.25;
+        p.prev.z += (p.pos.z - p.prev.z) * 0.25;
+      }
+    }
+  }
+}
+
+/**
+ * Wire —— Verlet 链 + CatmullRom 管状网格渲染
+ * 端点吸附目标以回调形式注入（getPinA/getPinB），保持与器材解耦。
+ */
+class Wire {
+  constructor(id, startLocal, getPinA, getPinB) {
+    this.id = id;
+    this.getPinA = getPinA;   // () => Vector3 | null  （局部坐标）
+    this.getPinB = getPinB;
+    this.completed = false;   // 两端都吸附到接线柱后为 true
+    this.dead = false;
+    this.state = 'idle';      // idle | on | short
+    this.radius = WIRE_RADIUS;
+
+    // 链条初始拉直为水平长链（总长约 4.6 单位），端点由 pin 拉到接线柱，
+    // 中段在重力下自然下垂 —— 这才是 Verlet 软导线的手感来源
+    const pts = [];
+    const segLen = 0.22;
+    for (let i = 0; i < WIRE_SEG; i++) {
+      pts.push(new THREE.Vector3(
+        startLocal.x + i * segLen,
+        TABLE_Y + 0.02,
+        startLocal.z
+      ));
+    }
+    this.chain = new VerletChain(pts, segLen);
+
+    const mat = new THREE.MeshStandardMaterial({
+      color: WIRE_COLOR_IDLE.clone(),
+      roughness: 0.55,
+      metalness: 0.12,
+      emissive: new THREE.Color(0x000000),
+      emissiveIntensity: 1
+    });
+    this.mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat);
+    this.mesh.castShadow = true;
+    this.mesh.userData = { kind: 'wire', wireRef: this };
+    this.rebuildMesh();
+  }
+
+  // ========== 关键函数：把 Verlet 粒子链烘成 CatmullRom 管状导线 ==========
+  rebuildMesh() {
+    const positions = this.chain.particles.map((p) => p.pos);
+    const curve = new THREE.CatmullRomCurve3(positions, false, 'catmullrom', 0.5);
+    const segs = Math.max(16, (positions.length - 1) * 3);
+    const geo = new THREE.TubeGeometry(curve, segs, this.radius, 7, false);
+    this.mesh.geometry.dispose();
+    this.mesh.geometry = geo;
+  }
+
+  step(dt) {
+    if (this.dead) return;
+    const a = this.getPinA ? this.getPinA() : null;
+    const b = this.getPinB ? this.getPinB() : null;
+    if (a) this.chain.pin(0, a); else this.chain.unpin(0);
+    if (b) this.chain.pin(this.chain.particles.length - 1, b); else this.chain.unpin(this.chain.particles.length - 1);
+    this.chain.step(dt, -4.2, 0.94);
+    this.chain.clampToTable(TABLE_Y + 0.015);
+    this.rebuildMesh();
+    this.applyVisualState();
+  }
+
+  applyVisualState() {
+    const m = this.mesh.material;
+    if (this.state === 'short') {
+      // 短路：红色闪烁
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.012);
+      m.color.copy(WIRE_COLOR_SHORT);
+      m.emissive.setRGB(0.85 * pulse, 0.08 * pulse, 0.08 * pulse);
+    } else if (this.state === 'on') {
+      m.color.copy(WIRE_COLOR_ON);
+      m.emissive.setRGB(0.18, 0.42, 0.70);
+    } else {
+      m.color.copy(WIRE_COLOR_IDLE);
+      m.emissive.setRGB(0, 0, 0);
+    }
+  }
+
+  dispose() {
+    this.dead = true;
+    this.mesh.geometry.dispose();
+    this.mesh.material.dispose();
+    if (this.mesh.parent) this.mesh.parent.remove(this.mesh);
+  }
+}
+
+/** WireSystem —— 管理所有导线的创建 / 步进 / 销毁 */
+class WireSystem {
+  constructor(parentGroup) {
+    this.parent = parentGroup;
+    this.wires = [];
+    this.nextId = 1;
+  }
+  create(startLocal, getPinA, getPinB) {
+    const w = new Wire(this.nextId++, startLocal, getPinA, getPinB);
+    this.wires.push(w);
+    this.parent.add(w.mesh);
+    return w;
+  }
+  step(dt) {
+    for (const w of this.wires) w.step(dt);
+  }
+  remove(wire) {
+    wire.dispose();
+    const i = this.wires.indexOf(wire);
+    if (i >= 0) this.wires.splice(i, 1);
+  }
+  clear() {
+    for (const w of [...this.wires]) this.remove(w);
+  }
+  /** 删除某器材时，连带销毁吸附在它接线柱上的全部导线 */
+  removeWiresOfDevice(deviceId) {
+    for (const w of [...this.wires]) {
+      if ((w.endA && w.endA.deviceId === deviceId) || (w.endB && w.endB.deviceId === deviceId)) {
+        this.remove(w);
+      }
+    }
+  }
+  setStateAll(fn) {
+    for (const w of this.wires) w.state = fn(w) || 'idle';
+  }
+}
+
+const wireSystem = new WireSystem(tableGroup);
+
+// =====================================================================
+// [2] 程序化器材工厂
+// ---------------------------------------------------------------------
+// ★ GLB 替换点 ★
+//   后续拿到 GLB 时，只需把 createDevice() 内部换成 GLTFLoader 加载，
+//   并按命名约定把网格归类到 shellMeshes / innerMeshes（或在 loader 回调里
+//   按名字前缀 shell_ / inner_ 自动归类），交互层无需任何改动。
+//   每个器材由两层构成：
+//     shell —— 外壳网格（点击后 opacity=0.25）
+//     inner —— 内部结构（默认隐藏，点击外壳后显示）
+// =====================================================================
+
+const devices = [];               // 全部器材
+let nextDeviceId = 1;
+
+const DEVICE_NAMES = {
+  battery: '直流电源',
+  bulb: '小灯泡',
+  resistor: '定值电阻',
+  switch: '单刀开关',
+  ammeter: '电流表',
+  voltmeter: '电压表'
+};
+
+/** 为外壳/内部网格生成独立材质（透明切换需要 per-mesh 材质） */
+function shellMat(color, { roughness = 0.55, metalness = 0.10, opacity = 1, transparent = false, emissive = 0x000000, emissiveIntensity = 1 } = {}) {
+  return new THREE.MeshStandardMaterial({
+    color, roughness, metalness,
+    transparent: transparent || opacity < 1,
+    opacity,
+    emissive: new THREE.Color(emissive),
+    emissiveIntensity
+  });
+}
+function innerMat(color, { roughness = 0.5, metalness = 0.35, emissive = 0x000000, emissiveIntensity = 1, opacity = 1 } = {}) {
+  return new THREE.MeshStandardMaterial({
+    color, roughness, metalness,
+    transparent: opacity < 1,
+    opacity,
+    emissive: new THREE.Color(emissive),
+    emissiveIntensity
+  });
+}
+
+function addShell(dev, mesh) {
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.userData.kind = 'shell';
+  mesh.userData.deviceId = dev.id;
+  mesh.userData.baseOpacity = mesh.material.opacity;
+  mesh.material.transparent = true;
+  dev.shellMeshes.push(mesh);
+  dev.group.add(mesh);
+  return mesh;
+}
+function addInner(dev, mesh) {
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.userData.kind = 'inner';
+  mesh.userData.deviceId = dev.id;
+  mesh.visible = false;
+  dev.innerMeshes.push(mesh);
+  dev.group.add(mesh);
+  return mesh;
+}
+
+/**
+ * ========== 关键函数：接线柱 ==========
+ * 在器材上打一个可磁吸的接线柱，返回 terminal 记录。
+ * localPos 为器材局部坐标；世界/台面坐标在使用时动态换算。
+ * baseY：接线柱底座高度（放在机身顶部时传入机身顶面 y）
+ */
+function addTerminal(dev, termId, label, x, z, capColor, baseY = 0, postColor = 0xc4ccd4) {
+  const post = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.085, 0.10, 0.22, 16),
+    shellMat(postColor, { metalness: 0.65, roughness: 0.32 })
+  );
+  post.position.set(x, baseY + 0.17, z);
+  addShell(dev, post);
+
+  const cap = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.145, 0.145, 0.09, 20),
+    shellMat(capColor, { metalness: 0.55, roughness: 0.30 })
+  );
+  cap.position.set(x, baseY + 0.325, z);
+  addShell(dev, cap);
+
+  // 接线柱拾取代理（略大，优先于机身命中）
+  const hit = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22, 0.22, 0.52, 12),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+  );
+  hit.position.set(x, baseY + 0.24, z);
+  hit.userData.kind = 'terminal';
+  hit.userData.deviceId = dev.id;
+  hit.userData.termId = termId;
+  dev.group.add(hit);
+
+  const term = {
+    id: termId, label,
+    localPos: new THREE.Vector3(x, baseY + 0.40, z),
+    hitMesh: hit
+  };
+  dev.terminals.push(term);
+  return term;
+}
+
+// ---------- 各器材构造器 ----------
+
+function buildBattery(dev) {
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.65, 0.58, 0.95), shellMat(0x3d4854, { roughness: 0.62 }));
+  body.position.y = 0.29;
+  addShell(dev, body);
+
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.07, 0.78), shellMat(0x2f3944, { roughness: 0.5, metalness: 0.2 }));
+  top.position.y = 0.60;
+  addShell(dev, top);
+
+  // 极板标识条
+  const stripP = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.7), shellMat(0xc0392b, { roughness: 0.4 }));
+  stripP.position.set(-0.55, 0.645, 0);
+  addShell(dev, stripP);
+  const stripN = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.03, 0.7), shellMat(0x2c3e50, { roughness: 0.4 }));
+  stripN.position.set(0.55, 0.645, 0);
+  addShell(dev, stripN);
+
+  // 接线柱置于机身顶面（红 + / 黑 −），保证可见、可拾取
+  addTerminal(dev, 'pos', '+', -0.52, 0.16, 0xc0392b, 0.62);
+  addTerminal(dev, 'neg', '−', 0.52, 0.16, 0x2c3e50, 0.62);
+
+  // 内部：正负极板 + 电解质示意
+  const plateP = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.42, 0.62), innerMat(0xc07a3c, { metalness: 0.7, roughness: 0.35 }));
+  plateP.position.set(-0.30, 0.30, 0);
+  addInner(dev, plateP);
+  const plateN = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.42, 0.62), innerMat(0x9aa7b4, { metalness: 0.75, roughness: 0.3 }));
+  plateN.position.set(0.30, 0.30, 0);
+  addInner(dev, plateN);
+  const electrolyte = new THREE.Mesh(new THREE.BoxGeometry(1.10, 0.38, 0.62), innerMat(0x5d86a8, { opacity: 0.35, metalness: 0.1, roughness: 0.2 }));
+  electrolyte.position.set(0, 0.30, 0);
+  addInner(dev, electrolyte);
+}
+
+function buildBulb(dev) {
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.30, 0.34, 0.18, 24), shellMat(0x2b3138, { roughness: 0.55 }));
+  base.position.y = 0.09;
+  addShell(dev, base);
+
+  const socket = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.24, 0.16, 20), shellMat(0x8d99a5, { metalness: 0.55, roughness: 0.4 }));
+  socket.position.y = 0.25;
+  addShell(dev, socket);
+
+  // 玻璃泡（壳层，半透明）
+  const glass = new THREE.Mesh(new THREE.SphereGeometry(0.33, 28, 20), shellMat(0xf2f6fa, {
+    transparent: true, opacity: 0.28, roughness: 0.12, metalness: 0.0, emissive: 0x000000
+  }));
+  glass.position.y = 0.62;
+  addShell(dev, glass);
+  dev.glowGlass = glass;
+
+  // 灯头颈
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 0.14, 16), shellMat(0x8d99a5, { metalness: 0.5, roughness: 0.4 }));
+  neck.position.y = 0.38;
+  addShell(dev, neck);
+
+  addTerminal(dev, 'a', 'A', -0.42, 0, 0xb87333);
+  addTerminal(dev, 'b', 'B', 0.42, 0, 0xb87333);
+
+  // 内部：灯丝（螺旋细管）+ 支架
+  const filamentPts = [];
+  const turns = 5, radius = 0.085, height = 0.16;
+  for (let i = 0; i <= turns * 12; i++) {
+    const t = i / (turns * 12);
+    const a = t * Math.PI * 2 * turns;
+    filamentPts.push(new THREE.Vector3(Math.cos(a) * radius, 0.52 + t * height, Math.sin(a) * radius));
+  }
+  const filament = new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(filamentPts), 90, 0.012, 6, false),
+    innerMat(0xffb84d, { emissive: 0xff9d2e, emissiveIntensity: 0.4, metalness: 0.4, roughness: 0.35 })
+  );
+  addInner(dev, filament);
+  dev.filament = filament;
+
+  const wireL = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.28, 8), innerMat(0xc9a227, { metalness: 0.7 }));
+  wireL.position.set(-0.085, 0.45, 0);
+  addInner(dev, wireL);
+  const wireR = wireL.clone();
+  wireR.position.x = 0.085;
+  addInner(dev, wireR);
+}
+
+function buildResistor(dev) {
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.92, 24), shellMat(0xd8c49a, { roughness: 0.72 }));
+  body.rotation.z = Math.PI / 2;
+  body.position.y = 0.24;
+  addShell(dev, body);
+
+  for (const sx of [-1, 1]) {
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.155, 0.155, 0.12, 18), shellMat(0x9aa4ae, { metalness: 0.6, roughness: 0.35 }));
+    cap.rotation.z = Math.PI / 2;
+    cap.position.set(sx * 0.50, 0.24, 0);
+    addShell(dev, cap);
+    const lead = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.20, 12), shellMat(0xb87333, { metalness: 0.7, roughness: 0.3 }));
+    lead.rotation.z = Math.PI / 2;
+    lead.position.set(sx * 0.64, 0.24, 0);
+    addShell(dev, lead);
+  }
+
+  addTerminal(dev, 'a', 'A', -0.72, 0, 0xb87333);
+  addTerminal(dev, 'b', 'B', 0.72, 0, 0xb87333);
+
+  // 内部：电阻丝绕线 + 陶瓷芯
+  const core = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.82, 18), innerMat(0xe8e2d4, { metalness: 0.05, roughness: 0.85 }));
+  core.rotation.z = Math.PI / 2;
+  core.position.y = 0.24;
+  addInner(dev, core);
+
+  const coilPts = [];
+  const turns = 10;
+  for (let i = 0; i <= turns * 14; i++) {
+    const t = i / (turns * 14);
+    const a = t * Math.PI * 2 * turns;
+    coilPts.push(new THREE.Vector3(-0.38 + t * 0.76, 0.24 + Math.sin(a) * 0.125, Math.cos(a) * 0.125));
+  }
+  const coil = new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(coilPts), 110, 0.014, 6, false),
+    innerMat(0xb06a3b, { metalness: 0.65, roughness: 0.38 })
+  );
+  addInner(dev, coil);
+}
+
+function buildSwitch(dev) {
+  const base = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.16, 0.62), shellMat(0x39443f, { roughness: 0.62 }));
+  base.position.y = 0.08;
+  addShell(dev, base);
+
+  const padL = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.10, 0.42), shellMat(0x2c342f, { roughness: 0.55 }));
+  padL.position.set(-0.42, 0.20, 0);
+  addShell(dev, padL);
+  const padR = padL.clone();
+  padR.position.x = 0.42;
+  addShell(dev, padR);
+
+  addTerminal(dev, 'a', 'A', -0.50, 0, 0xb87333);
+  addTerminal(dev, 'b', 'B', 0.50, 0, 0xb87333);
+
+  // 闸刀（可点击开合）—— 绕左端铰链旋转
+  const pivot = new THREE.Group();
+  pivot.position.set(-0.42, 0.28, 0);
+  dev.group.add(pivot);
+  dev.bladePivot = pivot;
+
+  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.86, 0.055, 0.14), shellMat(0xc5ccd3, { metalness: 0.72, roughness: 0.3 }));
+  blade.position.set(0.43, 0, 0);
+  blade.userData.kind = 'switchBlade';
+  blade.userData.deviceId = dev.id;
+  blade.castShadow = true;
+  pivot.add(blade);
+  dev.shellMeshes.push(blade);
+  blade.userData.baseOpacity = 1;
+
+  const handle = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.10, 0.20), shellMat(0x8c5a3c, { roughness: 0.6 }));
+  handle.position.set(0.86, 0, 0);
+  handle.userData.kind = 'switchBlade';
+  handle.userData.deviceId = dev.id;
+  handle.castShadow = true;
+  pivot.add(handle);
+  dev.shellMeshes.push(handle);
+  handle.userData.baseOpacity = 1;
+
+  // 内部：导电触点 + 铜桥
+  const contactL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.07, 0.18), innerMat(0xd08c3e, { metalness: 0.8, roughness: 0.28 }));
+  contactL.position.set(-0.42, 0.26, 0);
+  addInner(dev, contactL);
+  const contactR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.07, 0.18), innerMat(0xd08c3e, { metalness: 0.8, roughness: 0.28 }));
+  contactR.position.set(0.42, 0.26, 0);
+  addInner(dev, contactR);
+  const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.70, 0.04, 0.10), innerMat(0xe0a052, { metalness: 0.85, roughness: 0.25 }));
+  bridge.position.set(0, 0.30, 0);
+  addInner(dev, bridge);
+
+  dev.state.closed = true;
+  setSwitchAngle(dev, true);
+}
+
+/** 开关闸刀角度（动画目标）：闭合水平，断开时上抬（由主循环缓动过去） */
+function setSwitchAngle(dev, closed) {
+  dev.state.closed = closed;
+  dev.state.bladeTarget = closed ? 0 : 0.72; // 绕铰链 Z 轴上抬
+}
+
+function makeDialTexture(kind) {
+  const S = 256;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#f4f1e8';
+  g.beginPath(); g.arc(S / 2, S / 2, S / 2 - 4, 0, Math.PI * 2); g.fill();
+  g.strokeStyle = '#2b2f36'; g.lineWidth = 5;
+  g.beginPath(); g.arc(S / 2, S / 2, S / 2 - 10, 0, Math.PI * 2); g.stroke();
+
+  // 刻度弧（从 210° 到 -30°）
+  const a0 = Math.PI * 1.18, a1 = -Math.PI * 0.18;
+  // 红色量程弧线
+  g.strokeStyle = '#c0392b'; g.lineWidth = 4;
+  g.beginPath();
+  g.arc(S / 2, S / 2, S / 2 - 30, a1, a0);
+  g.stroke();
+  // 黑色刻度线
+  g.strokeStyle = '#2b2f36';
+  for (let i = 0; i <= 10; i++) {
+    const a = a0 + (a1 - a0) * (i / 10);
+    const r1 = S / 2 - 22, r2 = S / 2 - (i % 5 === 0 ? 52 : 40);
+    g.lineWidth = i % 5 === 0 ? 6 : 3;
+    g.beginPath();
+    g.moveTo(S / 2 + Math.cos(a) * r1, S / 2 + Math.sin(a) * r1);
+    g.lineTo(S / 2 + Math.cos(a) * r2, S / 2 + Math.sin(a) * r2);
+    g.stroke();
+  }
+  // 表盘字母（大号加粗，避开指针轴心）
+  g.fillStyle = '#2b2f36';
+  g.font = 'bold 56px "PingFang SC", sans-serif';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(kind === 'A' ? 'A' : 'V', S / 2, S * 0.72);
+  g.font = 'bold 17px "PingFang SC", sans-serif';
+  g.fillText(kind === 'A' ? '0.6 / 3A' : '3 / 15V', S / 2, S * 0.88);
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function buildMeter(dev, kind) {
+  const isA = kind === 'A';
+  const bodyColor = isA ? 0x2e4a6b : 0x4b2e5e;
+
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.30, 0.66, 0.95), shellMat(bodyColor, { roughness: 0.58 }));
+  body.position.y = 0.33;
+  addShell(dev, body);
+
+  // 表盘面板：平放在机身顶面（相机自上而下看得清刻度）
+  const dialTex = makeDialTexture(isA ? 'A' : 'V');
+  const dial = new THREE.Mesh(
+    new THREE.CircleGeometry(0.42, 48),
+    new THREE.MeshStandardMaterial({ map: dialTex, roughness: 0.5, metalness: 0.04, transparent: true })
+  );
+  dial.rotation.x = -Math.PI / 2;
+  dial.position.set(0, 0.665, 0.02);
+  addShell(dev, dial);
+
+  // 薄玻璃盖（几乎不遮挡刻度）
+  const glass = new THREE.Mesh(new THREE.CircleGeometry(0.45, 40), shellMat(0xffffff, {
+    transparent: true, opacity: 0.10, roughness: 0.06, metalness: 0.0
+  }));
+  glass.rotation.x = -Math.PI / 2;
+  glass.position.set(0, 0.685, 0.02);
+  addShell(dev, glass);
+
+  // 指针（绕表盘法线 = 局部 Y 轴偏转）
+  const needleGroup = new THREE.Group();
+  needleGroup.position.set(0, 0.695, 0.02);
+  dev.group.add(needleGroup);
+  dev.needleGroup = needleGroup;
+
+  const needle = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.014, 0.36), shellMat(0x1a1a1a, { roughness: 0.4, metalness: 0.3 }));
+  needle.position.set(0, 0, -0.15);
+  needleGroup.add(needle);
+  const needleHub = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.03, 16), shellMat(0x8a2f2f, { roughness: 0.4 }));
+  needleHub.position.y = 0.005;
+  needleGroup.add(needleHub);
+
+  // 接线柱：机身前侧（z 负向），完全露出，方便拖线
+  addTerminal(dev, 'pos', isA ? '0.6/3' : '+', -0.42, -0.56, 0xc0392b);
+  addTerminal(dev, 'neg', '−', 0.42, -0.56, 0x2c3e50);
+
+  // 内部：线圈 + 磁芯 + 底板
+  const coil = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.055, 12, 28), innerMat(0xc97b3a, { metalness: 0.7, roughness: 0.35 }));
+  coil.rotation.x = Math.PI / 2;
+  coil.position.set(0, 0.34, 0);
+  addInner(dev, coil);
+  const core = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.10, 0.22, 16), innerMat(0x666e78, { metalness: 0.75, roughness: 0.3 }));
+  core.position.set(0, 0.34, 0);
+  addInner(dev, core);
+  const pcb = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.03, 0.55), innerMat(0x2f5e3a, { metalness: 0.2, roughness: 0.6 }));
+  pcb.position.set(0, 0.12, 0);
+  addInner(dev, pcb);
+
+  dev.state.needleAngle = 0;       // 当前
+  dev.state.needleTarget = 0;      // 目标（0 → 零位，1 → 满偏）
+}
+
+/**
+ * ========== 关键函数：创建器材 ==========
+ * 返回器材对象；后续换 GLB 时替换本函数内部实现即可。
+ */
+function createDevice(type, x, z, rotY = 0) {
+  const dev = {
+    id: nextDeviceId++,
+    type,
+    name: DEVICE_NAMES[type] || type,
+    group: new THREE.Group(),
+    shellMeshes: [],
+    innerMeshes: [],
+    terminals: [],
+    state: { closed: false, bladeTarget: 0, needleTarget: 0, needleAngle: 0 },
+    transparent: false
+  };
+  dev.group.position.set(x, 0, z);
+  dev.group.rotation.y = rotY;
+  tableGroup.add(dev.group);
+
+  if (type === 'battery') buildBattery(dev);
+  else if (type === 'bulb') buildBulb(dev);
+  else if (type === 'resistor') buildResistor(dev);
+  else if (type === 'switch') buildSwitch(dev);
+  else if (type === 'ammeter') buildMeter(dev, 'A');
+  else if (type === 'voltmeter') buildMeter(dev, 'V');
+  else throw new Error('未知器材类型: ' + type);
+
+  devices.push(dev);
+  return dev;
+}
+
+/**
+ * ========== 关键函数：外壳透明切换 ==========
+ * 点击外壳 → opacity=0.25 + 显示内部；再次点击恢复。
+ */
+function setDeviceTransparent(dev, on) {
+  dev.transparent = on;
+  for (const m of dev.shellMeshes) {
+    const base = m.userData.baseOpacity ?? 1;
+    m.material.transparent = true;
+    m.material.opacity = on ? Math.min(0.25, base) : base;
+    m.material.depthWrite = !on;
+    m.material.needsUpdate = true;
+  }
+  for (const m of dev.innerMeshes) m.visible = on;
+}
+
+/** 删除器材：一并销毁吸附在其接线柱上的 Verlet 导线 */
+function disposeDevice(dev) {
+  wireSystem.removeWiresOfDevice(dev.id);
+  for (const m of dev.shellMeshes) {
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) m.material.dispose();
+  }
+  for (const m of dev.innerMeshes) {
+    if (m.geometry) m.geometry.dispose();
+    if (m.material) m.material.dispose();
+  }
+  tableGroup.remove(dev.group);
+  const i = devices.indexOf(dev);
+  if (i >= 0) devices.splice(i, 1);
+}
+
+/** 台面局部坐标下的接线柱位置 */
+function terminalLocalPos(dev, term) {
+  const world = term.localPos.clone().applyMatrix4(dev.group.matrixWorld);
+  return tableGroup.worldToLocal(world);
+}
+
+// =====================================================================
+// [3] 接线柱磁吸吸附（独立函数，可单测）
+// =====================================================================
+
+/**
+ * ========== 关键函数：findSnapTerminal ==========
+ * 接线柱磁吸判定：接线柱中心到「指针射线」的 3D 垂距 < SNAP_RADIUS 即吸附。
+ * （不能用台面平面投影点比距离：接线柱高出桌面，投影会带偏移）
+ * @param {THREE.Ray} worldRay  由相机穿过指针的射线
+ * @param {object} opts  { excludeTerm: {dev, term} }
+ * @returns {{dev, term, pos} | null}   pos 为世界坐标
+ */
+function findSnapTerminal(worldRay, opts = {}) {
+  let best = null, bestDist = SNAP_RADIUS;
+  for (const dev of devices) {
+    for (const term of dev.terminals) {
+      if (opts.excludeTerm && opts.excludeTerm.dev === dev && opts.excludeTerm.term === term) continue;
+      const p = term.localPos.clone().applyMatrix4(dev.group.matrixWorld);
+      const d = worldRay.distanceToPoint(p);
+      if (d < bestDist) {
+        bestDist = d;
+        best = { dev, term, pos: p };
+      }
+    }
+  }
+  return best;
+}
+
+// =====================================================================
+// [4] 电路拓扑 + 逻辑连通仿真（独立于渲染；不做 SPICE，只做连通判定）
+// =====================================================================
+
+/**
+ * ========== 关键函数：buildTopology ==========
+ * 由导线吸附关系自动生成电路拓扑表。
+ * 节点 id = `${deviceId}:${termId}`
+ * 边：wire / load(灯泡·电阻) / switch / ammeter / voltmeter(不导电)
+ */
+function buildTopology() {
+  const nodes = new Set();
+  const edges = [];
+
+  const nid = (dev, term) => `${dev.id}:${term.id}`;
+  const findDev = (id) => devices.find((d) => d.id === id);
+
+  // 器材节点
+  for (const dev of devices) {
+    for (const term of dev.terminals) nodes.add(nid(dev, term));
+    // 器材内部连接
+    if (dev.type === 'switch') {
+      edges.push({ a: nid(dev, dev.terminals[0]), b: nid(dev, dev.terminals[1]), kind: 'switch', closed: !!dev.state.closed, ref: dev });
+    } else if (dev.type === 'bulb' || dev.type === 'resistor' || dev.type === 'ammeter') {
+      edges.push({ a: nid(dev, dev.terminals[0]), b: nid(dev, dev.terminals[1]), kind: dev.type === 'ammeter' ? 'ammeter' : 'load', ref: dev });
+    } else if (dev.type === 'voltmeter') {
+      edges.push({ a: nid(dev, dev.terminals[0]), b: nid(dev, dev.terminals[1]), kind: 'voltmeter', ref: dev });
+    }
+    // battery 不作为普通导电边 —— 它是电源，由 evalCircuit 单独处理
+  }
+
+  // 导线边
+  for (const w of wireSystem.wires) {
+    if (!w.endA || !w.endB) continue;
+    nodes.add(nid(w.endA.dev, w.endA.term));
+    nodes.add(nid(w.endB.dev, w.endB.term));
+    edges.push({ a: nid(w.endA.dev, w.endA.term), b: nid(w.endB.dev, w.endB.term), kind: 'wire', ref: w });
+  }
+
+  return { nodes: [...nodes], edges };
+}
+
+function adjFromEdges(edges, allowKinds) {
+  const adj = new Map();
+  for (const e of edges) {
+    if (!allowKinds(e)) continue;
+    if (!adj.has(e.a)) adj.set(e.a, []);
+    if (!adj.has(e.b)) adj.set(e.b, []);
+    adj.get(e.a).push({ to: e.b, edge: e });
+    adj.get(e.b).push({ to: e.a, edge: e });
+  }
+  return adj;
+}
+
+function bfsReach(adj, start, banEdge) {
+  const seen = new Set([start]);
+  const queue = [start];
+  while (queue.length) {
+    const cur = queue.shift();
+    for (const { to, edge } of adj.get(cur) || []) {
+      if (banEdge && edge === banEdge) continue;
+      if (seen.has(to)) continue;
+      seen.add(to);
+      queue.push(to);
+    }
+  }
+  return seen;
+}
+
+/**
+ * ========== 关键函数：evalCircuit ==========
+ * 逻辑连通判定：
+ *   short      —— 电源两极仅经“零电阻”路径（导线/闭合开关/电流表）直连
+ *   closed     —— 存在经负载回到电源的通路
+ *   carrying   —— 某元件位于电源正→负的某条通路上（灯泡发光/表针偏转）
+ */
+function evalCircuit() {
+  const topo = buildTopology();
+  const batteries = devices.filter((d) => d.type === 'battery');
+  const result = {
+    hasBattery: batteries.length > 0,
+    closed: false,
+    short: false,
+    carrying: new Map(),   // dev -> bool
+    wireState: 'idle',
+    topo
+  };
+
+  for (const dev of devices) result.carrying.set(dev, false);
+  if (!batteries.length) return result;
+
+  const bat = batteries[0];
+  const posId = `${bat.id}:${bat.terminals[0].id}`;
+  const negId = `${bat.id}:${bat.terminals[1].id}`;
+
+  const zeroR = (e) => e.kind === 'wire' || (e.kind === 'switch' && e.closed) || e.kind === 'ammeter';
+  const conductive = (e) => zeroR(e) || e.kind === 'load';
+
+  // 短路：零电阻路径直连电源两极
+  const adj0 = adjFromEdges(topo.edges, zeroR);
+  const reach0 = bfsReach(adj0, posId);
+  result.short = reach0.has(negId);
+
+  // 闭合回路：经负载的完整路径
+  const adj1 = adjFromEdges(topo.edges, conductive);
+  const reach1 = bfsReach(adj1, posId);
+  result.closed = reach1.has(negId);
+
+  // 元件是否被电流经过：去掉该元件自身边后，两极仍分别可达其两端
+  if (result.closed && !result.short) {
+    for (const e of topo.edges) {
+      if (e.kind !== 'load' && e.kind !== 'ammeter') continue;
+      const reachFromPos = bfsReach(adj1, posId, e);
+      const reachFromNeg = bfsReach(adj1, negId, e);
+      const onPath =
+        (reachFromPos.has(e.a) && reachFromNeg.has(e.b)) ||
+        (reachFromPos.has(e.b) && reachFromNeg.has(e.a));
+      if (onPath && e.ref) result.carrying.set(e.ref, true);
+    }
+  }
+
+  // 导线状态
+  result.wireState = result.short ? 'short' : (result.closed ? 'on' : 'idle');
+  return result;
+}
+
+/** 把仿真结果应用到视觉：导线颜色 / 灯泡发光 / 表针目标角 / 状态芯片 */
+let circuitResult = null;
+function applyCircuitVisuals() {
+  circuitResult = evalCircuit();
+
+  wireSystem.setStateAll(() => circuitResult.wireState);
+
+  for (const dev of devices) {
+    const on = circuitResult.carrying.get(dev) === true;
+
+    if (dev.type === 'bulb') {
+      const glass = dev.glowGlass;
+      if (glass) {
+        glass.material.emissive.copy(on ? GLOW_COLOR : new THREE.Color(0x000000));
+        glass.material.emissiveIntensity = on ? 1.45 : 0;
+      }
+      if (dev.filament) {
+        dev.filament.material.emissiveIntensity = on ? 2.2 : 0.4;
+      }
+      if (!dev.glowLight) {
+        dev.glowLight = new THREE.PointLight(GLOW_COLOR, 0, 5, 2);
+        dev.glowLight.position.set(0, 0.62, 0);
+        dev.group.add(dev.glowLight);
+      }
+      dev.glowLight.intensity = on ? 1.6 : 0;
+    }
+
+    if (dev.type === 'ammeter' || dev.type === 'voltmeter') {
+      // 逻辑仿真：导通偏转 ~55% 量程，短路时打表
+      dev.state.needleTarget = circuitResult.short ? 0.95 : (on ? 0.55 : 0);
+    }
+  }
+
+  // 状态芯片
+  const chip = document.getElementById('stateChip');
+  if (!circuitResult.hasBattery) {
+    chip.textContent = '电路状态：未放置电源';
+    chip.style.color = '#cfe3ff';
+  } else if (circuitResult.short) {
+    chip.textContent = '⚠ 电路状态：短路！请断开电源两端直连';
+    chip.style.color = '#ff8f8f';
+  } else if (circuitResult.closed) {
+    chip.textContent = '电路状态：通路，电流流通中';
+    chip.style.color = '#8fe3a8';
+  } else {
+    chip.textContent = '电路状态：断路（未形成闭合回路）';
+    chip.style.color = '#cfe3ff';
+  }
+}
+
+// =====================================================================
+// [5] 交互状态机（射线拾取）
+//   空白拖拽  = 旋转整个台面 Group
+//   器材拖拽  = 贴台面局部平面移动（不可抬离）
+//   接线柱拖  = 拉出 Verlet 软导线
+//   单击      = 位移 < 阈值时判定，切换外壳透明 / 开关闸刀
+// =====================================================================
+
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+const tablePlane = new THREE.Plane();
+
+const MODE = {
+  IDLE: 'idle',
+  ROTATE_TABLE: 'rotate_table',
+  DRAG_DEVICE: 'drag_device',
+  ROTATE_DEVICE: 'rotate_device',
+  PULL_WIRE: 'pull_wire'
+};
+
+const pointerState = {
+  mode: MODE.IDLE,
+  downX: 0, downY: 0,
+  lastX: 0, lastY: 0,
+  moved: 0,
+  dev: null,
+  wire: null,
+  dragOffset: new THREE.Vector3(),
+  snapTarget: null,
+  button: 0
+};
+
+let selected = null; // {kind:'device'|'wire', ref}
+
+function setNdc(e) {
+  ndc.x = (e.clientX / window.innerWidth) * 2 - 1;
+  ndc.y = -(e.clientY / window.innerHeight) * 2 + 1;
+}
+
+function updateTablePlane() {
+  tableGroup.updateMatrixWorld(true);
+  const n = new THREE.Vector3(0, 1, 0).applyQuaternion(tableGroup.quaternion).normalize();
+  const p = new THREE.Vector3(0, 0, 0).applyMatrix4(tableGroup.matrixWorld);
+  tablePlane.setFromNormalAndCoplanarPoint(n, p);
+}
+
+/** 屏幕点 → 台面局部平面坐标 */
+function localPointOnTable(e) {
+  setNdc(e);
+  updateTablePlane();
+  raycaster.setFromCamera(ndc, camera);
+  const world = new THREE.Vector3();
+  const hit = raycaster.ray.intersectPlane(tablePlane, world);
+  if (!hit) return null;
+  return tableGroup.worldToLocal(world.clone());
+}
+
+function pickables() {
+  const list = [];
+  for (const d of devices) {
+    list.push(...d.shellMeshes, ...d.innerMeshes);
+    for (const t of d.terminals) list.push(t.hitMesh);
+  }
+  for (const w of wireSystem.wires) list.push(w.mesh);
+  return list;
+}
+
+function raycastPick(e) {
+  setNdc(e);
+  raycaster.setFromCamera(ndc, camera);
+  return raycaster.intersectObjects(pickables(), false);
+}
+
+/**
+ * 拾取优先级：接线柱 > 闸刀 > 外壳/内部 > 导线
+ * （同一视线常会同时命中导线与接线柱，必须让接线柱优先，否则拖线变拖器材）
+ */
+function topPick(hits) {
+  if (!hits.length) return null;
+  const rank = { terminal: 0, switchBlade: 1, shell: 2, inner: 2, wire: 3 };
+  const d0 = hits[0].distance;
+  const near = hits.filter((h) => h.distance < d0 + 0.45);
+  near.sort((a, b) => (rank[a.object.userData.kind] ?? 9) - (rank[b.object.userData.kind] ?? 9));
+  return near[0];
+}
+
+function findDeviceById(id) {
+  return devices.find((d) => d.id === id);
+}
+
+/** 选中高亮：轻微抬升色相（用 emissive 标记） */
+function applySelection() {
+  for (const d of devices) {
+    const isSel = selected && selected.kind === 'device' && selected.ref === d;
+    for (const m of d.shellMeshes) {
+      if (!m.material || !m.material.emissive) continue;
+      if (isSel) {
+        m.material.emissive.setHex(0x224466);
+        m.material.emissiveIntensity = 0.55;
+      } else if (d.transparent) {
+        m.material.emissive.setHex(0x000000);
+      } else {
+        m.material.emissive.setHex(0x000000);
+        m.material.emissiveIntensity = 1;
+      }
+    }
+  }
+  const bar = document.getElementById('selBar');
+  const title = document.getElementById('selTitle');
+  if (selected && selected.kind === 'device') {
+    title.textContent = `已选中：${selected.ref.name}`;
+    bar.classList.add('show');
+  } else if (selected && selected.kind === 'wire') {
+    title.textContent = `已选中：导线 #${selected.ref.id}`;
+    bar.classList.add('show');
+  } else {
+    bar.classList.remove('show');
+  }
+}
+
+function select(ref, kind) {
+  selected = ref ? { kind, ref } : null;
+  applySelection();
+}
+
+// ---------- 指针事件 ----------
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+canvas.addEventListener('pointerdown', (e) => {
+  canvas.setPointerCapture(e.pointerId);
+  pointerState.downX = pointerState.lastX = e.clientX;
+  pointerState.downY = pointerState.lastY = e.clientY;
+  pointerState.moved = 0;
+  pointerState.button = e.button;
+  pointerState.dev = null;
+  pointerState.wire = null;
+  pointerState.snapTarget = null;
+  pointerState.pendingSwitch = null;
+
+  const hits = raycastPick(e);
+  const hit = topPick(hits);
+
+  if (e.button === 2 && hit && hit.object.userData.kind !== 'terminal') {
+    const devId = hit.object.userData.deviceId;
+    const dev = findDeviceById(devId);
+    if (dev) {
+      pointerState.mode = MODE.ROTATE_DEVICE;
+      pointerState.dev = dev;
+      select(dev, 'device');
+    }
+    return;
+  }
+
+  if (hit) {
+    const kind = hit.object.userData.kind;
+
+    if (kind === 'terminal') {
+      // ===== 拉 Verlet 导线 =====
+      const dev = findDeviceById(hit.object.userData.deviceId);
+      const term = dev && dev.terminals.find((t) => t.id === hit.object.userData.termId);
+      if (dev && term) {
+        const start = terminalLocalPos(dev, term);
+        const wire = wireSystem.create(start, () => terminalLocalPos(dev, term), null);
+        wire.endA = { dev, term, deviceId: dev.id, termId: term.id };
+        pointerState.mode = MODE.PULL_WIRE;
+        pointerState.wire = wire;
+        select(wire, 'wire');
+      }
+      return;
+    }
+
+    if (kind === 'switchBlade') {
+      // 点击闸刀：判定为单击后开合开关
+      const dev = findDeviceById(hit.object.userData.deviceId);
+      pointerState.mode = MODE.DRAG_DEVICE; // 记录候选，抬手时按位移判定 click
+      pointerState.dev = dev;
+      pointerState.pendingSwitch = dev;
+      return;
+    }
+
+    if (kind === 'wire') {
+      select(hit.object.userData.wireRef, 'wire');
+      pointerState.mode = MODE.IDLE;
+      return;
+    }
+
+    // shell / inner：拖动器材（抬手小位移 → 切换透明）
+    const dev = findDeviceById(hit.object.userData.deviceId);
+    if (dev) {
+      const p = localPointOnTable(e);
+      pointerState.mode = MODE.DRAG_DEVICE;
+      pointerState.dev = dev;
+      if (p) pointerState.dragOffset.copy(dev.group.position).sub(p);
+      select(dev, 'device');
+    }
+    return;
+  }
+
+  // 空白区域：旋转整个台面
+  pointerState.mode = MODE.ROTATE_TABLE;
+  select(null);
+});
+
+canvas.addEventListener('pointermove', (e) => {
+  const dx = e.clientX - pointerState.lastX;
+  const dy = e.clientY - pointerState.lastY;
+  pointerState.lastX = e.clientX;
+  pointerState.lastY = e.clientY;
+  pointerState.moved += Math.abs(dx) + Math.abs(dy);
+
+  if (pointerState.mode === MODE.ROTATE_TABLE) {
+    tableGroup.rotation.y += dx * 0.0062;
+    tableGroup.rotation.x = THREE.MathUtils.clamp(tableGroup.rotation.x + dy * 0.0038, -0.38, 0.38);
+    return;
+  }
+
+  if (pointerState.mode === MODE.ROTATE_DEVICE && pointerState.dev) {
+    pointerState.dev.group.rotation.y += dx * 0.011;
+    return;
+  }
+
+  if (pointerState.mode === MODE.DRAG_DEVICE && pointerState.dev) {
+    const p = localPointOnTable(e);
+    if (!p) return;
+    const g = pointerState.dev.group;
+    // 贴面拖拽：只改 x/z，永不抬离桌面
+    g.position.x = THREE.MathUtils.clamp(p.x + pointerState.dragOffset.x, -5.6, 5.6);
+    g.position.z = THREE.MathUtils.clamp(p.z + pointerState.dragOffset.z, -3.9, 3.9);
+    return;
+  }
+
+  if (pointerState.mode === MODE.PULL_WIRE && pointerState.wire) {
+    const p = localPointOnTable(e);
+    if (!p) return;
+    const wire = pointerState.wire;
+
+    // ===== 磁吸：距离足够近就自动吸附 =====
+    setNdc(e);
+    raycaster.setFromCamera(ndc, camera);
+    const snap = findSnapTerminal(raycaster.ray, {
+      excludeTerm: wire.endA ? { dev: wire.endA.dev, term: wire.endA.term } : null
+    });
+    if (snap) {
+      pointerState.snapTarget = snap;
+      wire.getPinB = () => terminalLocalPos(snap.dev, snap.term);
+    } else {
+      pointerState.snapTarget = null;
+      const cursor = p.clone();
+      cursor.y = TABLE_Y + 0.02;
+      wire.getPinB = () => cursor.clone();
+    }
+    return;
+  }
+});
+
+canvas.addEventListener('pointerup', (e) => {
+  const isClick = pointerState.moved < CLICK_THRESHOLD;
+
+  if (pointerState.mode === MODE.PULL_WIRE && pointerState.wire) {
+    const wire = pointerState.wire;
+    // 抬手位置再做一次磁吸判定（防止最后一次 move 未覆盖）
+    setNdc(e);
+    raycaster.setFromCamera(ndc, camera);
+    const snap = findSnapTerminal(raycaster.ray, {
+      excludeTerm: wire.endA ? { dev: wire.endA.dev, term: wire.endA.term } : null
+    }) || pointerState.snapTarget;
+
+    if (snap) {
+      const { dev, term } = snap;
+      wire.endB = { dev, term, deviceId: dev.id, termId: term.id };
+      wire.getPinB = () => terminalLocalPos(dev, term);
+      wire.completed = true;
+      toast(`导线已连接：${wire.endA.dev.name} → ${dev.name}`);
+    } else {
+      // 未吸附到接线柱 → 丢弃这根导线
+      wireSystem.remove(wire);
+      select(null);
+    }
+    applyCircuitVisuals();
+    pointerState.mode = MODE.IDLE;
+    return;
+  }
+
+  if (isClick && pointerState.mode === MODE.DRAG_DEVICE) {
+    if (pointerState.pendingSwitch && pointerState.pendingSwitch === pointerState.dev) {
+      // 单击闸刀 → 开合
+      const dev = pointerState.pendingSwitch;
+      setSwitchAngle(dev, !dev.state.closed);
+      toast(dev.state.closed ? '开关已闭合' : '开关已断开');
+      applyCircuitVisuals();
+    } else if (pointerState.dev) {
+      // 单击外壳 → 透明切换
+      const dev = pointerState.dev;
+      setDeviceTransparent(dev, !dev.transparent);
+      applySelection();
+    }
+  }
+
+  pointerState.mode = MODE.IDLE;
+  pointerState.pendingSwitch = null;
+});
+
+// 滚轮：只缩放相机距离，不改变台面局部坐标系
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  camSpherical.radius = THREE.MathUtils.clamp(camSpherical.radius + e.deltaY * 0.012, 6.5, 22);
+  applyCamera();
+}, { passive: false });
+
+// 键盘：删除选中
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    deleteSelection();
+  }
+});
+
+function deleteSelection() {
+  if (!selected) return;
+  if (selected.kind === 'device') {
+    const dev = selected.ref;
+    toast(`已删除「${dev.name}」及其连线`);
+    disposeDevice(dev);
+    select(null);
+  } else if (selected.kind === 'wire') {
+    wireSystem.remove(selected.ref);
+    toast('已删除导线');
+    select(null);
+  }
+  applyCircuitVisuals();
+}
+
+// =====================================================================
+// [6] UI 面板 / 默认场景 / 导出
+// =====================================================================
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove('show'), 1900);
+}
+
+/** 摆放一台新器材（放在台面中心附近，自动错开） */
+function addDeviceAt(type) {
+  const n = devices.length;
+  const x = ((n % 4) - 1.5) * 2.2;
+  const z = (Math.floor(n / 4) - 0.5) * 2.0;
+  const dev = createDevice(type, x, z);
+  select(dev, 'device');
+  applyCircuitVisuals();
+  toast(`已放置：${dev.name}`);
+  return dev;
+}
+
+/** 重置场景：恢复默认器材布局 */
+function resetScene() {
+  for (const d of [...devices]) disposeDevice(d);
+  wireSystem.clear();
+  select(null);
+  tableGroup.rotation.set(0, 0, 0);
+
+  createDevice('battery', -3.6, -0.6);
+  createDevice('switch', -1.2, -1.7);
+  createDevice('ammeter', 1.3, -1.5);
+  createDevice('bulb', 3.6, -0.4);
+  createDevice('resistor', -1.6, 1.6);
+  createDevice('voltmeter', 1.8, 1.7);
+
+  applyCircuitVisuals();
+  toast('场景已重置');
+}
+
+function clearWires() {
+  wireSystem.clear();
+  applyCircuitVisuals();
+  toast('已清除全部导线');
+}
+
+/** 导出电路拓扑 JSON */
+function exportTopology() {
+  const r = circuitResult || evalCircuit();
+  const data = {
+    meta: {
+      name: '初中电学实验沙盒 · 电路拓扑',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      note: '逻辑连通仿真（非 SPICE 求解）'
+    },
+    devices: devices.map((d) => ({
+      id: d.id,
+      type: d.type,
+      name: d.name,
+      position: { x: +d.group.position.x.toFixed(3), y: 0, z: +d.group.position.z.toFixed(3) },
+      rotationY: +d.group.rotation.y.toFixed(3),
+      transparentShell: d.transparent,
+      state: d.type === 'switch' ? { closed: d.state.closed } : {}
+    })),
+    wires: wireSystem.wires.map((w) => ({
+      id: w.id,
+      completed: w.completed,
+      from: w.endA ? { device: w.endA.dev.id, terminal: w.endA.term.id } : null,
+      to: w.endB ? { device: w.endB.dev.id, terminal: w.endB.term.id } : null
+    })),
+    topology: r.topo ? { nodes: r.topo.nodes, edges: r.topo.edges.map((e) => ({ a: e.a, b: e.b, kind: e.kind })) } : null,
+    circuit: {
+      hasBattery: r.hasBattery,
+      closed: r.closed,
+      short: r.short
+    }
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+  a.href = URL.createObjectURL(blob);
+  a.download = `电路拓扑_${ts}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast('电路拓扑 JSON 已导出');
+}
+
+// 工具栏
+document.getElementById('btnReset').addEventListener('click', resetScene);
+document.getElementById('btnClearWires').addEventListener('click', clearWires);
+document.getElementById('btnExport').addEventListener('click', exportTopology);
+document.getElementById('btnDel').addEventListener('click', deleteSelection);
+document.getElementById('btnRotL').addEventListener('click', () => {
+  if (selected && selected.kind === 'device') {
+    selected.ref.group.rotation.y -= Math.PI / 12;
+  }
+});
+document.getElementById('btnRotR').addEventListener('click', () => {
+  if (selected && selected.kind === 'device') {
+    selected.ref.group.rotation.y += Math.PI / 12;
+  }
+});
+document.querySelectorAll('[data-add]').forEach((btn) => {
+  btn.addEventListener('click', () => addDeviceAt(btn.dataset.add));
+});
+
+// =====================================================================
+// [7] 主循环：Verlet 步进 → 器材动画 → 渲染
+// =====================================================================
+
+const clock = new THREE.Clock();
+
+function updateDeviceAnimations(dt) {
+  for (const dev of devices) {
+    // 开关闸刀缓动
+    if (dev.bladePivot) {
+      const target = dev.state.bladeTarget ?? 0;
+      dev.bladePivot.rotation.z += (target - dev.bladePivot.rotation.z) * Math.min(1, dt * 10);
+    }
+    // 表针带阻尼偏转
+    if (dev.needleGroup) {
+      const cur = dev.state.needleAngle ?? 0;
+      const tgt = dev.state.needleTarget ?? 0;
+      const next = cur + (tgt - cur) * Math.min(1, dt * 5.2);
+      dev.state.needleAngle = next;
+      // 指针绕表盘法线（倾斜后局部 Y 轴）偏转：0 → 零位，1 → 满偏
+      dev.needleGroup.rotation.y = -0.55 + next;
+    }
+    // 短路时电源外壳红色脉冲告警
+    if (dev.type === 'battery' && circuitResult && circuitResult.short) {
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.012);
+      for (const m of dev.shellMeshes) {
+        if (m.material && m.material.emissive && !dev.transparent) {
+          m.material.emissive.setRGB(0.42 * pulse, 0.03, 0.03);
+        }
+      }
+    } else if (dev.type === 'battery' && !dev.transparent) {
+      for (const m of dev.shellMeshes) {
+        if (m.material && m.material.emissive) m.material.emissive.setRGB(0, 0, 0);
+      }
+    }
+  }
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.05, clock.getDelta());
+
+  tableGroup.updateMatrixWorld(true);
+
+  // Verlet 软导线物理（固定步长更稳）
+  wireSystem.step(1 / 60);
+
+  updateDeviceAnimations(dt);
+  renderer.render(scene, camera);
+}
+
+function onResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+window.addEventListener('resize', onResize);
+
+// 启动：默认场景 + 首次电路评估
+resetScene();
+animate();
+
+// 供 QA / 控制台调试
+window.__lab = {
+  devices, wireSystem, tableGroup, camera,
+  createDevice, disposeDevice, setDeviceTransparent,
+  evalCircuit, buildTopology, findSnapTerminal,
+  resetScene, clearWires, exportTopology,
+  /** 把某接线柱投影到屏幕像素坐标（QA 自动化用） */
+  projectTerminal(devId, termId) {
+    const dev = devices.find((d) => d.id === devId);
+    const term = dev && dev.terminals.find((t) => t.id === termId);
+    if (!dev || !term) return null;
+    const v = terminalLocalPos(dev, term).applyMatrix4(tableGroup.matrixWorld).project(camera);
+    return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight };
+  },
+  /** 器材中心投影到屏幕（QA 点击外壳用） */
+  projectDeviceCenter(devId) {
+    const dev = devices.find((d) => d.id === devId);
+    if (!dev) return null;
+    const v = dev.group.position.clone().add(new THREE.Vector3(0, 0.35, 0))
+      .applyMatrix4(tableGroup.matrixWorld).project(camera);
+    return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight };
+  },
+  /** 开关闸刀刀身中点投影到屏幕（QA 点击开合用） */
+  projectBlade(devId) {
+    const dev = devices.find((d) => d.id === devId);
+    if (!dev || !dev.bladePivot) return null;
+    dev.bladePivot.updateMatrixWorld(true);
+    const v = new THREE.Vector3(0.43, 0, 0).applyMatrix4(dev.bladePivot.matrixWorld).project(camera);
+    return { x: (v.x * 0.5 + 0.5) * window.innerWidth, y: (-v.y * 0.5 + 0.5) * window.innerHeight };
+  },
+  deviceList() {
+    return devices.map((d) => ({ id: d.id, type: d.type, name: d.name, x: d.group.position.x, z: d.group.position.z }));
+  }
+};
+
+</script>
+</body>
+</html>

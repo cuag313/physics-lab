@@ -1,11 +1,19 @@
 import { InstrumentBase } from '../InstrumentBase'
 
 /**
- * 电压表
- * 端口：正(+)、负(-)
- * 状态：读数（由电路引擎更新）
+ * 电压表（学生用 J0408 型）
+ * 接线柱：neg(-, 黑)、mid(3V, 红)、full(15V, 红) —— 导线接哪个柱就是哪个量程
+ * 表盘双排刻度：上排 0~15V，下排 0~3V；指针偏转角按当前量程换算
+ * 电压带符号：正向偏转 / 反偏撞 -5° 限位（接反）/ 零电压回零
  * 注意：理想电压表内阻→∞
  */
+
+/** 量程（由接线柱决定） */
+const RANGES = { '3': 3, '15': 15 }
+const FULL_SWEEP = Math.PI * 1.5
+const REVERSE_STOP = -5 * Math.PI / 180
+const DIVISIONS = 30
+
 export class Voltmeter extends InstrumentBase {
   constructor(x = 0, y = 0) {
     super({
@@ -17,25 +25,48 @@ export class Voltmeter extends InstrumentBase {
     })
 
     this.params = {
-      range: { value: 15, min: 0.1, max: 500, step: 0.1, label: '量程', unit: 'V' },
+      // 量程由接线柱决定（mid→3V，full→15V），不再是滑块
+      selectedRange: { value: '3', label: '量程', unit: 'V' },
       internalResistance: { value: 10000, min: 100, max: 1e6, step: 100, label: '内阻', unit: 'Ω' }
     }
 
     this.state = {
-      reading: 0,
-      needleAngle: 0
+      reading: 0,    // 当前读数（带符号）
+      angle: 0,      // 指针角度（rad，零位为 0，满偏 FULL_SWEEP）
+      reverse: false // 正负接线柱接反
     }
 
-    this.addPort({ id: 'pos', type: 'electrical', dx: 0.4, dy: 0.3, label: '+', color: '#f44' })
-    this.addPort({ id: 'neg', type: 'electrical', dx: -0.4, dy: 0.3, label: '−', color: '#44f' })
+    this.addPort({ id: 'neg', type: 'electrical', dx: -0.38, dy: 0.3, label: '−', color: '#1c1f24' })
+    this.addPort({ id: 'mid', type: 'electrical', dx: 0, dy: 0.32, label: '3', color: '#e53935' })
+    this.addPort({ id: 'full', type: 'electrical', dx: 0.38, dy: 0.3, label: '15', color: '#e53935' })
   }
 
   get resistance() { return this.getParam('internalResistance') }
 
+  /** 当前量程（V） */
+  get range() { return RANGES[this.getParam('selectedRange')] ?? RANGES['3'] }
+
+  /** 按实际接线的量程柱决定 selectedRange：full(15V) 优先，其次 mid(3V) */
+  syncRangeFromPorts() {
+    const full = this.getPort('full')
+    const mid = this.getPort('mid')
+    if (full?.isConnected) this.params.selectedRange.value = '15'
+    else if (mid?.isConnected) this.params.selectedRange.value = '3'
+  }
+
   update(dt) {
-    const target = (Math.abs(this.voltage) / this.getParam('range')) * Math.PI * 0.75
-    this.state.needleAngle += (target - this.state.needleAngle) * Math.min(1, dt * 8)
-    this.state.reading = Math.abs(this.voltage)
+    this.syncRangeFromPorts()
+    const V = this.voltage // 带符号：正= + 柱电位更高
+    if (V < -1e-6) {
+      // 反偏：直接撞到 -5° 限位，不平滑
+      this.state.reverse = true
+      this.state.angle = REVERSE_STOP
+    } else {
+      this.state.reverse = false
+      const target = Math.min(V / this.range, 1) * FULL_SWEEP
+      this.state.angle += (target - this.state.angle) * Math.min(1, dt * 6)
+    }
+    this.state.reading = V
   }
 
   render(ctx, renderer) {
@@ -53,44 +84,44 @@ export class Voltmeter extends InstrumentBase {
     ctx.lineWidth = this.selected ? 2.5 : 2
     ctx.stroke()
 
-    // 刻度弧
+    // 刻度弧（270°：左下 135° 起，顺时针到右下 45°）
     const startAngle = Math.PI * 0.75
-    const endAngle = Math.PI * 0.25
-    const range = this.getParam('range')
+    const sweep = FULL_SWEEP
 
     ctx.strokeStyle = '#666'
     ctx.lineWidth = 1
-    const ticks = 10
-    for (let i = 0; i <= ticks; i++) {
-      const angle = startAngle + (endAngle - startAngle + Math.PI * 2) % (Math.PI * 2) * (i / ticks)
-      const inner = r * 0.78
-      const outer = r * 0.9
+    for (let i = 0; i <= DIVISIONS; i++) {
+      const angle = startAngle + sweep * (i / DIVISIONS)
+      const major = i % 10 === 0
+      const inner = major ? r * 0.76 : r * 0.84
+      const outer = r * 0.92
       ctx.beginPath()
       ctx.moveTo(sx + Math.cos(angle) * inner, sy + Math.sin(angle) * inner)
       ctx.lineTo(sx + Math.cos(angle) * outer, sy + Math.sin(angle) * outer)
       ctx.stroke()
-
-      if (i % 2 === 0) {
-        ctx.fillStyle = '#999'
-        ctx.font = `${Math.max(8, r * 0.18)}px monospace`
-        ctx.textAlign = 'center'
-        ctx.textBaseline = 'middle'
-        ctx.fillText((range * i / ticks).toFixed(0), sx + Math.cos(angle) * r * 0.65, sy + Math.sin(angle) * r * 0.65)
-      }
     }
 
-    // 指针（直接从电压计算角度，不依赖update）
-    const targetAngle = (Math.abs(this.voltage) / range) * Math.PI * 0.75
-    this.state.needleAngle += (targetAngle - this.state.needleAngle) * 0.15
-    this.state.reading = Math.abs(this.voltage)
-    const needleAngle = startAngle + (endAngle - startAngle + Math.PI * 2) % (Math.PI * 2) *
-      Math.min(1, this.state.needleAngle / (Math.PI * 0.75))
+    // 双排刻度数字：上排 0~15V（外圈），下排 0~3V（内圈）
+    const drawRow = (labels, radius, digits, color) => {
+      ctx.fillStyle = color
+      ctx.font = `${Math.max(8, r * 0.16)}px monospace`
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      for (let k = 0; k < labels.length; k++) {
+        const angle = startAngle + sweep * (k / (labels.length - 1))
+        ctx.fillText(labels[k].toFixed(digits), sx + Math.cos(angle) * radius, sy + Math.sin(angle) * radius)
+      }
+    }
+    drawRow([0, 5, 10, 15], r * 0.66, 0, '#bbb')
+    drawRow([0, 1, 2, 3], r * 0.5, 0, '#888')
 
+    // 指针（角度直接来自 update 的带符号阻尼动画）
+    const needleAngle = startAngle + this.state.angle
     ctx.strokeStyle = '#4488ff'
     ctx.lineWidth = 2
     ctx.beginPath()
     ctx.moveTo(sx, sy)
-    ctx.lineTo(sx + Math.cos(needleAngle) * r * 0.7, sy + Math.sin(needleAngle) * r * 0.7)
+    ctx.lineTo(sx + Math.cos(needleAngle) * r * 0.72, sy + Math.sin(needleAngle) * r * 0.72)
     ctx.stroke()
 
     ctx.fillStyle = '#4488ff'
@@ -105,28 +136,42 @@ export class Voltmeter extends InstrumentBase {
     ctx.textBaseline = 'middle'
     ctx.fillText('V', sx, sy + r * 0.35)
 
-    // 读数
-    ctx.fillStyle = '#4CAF50'
+    // 反偏：表盘边缘闪红 + 提示
+    if (this.state.reverse) {
+      const flash = 0.55 + 0.45 * Math.sin(performance.now() / 140)
+      ctx.strokeStyle = `rgba(229,57,53,${flash.toFixed(2)})`
+      ctx.lineWidth = 3.5
+      ctx.beginPath()
+      ctx.arc(sx, sy, r, 0, Math.PI * 2)
+      ctx.stroke()
+    }
+
+    // 读数（带符号）
+    ctx.fillStyle = this.state.reverse ? '#e53935' : '#4CAF50'
     ctx.font = 'bold 12px monospace'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
     ctx.fillText(`${this.state.reading.toFixed(2)} V`, sx, sy + r + 6)
+    if (this.state.reverse) {
+      ctx.fillStyle = '#e53935'
+      ctx.font = 'bold 11px sans-serif'
+      ctx.fillText('正负接线柱接反', sx, sy + r + 22)
+    }
 
-    // 引线
+    // 三柱引线（neg 黑 / mid 红 / full 红）
+    const lead = (port, fromX) => {
+      const p = port.getWorldPos(this)
+      const [px, py] = renderer.worldToScreen(p.x, p.y)
+      ctx.beginPath()
+      ctx.moveTo(fromX, sy + r)
+      ctx.lineTo(px, py)
+      ctx.stroke()
+    }
     ctx.strokeStyle = '#aaa'
     ctx.lineWidth = 2
-    const lp = this.ports[0].getWorldPos(this)
-    const rp = this.ports[1].getWorldPos(this)
-    const [lpx, lpy] = renderer.worldToScreen(lp.x, lp.y)
-    const [rpx, rpy] = renderer.worldToScreen(rp.x, rp.y)
-    ctx.beginPath()
-    ctx.moveTo(sx + sw * 0.2, sy + r)
-    ctx.lineTo(lpx, lpy)
-    ctx.stroke()
-    ctx.beginPath()
-    ctx.moveTo(sx - sw * 0.2, sy + r)
-    ctx.lineTo(rpx, rpy)
-    ctx.stroke()
+    lead(this.ports[0], sx - sw * 0.22) // neg
+    lead(this.ports[1], sx)             // mid
+    lead(this.ports[2], sx + sw * 0.22) // full
 
     this.renderPorts(ctx, renderer)
     this.renderSelection(ctx, renderer)

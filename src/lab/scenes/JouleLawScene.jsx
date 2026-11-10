@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
+import { symBattery, symSwitch, symRheostat, symMeter, symHalf, SYM_INK } from '../render/symbols.js'
 
 /**
  * JouleLawScene — 探究焦耳定律 Q = I²Rt
@@ -172,12 +173,19 @@ export default function JouleLawScene() {
       drawBeakerWithResistor(ctx, beakerXs[i], beakerY, beakerW, beakerH, s.temps[i], Rval, on)
     }
 
-    // ─── 矩形回路导线 ───
+    // ─── 矩形回路导线（标准电路符号：断开留缺口）───
+    const scale = 1
+    const lw = 2 * scale + 0.6
+    const hBat = symHalf('battery', scale, 3)
+    const hSw = symHalf('switch', scale)
+    const hAm = symHalf('meter', scale)
+    const hRheo = symHalf('rheostat', scale)
+    const ink = on ? SYM_INK : '#7c8a93'
     // 下边：左→电源→开关→右
-    ctx.strokeStyle = wc; ctx.lineWidth = 2.5
-    ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(battX - 30, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(battX + 30, circBottom); ctx.lineTo(swX - 18, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(swX + 18, circBottom); ctx.lineTo(circR, circBottom); ctx.stroke()
+    ctx.strokeStyle = wc; ctx.lineWidth = lw
+    ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(battX - hBat, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(battX + hBat, circBottom); ctx.lineTo(swX - hSw, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(swX + hSw, circBottom); ctx.lineTo(circR, circBottom); ctx.stroke()
     // 右边：下→上
     ctx.beginPath(); ctx.moveTo(circR, circBottom); ctx.lineTo(circR, topWireY); ctx.stroke()
     // 上边：右→烧杯→安培表→变阻器→左
@@ -197,45 +205,36 @@ export default function JouleLawScene() {
       }
     }
     const firstBeakerLeftPinX = beakerXs[0] + 12
-    ctx.beginPath(); ctx.moveTo(firstBeakerLeftPinX, topWireY); ctx.lineTo(ammX + 16, topWireY); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(ammX - 16, topWireY); ctx.lineTo(rheoX + 35, topWireY); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(rheoX - 35, topWireY); ctx.lineTo(circL, topWireY); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(firstBeakerLeftPinX, topWireY); ctx.lineTo(ammX + hAm, topWireY); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(ammX - hAm, topWireY); ctx.lineTo(rheoX + hRheo, topWireY); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(rheoX - hRheo, topWireY); ctx.lineTo(circL, topWireY); ctx.stroke()
     // 左边：上→下
     ctx.beginPath(); ctx.moveTo(circL, topWireY); ctx.lineTo(circL, circBottom); ctx.stroke()
 
-    // ─── 元件绘制 ───
+    // ─── 元件绘制（标准电路符号）───
     // 下边：电源组 + 开关
-    drawBatteryGroup(ctx, battX, circBottom)
-    drawSwitch(ctx, swX, circBottom, on, () => {
-      S.current.switchClosed = !S.current.switchClosed
-      forceUpdate(n => n + 1)
+    symBattery(ctx, battX, circBottom, { n: 3, scale, ink, flip: true })
+    ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText('电池组 6V', battX, circBottom + 18)
+    ctx.textBaseline = 'alphabetic'
+    symSwitch(ctx, swX, circBottom, { closed: on, scale, ink })
+    canvasRef.current._clickAreas.push({
+      x: swX - hSw - 10, y: circBottom - 22, w: (hSw + 10) * 2, h: 44,
+      onClick: () => {
+        S.current.switchClosed = !S.current.switchClosed
+        forceUpdate(n => n + 1)
+      }
     })
 
-    // 上边：变阻器（水平，可拖拽）
-    const rheoW = 70, rheoH = 22
-    ctx.fillStyle = '#EFEBE9'; ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.roundRect(rheoX - rheoW / 2, topWireY - rheoH / 2, rheoW, rheoH, 4); ctx.fill(); ctx.stroke()
-    ctx.strokeStyle = '#5D4037'; ctx.lineWidth = 1.5; ctx.beginPath()
-    for (let i = 0; i < 6; i++) {
-      const px = rheoX - rheoW / 2 + 8 + i * (rheoW - 16) / 5
-      const py = topWireY + (i % 2 === 0 ? -5 : 5)
-      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
-    }
-    ctx.stroke()
-    const sliderX = rheoX - rheoW / 2 + 8 + (s.sliderR / 50) * (rheoW - 16)
-    ctx.fillStyle = '#E65100'; ctx.beginPath()
-    ctx.moveTo(sliderX, topWireY - rheoH / 2 - 8); ctx.lineTo(sliderX - 4, topWireY - rheoH / 2 - 2); ctx.lineTo(sliderX + 4, topWireY - rheoH / 2 - 2)
-    ctx.closePath(); ctx.fill()
-    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#666'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.arc(rheoX - rheoW / 2, topWireY, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    ctx.beginPath(); ctx.arc(rheoX + rheoW / 2, topWireY, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    // 上边：滑动变阻器（可点选滑片位置）
+    symRheostat(ctx, rheoX, topWireY, { scale, ink, ratio: s.sliderR / 50 })
     ctx.fillStyle = '#E65100'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText(`${s.sliderR}Ω`, rheoX, topWireY + rheoH / 2 + 3)
+    ctx.fillText(`${s.sliderR}Ω`, rheoX, topWireY + 16)
     ctx.textBaseline = 'alphabetic'
     canvasRef.current._clickAreas.push({
-      x: rheoX - rheoW / 2 - 5, y: topWireY - rheoH / 2 - 12, w: rheoW + 10, h: rheoH + 24,
-      onClick: (mx, my) => {
-        const r = Math.max(0, Math.min(1, (mx - (rheoX - rheoW / 2 + 8)) / (rheoW - 16)))
+      x: rheoX - hRheo - 10, y: topWireY - 36, w: (hRheo + 10) * 2, h: 56,
+      onClick: (mx) => {
+        const r = Math.max(0, Math.min(1, (mx - (rheoX - hRheo)) / (hRheo * 2)))
         S.current.sliderR = Math.round(r * 50)
         forceUpdate(n => n + 1)
       }
@@ -243,12 +242,9 @@ export default function JouleLawScene() {
 
     // 上边：安培表
     const I = s.step === 2 ? s.U / (5 + 20 + s.sliderR) : s.U / (10 + s.sliderR)
-    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#E53935'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.arc(ammX, topWireY, 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#E53935'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText('A', ammX, topWireY)
-    ctx.fillStyle = '#333'; ctx.font = 'bold 9px monospace'; ctx.textBaseline = 'top'
-    ctx.fillText(on ? I.toFixed(2) + 'A' : '', ammX + 20, topWireY)
+    symMeter(ctx, ammX, topWireY, { kind: 'A', scale, ink })
+    ctx.fillStyle = '#333'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText(on ? I.toFixed(2) + 'A' : '', ammX + hAm + 6, topWireY - 4)
     ctx.textBaseline = 'alphabetic'
 
     // 计时
@@ -302,53 +298,6 @@ export default function JouleLawScene() {
     // 标签
     ctx.fillStyle = '#444'; ctx.font = 'bold 10px sans-serif'; ctx.textBaseline = 'top'
     ctx.fillText(`R=${Rval}Ω`, bx + bw / 2, by + bh + 5)
-    ctx.textBaseline = 'alphabetic'
-  }
-
-  function drawBatteryGroup(ctx, x, y) {
-    ctx.lineWidth = 2; ctx.strokeStyle = '#333'
-    // 断开下边导线
-    ctx.beginPath(); ctx.moveTo(x - 40, y); ctx.lineTo(x - 30, y); ctx.stroke()
-    // 3节电池
-    for (let i = 0; i < 3; i++) {
-      const cx = x - 20 + i * 20
-      ctx.lineWidth = 2.5
-      ctx.beginPath(); ctx.moveTo(cx - 3, y - 14); ctx.lineTo(cx - 3, y + 14); ctx.stroke()
-      ctx.lineWidth = 5
-      ctx.beginPath(); ctx.moveTo(cx + 3, y - 7); ctx.lineTo(cx + 3, y + 7); ctx.stroke()
-      ctx.lineWidth = 2
-      if (i < 2) { ctx.beginPath(); ctx.moveTo(cx + 3, y); ctx.lineTo(cx + 17, y); ctx.stroke() }
-    }
-    ctx.beginPath(); ctx.moveTo(x + 30, y); ctx.lineTo(x + 40, y); ctx.stroke()
-    ctx.fillStyle = '#E53935'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-    ctx.fillText('+', x - 36, y - 16)
-    ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'
-    ctx.fillText('−', x + 38, y - 8)
-    ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textBaseline = 'top'
-    ctx.fillText('电池组 6V', x, y + 18)
-    ctx.textBaseline = 'alphabetic'
-  }
-
-  function drawSwitch(ctx, x, y, on, onClick) {
-    ctx.fillStyle = '#666'
-    ctx.beginPath(); ctx.arc(x - 18, y, 4, 0, Math.PI * 2); ctx.fill()
-    ctx.beginPath(); ctx.arc(x + 18, y, 4, 0, Math.PI * 2); ctx.fill()
-    // 断开下边导线
-    ctx.strokeStyle = '#999'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.moveTo(x - 22, y); ctx.lineTo(x - 18, y); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(x + 18, y); ctx.lineTo(x + 22, y); ctx.stroke()
-    if (on) {
-      ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 3; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(x - 18, y); ctx.lineTo(x + 18, y); ctx.stroke()
-    } else {
-      ctx.strokeStyle = '#F44336'; ctx.lineWidth = 3; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(x - 18, y); ctx.lineTo(x + 8, y - 18); ctx.stroke()
-    }
-    ctx.lineCap = 'butt'
-    ctx.fillStyle = on ? '#4CAF50' : '#F44336'
-    ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText(on ? 'ON' : 'OFF', x, y + 8)
-    canvasRef.current._clickAreas.push({ x: x - 25, y: y - 25, w: 50, h: 50, onClick })
     ctx.textBaseline = 'alphabetic'
   }
 

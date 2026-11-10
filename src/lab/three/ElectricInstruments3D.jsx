@@ -34,7 +34,7 @@ function Metal({ children, ...props }) {
 }
 
 /* ---------- 端子（接线柱） ---------- */
-export function Terminal({ position = [0, 0, 0], color = '#d4a574', height = 0.12 }) {
+export function Terminal({ position = [0, 0, 0], color = '#d4a574', height = 0.12, capColor = '#c9a227' }) {
   return (
     <group position={position}>
       <mesh castShadow position={[0, height / 2, 0]}>
@@ -43,7 +43,7 @@ export function Terminal({ position = [0, 0, 0], color = '#d4a574', height = 0.1
       </mesh>
       <mesh castShadow position={[0, height + 0.02, 0]}>
         <cylinderGeometry args={[0.07, 0.07, 0.04, 20]} />
-        <meshStandardMaterial {...MAT.brass} />
+        <meshStandardMaterial {...MAT.brass} color={capColor} />
       </mesh>
     </group>
   )

@@ -165,19 +165,26 @@ export default function DataPanel({ instruments, circuitValid, selectedInstrumen
         <div style={styles.section}>
           <div style={styles.sectionTitle}>仪表读数</div>
           {meters.map(meter => (
-            <div key={meter.id} style={styles.reading}>
-              <span style={styles.meterLabel}>
-                {meter.type === 'ammeter' ? 'Ⓐ' : 'Ⓥ'} {meter.displayName}
-              </span>
-              <span style={{
-                ...styles.meterValue,
-                color: meter.state.reading > 0 ? '#4CAF50' : '#484f58',
-              }}>
-                {meter.type === 'ammeter'
-                  ? `${meter.state.reading.toFixed(3)} A`
-                  : `${meter.state.reading.toFixed(2)} V`
-                }
-              </span>
+            <div key={meter.id}>
+              <div style={styles.reading}>
+                <span style={styles.meterLabel}>
+                  {meter.type === 'ammeter' ? 'Ⓐ' : 'Ⓥ'} {meter.displayName}
+                </span>
+                <span style={{
+                  ...styles.meterValue,
+                  color: meter.state.reverse ? '#f44336' : '#4CAF50',
+                }}>
+                  {meter.type === 'ammeter'
+                    ? `${meter.state.reading.toFixed(3)} A`
+                    : `${meter.state.reading.toFixed(2)} V`
+                  }
+                </span>
+              </div>
+              {meter.state.reverse && (
+                <div style={{ color: '#f44336', fontSize: 11, fontWeight: 600, marginTop: 2 }}>
+                  ⚠ 正负接线柱接反
+                </div>
+              )}
             </div>
           ))}
         </div>

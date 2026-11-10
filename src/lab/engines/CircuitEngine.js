@@ -95,6 +95,13 @@ export class CircuitEngine {
       )
     }
 
+    // 滑动变阻器金属杆：滑片 P 与上端 C/D（tl/tr）等电位（电阻=0）
+    for (const inst of electricInstruments) {
+      if (inst.type !== 'rheostat') continue
+      const rodKeys = ['wiper', 'tl', 'tr'].map((id) => portKey(inst.id, id))
+      for (let i = 1; i < rodKeys.length; i++) union(rodKeys[0], rodKeys[i])
+    }
+
     // 分配节点编号
     const nodeMap = new Map() // portKey → nodeId
     let nodeId = 0
@@ -163,47 +170,43 @@ export class CircuitEngine {
           break
 
         case 'ammeter':
-          components.push({
-            type: 'resistor',
-            instrument: inst,
-            node1: nodeMap.get(portKey(inst.id, 'pos')),
-            node2: nodeMap.get(portKey(inst.id, 'neg')),
-            resistance: inst.resistance // 内阻≈0
-          })
-          break
-
         case 'voltmeter':
           components.push({
             type: 'resistor',
             instrument: inst,
-            node1: nodeMap.get(portKey(inst.id, 'pos')),
+            // 量程柱决定接入点：导线接哪个柱就是哪个量程（full 优先，其次 mid）
+            node1: nodeMap.get(portKey(inst.id, inst.getPort('full')?.isConnected ? 'full' : 'mid')),
             node2: nodeMap.get(portKey(inst.id, 'neg')),
-            resistance: inst.resistance // 内阻≈∞
+            resistance: inst.resistance // 电流表内阻≈0，电压表内阻≈∞
           })
           break
 
         case 'rheostat': {
-          const pos = inst.getParam('sliderPos')
-          const total = inst.getParam('totalResistance')
-          const nodeA = nodeMap.get(portKey(inst.id, 'left'))
-          const nodeB = nodeMap.get(portKey(inst.id, 'right'))
-          const nodeP = nodeMap.get(portKey(inst.id, 'wiper'))
-
-          // A-P段电阻（最小0.01Ω避免短路）
+          // 按实际接入的两个接线柱注入单一等效电阻（不把左右两段同时注入）
+          const conn = inst.getEffectiveConnection()
+          if (conn.mode === 'open') {
+            inst.voltage = 0
+            inst.current = 0
+            break
+          }
+          const nOf = (id) => nodeMap.get(portKey(inst.id, id))
+          const rodWired = ['wiper', 'tl', 'tr'].filter((id) => inst.getPort(id)?.isConnected)
+          let node1, node2
+          if (conn.mode === 'left-wire') {
+            node1 = nOf('left'); node2 = nOf(rodWired[0])
+          } else if (conn.mode === 'right-wire') {
+            node1 = nOf('right'); node2 = nOf(rodWired[0])
+          } else if (conn.mode === 'full-wire') {
+            node1 = nOf('left'); node2 = nOf('right')
+          } else {
+            // short：金属杆两柱，合并后为同一节点
+            node1 = nOf(rodWired[0]); node2 = nOf(rodWired[1] ?? rodWired[0])
+          }
           components.push({
             type: 'resistor',
             instrument: inst,
-            node1: nodeA,
-            node2: nodeP,
-            resistance: Math.max(0.01, total * pos)
-          })
-          // P-B段电阻
-          components.push({
-            type: 'resistor',
-            instrument: inst,
-            node1: nodeP,
-            node2: nodeB,
-            resistance: Math.max(0.01, total * (1 - pos))
+            node1, node2,
+            resistance: Math.max(0.01, conn.r_eff)
           })
           break
         }
@@ -306,8 +309,9 @@ export class CircuitEngine {
         const v = v1 - v2
         const i = v / comp.resistance
 
-        comp.instrument.voltage = Math.abs(v)
-        comp.instrument.current = Math.abs(i)
+        // 带符号：仪表据此判断正向偏转 / 反偏（接反）
+        comp.instrument.voltage = v
+        comp.instrument.current = i
 
         // 极性信息（用于电流表方向）
         comp.instrument._voltageSign = v

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
+import { symBattery, symSwitch, symRheostat, symMeter, symHalf, SYM_INK } from '../render/symbols.js'
 
 /**
  * ElectromagnetScene — 电磁铁磁性影响因素
@@ -144,15 +145,23 @@ export default function ElectromagnetScene() {
     const rheoX = circL + span * 0.80
 
     // 导线（左边含电流表、底边含电源/开关/变阻器、右边；顶边由线圈组成）
-    ctx.strokeStyle = wc; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
+    // 标准电路符号：导线断开留缺口，横平竖直
+    const scale = 1
+    const lw = 2 * scale + 0.6
+    const hBat = symHalf('battery', scale, 3)
+    const hSw = symHalf('switch', scale)
+    const hRheo = symHalf('rheostat', scale)
+    const hAm = symHalf('meter', scale)
+    const ink = on ? SYM_INK : '#7c8a93'
+    ctx.strokeStyle = wc; ctx.lineWidth = lw; ctx.lineCap = 'round'
     // 左边：上→电流表→下
-    ctx.beginPath(); ctx.moveTo(circL, circTop); ctx.lineTo(circL, ammY - 16); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(circL, ammY + 16); ctx.lineTo(circL, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(circL, circTop); ctx.lineTo(circL, ammY - hAm); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(circL, ammY + hAm); ctx.lineTo(circL, circBottom); ctx.stroke()
     // 底边：左→电源→开关→变阻器→右
-    ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(battX - 30, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(battX + 30, circBottom); ctx.lineTo(swX - 18, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(swX + 18, circBottom); ctx.lineTo(rheoX - 35, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(rheoX + 35, circBottom); ctx.lineTo(circR, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(battX - hBat, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(battX + hBat, circBottom); ctx.lineTo(swX - hSw, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(swX + hSw, circBottom); ctx.lineTo(rheoX - hRheo, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(rheoX + hRheo, circBottom); ctx.lineTo(circR, circBottom); ctx.stroke()
     // 右边：下→上（连接线圈右端）
     ctx.beginPath(); ctx.moveTo(circR, circBottom); ctx.lineTo(circR, circTop); ctx.stroke()
     ctx.lineCap = 'butt'
@@ -160,28 +169,45 @@ export default function ElectromagnetScene() {
     // 电流流动动画（沿闭合回路：电源→开关→变阻器→线圈→电流表→电源）
     if (on) {
       const path = [
-        { x: battX + 30, y: circBottom }, { x: swX, y: circBottom },
+        { x: battX + hBat, y: circBottom }, { x: swX, y: circBottom },
         { x: rheoX, y: circBottom }, { x: circR, y: circBottom },
         { x: circR, y: circTop }, { x: circL, y: circTop },
         { x: circL, y: ammY }, { x: circL, y: circBottom },
-        { x: battX - 30, y: circBottom },
+        { x: battX - hBat, y: circBottom },
       ]
       drawCurrentFlow(ctx, path)
     }
 
-    // 元件（全部串联回路）
-    drawBatteryGroup(ctx, battX, circBottom)
-    drawSwitch(ctx, swX, circBottom, on, () => {
-      S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1)
+    // 元件（全部串联回路，标准电路符号）
+    symBattery(ctx, battX, circBottom, { n: 3, scale, ink, flip: true })
+    ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText('电池组 6V', battX, circBottom + 18)
+    ctx.textBaseline = 'alphabetic'
+    symSwitch(ctx, swX, circBottom, { closed: on, scale, ink })
+    canvasRef.current._clickAreas.push({
+      x: swX - hSw - 10, y: circBottom - 22, w: (hSw + 10) * 2, h: 44,
+      onClick: () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) }
     })
 
-    // 滑动变阻器（可拖拽滑片）
-    drawRheostat(ctx, rheoX, circBottom, s.sliderR, (val) => {
-      S.current.sliderR = val; forceUpdate(n => n + 1)
+    // 滑动变阻器（点选滑片位置，箭头随 ratio 移动）
+    symRheostat(ctx, rheoX, circBottom, { scale, ink, ratio: s.sliderR / 50 })
+    ctx.fillStyle = '#E65100'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText(`${s.sliderR}Ω`, rheoX, circBottom + 16)
+    ctx.textBaseline = 'alphabetic'
+    canvasRef.current._clickAreas.push({
+      x: rheoX - hRheo - 10, y: circBottom - 36, w: (hRheo + 10) * 2, h: 56,
+      onClick: (mx) => {
+        const r = Math.max(0, Math.min(1, (mx - (rheoX - hRheo)) / (hRheo * 2)))
+        S.current.sliderR = Math.round(r * 50)
+        forceUpdate(n => n + 1)
+      }
     })
 
     // 电流表
-    drawAmmeter(ctx, circL, ammY, on ? I : 0)
+    symMeter(ctx, circL, ammY, { kind: 'A', scale, ink })
+    ctx.fillStyle = '#333'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText(on ? I.toFixed(2) + 'A' : '', circL + hAm + 6, ammY - 4)
+    ctx.textBaseline = 'alphabetic'
 
     // 电磁铁线圈 = 顶边负载（接入回路，电流流过线圈产生磁性）
     drawElectromagnet(ctx, (circL + circR) / 2, circTop, s.turns, magnetInfo(s), on, span)
@@ -340,101 +366,6 @@ export default function ElectromagnetScene() {
     // I 箭头标签
     ctx.fillStyle = '#E53935'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
     ctx.fillText('I', (path[0].x + path[1].x) / 2, path[0].y - 8)
-    ctx.textBaseline = 'alphabetic'
-  }
-
-  // ─── 电源组 ───
-  function drawBatteryGroup(ctx, x, y) {
-    ctx.lineWidth = 2; ctx.strokeStyle = '#333'
-    ctx.beginPath(); ctx.moveTo(x - 40, y); ctx.lineTo(x - 30, y); ctx.stroke()
-    for (let i = 0; i < 3; i++) {
-      const cx = x - 20 + i * 20
-      ctx.lineWidth = 2.5
-      ctx.beginPath(); ctx.moveTo(cx - 3, y - 14); ctx.lineTo(cx - 3, y + 14); ctx.stroke()
-      ctx.lineWidth = 5
-      ctx.beginPath(); ctx.moveTo(cx + 3, y - 7); ctx.lineTo(cx + 3, y + 7); ctx.stroke()
-      ctx.lineWidth = 2
-      if (i < 2) { ctx.beginPath(); ctx.moveTo(cx + 3, y); ctx.lineTo(cx + 17, y); ctx.stroke() }
-    }
-    ctx.beginPath(); ctx.moveTo(x + 30, y); ctx.lineTo(x + 40, y); ctx.stroke()
-    ctx.fillStyle = '#E53935'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-    ctx.fillText('+', x - 36, y - 16)
-    ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'
-    ctx.fillText('−', x + 38, y - 8)
-    ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textBaseline = 'top'
-    ctx.fillText('电池组 6V', x, y + 18)
-    ctx.textBaseline = 'alphabetic'
-  }
-
-  // ─── 开关 ───
-  function drawSwitch(ctx, x, y, on, onClick) {
-    ctx.fillStyle = '#666'
-    ctx.beginPath(); ctx.arc(x - 18, y, 4, 0, Math.PI * 2); ctx.fill()
-    ctx.beginPath(); ctx.arc(x + 18, y, 4, 0, Math.PI * 2); ctx.fill()
-    ctx.strokeStyle = '#999'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.moveTo(x - 22, y); ctx.lineTo(x - 18, y); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(x + 18, y); ctx.lineTo(x + 22, y); ctx.stroke()
-    if (on) {
-      ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 3; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(x - 18, y); ctx.lineTo(x + 18, y); ctx.stroke()
-    } else {
-      ctx.strokeStyle = '#F44336'; ctx.lineWidth = 3; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(x - 18, y); ctx.lineTo(x + 8, y - 18); ctx.stroke()
-    }
-    ctx.lineCap = 'butt'
-    ctx.fillStyle = on ? '#4CAF50' : '#F44336'
-    ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText(on ? 'ON' : 'OFF', x, y + 8)
-    canvasRef.current._clickAreas.push({ x: x - 25, y: y - 25, w: 50, h: 50, onClick })
-    ctx.textBaseline = 'alphabetic'
-  }
-
-  // ─── 滑动变阻器（可拖拽）───
-  function drawRheostat(ctx, x, y, val, onChange) {
-    const w = 70, h = 22
-    ctx.fillStyle = '#EFEBE9'; ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.roundRect(x - w / 2, y - h / 2, w, h, 4); ctx.fill(); ctx.stroke()
-    // 电阻丝
-    ctx.strokeStyle = '#5D4037'; ctx.lineWidth = 1.5; ctx.beginPath()
-    for (let i = 0; i < 6; i++) {
-      const px = x - w / 2 + 8 + i * (w - 16) / 5
-      const py = y + (i % 2 === 0 ? -5 : 5)
-      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
-    }
-    ctx.stroke()
-    // 滑片
-    const sliderX = x - w / 2 + 8 + (val / 50) * (w - 16)
-    ctx.fillStyle = '#E65100'
-    ctx.beginPath()
-    ctx.moveTo(sliderX, y - h / 2 - 8); ctx.lineTo(sliderX - 4, y - h / 2 - 2); ctx.lineTo(sliderX + 4, y - h / 2 - 2)
-    ctx.closePath(); ctx.fill()
-    // 接线柱
-    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#666'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.arc(x - w / 2, y, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    ctx.beginPath(); ctx.arc(x + w / 2, y, 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    // 标注
-    ctx.fillStyle = '#E65100'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText(`${val}Ω`, x, y + h / 2 + 3)
-    ctx.fillStyle = '#8D6E63'; ctx.font = '9px sans-serif'; ctx.textBaseline = 'bottom'
-    ctx.fillText('滑动变阻器', x, y - h / 2 - 12)
-    ctx.textBaseline = 'alphabetic'
-    canvasRef.current._clickAreas.push({
-      x: x - w / 2 - 5, y: y - h / 2 - 12, w: w + 10, h: h + 24,
-      onClick: (mx) => {
-        const r = Math.max(0, Math.min(1, (mx - (x - w / 2 + 8)) / (w - 16)))
-        onChange(Math.round(r * 50))
-      }
-    })
-  }
-
-  // ─── 电流表 ───
-  function drawAmmeter(ctx, x, y, I) {
-    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#E53935'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.arc(x, y, 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#E53935'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText('A', x, y)
-    ctx.fillStyle = '#333'; ctx.font = 'bold 9px monospace'; ctx.textBaseline = 'top'
-    ctx.fillText(I > 0 ? I.toFixed(2) + 'A' : '', x + 22, y)
     ctx.textBaseline = 'alphabetic'
   }
 

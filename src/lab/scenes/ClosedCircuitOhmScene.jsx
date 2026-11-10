@@ -7,6 +7,8 @@ import {
   strokeBezierWire, strokeWirePreview,
   drawGuideBubble, drawBuilderSwitch,
 } from '../ui/circuitKit'
+// ── 渲染层：Tab1 标准电路符号 ──
+import { symBattery, symSwitch, symResistor, symHalf, SYM_INK } from '../render/symbols.js'
 
 /**
  * ClosedCircuitOhmScene — 闭合电路欧姆定律
@@ -134,9 +136,7 @@ export default function ClosedCircuitOhmScene() {
 
     // ─── 电路图（fitLayout 左侧）───
     const lay = fitLayout(W, H)
-    const cx = (lay.circuit.L + lay.circuit.R) / 2
-    const cy = (lay.circuit.T + lay.circuit.B) / 2
-    drawCircuit(ctx, cx, cy, s, info)
+    drawCircuit(ctx, lay.circuit.L, lay.circuit.R, lay.circuit.T + 30, lay.circuit.B - 30, s, info)
 
     // ─── U-I 图像（右侧）───
     if (s.step >= 2) {
@@ -171,80 +171,79 @@ export default function ClosedCircuitOhmScene() {
     drawRightPanel(ctx, lay.readout.x, lay.readout.y + (s.step >= 2 ? lay.readout.h * 0.55 + 8 : 0), lay.readout.w, lay.readout.h * (s.step >= 2 ? 0.4 : 0.9), s, info)
   }
 
-  // ─── 电路图 ───
-  function drawCircuit(ctx, cx, cy, s, info) {
+  // ─── 电路图（标准电路符号，居中缩小）───
+  function drawCircuit(ctx, left, right, top, bottom, s, info) {
     const on = s.switchClosed
-    const wc = on ? '#1565C0' : '#999'
+    const wc = on ? '#1565C0' : '#9aa7b1'
+    const ink = on ? SYM_INK : '#7c8a93'
 
-    // 电源（矩形，标 ε、r）
-    const battW = 40, battH = 70
-    ctx.fillStyle = on ? '#E8F5E9' : '#f5f5f5'; ctx.strokeStyle = '#666'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.roundRect(cx - 140, cy - battH / 2, battW, battH, 4); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#E53935'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText('ε', cx - 120, cy - 14)
-    ctx.fillStyle = '#666'; ctx.font = '10px sans-serif'
-    ctx.fillText(s.emf + 'V', cx - 120, cy)
-    ctx.fillText('r=' + s.internalR + 'Ω', cx - 120, cy + 16)
+    // 构图：主回路横构图，在给定区域内居中、适度缩小
+    const areaW = right - left, areaH = bottom - top
+    const loopW = Math.min(areaW * 0.76, 520)
+    const scale = Math.max(0.55, Math.min(1.1, loopW / 480))
+    const loopH = loopW * 0.44
+    const chipUp = 34 * scale, chipDn = 56 * scale
+    const x0 = left + (areaW - loopW) / 2
+    const y0 = top + Math.max(chipUp + 4, (areaH - (loopH + chipUp + chipDn)) / 2) + chipUp
+    const x1 = x0 + loopW, y1 = y0 + loopH
 
-    // 外电阻 R（矩形）
-    const rW = 50, rH = 30
-    ctx.fillStyle = on ? '#FFF9C4' : '#f5f5f5'; ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.roundRect(cx + 30, cy - rH / 2 - 50, rW, rH, 4); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#333'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText('R=' + s.loadR + 'Ω', cx + 55, cy - 50)
+    // 布局：上边=外电阻 R，下边=电源（左）+ 开关（右）
+    const resX = x0 + loopW * 0.50
+    const battX = x0 + loopW * 0.22
+    const swX = x0 + loopW * 0.78
 
-    // 开关
-    const swX = cx + 100, swY = cy + 60
-    ctx.fillStyle = '#666'
-    ctx.beginPath(); ctx.arc(swX - 12, swY, 4, 0, Math.PI * 2); ctx.fill()
-    ctx.beginPath(); ctx.arc(swX + 12, swY, 4, 0, Math.PI * 2); ctx.fill()
-    if (on) {
-      ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 3; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(swX - 12, swY); ctx.lineTo(swX + 12, swY); ctx.stroke()
-    } else {
-      ctx.strokeStyle = '#F44336'; ctx.lineWidth = 3; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(swX - 12, swY); ctx.lineTo(swX + 4, swY - 14); ctx.stroke()
+    const lw = 2 * scale + 0.6
+    const hBat = symHalf('battery', scale, 2)
+    const hSw = symHalf('switch', scale)
+    const hRes = symHalf('resistor', scale)
+
+    // ── 导线（横平竖直，符号处留缺口）──
+    // 上边：外电阻
+    drawLine(ctx, x0, y0, resX - hRes, y0, wc, lw)
+    drawLine(ctx, resX + hRes, y0, x1, y0, wc, lw)
+    // 下边：电源 + 开关
+    drawLine(ctx, x0, y1, battX - hBat, y1, wc, lw)
+    drawLine(ctx, battX + hBat, y1, swX - hSw, y1, wc, lw)
+    drawLine(ctx, swX + hSw, y1, x1, y1, wc, lw)
+    // 左右两边
+    drawLine(ctx, x0, y0, x0, y1, wc, lw)
+    drawLine(ctx, x1, y0, x1, y1, wc, lw)
+
+    // ── 电流方向动画（先画，后压符号）──
+    if (on && info.I > 0) {
+      drawCurrentFlow(ctx, [
+        { x: battX + hBat, y: y1 }, { x: swX, y: y1 }, { x: x1, y: y1 },
+        { x: x1, y: y0 }, { x: resX, y: y0 }, { x: x0, y: y0 },
+        { x: x0, y: y1 }, { x: battX - hBat, y: y1 },
+      ])
     }
-    ctx.lineCap = 'butt'
-    canvasRef.current._clickAreas.push({ x: swX - 18, y: swY - 22, w: 36, h: 30,
+
+    // ── 电路符号 ──
+    // 电源：2 节，+ 在左（flip），保持既有流向语义
+    symBattery(ctx, battX, y1, { n: 2, scale, ink, flip: true })
+    symSwitch(ctx, swX, y1, { closed: on, scale, ink })
+    symResistor(ctx, resX, y0, { scale, ink })
+    // 开关整块可点（通断）
+    canvasRef.current._clickAreas.push({
+      x: swX - hSw - 12, y: y1 - 22, w: (hSw + 12) * 2, h: 44,
       onClick: () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) }
     })
 
-    // 导线
-    ctx.strokeStyle = wc; ctx.lineWidth = 2; ctx.lineCap = 'round'
-    // 电源正极 → R
-    ctx.beginPath(); ctx.moveTo(cx - 100, cy - battH / 2); ctx.lineTo(cx - 100, cy - 65)
-    ctx.lineTo(cx + 55, cy - 65); ctx.stroke()
-    // R → 开关
-    ctx.beginPath(); ctx.moveTo(cx + 55, cy - 65 + rH); ctx.lineTo(cx + 55, cy + 45)
-    ctx.lineTo(swX, swY); ctx.stroke()
-    // 开关 → 电源负极
-    ctx.beginPath(); ctx.moveTo(swX + 12, swY); ctx.lineTo(cx - 100, swY)
-    ctx.lineTo(cx - 100, cy + battH / 2); ctx.stroke()
-    ctx.lineCap = 'butt'
+    // ── 标注 ──
+    const f = Math.max(9, Math.round(11 * scale))
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillStyle = '#E53935'; ctx.font = `bold ${f}px sans-serif`
+    ctx.fillText(`ε = ${s.emf} V`, battX, y1 + 26 * scale)
+    ctx.fillStyle = '#666'; ctx.font = `${f}px sans-serif`
+    ctx.fillText(`r = ${s.internalR} Ω`, battX, y1 + 26 * scale + f + 3)
+    ctx.fillStyle = '#333'; ctx.font = `bold ${f}px sans-serif`
+    ctx.fillText(`R = ${s.loadR} Ω`, resX, y0 - 30 * scale)
 
-    // 电流方向动画
-    if (on && info.I > 0) {
-      const path = [
-        { x: cx - 100, y: cy - battH / 2 },
-        { x: cx - 100, y: cy - 65 },
-        { x: cx + 55, y: cy - 65 },
-        { x: cx + 55, y: cy - 65 + rH },
-        { x: cx + 55, y: cy + 45 },
-        { x: swX, y: swY },
-        { x: swX + 12, y: swY },
-        { x: cx - 100, y: swY },
-        { x: cx - 100, y: cy + battH / 2 },
-      ]
-      drawCurrentFlow(ctx, path)
-    }
-
-    // 标注
-    ctx.fillStyle = '#5D4037'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('闭合电路', cx - 20, cy + 80)
+    ctx.fillStyle = '#5D4037'; ctx.font = `${f}px sans-serif`
+    ctx.fillText('闭合电路', x0 + loopW * 0.56, y1 + 26 * scale)
     if (on) {
-      ctx.fillStyle = '#1565C0'; ctx.font = 'bold 10px sans-serif'
-      ctx.fillText(`ε=${info.U.toFixed(1)}+${info.Uinner.toFixed(1)}=${s.emf}V`, cx - 20, cy + 96)
+      ctx.fillStyle = '#1565C0'; ctx.font = `bold ${f}px sans-serif`
+      ctx.fillText(`ε=${info.U.toFixed(1)}+${info.Uinner.toFixed(1)}=${s.emf}V`, x0 + loopW * 0.56, y1 + 26 * scale + f + 3)
     }
     ctx.textBaseline = 'alphabetic'
   }
@@ -333,6 +332,12 @@ export default function ClosedCircuitOhmScene() {
       x: x - 8, y: y - 14, w: w + 16, h: 28,
       onClick: (mx) => onChange(Math.max(0, Math.min(1, (mx - x) / w)))
     })
+  }
+
+  function drawLine(ctx, x1, y1, x2, y2, color, w) {
+    ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = 'round'
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
+    ctx.lineCap = 'butt'
   }
 
   function drawCurrentFlow(ctx, path) {

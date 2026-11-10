@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
+import { symBattery, symSwitch, symHalf, SYM_INK } from '../render/symbols.js'
 
 /**
  * OstersExperimentScene — 电生磁（奥斯特实验）
@@ -123,12 +124,17 @@ export default function OstersExperimentScene() {
     const battX = circL + span * 0.28
     const swX = circL + span * 0.72
 
-    // 导线（侧边+下边）
-    ctx.strokeStyle = wc; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
+    // 导线（侧边+下边）— 标准电路符号：导线断开留缺口
+    const scale = 1
+    const lw = 2 * scale + 0.6
+    const hBat = symHalf('battery', scale, 3)
+    const hSw = symHalf('switch', scale)
+    const ink = on ? SYM_INK : '#7c8a93'
+    ctx.strokeStyle = wc; ctx.lineWidth = lw; ctx.lineCap = 'round'
     ctx.beginPath(); ctx.moveTo(circR, circTop); ctx.lineTo(circR, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(circR, circBottom); ctx.lineTo(swX + 18, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(swX - 18, circBottom); ctx.lineTo(battX + 30, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(battX - 30, circBottom); ctx.lineTo(circL, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(circR, circBottom); ctx.lineTo(swX + hSw, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(swX - hSw, circBottom); ctx.lineTo(battX + hBat, circBottom); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(battX - hBat, circBottom); ctx.lineTo(circL, circBottom); ctx.stroke()
     ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(circL, circTop); ctx.stroke()
     ctx.lineCap = 'butt'
     // 顶边：通电直导线（加粗=载流导体，电流流过才产生磁场）
@@ -155,17 +161,23 @@ export default function OstersExperimentScene() {
     // 电流流动
     if (on) {
       const path = [
-        { x: battX + 30, y: circBottom }, { x: swX, y: circBottom },
+        { x: battX + hBat, y: circBottom }, { x: swX, y: circBottom },
         { x: circR, y: circBottom }, { x: circR, y: circTop },
         { x: circL, y: circTop }, { x: circL, y: circBottom },
-        { x: battX - 30, y: circBottom },
+        { x: battX - hBat, y: circBottom },
       ]
       drawCurrentFlow(ctx, path)
     }
 
-    drawBatteryGroup(ctx, battX, circBottom)
-    drawSwitch(ctx, swX, circBottom, on, () => {
-      S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1)
+    // 电源 + 开关（标准电路符号）
+    symBattery(ctx, battX, circBottom, { n: 3, scale, ink, flip: true })
+    ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText('电池组 6V', battX, circBottom + 18)
+    ctx.textBaseline = 'alphabetic'
+    symSwitch(ctx, swX, circBottom, { closed: on, scale, ink })
+    canvasRef.current._clickAreas.push({
+      x: swX - hSw - 10, y: circBottom - 22, w: (hSw + 10) * 2, h: 44,
+      onClick: () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) }
     })
 
     // ─── 参数调节（底部）───
@@ -304,50 +316,6 @@ export default function OstersExperimentScene() {
         dist -= segLens[i]
       }
     }
-  }
-
-  function drawBatteryGroup(ctx, x, y) {
-    ctx.lineWidth = 2; ctx.strokeStyle = '#333'
-    ctx.beginPath(); ctx.moveTo(x - 40, y); ctx.lineTo(x - 30, y); ctx.stroke()
-    for (let i = 0; i < 3; i++) {
-      const cx = x - 20 + i * 20
-      ctx.lineWidth = 2.5
-      ctx.beginPath(); ctx.moveTo(cx - 3, y - 14); ctx.lineTo(cx - 3, y + 14); ctx.stroke()
-      ctx.lineWidth = 5
-      ctx.beginPath(); ctx.moveTo(cx + 3, y - 7); ctx.lineTo(cx + 3, y + 7); ctx.stroke()
-      ctx.lineWidth = 2
-      if (i < 2) { ctx.beginPath(); ctx.moveTo(cx + 3, y); ctx.lineTo(cx + 17, y); ctx.stroke() }
-    }
-    ctx.beginPath(); ctx.moveTo(x + 30, y); ctx.lineTo(x + 40, y); ctx.stroke()
-    ctx.fillStyle = '#E53935'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-    ctx.fillText('+', x - 36, y - 16)
-    ctx.fillStyle = '#333'; ctx.font = 'bold 14px sans-serif'
-    ctx.fillText('−', x + 38, y - 8)
-    ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textBaseline = 'top'
-    ctx.fillText('电池组 6V', x, y + 18)
-    ctx.textBaseline = 'alphabetic'
-  }
-
-  function drawSwitch(ctx, x, y, on, onClick) {
-    ctx.fillStyle = '#666'
-    ctx.beginPath(); ctx.arc(x - 18, y, 4, 0, Math.PI * 2); ctx.fill()
-    ctx.beginPath(); ctx.arc(x + 18, y, 4, 0, Math.PI * 2); ctx.fill()
-    ctx.strokeStyle = '#999'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.moveTo(x - 22, y); ctx.lineTo(x - 18, y); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(x + 18, y); ctx.lineTo(x + 22, y); ctx.stroke()
-    if (on) {
-      ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 3; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(x - 18, y); ctx.lineTo(x + 18, y); ctx.stroke()
-    } else {
-      ctx.strokeStyle = '#F44336'; ctx.lineWidth = 3; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(x - 18, y); ctx.lineTo(x + 8, y - 18); ctx.stroke()
-    }
-    ctx.lineCap = 'butt'
-    ctx.fillStyle = on ? '#4CAF50' : '#F44336'
-    ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText(on ? 'ON' : 'OFF', x, y + 8)
-    canvasRef.current._clickAreas.push({ x: x - 25, y: y - 25, w: 50, h: 50, onClick })
-    ctx.textBaseline = 'alphabetic'
   }
 
   // ─── 右侧面板 ───
