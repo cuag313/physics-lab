@@ -7,6 +7,14 @@
  *
  * 渲染用预分配的管状网格（TubeRibbon）：每帧原位改写顶点/法线，
  * 不产生垃圾回收；静止后跳过更新。
+ *
+ * 实物化要点（对照实验室里的香蕉插头导线）：
+ *   1) 截面 12 边 + 沿程 Catmull-Rom 重采样（每段再插 3 个点），
+ *      否则 18 个粒子撑出来的管子是"多段折线 + 七边形截面"，近看全是棱；
+ *   2) 两端各挂一个香蕉插头：黄铜细杆插进接线柱，外面一段彩色塑料手柄，
+ *      这样线是"插"在柱上的，而不是从柱子里长出来；
+ *   3) 绝缘皮按 PVC 的哑光给（roughness .62 / metalness .04），
+ *      原来那种半金属高光看着像塑料管。
  */
 
 import * as THREE from 'three'
@@ -17,6 +25,8 @@ const _n0 = new THREE.Vector3()
 const _b0 = new THREE.Vector3()
 const _axis = new THREE.Vector3()
 const _q = new THREE.Quaternion()
+const _v = new THREE.Vector3()
+const UP = new THREE.Vector3(0, 1, 0)
 
 /** 预分配管状网格：环数=segments+1，每环 radial+1 顶点 */
 function createTubeGeometry(segments, radial) {
@@ -113,6 +123,59 @@ function updateTubeGeometry(geom, pts, radius, radial) {
   norAttr.needsUpdate = true
 }
 
+/** Catmull-Rom：把稀疏粒子串插成平滑折线（输出到预分配数组，不产生垃圾） */
+function resampleCatmull(pts, sub, out) {
+  const n = pts.length
+  let k = 0
+  for (let i = 0; i < n - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)]
+    const p1 = pts[i]
+    const p2 = pts[i + 1]
+    const p3 = pts[Math.min(n - 1, i + 2)]
+    for (let s = 0; s < sub; s++) {
+      const t = s / sub
+      const t2 = t * t
+      const t3 = t2 * t
+      const o = out[k++]
+      o.x = 0.5 * (2 * p1.x + (-p0.x + p2.x) * t + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3)
+      o.y = 0.5 * (2 * p1.y + (-p0.y + p2.y) * t + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3)
+      o.z = 0.5 * (2 * p1.z + (-p0.z + p2.z) * t + (2 * p0.z - 5 * p1.z + 4 * p2.z - p3.z) * t2 + (-p0.z + 3 * p1.z - 3 * p2.z + p3.z) * t3)
+    }
+  }
+  out[k].copy(pts[n - 1])
+}
+
+/* ── 香蕉插头：黄铜细杆 + 彩色塑料手柄（共享几何/材质，按线色缓存）── */
+const PLUG_TIP_GEO = new THREE.CylinderGeometry(0.0135, 0.0118, 0.058, 10)
+const PLUG_SHOULDER_GEO = new THREE.CylinderGeometry(0.0265, 0.0265, 0.012, 12)
+const PLUG_BODY_GEO = new THREE.CylinderGeometry(0.0275, 0.0295, 0.072, 12)
+const PLUG_METAL = new THREE.MeshStandardMaterial({
+  color: '#c9a53c',
+  metalness: 0.92,
+  roughness: 0.26,
+})
+const _plugMats = new Map()
+function plugBodyMaterial(color) {
+  const key = String(color)
+  let m = _plugMats.get(key)
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({ color: key, roughness: 0.5, metalness: 0.04 })
+    _plugMats.set(key, m)
+  }
+  return m
+}
+function makePlug(color) {
+  const g = new THREE.Group()
+  const tip = new THREE.Mesh(PLUG_TIP_GEO, PLUG_METAL)
+  tip.position.y = 0.029 // +Y = 插入接线柱的一侧
+  const shoulder = new THREE.Mesh(PLUG_SHOULDER_GEO, PLUG_METAL)
+  const body = new THREE.Mesh(PLUG_BODY_GEO, plugBodyMaterial(color))
+  body.position.y = -0.042
+  g.add(tip, shoulder, body)
+  g.userData.role = 'plug'
+  return g
+}
+
 /**
  * 一根软导线：Verlet 链 + 管状网格。
  *
@@ -124,18 +187,20 @@ function updateTubeGeometry(geom, pts, radius, radial) {
 export class VerletWire {
   /**
    * @param {object} [opt]
-   * @param {number} [opt.count=18] 粒子数
+   * @param {number} [opt.count=26] 粒子数（越多弯得越顺）
    * @param {string} [opt.color='#c0392b'] 线色
-   * @param {number} [opt.radius=0.03] 管半径（世界单位）
+   * @param {number} [opt.radius=0.045] 管半径（世界单位，≈4.5mm 线径的一半）
    * @param {number} [opt.slack=1.28] 松弛系数（rest = 弦长×slack/(count-1)，>1 允许下垂）
-   * @param {number} [opt.radial=7] 管截面段数
+   * @param {number} [opt.radial=12] 管截面段数
+   * @param {number} [opt.sub=3] 每段再插几个点做 Catmull-Rom 平滑
    */
   constructor(opt = {}) {
-    const count = opt.count ?? 18
+    const count = opt.count ?? 26
     this.count = count
     this.radius = opt.radius ?? 0.045
     this.slack = opt.slack ?? 1.28
-    this.radial = opt.radial ?? 7
+    this.radial = opt.radial ?? 12
+    this.sub = opt.sub ?? 3
     this.damping = 0.985
 
     // Verlet 粒子
@@ -152,12 +217,19 @@ export class VerletWire {
     this._pinB = new THREE.Vector3()
     this._dirty = true
 
+    // 平滑后的渲染点（预分配，避免每帧建数组）
+    const segs = (count - 1) * this.sub
+    this._smooth = []
+    for (let i = 0; i <= segs; i++) this._smooth.push(new THREE.Vector3())
+
     // 管状网格（预分配，改线不重建）
-    this.geometry = createTubeGeometry(count - 1, this.radial)
+    this.geometry = createTubeGeometry(segs, this.radial)
     this.material = new THREE.MeshStandardMaterial({
       color: new THREE.Color(opt.color ?? '#c0392b'),
-      roughness: 0.52,
-      metalness: 0.12,
+      // PVC 绝缘皮：哑光，几乎无金属感
+      roughness: 0.62,
+      metalness: 0.04,
+      emissive: new THREE.Color('#000000'),
     })
     this.mesh = new THREE.Mesh(this.geometry, this.material)
     this.mesh.castShadow = true
@@ -166,6 +238,10 @@ export class VerletWire {
     // （全零坐标）的包围球做判断，导线一离开原点就被整个剔掉——表现就是"线都没连"。
     this.mesh.frustumCulled = false
     this.mesh.userData.role = 'wire'
+
+    // 两端香蕉插头（尖端朝接线柱、手柄朝线身）
+    this.plugs = [makePlug(opt.color ?? '#c0392b'), makePlug(opt.color ?? '#c0392b')]
+    this.mesh.add(this.plugs[0], this.plugs[1])
   }
 
   /**
@@ -192,6 +268,24 @@ export class VerletWire {
       this.prev[i].copy(p)
     }
     this._dirty = true
+  }
+
+  /** 插头跟着端点走，尖端始终朝着接线柱 */
+  _updatePlugs() {
+    const n = this.count
+    // A 端：杆朝柱（= 远离线身），手柄朝线
+    _v.subVectors(this.pos[1], this.pos[0])
+    if (_v.lengthSq() < 1e-12) _v.set(0, 1, 0)
+    _v.normalize().negate()
+    this.plugs[0].quaternion.copy(_q.setFromUnitVectors(UP, _v))
+    this.plugs[0].position.copy(this.pos[0])
+
+    // B 端同理
+    _v.subVectors(this.pos[n - 2], this.pos[n - 1])
+    if (_v.lengthSq() < 1e-12) _v.set(0, 1, 0)
+    _v.normalize().negate()
+    this.plugs[1].quaternion.copy(_q.setFromUnitVectors(UP, _v))
+    this.plugs[1].position.copy(this.pos[n - 1])
   }
 
   /**
@@ -250,15 +344,23 @@ export class VerletWire {
       if (this.pos[i].distanceToSquared(this._last[i]) > 1e-5) { moved = true; break }
     }
     if (moved) {
-      updateTubeGeometry(this.geometry, this.pos, this.radius, this.radial)
+      // 先在粒子串上做 Catmull-Rom 平滑，再生成管 —— 否则细管沿程是多段折线
+      resampleCatmull(this.pos, this.sub, this._smooth)
+      updateTubeGeometry(this.geometry, this._smooth, this.radius, this.radial)
       for (let i = 0; i < n; i++) this._last[i].copy(this.pos[i])
+      this._updatePlugs()
       this._dirty = false
     }
   }
 
-  /** 线色（含选中/电流热色） */
+  /** 线色（含选中/电流热色）：线身与两端手柄一起换 */
   setColor(hex) {
     this.material.color.set(hex)
+    const mat = plugBodyMaterial(hex)
+    for (const p of this.plugs) {
+      const body = p.children[2]
+      if (body) body.material = mat
+    }
   }
 
   /** 释放 GPU 资源 */
