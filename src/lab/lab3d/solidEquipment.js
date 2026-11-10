@@ -417,6 +417,243 @@ function placePosts(group, terminals, w, h, stand, thickness) {
 }
 
 /**
+ * 其余器材的通用实体：底座 + 主体 + 特征件。
+ * 目标是"一眼看出是实物"，而不是 SVG 剪影挤出的平板；
+ * 接线柱仍由 placePosts 按 TYPES 的像素坐标统一摆，保证点得到的柱就是看得见的柱。
+ */
+
+/** 引线类：电阻 / 二极管 / 保险丝 —— 底座 + 水平圆柱 + 特征环 + 铜引线 */
+function buildLeadPart(w, h, kind) {
+  const g = new THREE.Group()
+  const baseH = 0.03
+  g.add(box(w * 0.66 * SCALE, baseH, h * 0.26 * SCALE, MAT.darkPlastic(), 0, baseH / 2, 0))
+
+  const r = Math.max(0.03, Math.min(w * 0.075, h * 0.06) * SCALE)
+  const len = w * 0.52 * SCALE
+  const yBody = baseH + r + 0.012
+  const mat = kind === 'fuse' ? MAT.glass() : kind === 'diode' ? MAT.bakelite() : MAT.ceramic()
+  const body = cyl(r, r, len, mat, 20)
+  body.rotation.z = Math.PI / 2
+  body.position.set(0, yBody, 0)
+  g.add(body)
+
+  if (kind === 'resistor') {
+    const ringMat = [MAT.redPlastic(), MAT.darkPlastic(), MAT.brass(), MAT.bluePlastic()]
+    const xs = [-0.30, -0.10, 0.10, 0.30]
+    xs.forEach((f, i) => {
+      const ring = cyl(r * 1.04, r * 1.04, 0.02, ringMat[i], 18)
+      ring.rotation.z = Math.PI / 2
+      ring.position.set(len * f, yBody, 0)
+      g.add(ring)
+    })
+  }
+  if (kind === 'fuse') {
+    for (const f of [-0.5, 0.5]) {
+      const cap = cyl(r * 1.1, r * 1.1, len * 0.16, MAT.steel(), 18)
+      cap.rotation.z = Math.PI / 2
+      cap.position.set(len * f, yBody, 0)
+      g.add(cap)
+    }
+  }
+  if (kind === 'diode') {
+    const band = cyl(r * 1.06, r * 1.06, 0.018, MAT.steel(), 18)
+    band.rotation.z = Math.PI / 2
+    band.position.set(len * 0.34, yBody, 0)
+    g.add(band)
+  }
+  for (const f of [-1, 1]) {
+    const lead = cyl(0.012, 0.012, len * 0.46, MAT.copper(), 10)
+    lead.rotation.z = Math.PI / 2
+    lead.position.set(f * len * 0.72, yBody - r * 0.3, 0)
+    g.add(lead)
+  }
+  return { group: g, thickness: yBody + r, stand: false, shell: body }
+}
+
+/** 方箱类：电阻箱 / 电能表 / 多用电表 / 继电器 / 家庭电源 —— 箱体 + 面板 + 旋钮 / 显示窗 */
+function buildBoxUnit(w, h, o = {}) {
+  const g = new THREE.Group()
+  const W = w * 0.86 * SCALE
+  const D = o.depth || 0.22
+  const H = o.height || 0.2
+  const y0 = 0.015
+  const shell = box(W, H, D, o.mat || MAT.bakelite(), 0, y0 + H / 2, 0)
+  g.add(shell)
+
+  const panel = box(W * 0.92, H * 0.86, 0.014, o.panelMat || MAT.ceramic(), 0, y0 + H / 2, D / 2 + 0.008)
+  g.add(panel)
+
+  const knobs = o.knobs || 0
+  for (let i = 0; i < knobs; i++) {
+    const kx = W * (-0.28 + (i + 0.5) / Math.max(1, knobs) * 0.56)
+    const k = cyl(0.045, 0.05, 0.045, MAT.darkPlastic(), 18)
+    k.rotation.x = Math.PI / 2
+    k.position.set(kx, y0 + H * 0.42, D / 2 + 0.03)
+    g.add(k)
+  }
+  if (o.lcd) {
+    const lc = box(
+      W * 0.46,
+      H * 0.3,
+      0.01,
+      std('#123125', { roughness: 0.35, emissive: new THREE.Color('#0d2c1f'), emissiveIntensity: 0.5 }),
+      0,
+      y0 + H * 0.66,
+      D / 2 + 0.018
+    )
+    g.add(lc)
+  }
+  return { group: g, thickness: y0 + H + 0.035, stand: false, shell, panel }
+}
+
+/** 电动机：卧式圆柱机壳 + 两端盖 + 转轴 */
+function buildMotor(w, h) {
+  const g = new THREE.Group()
+  const r = Math.min(w * 0.2, h * 0.26) * SCALE
+  const L = w * 0.46 * SCALE
+  const y = 0.015 + r
+  const body = cyl(r, r, L, MAT.steel(), 24)
+  body.rotation.z = Math.PI / 2
+  body.position.set(0, y, 0)
+  g.add(body)
+  for (const f of [-1, 1]) {
+    const cap = cyl(r * 1.04, r * 1.04, 0.028, MAT.bakelite(), 24)
+    cap.rotation.z = Math.PI / 2
+    cap.position.set(f * L * 0.5, y, 0)
+    g.add(cap)
+  }
+  const shaft = cyl(0.02, 0.02, 0.13, MAT.steel(), 12)
+  shaft.rotation.z = Math.PI / 2
+  shaft.position.set(L * 0.5 + 0.075, y, 0)
+  g.add(shaft)
+  return { group: g, thickness: Math.max(0.13, y + r), stand: false, shell: body }
+}
+
+/** 焦耳管：底座 + 立式玻璃管 + 管内电阻丝 + 顶盖 */
+function buildTube(w, h) {
+  const g = new THREE.Group()
+  const baseH = 0.03
+  g.add(box(w * 0.6 * SCALE, baseH, h * 0.28 * SCALE, MAT.darkPlastic(), 0, baseH / 2, 0))
+  const r = Math.min(w * 0.13, h * 0.13) * SCALE
+  const H = h * 0.5 * SCALE
+  const glass = cyl(r, r, H, MAT.glass(), 26)
+  glass.position.set(0, baseH + H / 2, 0)
+  g.add(glass)
+  for (let i = 0; i < 7; i++) {
+    const coil = new THREE.Mesh(
+      new THREE.TorusGeometry(r * 0.56, 0.008, 6, 16),
+      std('#c1440e', { roughness: 0.5 })
+    )
+    coil.rotation.x = Math.PI / 2
+    coil.position.set(0, baseH + H * (0.28 + i * 0.075), 0)
+    g.add(coil)
+  }
+  const cap = cyl(r * 1.06, r * 1.06, 0.03, MAT.bakelite(), 26)
+  cap.position.set(0, baseH + H, 0)
+  g.add(cap)
+  return { group: g, thickness: 0.1, stand: false, shell: glass }
+}
+
+/** 验电器：底座 + 金属杆 + 两片金箔 + 玻璃罩 */
+function buildElectroscope(w, h) {
+  const g = new THREE.Group()
+  const foot = cyl(w * 0.26 * SCALE, w * 0.3 * SCALE, 0.04, MAT.bakelite(), 24)
+  foot.position.y = 0.02
+  g.add(foot)
+  const r = Math.min(w * 0.34, h * 0.34) * SCALE
+  const H = h * 0.5 * SCALE
+  const dome = cyl(r, r, H, MAT.glass(), 26)
+  dome.position.set(0, 0.04 + H / 2, 0)
+  g.add(dome)
+  const rod = cyl(0.014, 0.014, H * 0.55, MAT.steel(), 12)
+  rod.position.set(0, 0.04 + H * 0.72, 0)
+  g.add(rod)
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.05, 16, 12), MAT.steel())
+  knob.position.set(0, 0.04 + H, 0)
+  g.add(knob)
+  for (const f of [-1, 1]) {
+    const foil = box(0.008, H * 0.26, 0.05, std('#e7c65a', { roughness: 0.35, metalness: 0.35 }), f * 0.02, 0.04 + H * 0.2, 0)
+    foil.rotation.z = f * 0.22
+    g.add(foil)
+  }
+  return { group: g, thickness: 0.1, stand: false, shell: dome }
+}
+
+/** 试电笔：细长笔杆 + 金属探针 + 氖泡窗 */
+function buildTestPencil(w, h) {
+  const g = new THREE.Group()
+  const len = w * 0.78 * SCALE
+  const y = 0.05
+  const barrel = cyl(0.035, 0.035, len, std('#e8e4d8', { roughness: 0.5 }), 18)
+  barrel.rotation.z = Math.PI / 2
+  barrel.position.set(0, y, 0)
+  g.add(barrel)
+  const tip = cyl(0.014, 0.006, len * 0.22, MAT.steel(), 12)
+  tip.rotation.z = Math.PI / 2
+  tip.position.set(len * 0.6, y, 0)
+  g.add(tip)
+  const win = box(len * 0.12, 0.03, 0.05, std('#e2562f', { roughness: 0.4, emissive: new THREE.Color('#4a1206'), emissiveIntensity: 0.6 }), -len * 0.22, y + 0.03, 0.02)
+  g.add(win)
+  return { group: g, thickness: 0.09, stand: false, shell: barrel }
+}
+
+/** 单刀双掷开关：底板 + 中央刀 + 两个掷点 +
+ *  （刀闸由 three-render 按 pos 驱动旋转，与 2D 的 pos 语义一致） */
+function buildSwitch2(w, h) {
+  const g = new THREE.Group()
+  const bw = w * 0.72 * SCALE
+  const bd = h * 0.36 * SCALE
+  g.add(box(bw, 0.05, bd, MAT.bakelite(), 0, 0.025, 0))
+  for (const f of [-1, 1]) {
+    const stud = cyl(0.03, 0.03, 0.03, MAT.brass(), 14)
+    stud.position.set(f * bw * 0.32, 0.06, 0)
+    g.add(stud)
+  }
+  const pivot = new THREE.Group()
+  pivot.position.set(-bw * 0.1, 0.055, 0)
+  const blade = box(bw * 0.5, 0.012, 0.028, MAT.steel(), bw * 0.25, 0, 0)
+  pivot.add(blade)
+  const handle = new THREE.Mesh(new THREE.SphereGeometry(0.032, 14, 10), MAT.redPlastic())
+  handle.position.set(bw * 0.5, 0, 0)
+  pivot.add(handle)
+  pivot.rotation.y = 0.34
+  g.add(pivot)
+  return { group: g, thickness: 0.09, stand: false, blade: pivot, shell: null }
+}
+
+function buildGeneric(type, w, h) {
+  if (type.startsWith('resistor')) return buildLeadPart(w, h, 'resistor')
+  switch (type) {
+    case 'diode':
+      return buildLeadPart(w, h, 'diode')
+    case 'fuse':
+      return buildLeadPart(w, h, 'fuse')
+    case 'motor':
+      return buildMotor(w, h)
+    case 'jouleTube':
+      return buildTube(w, h)
+    case 'electroscope':
+      return buildElectroscope(w, h)
+    case 'testPencil':
+      return buildTestPencil(w, h)
+    case 'switch2':
+      return buildSwitch2(w, h)
+    case 'resBox':
+      return buildBoxUnit(w, h, { knobs: 4, panelMat: MAT.ceramic(), height: 0.26 })
+    case 'multimeter':
+      return buildBoxUnit(w, h, { lcd: true, knobs: 1, mat: std('#2b2f36', { roughness: 0.6 }), height: 0.2, depth: 0.26 })
+    case 'relay':
+      return buildBoxUnit(w, h, { knobs: 2, height: 0.16 })
+    case 'mains':
+      return buildBoxUnit(w, h, { knobs: 2, panelMat: MAT.white(), height: 0.14 })
+    case 'energyMeter':
+      return buildBoxUnit(w, h, { knobs: 2, mat: std('#3a3f47', { roughness: 0.6 }), height: 0.24 })
+    default:
+      return null
+  }
+}
+
+/**
  * 造一件实体器材。
  * @param {string} type 器材类型
  * @param {object} opt  { w, h, terminals, fs }
@@ -475,12 +712,21 @@ export function buildSolid(type, opt = {}) {
       placePosts(b.group, terms, w, h, false, thickness)
       return { group: b.group, size, thickness, stand: false, slider: b.slider, shell: b.shell }
     }
-    default:
-      return null
+    default: {
+      // 其余器材：底座 + 主体 + 特征件的通用实体（不再是 SVG 剪影挤出）
+      const b = buildGeneric(type, w, h)
+      if (!b) return null
+      placePosts(b.group, terms, w, h, b.stand === true, b.thickness)
+      return b
+    }
   }
 }
 
-export const SOLID_TYPES = new Set(['battery', 'bulb', 'switch', 'ammeter', 'voltmeter', 'rheostat'])
+export const SOLID_TYPES = new Set([
+  'battery', 'bulb', 'switch', 'ammeter', 'voltmeter', 'rheostat',
+  'switch2', 'motor', 'diode', 'fuse', 'testPencil', 'electroscope',
+  'mains', 'energyMeter', 'jouleTube', 'resBox', 'multimeter', 'relay',
+])
 export { SCALE as SOLID_SCALE }
 
 /* ── 侧栏图标：把同一套实体渲染成透明底 PNG ── */

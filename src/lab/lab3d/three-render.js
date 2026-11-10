@@ -428,7 +428,7 @@ export function createLabRenderer(container, opt = {}) {
     }
 
     let build
-    if (SOLID_TYPES.has(c.type)) {
+    if (SOLID_TYPES.has(c.type) || /^resistor/i.test(c.type)) {
       // 核心器材走实体建模（盒/柱/球/环），不再是 SVG 剪影挤出
       try {
         build = buildSolid(c.type, {
@@ -597,6 +597,24 @@ export function createLabRenderer(container, opt = {}) {
     return base
   }
 
+  /* ── 电流流动光点：沿导线折线均匀排布的小亮点，相位按电流大小推进 ── */
+  const FLOW_N = 12
+  function makeFlowDots() {
+    const geo = new THREE.SphereGeometry(0.045, 8, 6)
+    const mat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color('#ffe98a'),
+      transparent: true,
+      opacity: 0.92,
+      depthWrite: false,
+    })
+    const mesh = new THREE.InstancedMesh(geo, mat, FLOW_N)
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
+    mesh.frustumCulled = false
+    mesh.userData.role = 'flow'
+    mesh.visible = false
+    return { mesh, dummy: new THREE.Object3D() }
+  }
+
   /* ── 同步场景状态（React 每次变更时调用） ── */
   /** 拖拽中的器材不同步回写（避免与交互打架） */
   function isCompActive(id) {
@@ -711,6 +729,10 @@ export function createLabRenderer(container, opt = {}) {
       if (c.type === 'switch' && entry.build.blade) {
         entry.build.blade.rotation.z = c.closed ? 0 : 0.55
       }
+      // 单刀双掷：刀闸按 pos 摆向左 / 右掷点
+      if (c.type === 'switch2' && entry.build.blade) {
+        entry.build.blade.rotation.y = c.pos === 1 ? -0.34 : 0.34
+      }
       // 滑片位置：跟随 f，落在瓷管有效段上
       if (c.type === 'rheostat' && entry.build.slider) {
         const f = typeof c.f === 'number' ? c.f : 0.4
@@ -727,17 +749,26 @@ export function createLabRenderer(container, opt = {}) {
         const vw = new VerletWire({ color: w.color || defaultWireColor })
         vw.mesh.userData.wireId = w.id
         labTableGroup.add(vw.mesh)
-        rec = { id: w.id, wire: vw, a: w.a, b: w.b, seeded: false }
+        const flow = makeFlowDots()
+        labTableGroup.add(flow.mesh)
+        rec = { id: w.id, wire: vw, a: w.a, b: w.b, seeded: false, phase: 0, flow, I: 0 }
         wires.set(w.id, rec)
       }
       rec.a = w.a
       rec.b = w.b
+      // 支路电流同时驱动线色与流动光点（对标视频里"线上有流动的电流点"）
+      rec.I = Math.abs((solved && solved._wireI && solved._wireI[w.id]) || 0)
       rec.wire.setColor(wireColorFor(w, solved))
     }
     for (const [id, rec] of wires) {
       if (!aliveW.has(id)) {
         labTableGroup.remove(rec.wire.mesh)
         rec.wire.dispose()
+        if (rec.flow) {
+          labTableGroup.remove(rec.flow.mesh)
+          rec.flow.mesh.geometry.dispose()
+          rec.flow.mesh.material.dispose()
+        }
         wires.delete(id)
       }
     }
@@ -776,6 +807,47 @@ export function createLabRenderer(container, opt = {}) {
         rec.seeded = true
       }
       rec.wire.simulate(localGravity, dt)
+      // 流动光点：按弧长排布（相位随电流推进），电流越大跑得越快、越亮
+      if (rec.flow) {
+        const I = rec.I || 0
+        if (I <= 0.02) {
+          rec.flow.mesh.visible = false
+        } else {
+          rec.flow.mesh.visible = true
+          rec.phase = ((rec.phase || 0) + dt * Math.min(1.4, 0.3 + I * 2.2)) % 1
+          const pos = rec.wire.pos
+          const n = pos.length
+          const seg = []
+          let L = 0
+          for (let i = 0; i < n - 1; i++) {
+            const d = pos[i].distanceTo(pos[i + 1])
+            seg.push(d)
+            L += d
+          }
+          if (L < 1e-4) {
+            rec.flow.mesh.visible = false
+          } else {
+            for (let k = 0; k < FLOW_N; k++) {
+              let s = ((rec.phase + k / FLOW_N) % 1) * L
+              let i = 0
+              while (i < seg.length - 1 && s > seg[i]) {
+                s -= seg[i]
+                i++
+              }
+              const a = pos[i]
+              const b = pos[Math.min(i + 1, n - 1)]
+              tmpV.copy(a).lerp(b, seg[i] > 1e-6 ? Math.max(0, Math.min(1, s / seg[i])) : 0)
+              tmpV.y += 0.02
+              rec.flow.dummy.position.copy(tmpV)
+              rec.flow.dummy.rotation.set(0, 0, 0)
+              rec.flow.dummy.scale.setScalar(0.7 + Math.min(0.55, I * 0.5))
+              rec.flow.dummy.updateMatrix()
+              rec.flow.mesh.setMatrixAt(k, rec.flow.dummy.matrix)
+            }
+            rec.flow.mesh.instanceMatrix.needsUpdate = true
+          }
+        }
+      }
     }
     // 预览线（接线中）
     if (pending && pending.wire) {      const pa = terminalWorldPos(pending.cid, pending.tid)
