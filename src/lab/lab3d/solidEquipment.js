@@ -11,6 +11,7 @@
  */
 
 import * as THREE from 'three'
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
 
 const SCALE = 0.01
 
@@ -61,6 +62,77 @@ function cyl(rTop, rBottom, h, material, seg = 20) {
 }
 
 /**
+ * 圆角盒 —— 真实塑料/胶木件的每一条棱都是圆的。
+ * 用纯 BoxGeometry 拼出来的器材，一眼就是"积木"：棱线笔直、没有过渡面，
+ * 抗锯齿再好也像贴纸。圆角是"像实物"最便宜也最有效的一步。
+ * @param {number} r 圆角半径（会被夹到最短边的一半以内）
+ */
+function rbox(w, h, d, r, material, x = 0, y = 0, z = 0, seg = 3) {
+  const rr = Math.max(0.001, Math.min(r, w * 0.49, h * 0.49, d * 0.49))
+  const m = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, seg, rr), material)
+  m.position.set(x, y, z)
+  m.castShadow = true
+  m.receiveShadow = true
+  return m
+}
+
+/**
+ * 螺旋管 —— 沿 +Y 轴的螺旋线扫出一根细管。
+ * 两处必须用它而不是"叠一堆圆环"：
+ *   1) 小灯泡的螺口（实物是连续的螺纹，不是几个独立圆环）；
+ *   2) 滑动变阻器的镍铬丝（实物是一根连续电阻丝绕在瓷管上）。
+ * 叠圆环在近景里会露出环与环之间的空当，一看就是假的。
+ * @param {number} radius 螺旋半径
+ * @param {number} y0 起点 y
+ * @param {number} y1 终点 y
+ * @param {number} turns 圈数
+ * @param {number} tubeR 丝半径
+ */
+function helixTube(radius, y0, y1, turns, tubeR, material) {
+  const N = Math.max(24, Math.round(turns * 14))
+  const pts = []
+  for (let i = 0; i <= N; i++) {
+    const t = i / N
+    const a = t * turns * Math.PI * 2
+    pts.push(new THREE.Vector3(Math.cos(a) * radius, y0 + (y1 - y0) * t, Math.sin(a) * radius))
+  }
+  const curve = new THREE.CatmullRomCurve3(pts)
+  const m = new THREE.Mesh(new THREE.TubeGeometry(curve, N, tubeR, 6, false), material)
+  m.castShadow = true
+  m.receiveShadow = true
+  return m
+}
+
+/** 简易文字贴图（铭牌/型号标签），省掉外部图片依赖 */
+function labelTexture(lines, opt = {}) {
+  const W = opt.w || 256
+  const H = opt.h || 128
+  const cv = document.createElement('canvas')
+  cv.width = W
+  cv.height = H
+  const g = cv.getContext && cv.getContext('2d')
+  if (!g) return null // 离屏/测试环境没有 2d context：贴图留空，但不能让整件器材崩掉
+  g.fillStyle = opt.bg || '#f4f2ec'
+  g.fillRect(0, 0, W, H)
+  if (opt.border) {
+    g.strokeStyle = opt.border
+    g.lineWidth = 4
+    g.strokeRect(2, 2, W - 4, H - 4)
+  }
+  g.fillStyle = opt.color || '#1e2530'
+  g.textAlign = 'center'
+  lines.forEach((ln, i) => {
+    g.font = (i === 0 ? 'bold ' : '') + (i === 0 ? 40 : 26) + 'px sans-serif'
+    g.fillText(ln, W / 2, H * (0.42 + i * 0.3))
+  })
+  const tex = new THREE.CanvasTexture(cv)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.anisotropy = 4
+  return tex
+}
+
+
+/**
  * 接线柱：对标实物实验室的红/黑压线旋钮
  *  - 负极/公共端用黑色旋钮，正极用红色旋钮（按 terminals.id 判断）
  *  - 结构：金属基座 → 细柱 → 彩色旋钮 → 顶部中心凸起
@@ -107,7 +179,8 @@ function dialTexture(kind, fs, subTicks) {
   const cv = document.createElement('canvas')
   cv.width = W
   cv.height = H
-  const g = cv.getContext('2d')
+  const g = cv.getContext && cv.getContext('2d')
+  if (!g) return null // 同上：没有 2d context 就不画表盘，别让表整件崩掉
   g.fillStyle = '#fbfaf6'
   g.fillRect(0, 0, W, H)
 
@@ -165,107 +238,140 @@ function dialTexture(kind, fs, subTicks) {
 
 /* ── 各类器材 ── */
 
-/** 电池组：蓝色塑料壳 + 顶面铭牌 + 正负极铜柱；壳内是三节干电池 */
+/** 电池组：圆角深蓝塑料壳 + 白色顶盖 + 顶面铭牌；壳内是三节干电池 */
 function buildBattery(w, h) {
   const g = new THREE.Group()
   const bw = 1.24
-  const bd = 1.02
-  const bh = 0.42
+  const bd = 1.0
+  const bh = 0.44
   const shell = []
 
   // 内部：三节干电池（剖视时露出来）
   const inner = new THREE.Group()
   inner.name = 'battery-inner'
   for (let i = 0; i < 3; i++) {
-    const cell = cyl(0.11, 0.11, 0.62, std('#1f2937', { roughness: 0.55, metalness: 0.25 }), 18)
+    const cell = cyl(0.105, 0.105, 0.6, std('#1f2937', { roughness: 0.5, metalness: 0.3 }), 18)
     cell.rotation.z = Math.PI / 2
     cell.position.set(0, 0.02 + bh / 2, -0.24 + i * 0.24)
     inner.add(cell)
-    // 正极铜帽 + 负极锌壳环
-    const cap = cyl(0.075, 0.075, 0.03, MAT.brass(), 14)
+    // 正极铜帽 + 负极锌壳环 + 中间商标色环（干电池的辨识特征）
+    const cap = cyl(0.07, 0.07, 0.028, MAT.brass(), 14)
     cap.rotation.z = Math.PI / 2
-    cap.position.set(0.3, 0.02 + bh / 2, -0.24 + i * 0.24)
+    cap.position.set(0.31, 0.02 + bh / 2, -0.24 + i * 0.24)
     inner.add(cap)
-    const band = cyl(0.112, 0.112, 0.16, std('#d9b44a', { roughness: 0.5 }), 16)
+    const band = cyl(0.108, 0.108, 0.17, std('#e0b93f', { roughness: 0.45 }), 16)
     band.rotation.z = Math.PI / 2
-    band.position.set(-0.15, 0.02 + bh / 2, -0.24 + i * 0.24)
+    band.position.set(-0.16, 0.02 + bh / 2, -0.24 + i * 0.24)
     inner.add(band)
+    const ring = cyl(0.107, 0.107, 0.05, std('#b3261f', { roughness: 0.5 }), 16)
+    ring.rotation.z = Math.PI / 2
+    ring.position.set(0.06, 0.02 + bh / 2, -0.24 + i * 0.24)
+    inner.add(ring)
   }
-  // 内部导线（串联）
+  // 内部串联铜片
   const lead = box(0.5, 0.02, 0.02, MAT.copper(), -0.1, 0.02 + bh * 0.78, 0)
   inner.add(lead)
   g.add(inner)
 
-  // 壳身（底 + 顶盖 + 侧面浅色条）
-  const bodyMesh = box(bw, bh, bd, MAT.bluePlastic(), 0, 0.02 + bh / 2, 0)
+  // 壳身（圆角深蓝塑料）+ 白色圆角顶盖
+  const bodyMesh = rbox(bw, bh, bd, 0.075, MAT.bluePlastic(), 0, 0.02 + bh / 2, 0)
   shell.push(bodyMesh)
-  const topMesh = box(bw - 0.05, 0.06, bd - 0.05, std('#eef2f7', { roughness: 0.8 }), 0, 0.02 + bh + 0.02, 0)
+  const topMesh = rbox(bw - 0.04, 0.055, bd - 0.04, 0.038, std('#eceff4', { roughness: 0.66 }), 0, 0.02 + bh + 0.016, 0)
   shell.push(topMesh)
-  // 顶面铭牌（白底 + 象征性正负极）
-  g.add(box(0.42, 0.008, 0.3, MAT.white(), -0.26, 0.02 + bh + 0.05, -0.22))
-  g.add(box(0.42, 0.008, 0.3, std('#f0d9a0'), 0.26, 0.02 + bh + 0.05, -0.22))
-  // 侧面加强筋（让轮廓不是一块死板）
+
+  // 顶面铭牌（真电池组顶面都有印刷标签）
+  const labelMat = std('#ffffff', { roughness: 0.78 })
+  const labelTex = labelTexture(['电池组 3V', 'J0401 · 三节干电池'], {
+    w: 320, h: 150, border: '#2c5fa8', color: '#14407e', bg: '#f7f9fc',
+  })
+  if (labelTex) {
+    labelMat.map = labelTex
+    labelMat.needsUpdate = true
+  }
+  const lab = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.33), labelMat)
+  lab.rotation.x = -Math.PI / 2
+  lab.position.set(0, 0.02 + bh + 0.0455, 0.16)
+  g.add(lab)
+
+  // 底部四角的小垫脚（实物壳底有支撑台）
   for (const sx of [-1, 1]) {
-    const rib = box(0.04, bh - 0.08, bd - 0.12, std('#244c8e'), sx * (bw / 2 - 0.02), 0.02 + bh / 2, 0)
-    shell.push(rib)
+    for (const sz of [-1, 1]) {
+      g.add(rbox(0.1, 0.02, 0.1, 0.008, std('#16406f'), sx * (bw / 2 - 0.1), 0.008, sz * (bd / 2 - 0.09)))
+    }
   }
   for (const m of shell) g.add(m)
   return { group: g, shell, inner }
 }
 
-/** 小灯泡：台板 + 白瓷灯座 + 金属螺口 + 玻璃泡 + 灯丝 */
+/** 小灯泡：浅灰底板 + 黑胶木灯座 + 连续螺纹灯口 + 玻璃泡 + 螺旋灯丝 */
 function buildBulb(w, h) {
   const g = new THREE.Group()
   const shell = []
-  // 台板
-  const base = box(w * SCALE * 0.96, 0.05, 0.56, MAT.darkPlastic(), 0, 0.025, 0)
+  // 底板（实物是浅灰塑料薄板，不是黑板条）
+  const base = rbox(w * SCALE * 0.94, 0.045, 0.5, 0.015, std('#d6d9de', { roughness: 0.62 }), 0, 0.0225, 0)
   shell.push(base)
-  // 白瓷灯座
-  const socket = cyl(0.155, 0.19, 0.22, MAT.ceramic(), 24)
-  socket.position.y = 0.16
+  // 黑胶木灯座（实物灯座矮而粗，不是细高瓷柱）
+  const socket = cyl(0.162, 0.178, 0.2, std('#22262c', { roughness: 0.68, metalness: 0.03 }), 24)
+  socket.position.y = 0.14
   shell.push(socket)
-  // 金属螺口
-  const screw = cyl(0.1, 0.112, 0.1, MAT.steel(), 20)
-  screw.position.y = 0.32
-  shell.push(screw)
+  // 灯座顶面金属承口（螺纹在承口里面）
+  const cup = cyl(0.108, 0.112, 0.022, MAT.steel(), 20)
+  cup.position.y = 0.248
+  shell.push(cup)
   for (const m of shell) g.add(m)
-  // 玻璃泡（顶部球 + 下收口）
+
+  // 连续螺纹的灯口（原来用几个圆环叠，近景能看到环间空当）
+  const screw = helixTube(0.098, 0.252, 0.392, 4.5, 0.0085, MAT.steel())
+  g.add(screw)
+  // 灯口内芯
+  const core = cyl(0.082, 0.082, 0.15, std('#8b9099', { roughness: 0.5, metalness: 0.3 }), 16)
+  core.position.y = 0.33
+  g.add(core)
+
+  // 玻璃：颈部 + 泡体（实物泡径约 2cm）
   const glassMat = MAT.glass()
-  const globe = new THREE.Mesh(new THREE.SphereGeometry(0.245, 28, 20), glassMat)
-  globe.position.y = 0.58
-  globe.castShadow = false
-  g.add(globe)
-  const neck = cyl(0.112, 0.1, 0.11, glassMat, 18)
-  neck.position.y = 0.39
+  glassMat.opacity = 0.36
+  const neck = cyl(0.09, 0.072, 0.12, glassMat, 18)
+  neck.position.y = 0.45
   neck.castShadow = false
   g.add(neck)
-  // 灯丝（极细环 + 发光材质，随便亮度改 emissive）
-  const filMat = std('#6b3a17', {
+  const globe = new THREE.Mesh(new THREE.SphereGeometry(0.195, 30, 22), glassMat)
+  globe.position.y = 0.60
+  globe.scale.y = 1.08
+  globe.castShadow = false
+  g.add(globe)
+
+  // 灯丝：真实的灯丝是一小段螺旋（不是一圈环）
+  const filMat = std('#5c3417', {
     emissive: new THREE.Color('#ff9a3c'),
     emissiveIntensity: 0,
     roughness: 0.4,
+    metalness: 0.3,
   })
-  const fil = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.008, 8, 16), filMat)
-  fil.position.y = 0.56
-  fil.rotation.x = Math.PI / 2
+  const fil = helixTube(0.022, 0.0, 0.075, 4, 0.0065, filMat)
+  fil.position.y = 0.555
   g.add(fil)
-  // 两根引线
+  // 两根引线：灯口 → 灯丝
   for (const sx of [-1, 1]) {
-    const lead = cyl(0.007, 0.007, 0.16, MAT.steel(), 6)
-    lead.position.set(sx * 0.042, 0.44, 0)
+    const lead = cyl(0.007, 0.007, 0.14, MAT.steel(), 6)
+    lead.position.set(sx * 0.03, 0.50, 0)
     g.add(lead)
   }
   return { group: g, bulbMat: filMat, glassMat, shell }
 }
 
-/** 单刀开关：胶木底座 + 铰链 + 可动刀片 + 手柄 */
+/** 单刀开关：瓷质圆角底板 + 铜刀座与铰链 + 铜刀 + 红色手柄 + 铜夹片 */
 function buildSwitch(w, h) {
   const g = new THREE.Group()
   const shell = []
-  const base = box(w * SCALE * 0.94, 0.06, 0.62, MAT.bakelite(), 0, 0.03, 0)
+  // 瓷底板（实物底板是米白瓷/胶木，圆角，比器材本体略大一圈）
+  const base = rbox(w * SCALE * 0.96, 0.058, 0.62, 0.02, MAT.ceramic(), 0, 0.029, 0)
   shell.push(base)
   g.add(base)
-  // 内部：底座下的两块静触点与引线（剖视时露出来）
+  // 底板下缘的深色包边
+  shell.push(rbox(w * SCALE * 0.96 - 0.01, 0.018, 0.62 - 0.01, 0.008, std('#c9c1b2', { roughness: 0.7 }), 0, 0.009, 0))
+
+  // 内部：底座下的静触点与引线（剖视时露出来）
   const inner = new THREE.Group()
   inner.name = 'switch-inner'
   for (const sx of [-1, 1]) {
@@ -273,124 +379,194 @@ function buildSwitch(w, h) {
     inner.add(box(0.5, 0.012, 0.012, MAT.copper(), sx * 0.14, 0.02, 0))
   }
   g.add(inner)
-  // 两端刀座
+
+  // 两端刀座（铜）
   for (const sx of [-1, 1]) {
-    g.add(box(0.12, 0.12, 0.16, MAT.brass(), sx * 0.42, 0.12, 0))
+    g.add(rbox(0.15, 0.11, 0.17, 0.012, MAT.brass(), sx * 0.4, 0.115, 0))
   }
-  // 刀片（绕左端铰链转动）
+  // 铰链轴（横穿的铜轴，刀从这里转）
+  const hinge = cyl(0.032, 0.032, 0.2, MAT.brass(), 12)
+  hinge.rotation.x = Math.PI / 2
+  hinge.position.set(-0.42, 0.175, 0)
+  g.add(hinge)
+  // 另一端静触点夹片（两片铜片夹住刀头）
+  for (const sz of [-1, 1]) {
+    g.add(box(0.16, 0.09, 0.012, MAT.brass(), 0.42, 0.16, sz * 0.028))
+  }
+
+  // 刀片（铜刀：扁条 + 前端略收）
   const pivot = new THREE.Group()
   pivot.position.set(-0.42, 0.19, 0)
-  const blade = box(0.84, 0.035, 0.075, MAT.steel(), 0.42, 0, 0)
+  const blade = rbox(0.82, 0.024, 0.062, 0.01, std('#c9982f', { roughness: 0.34, metalness: 0.62 }), 0.41, 0, 0)
   pivot.add(blade)
-  // 手柄（绝缘小球）
-  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.045, 14, 10), MAT.redPlastic())
-  knob.position.set(0.78, 0.04, 0)
+  // 刀头下压的弧形触点
+  const tip = box(0.1, 0.03, 0.05, std('#b8862a', { roughness: 0.35, metalness: 0.6 }), 0.8, -0.02, 0)
+  pivot.add(tip)
+  // 绝缘手柄（红色胶木，不是小球）
+  pivot.add(rbox(0.14, 0.05, 0.055, 0.02, MAT.redPlastic(), 0.74, 0.04, 0))
+  const knob = cyl(0.028, 0.028, 0.03, MAT.redPlastic(), 14)
+  knob.rotation.z = Math.PI / 2
+  knob.position.set(0.82, 0.055, 0)
   pivot.add(knob)
   g.add(pivot)
   return { group: g, blade: pivot, shell, inner }
 }
 
-/** 立式方表（电流表 / 电压表）：胶木表壳 + 表盘 + 玻璃 + 可转指针 + 三柱 */
+/** 立式方表（电流表 / 电压表）：浅灰紫底台 + 楔形后壳 + 白面板 + 表盘 + 玻璃 + 三柱 */
 function buildMeter(w, h, kind, fs, subTicks) {
   const g = new THREE.Group()
   const W = w * SCALE // 1.3
   const H = h * SCALE // 1.52 / 1.33
   const D = 0.36
+  const front = D / 2 // 面板前缘 z
   const shell = []
 
   // 内部：U 形磁铁 + 动圈 + 游丝（剖视时露出来，这就是真实电表的表头）
   const inner = new THREE.Group()
   inner.name = 'meter-inner'
   const mag = std('#4b5563', { roughness: 0.5, metalness: 0.35 })
-  // 两块磁极（U 形磁铁的左右极掌）
   inner.add(box(W * 0.2, H * 0.3, 0.11, mag, -W * 0.26, H * 0.5, 0))
   inner.add(box(W * 0.2, H * 0.3, 0.11, mag, W * 0.26, H * 0.5, 0))
   inner.add(box(W * 0.5, 0.05, 0.1, mag, 0, H * 0.3, 0)) // 磁轭底部
-  // 动圈（铜色扁框，指针挂在它上面）
   const coil = box(W * 0.34, H * 0.22, 0.05, std('#c67a35', { roughness: 0.5, metalness: 0.4 }), 0, H * 0.52, 0.03)
   inner.add(coil)
-  // 游丝（两根细螺旋，用扁环示意）
   for (const sx of [-1, 1]) {
     const sp = new THREE.Mesh(new THREE.TorusGeometry(0.035, 0.005, 6, 14), MAT.brass())
     sp.position.set(sx * W * 0.16, H * 0.4, 0.02)
     inner.add(sp)
   }
-  // 内部接线（柱 → 动圈）
   inner.add(box(W * 0.7, 0.012, 0.012, MAT.copper(), 0, H * 0.24, 0.05))
   g.add(inner)
 
-  // 表壳（前面朝 -Z）
-  const casing = box(W, H, D, MAT.bakelite(), 0, H / 2 + 0.02, 0)
-  shell.push(casing)
-  // 表壳侧面浅色描边（增加层次）
-  shell.push(box(W + 0.02, 0.03, D + 0.02, std('#4a5058'), 0, 0.035, 0))
-  for (const m of shell) g.add(m)
+  // 底台：浅灰紫圆角板（实物表的底板比外壳大一圈，表放上去有"座"）
+  g.add(rbox(W + 0.07, 0.05, D + 0.2, 0.022, std('#cfc9d8', { roughness: 0.58, metalness: 0.04 }), 0, 0.025, 0.03))
 
-  // 表盘平面（贴在表壳前表面外一点，朝 +Z —— 相机在 +Z 侧，能看到读数）
+  // 楔形后壳：侧视是梯形 —— 前面全高，往后斜降约三分之一。
+  // 直角方箱是"积木感"最重的一处：真实教学表的背壳一定是斜背的，便于仰视读数。
+  const backRun = D * 1.06
+  const sh = new THREE.Shape()
+  sh.moveTo(0, 0)
+  sh.lineTo(0, H)
+  sh.lineTo(-backRun, H * 0.66)
+  sh.lineTo(-backRun, 0)
+  sh.lineTo(0, 0)
+  const shellGeo = new THREE.ExtrudeGeometry(sh, {
+    depth: W,
+    bevelEnabled: true,
+    bevelSize: 0.012,
+    bevelThickness: 0.012,
+    bevelSegments: 2,
+    curveSegments: 6,
+  })
+  // rotateY(-90°) 把 shape 的 x 轴转到 -Z、挤出方向转到 X，然后把"前缘"推到 z = front
+  shellGeo.rotateY(-Math.PI / 2)
+  shellGeo.translate(W / 2, 0, front)
+  const casing = new THREE.Mesh(shellGeo, MAT.bakelite())
+  casing.castShadow = true
+  casing.receiveShadow = true
+  shell.push(casing)
+  g.add(casing)
+
+  // 前面板：白色塑料板（表盘、刻字、旋钮都装在它上面）
+  const panelMesh = rbox(W * 0.994, H * 0.985, 0.05, 0.012, std('#f1efea', { roughness: 0.72 }), 0, H / 2 + 0.02, front + 0.005)
+  shell.push(panelMesh)
+  g.add(panelMesh)
+
+  // 表盘平面（贴在白面板前面，朝 +Z —— 相机在 +Z 侧，能看到读数）
   const dialMat = std('#f2f0ea', { roughness: 0.85 })
-  dialMat.map = dialTexture(kind, fs, subTicks)
-  dialMat.needsUpdate = true // 赋值 map 后必须重编译，否则表格永远是一块灰板
-  const dial = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.86, H * 0.72), dialMat)
-  dial.position.set(0, H * 0.58 + 0.02, D / 2 + 0.008)
+  const dialTex = dialTexture(kind, fs, subTicks)
+  if (dialTex) {
+    dialMat.map = dialTex
+    dialMat.needsUpdate = true // 赋值 map 后必须重编译，否则表格永远是一块灰板
+  }
+  const dial = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.84, H * 0.7), dialMat)
+  dial.position.set(0, H * 0.585 + 0.02, front + 0.032)
   g.add(dial)
 
-  // 玻璃面板
+  // 玻璃面板：只压四条细边当边框 —— 千万别用实心 box 当"框"，
+  // 否则它会把前面的表盘整个盖住（表盘看着就是一块黑板）。
+  const frZ = front + 0.036
+  const frW = W * 0.9
+  const frH = H * 0.76
+  const frY = H * 0.585 + 0.02
+  const frMat = std('#20242a', { roughness: 0.5 })
+  g.add(box(frW, 0.008, 0.006, frMat, 0, frY + frH / 2, frZ))
+  g.add(box(frW, 0.008, 0.006, frMat, 0, frY - frH / 2, frZ))
+  g.add(box(0.008, frH, 0.006, frMat, -frW / 2, frY, frZ))
+  g.add(box(0.008, frH, 0.006, frMat, frW / 2, frY, frZ))
   const glass = new THREE.Mesh(
-    new THREE.PlaneGeometry(W * 0.92, H * 0.8),
-    std('#cfe0ef', { transparent: true, opacity: 0.1, roughness: 0.05, metalness: 0.2 })
+    new THREE.PlaneGeometry(W * 0.86, H * 0.72),
+    std('#cfe0ef', { transparent: true, opacity: 0.09, roughness: 0.04, metalness: 0.25 })
   )
-  glass.position.set(0, H * 0.58 + 0.02, D / 2 + 0.022)
+  glass.position.set(0, frY, front + 0.038)
   g.add(glass)
 
   // 指针：pivot 在表盘下缘中心，针绕 Z 转
   const pivot = new THREE.Group()
-  pivot.position.set(0, H * 0.24, D / 2 + 0.016)
-  const needle = box(0.018, H * 0.44, 0.008, std('#c0392b', { roughness: 0.35 }), 0, H * 0.22, 0)
+  pivot.position.set(0, H * 0.24, front + 0.042)
+  const needle = box(0.016, H * 0.42, 0.007, std('#c0392b', { roughness: 0.35 }), 0, H * 0.21, 0)
   pivot.add(needle)
+  // 针尖一小段更细，视觉上才像"针"而不是一根红条
+  pivot.add(box(0.008, H * 0.1, 0.006, std('#b03028', { roughness: 0.35 }), 0, H * 0.42, 0))
   g.add(pivot)
 
   // 剖视时要临时隐掉表盘和玻璃，否则它们挡在动圈前面，透出来还是白的
   return { group: g, pointer: pivot, shell, inner, panel: [dial, glass] }
 }
 
-/** 滑动变阻器：底座 + 瓷管 + 绕线 + 滑片 + 四柱 */
+/** 滑动变阻器：深灰圆角底座 + 瓷管 + 连续镍铬丝 + 金属滑片 + 四柱 */
 function buildRheostat(w, h) {
   const g = new THREE.Group()
   const W = w * SCALE // 1.9
   const shell = []
-  const base = box(W * 0.98, 0.07, 0.5, MAT.bakelite(), 0, 0.035, 0)
+  // 底座（实物是深灰塑料座，四角有支撑）
+  const base = rbox(W * 0.99, 0.062, 0.5, 0.022, std('#33383f', { roughness: 0.62, metalness: 0.05 }), 0, 0.031, 0.02)
   shell.push(base)
   g.add(base)
 
   // 瓷管（横躺）
   const tubeLen = 1.34
-  const tube = cyl(0.115, 0.115, tubeLen, MAT.ceramic(), 20)
+  const tubeY = 0.25
+  const tubeZ = 0.02
+  const tube = cyl(0.113, 0.113, tubeLen, MAT.ceramic(), 24)
   tube.rotation.z = Math.PI / 2
-  tube.position.set(0, 0.25, 0.02)
+  tube.position.set(0, tubeY, tubeZ)
+  shell.push(tube)
   g.add(tube)
 
-  // 绕线：26 圈铜环
-  const turns = 26
-  const step = (tubeLen - 0.16) / turns
-  const wireMat = MAT.copper()
-  for (let i = 0; i < turns; i++) {
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.118, 0.011, 6, 14), wireMat)
+  // 连续镍铬丝：一根螺旋管绕满瓷管（原来叠 26 个独立圆环，环间有空当，一眼假）
+  const coilMat = std('#b6bcc4', { roughness: 0.32, metalness: 0.68 })
+  // 密绕：圈距要贴近丝径，否则像一根弹簧而不是电阻丝绕线
+  const winding = helixTube(0.119, -tubeLen / 2 + 0.06, tubeLen / 2 - 0.06, 72, 0.0078, coilMat)
+  winding.rotation.z = -Math.PI / 2 // 轴从 +Y 放倒到 +X
+  winding.position.set(0, tubeY, tubeZ)
+  winding.castShadow = false
+  g.add(winding)
+
+  // 两端金属支架：夹住瓷管的环 + 立在底板上的脚
+  for (const sx of [-1, 1]) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.121, 0.012, 8, 20), MAT.steel())
     ring.rotation.y = Math.PI / 2
-    ring.position.set(-tubeLen / 2 + 0.08 + i * step, 0.25, 0.02)
-    ring.castShadow = false
+    ring.position.set(sx * (tubeLen / 2 - 0.02), tubeY, tubeZ)
     g.add(ring)
+    g.add(box(0.035, 0.14, 0.16, MAT.steel(), sx * (tubeLen / 2 - 0.03), 0.12, tubeZ))
   }
 
-  // 上导轨（两根金属杆，滑片在上面滑）
+  // 滑片：金属夹块骑在瓷管上（外部只改 position.x，±0.59 范围内滑动）
+  const slider = new THREE.Group()
+  slider.position.set(0, 0.36, tubeZ)
+  slider.add(rbox(0.13, 0.14, 0.3, 0.014, MAT.steel(), 0, 0, 0.02))
+  // 两片触指压在绕线上
   for (const sz of [-1, 1]) {
-    const rod = cyl(0.018, 0.018, W * 0.9, MAT.steel(), 10)
-    rod.rotation.z = Math.PI / 2
-    rod.position.set(0, 0.44, sz * 0.16)
-    g.add(rod)
+    slider.add(box(0.06, 0.16, 0.014, std('#9aa1aa', { roughness: 0.35, metalness: 0.6 }), 0, -0.13, sz * 0.1))
   }
-
-  // 滑片
-  const slider = box(0.1, 0.22, 0.34, MAT.steel(), 0, 0.36, 0.02)
+  // 顶部压紧弹簧片
+  slider.add(box(0.12, 0.016, 0.22, MAT.brass(), 0, 0.075, 0.02))
+  // 红色胶木手柄（实物是侧面伸出的柄）
+  const handle = cyl(0.028, 0.034, 0.18, MAT.redPlastic(), 14)
+  handle.rotation.x = Math.PI / 2
+  handle.position.set(0, 0.055, 0.2)
+  slider.add(handle)
   g.add(slider)
 
   return { group: g, slider, shell }
@@ -674,7 +850,8 @@ export function buildSolid(type, opt = {}) {
     }
     case 'bulb': {
       const b = buildBulb(w, h)
-      const thickness = 0.07
+      // 柱脚必须落在底板面上（板厚 0.045），否则柱子会浮在板子上方
+      const thickness = 0.045
       placePosts(b.group, terms, w, h, false, thickness)
       return {
         group: b.group, size, thickness, stand: false,
