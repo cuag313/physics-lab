@@ -27,13 +27,14 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js'
 import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
 import { buildEquipment } from './svg-extrude-loader.js'
+import { buildSolid, SOLID_TYPES } from './solidEquipment.js'
 import { VerletWire } from './verlet-wire.js'
 import { bulbTempColor } from '../scenes/electricSvgInstruments.js'
 
 /* ── 尺度与手感常量 ─────────────────────────────────────────────── */
 const SCALE = 0.01           // 2D 画布 px → 世界单位（1800px ≈ 18 单位）
 const GRID_PX = 20           // 台面网格吸附步长（px）
-const TERM_SNAP_PX = 34      // 接线柱磁吸半径（px，与 2D 命中手感一致）
+const TERM_SNAP_PX = 52      // 接线柱磁吸半径（px）：电容屏/鼠标都好点，不靠"扎眼"
 const TERM_DROP = 7          // 接线锚点相对柱帽下移（与 2D termAnchor 一致）
 const ROT_YAW_K = 0.0062     // 拖动 → 转台角速度
 const ROT_PITCH_K = 0.0042
@@ -41,11 +42,11 @@ const ROT_PITCH_MIN = 0.0    // 平视
 const ROT_PITCH_MAX = 0.62   // 俯视（~35°）
 const ROT_YAW_MAX = Math.PI / 4 // 左右各 45°
 const INERTIA_DAMP = 0.925   // 惯性衰减
-const CAM_ELEV = 0.56        // 相机俯仰（sin 分量）：俯角约 33°，正对立式表盘
+const CAM_ELEV = 0.40        // 相机俯仰（sin 分量）：俯角约 23°，正对立式表盘
 const CAM_BACK = 0.83
-const CAM_DIST0 = 12         // 默认视距：让器材占据视野主体，而不是一张空桌子
-const CAM_DIST_MIN = 5.5
-const CAM_DIST_MAX = 34
+const CAM_DIST0 = 6.6        // 默认视距：让器材占据视野主体，而不是一张空桌子
+const CAM_DIST_MIN = 4.2
+const CAM_DIST_MAX = 22
 const NEEDLE_BASE_DEG = -52 // 与 needleSVG 一致：frac 0~1 → -52°~+52°
 const NEEDLE_SPAN_DEG = 104
 
@@ -189,7 +190,7 @@ export function createLabRenderer(container, opt = {}) {
   composer.addPass(new OutputPass())
 
   /* ── 转台状态：拖动旋转 + 阻尼惯性 ── */
-  const rot = { yaw: 0, pitch: 0.16, vYaw: 0, vPitch: 0 }
+  const rot = { yaw: 0, pitch: 0.04, vYaw: 0, vPitch: 0 }
   function applyGroupRot() {
     labTableGroup.rotation.y = rot.yaw
     labTableGroup.rotation.x = rot.pitch
@@ -343,16 +344,25 @@ export function createLabRenderer(container, opt = {}) {
     const stand = !!(entry.build && entry.build.stand)
     for (const tm of t.terminals) {
       const g = new THREE.SphereGeometry((TERM_SNAP_PX * SCALE) / 2, 8, 6)
-      const m = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+      // colorWrite:false —— 只参与射线检测，永不画像素；
+      // keepOpacity 防止透视开关把它复位成可见白球
+      const m = new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        colorWrite: false,
+      })
+      m.userData.keepOpacity = true
       const s = new THREE.Mesh(g, m)
       if (stand) {
         // 立式：端子长在竖直面板上，高度按 SVG 的 y 换算；
-        // z 要落在面板表面之外（面板朝 -Z，机身占 z ∈ [-th, 0]），
-        // 否则射线先打到面板，接线柱根本点不到。
+        // z 落在面板表面之外，否则射线先打到面板，接线柱根本点不到。
+        // 实体表盘的朝向由 build 决定（postZ），与旧挤出立式（朝 -Z）区分开。
+        const pz = entry.build && entry.build.postZ != null ? entry.build.postZ : -(th + 0.03)
         s.position.set(
           (tm.x - t.w / 2) * SCALE,
           (t.h - (tm.y + TERM_DROP)) * SCALE,
-          -(th + 0.03)
+          pz
         )
       } else {
         s.position.set(
@@ -391,17 +401,33 @@ export function createLabRenderer(container, opt = {}) {
     }
 
     let build
-    try {
-      build = await buildEquipment({
-        svgString,
-        width: t.w,
-        height: t.h,
-        scale: SCALE,
-        stand: isStandType(c.type),
-      })
-    } catch (e) {
-      console.warn('[lab3d] buildEquipment 失败：', c.type, e)
-      return entry
+    if (SOLID_TYPES.has(c.type)) {
+      // 核心器材走实体建模（盒/柱/球/环），不再是 SVG 剪影挤出
+      try {
+        build = buildSolid(c.type, {
+          w: t.w,
+          h: t.h,
+          terminals: t.terminals,
+          fs: c.type === 'ammeter' ? 3 : c.type === 'voltmeter' ? 15 : 0,
+        })
+        if (!build) return entry
+      } catch (e) {
+        console.warn('[lab3d] buildSolid 失败：', c.type, e)
+        return entry
+      }
+    } else {
+      try {
+        build = await buildEquipment({
+          svgString,
+          width: t.w,
+          height: t.h,
+          scale: SCALE,
+          stand: isStandType(c.type),
+        })
+      } catch (e) {
+        console.warn('[lab3d] buildEquipment 失败：', c.type, e)
+        return entry
+      }
     }
     if (entry.buildToken !== token) {
       // 已有更新的构建在途，丢弃本次
@@ -448,6 +474,12 @@ export function createLabRenderer(container, opt = {}) {
   let xrayOn = false
   function applyXrayTo(entry, on) {
     if (!entry.build) return
+    // 实体模型本来就是"看得见的零件"，不做整组半透明：
+    // 反复切 transparent/needsUpdate 会把表盘贴图洗成一块灰板
+    if (!entry.build.outer) {
+      if (entry.build.inner) entry.build.inner.visible = on
+      return
+    }
     const mats = Array.isArray(entry.build.outer.material)
       ? entry.build.outer.material
       : [entry.build.outer.material]
@@ -513,6 +545,20 @@ export function createLabRenderer(container, opt = {}) {
     return draggingRef.compId === id || (pointerDownInfo && pointerDownInfo.compId === id)
   }
   function sync(state) {
+    try {
+      return syncInner(state)
+    } catch (e) {
+      // 单件器材/单根导线出问题不应该拖垮整个页面：
+      // 记下错误并跳过这一帧，下一次 sync 会重试
+      console.warn('[lab3d] sync 失败：', e)
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.dataset.l3derr = String((e && e.stack) || e).slice(0, 500)
+      }
+      return undefined
+    }
+  }
+
+  function syncInner(state) {
     const { comps = [], wires: wireList = [], solved = {} } = state || {}
     latestComps = comps
     frameToComps(comps)
@@ -532,7 +578,12 @@ export function createLabRenderer(container, opt = {}) {
             continue
           }
         }
-        rebuildComp(c) // 异步，完成时自挂载
+        rebuildComp(c).catch((e) => {
+          console.warn('[lab3d] rebuild 失败：', c.type, e)
+          if (typeof document !== 'undefined' && document.body) {
+            document.body.dataset.l3derr = String((e && e.stack) || e).slice(0, 500)
+          }
+        }) // 异步，完成时自挂载
       } else if (entry.group && !isCompActive(c.id)) {
         entry.group.position.copy(compToLocal(c))
         entry.group.rotation.y = c.rot || 0
@@ -566,24 +617,46 @@ export function createLabRenderer(container, opt = {}) {
         if (o._over) frac = 1.06 // 超量程：指针顶到限位（左右都顶）
         let deg = NEEDLE_BASE_DEG + frac * NEEDLE_SPAN_DEG
         if (o._rev || raw < 0) deg = -deg // 接反：指针反向偏转
-        // SVG 转角顺时针为正；平放时表格平面里 -z 朝上（绕 Y），
-        // 立式时指针在竖直面板平面内转（绕 Z），故取负号。
+        // 针沿 +Y 起算。表盘朝 +Z（相机在 +Z 侧看），绕 Z 正向转是往 -X（左），
+        // 所以 rotation.z = -deg：零位 deg=-52 → +52° → 针指左侧；满偏 → 指右侧。
         if (entry.build.stand) entry.build.pointer.rotation.z = -(deg * Math.PI) / 180
         else entry.build.pointer.rotation.y = -(deg * Math.PI) / 180
       }
       if (c.type === 'bulb') {
         const bright = (o._P || 0) > 0 ? Math.min(1, o._P / BULB_RATED) : 0
         // 灯丝色温与 2D 共用同一份色表：暗红 → 橙红 → 亮黄 → 刺白
-        const { core } = bulbTempColor(bright)
-        const mats = Array.isArray(entry.build.outer.material)
-          ? entry.build.outer.material
-          : [entry.build.outer.material]
-        for (const m of mats) {
-          if (!m.emissiveMap && m.map) m.emissiveMap = m.map
-          m.emissive = m.emissive || new THREE.Color(0, 0, 0)
-          m.emissive.setRGB(core[0] / 255, core[1] / 255, core[2] / 255)
-          m.emissiveIntensity = bright * 1.4
+        const { core, halo } = bulbTempColor(bright)
+        const target = entry.build.bulbMat || null
+        if (target) {
+          target.emissive.setRGB(core[0] / 255, core[1] / 255, core[2] / 255)
+          target.emissiveIntensity = bright * 2.4
         }
+        if (entry.build.glassMat) {
+          // 玻璃泡随亮度被灯丝"照透"：暗时清透，亮时暖白
+          entry.build.glassMat.emissive.setRGB(halo[0] / 255, halo[1] / 255, halo[2] / 255)
+          entry.build.glassMat.emissiveIntensity = bright * 0.9
+          entry.build.glassMat.opacity = 0.32 + bright * 0.42
+        }
+        if (!target && entry.build.outer) {
+          const mats = Array.isArray(entry.build.outer.material)
+            ? entry.build.outer.material
+            : [entry.build.outer.material]
+          for (const m of mats) {
+            if (!m.emissiveMap && m.map) m.emissiveMap = m.map
+            m.emissive = m.emissive || new THREE.Color(0, 0, 0)
+            m.emissive.setRGB(core[0] / 255, core[1] / 255, core[2] / 255)
+            m.emissiveIntensity = bright * 1.4
+          }
+        }
+      }
+      // 刀片开合：绕铰链（Z 轴）抬起，合上归零
+      if (c.type === 'switch' && entry.build.blade) {
+        entry.build.blade.rotation.z = c.closed ? 0 : 0.55
+      }
+      // 滑片位置：跟随 f，落在瓷管有效段上
+      if (c.type === 'rheostat' && entry.build.slider) {
+        const f = typeof c.f === 'number' ? c.f : 0.4
+        entry.build.slider.position.x = (f - 0.5) * 1.18
       }
     }
 
@@ -695,12 +768,19 @@ export function createLabRenderer(container, opt = {}) {
         point: hitT[0].point,
       }
     }
-    const outerMeshes = []
-    for (const en of equips.values()) if (en.build) outerMeshes.push(en.build.outer)
-    const hitC = raycaster.intersectObjects(outerMeshes, false)
+    const compMeshes = []
+    for (const en of equips.values()) {
+      if (!en.build) continue
+      // 实体模型没有 outer 网格 → 整组参与射线检测（递归子网格）
+      compMeshes.push(en.build.outer || en.group)
+    }
+    const hitC = raycaster.intersectObjects(compMeshes, true)
     if (hitC.length) {
-      const id = hitC[0].object.parent && hitC[0].object.parent.userData.compId
-      return { kind: 'comp', compId: id, point: hitC[0].point }
+      let o = hitC[0].object
+      while (o && !o.userData.compId) o = o.parent
+      if (o && o.userData.compId != null) {
+        return { kind: 'comp', compId: o.userData.compId, point: hitC[0].point }
+      }
     }
     const wireMeshes = []
     for (const rec of wires.values()) wireMeshes.push(rec.wire.mesh)

@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { solveCircuit, circuitStatus, CFG, TERM_IDS } from '../engine/electricLab.js'
 import { TYPES, RHEO_TRACK, FIG, rheostatMode } from './electricSvgInstruments.js'
 import { createLabRenderer } from '../lab3d/three-render.js'
+import { renderIcon, SOLID_TYPES } from '../lab3d/solidEquipment.js'
 
 const CW = 1800, CH = 1100
 
@@ -61,6 +62,10 @@ const CSS = `
   transform:perspective(180px) rotateX(26deg);transform-origin:50% 100%;
   filter:drop-shadow(0 4px 3px rgba(15,23,42,.22))}
 .esvg-palette.is3d .esvg-pitem svg{width:52px;height:32px}
+/* 3D 模式：元件库图标直接用实体渲染出的透明底贴图 */
+.esvg-palette.is3d .esvg-pitem > span:first-child img{width:58px;height:44px;object-fit:contain;
+  transform:none;filter:drop-shadow(0 3px 3px rgba(15,23,42,.18))}
+.esvg-palette.is3d .esvg-pitem > span:first-child:has(img){transform:none}
 .esvg-palette.is3d .esvg-pitem > span:last-child{font-size:10.5px;line-height:1.2;text-align:center}
 .esvg-palette.is3d .esvg-ptip{font-size:10px;line-height:1.5}
 .esvg-ptip{margin-top:12px;font-size:10.5px;color:#94a3b8;text-align:center;line-height:1.6;
@@ -335,6 +340,7 @@ export default function ElectricSvgLabScene() {
   const [toast, setToast] = useState('就绪')
   const [wireColor, setWireColor] = useState(WIRE_COLORS[0].hex)
   const [view3d, setView3d] = useState(false)  // false=平面画布，true=3D 实验台（交互验收通过前默认 2D）
+  const [icon3d, setIcon3d] = useState({})     // 3D 模式下的元件库图标（实体渲染出的 dataURL）
   const uidRef = useRef(1)
   const dragRef = useRef(null)
   const lastUpRef = useRef(null)
@@ -683,6 +689,24 @@ export default function ElectricSvgLabScene() {
     window.addEventListener('keydown', kd)
     return () => window.removeEventListener('keydown', kd)
   }, [selected, removeComp])
+
+  /* ── 3D 元件库图标：进 3D 时把 6 类核心器材离屏渲染成透明底贴图 ── */
+  useEffect(() => {
+    if (!view3d || Object.keys(icon3d).length) return undefined
+    let alive = true
+    const map = {}
+    for (const type of SOLID_TYPES) {
+      const t = TYPES[type]
+      if (!t) continue
+      try {
+        map[type] = renderIcon(type, { w: t.w, h: t.h, terminals: t.terminals, fs: t.fs })
+      } catch (e) {
+        console.warn('[lab3d] 图标渲染失败：', type, e)
+      }
+    }
+    if (alive) setIcon3d(map)
+    return () => { alive = false }
+  }, [view3d, icon3d])
 
   /* ── 3D 实验台：挂载 / 卸载（createLabRenderer 只在切入 3D 时创建一次） ── */
   useEffect(() => {
@@ -1043,7 +1067,14 @@ export default function ElectricSvgLabScene() {
                   onPointerDown={(e) => onPaletteDown(e, type)}
                   title={`按住拖到桌面：${TYPES[type].label}`}
                 >
-                  <span dangerouslySetInnerHTML={{ __html: PALETTE_ICONS[type] || '' }} />
+                  <span
+                    dangerouslySetInnerHTML={{
+                      __html:
+                        view3d && icon3d[type]
+                          ? `<img src="${icon3d[type]}" alt="">`
+                          : PALETTE_ICONS[type] || '',
+                    }}
+                  />
                   <span>{TYPES[type].label}</span>
                 </div>
               ))}
