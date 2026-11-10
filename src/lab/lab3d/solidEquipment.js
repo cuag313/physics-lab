@@ -172,50 +172,65 @@ function whiteBorderToAlpha(cv, g) {
   g.putImageData(data, 0, 0)
 }
 
-/** 取实拍图贴图（异步载入；先用 1×1 空白占位，载入后自动替换） */
-function photoTexture(file) {
-  // 无 DOM（node 测试 / 离屏无 canvas）时直接放弃贴面，器材照常能造出来
+/** 取实拍图（异步载入；先用 1×1 空白占位，载入后自动替换） */
+const _photoRec = new Map()
+function photoCanvasLoad(file, onReady) {
+  let rec = _photoRec.get(file)
+  if (!rec) {
+    rec = { canvas: null, waiters: [] }
+    _photoRec.set(file, rec)
+    if (typeof document === 'undefined') return
+    const img = new Image()
+    img.onload = () => {
+      const c2 = document.createElement('canvas')
+      c2.width = img.width
+      c2.height = img.height
+      const g = c2.getContext && c2.getContext('2d')
+      if (!g) return
+      g.drawImage(img, 0, 0)
+      whiteBorderToAlpha(c2, g)
+      rec.canvas = c2
+      for (const fn of rec.waiters) {
+        try {
+          fn(c2)
+        } catch (e) {
+          /* ignore */
+        }
+      }
+      rec.waiters.length = 0
+    }
+    img.src = PHOTO_BASE + file
+  }
+  if (rec.canvas) onReady(rec.canvas)
+  else rec.waiters.push(onReady)
+}
+
+/**
+ * 把实拍图中的一条"横向区域"贴到平面。
+ * 实拍图是斜投影：上半是顶面（带柱），下半是正面。一个平面只能取其中一段，
+ * 否则俯视看到整张正面图、平视又看到顶面图 —— 这就是"怎么看都不像"的根源。
+ * @param {string} file
+ * @param {number} w 平面宽
+ * @param {number} h 平面高
+ * @param {object} opt {v0: 起始 v（从图像底部算）, frac: 取的高度比例}
+ */
+function photoFace(file, w, h, opt = {}) {
   if (typeof document === 'undefined') return null
-  const key = String(file)
-  const hit = _photoCache.get(key)
-  if (hit) return hit
   const cv = document.createElement('canvas')
   cv.width = 2
   cv.height = 2
   const tex = new THREE.CanvasTexture(cv)
   tex.colorSpace = THREE.SRGBColorSpace
   tex.anisotropy = 4
-  _photoCache.set(key, tex)
-  const img = new Image()
-  img.onload = () => {
-    const c2 = document.createElement('canvas')
-    c2.width = img.width
-    c2.height = img.height
-    const g = c2.getContext && c2.getContext('2d')
-    if (!g) return
-    g.drawImage(img, 0, 0)
-    whiteBorderToAlpha(c2, g)
+  tex.repeat.set(1, opt.frac ?? 1)
+  tex.offset.set(0, opt.v0 ?? 0)
+  photoCanvasLoad(file, (c2) => {
     tex.image = c2
     tex.needsUpdate = true
-  }
-  img.src = PHOTO_BASE + file
-  return tex
-}
-
-/** 顶面贴一张实拍图（尺寸即 2D 的 w×h，1px=1cm） */
-function photoTop(file, w, h, y, opt = {}) {
-  const tex = photoTexture(file)
-  if (!tex) return null
-  const mat = new THREE.MeshBasicMaterial({
-    map: photoTexture(file),
-    transparent: true,
-    toneMapped: false,
   })
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false })
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat)
-  m.rotation.x = -Math.PI / 2
-  m.position.set(0, y, 0)
   m.userData.role = 'photo'
-  if (opt.z) m.position.z = opt.z
   return m
 }
 
@@ -327,42 +342,58 @@ function dialTexture(kind, fs, subTicks) {
 
 /* ── 各类器材 ── */
 
-/** 电池组：平放方块（占地严格等于 2D 的 w×h）+ 顶面实拍贴面 + 内部两节干电池 */
+/**
+ * 电池组：按实拍图的三维形态重建。
+ * 实拍图是斜投影 —— 上半是顶面（两个接线柱 + 一条深色边），下半是正面（+/- 标记）。
+ * 所以实物是"宽 1.5 / 高 1.1 / 深 1.1"的方块：
+ *   俯视 → 看到顶面（长方形，上面两个柱）；
+ *   平视 → 看到正面（接近正方形）。
+ * 顶面贴图的上段、正面贴图的下段，两张图拼起来才是完整的实物 ——
+ * 这正是之前"把整张图贴在顶面"看起来不像的原因。
+ */
 function buildBattery(w, h) {
   const g = new THREE.Group()
-  const bw = w * SCALE // 1.50
-  const bd = h * SCALE // 1.54
-  const bh = 0.5
+  const bw = w * SCALE // 1.50（宽）
+  const bh = 1.1 // 高（照片正面段）
+  const bd = 1.1 // 深（照片顶面段，斜投影下压缩后与正面高度相当）
+  const topFrac = 0.26 // 照片里顶面占整幅高度的比例
   const shell = []
 
-  // 内部：两节 1.5V 干电池串联（3V 方块电池就是这么装的）
+  // 内部：两节 1.5V 干电池串联
   const inner = new THREE.Group()
   inner.name = 'battery-inner'
   for (let i = 0; i < 2; i++) {
-    const x = i === 0 ? -0.3 : 0.3
-    const cell = cyl(0.15, 0.15, 0.4, std('#232a33', { roughness: 0.5, metalness: 0.3 }), 20)
+    const x = i === 0 ? -0.28 : 0.28
+    const cell = cyl(0.15, 0.15, bh - 0.16, std('#232a33', { roughness: 0.5, metalness: 0.3 }), 20)
     cell.position.set(x, 0.02 + bh / 2, 0)
     inner.add(cell)
-    const band = cyl(0.152, 0.152, 0.1, std('#d8b23c', { roughness: 0.45 }), 20)
-    band.position.set(x, 0.02 + bh / 2 - 0.02, 0)
+    const band = cyl(0.152, 0.152, 0.12, std('#d8b23c', { roughness: 0.45 }), 20)
+    band.position.set(x, 0.02 + bh * 0.35, 0)
     inner.add(band)
-    const cap = cyl(0.055, 0.055, 0.03, MAT.brass(), 14)
-    cap.position.set(x, 0.02 + bh / 2 + 0.215, 0)
+    const cap = cyl(0.055, 0.055, 0.035, MAT.brass(), 14)
+    cap.position.set(x, 0.02 + bh - 0.02, 0)
     inner.add(cap)
   }
-  inner.add(box(0.6, 0.018, 0.02, MAT.copper(), 0, 0.02 + bh / 2 + 0.19, 0))
+  inner.add(box(0.56, 0.02, 0.03, MAT.copper(), 0, 0.02 + bh - 0.05, 0))
   g.add(inner)
 
-  // 壳身：圆角方块（不再是之前的卧式长条）
-  const bodyMesh = rbox(bw, bh, bd, 0.05, MAT.bluePlastic(), 0, 0.02 + bh / 2, 0)
-  shell.push(bodyMesh)
+  // 壳身：圆角方块
+  shell.push(rbox(bw, bh, bd, 0.055, MAT.bluePlastic(), 0, 0.02 + bh / 2, 0))
 
-  // 顶面：实拍图（尺寸与 2D 完全一致 —— 照片上的柱、+/- 印字都落在同一位置）
-  const top = photoTop('battery_c.png', bw * 0.99, bd * 0.99, 0.02 + bh + 0.0015)
-  if (top) g.add(top)
+  // 正面：贴图的下段（+/- 标记、底沿）
+  const front = photoFace('battery_c.png', bw, bh, { v0: 0, frac: 1 - topFrac })
+  if (front) {
+    front.position.set(0, 0.02 + bh / 2, bd / 2 + 0.004)
+    g.add(front)
+  }
 
-  // 底沿一圈深色包边，让方块在台面上有"落座感"
-  shell.push(rbox(bw + 0.01, 0.03, bd + 0.01, 0.012, std('#16406f'), 0, 0.015, 0))
+  // 顶面：贴图的上段（两个接线柱的底座 + 深色边）
+  const top = photoFace('battery_c.png', bw, bd, { v0: 1 - topFrac, frac: topFrac })
+  if (top) {
+    top.rotation.x = -Math.PI / 2
+    top.position.set(0, 0.02 + bh + 0.004, 0)
+    g.add(top)
+  }
 
   for (const m of shell) g.add(m)
   return { group: g, shell, inner }
@@ -909,7 +940,7 @@ export function buildSolid(type, opt = {}) {
   switch (type) {
     case 'battery': {
       const b = buildBattery(w, h)
-      const thickness = 0.52 // 壳顶面高度：柱脚要落在顶面上
+      const thickness = 1.12 // 顶面高度：柱脚落在顶面上
       placePosts(b.group, terms, w, h, false, thickness)
       return { group: b.group, size, thickness, stand: false, shell: b.shell, inner: b.inner }
     }

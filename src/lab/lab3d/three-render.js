@@ -1197,8 +1197,9 @@ export function createLabRenderer(container, opt = {}) {
     if (info.mode === 'rotate') {
       rot.yaw = Math.max(-ROT_YAW_MAX, Math.min(ROT_YAW_MAX, info.yaw0 + dx * ROT_YAW_K))
       rot.pitch = Math.max(ROT_PITCH_MIN, Math.min(ROT_PITCH_MAX, info.pitch0 + dy * ROT_PITCH_K))
-      rot.vYaw = dx * ROT_YAW_K * 0.35 // 惯性种子（按当前速度）
-      rot.vPitch = dy * ROT_PITCH_K * 0.25
+      // 不引入惯性：松手就停在当前角度（用户明确要求"停在什么地方就什么地方"）
+      rot.vYaw = 0
+      rot.vPitch = 0
       applyGroupRot()
       info.moved = Math.max(info.moved, Math.abs(dx) + Math.abs(dy))
       return
