@@ -40,12 +40,13 @@ const TERM_DROP = 7          // 接线锚点相对柱帽下移（与 2D termAnch
 const ROT_YAW_K = 0.0062     // 拖动 → 转台角速度
 const ROT_PITCH_K = 0.0042
 const ROT_PITCH_MIN = 0.0    // 平视
-const ROT_PITCH_MAX = 0.62   // 俯视（~35°）
+const ROT_PITCH_MAX = 1.15   // 俯视：可一直翻到桌面正对相机（约 66°，布置电路最好用）
 const ROT_YAW_MAX = Math.PI / 4 // 左右各 45°
 const INERTIA_DAMP = 0.925   // 惯性衰减
 const CAM_ELEV = 0.40        // 相机俯仰（sin 分量）：俯角约 23°，正对立式表盘
 const CAM_BACK = 0.83
 const CAM_DIST0 = 6.6        // 默认视距：让器材占据视野主体，而不是一张空桌子
+const ROT_PITCH0 = 0.82      // 初始视角：桌面近乎正对相机（"正视图"，方便在平面内拖器材布电路）
 const CAM_DIST_MIN = 4.2
 const CAM_DIST_MAX = 22
 const NEEDLE_BASE_DEG = -52 // 与 needleSVG 一致：frac 0~1 → -52°~+52°
@@ -137,6 +138,10 @@ export function createLabRenderer(container, opt = {}) {
   }
 
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 220)
+  /* ── 转台状态：拖动旋转 + 阻尼惯性（必须在 applyCamera 首次调用前声明，
+        因为 fitDist 会读 rot.pitch 换算正视图视距） ── */
+  const rot = { yaw: 0, pitch: ROT_PITCH0, vYaw: 0, vPitch: 0 }
+
   const camTarget = new THREE.Vector3(0, 0.55, 0)
   let camDist = 0 // 0 → 首次 applyCamera 按视口宽高比自适应（见 fitDist）
 
@@ -204,8 +209,7 @@ export function createLabRenderer(container, opt = {}) {
   composer.addPass(outline)
   composer.addPass(new OutputPass())
 
-  /* ── 转台状态：拖动旋转 + 阻尼惯性 ── */
-  const rot = { yaw: 0, pitch: 0.04, vYaw: 0, vPitch: 0 }
+  /* ── 转台状态（rot 在上方相机初始化前声明）── */
   function applyGroupRot() {
     labTableGroup.rotation.y = rot.yaw
     labTableGroup.rotation.x = rot.pitch
@@ -239,7 +243,10 @@ export function createLabRenderer(container, opt = {}) {
     const w = container.clientWidth || 800
     const h = container.clientHeight || 600
     const aspect = w / h
-    const d = aspect < 1.25 ? CAM_DIST0 * (1.3 + (1.25 - aspect) * 1.15) : CAM_DIST0
+    let d = aspect < 1.25 ? CAM_DIST0 * (1.3 + (1.25 - aspect) * 1.15) : CAM_DIST0
+    // 桌面越"正对相机"（pitch 越大），它在屏幕上的投影越大，视距按比例加大，
+    // 否则正视图下只能看到桌面中段一条缝
+    d *= 1 + 1.7 * Math.abs(Math.sin(rot.pitch))
     return Math.min(CAM_DIST_MAX, Math.max(CAM_DIST_MIN, d))
   }
   function defaultCameraPose() {
@@ -274,7 +281,12 @@ export function createLabRenderer(container, opt = {}) {
       sx += p.x
       sz += p.z
     }
-    camTarget.set(sx / comps.length, 0.55, sz / comps.length)
+    // 器材重心在"组内局部坐标"里，而相机是世界坐标：桌子已按 rot 转过，
+    // 必须把重心也按同样的 yaw/pitch 转过去，否则正视图下画面会整体偏上
+    const center = new THREE.Vector3(sx / comps.length, 0.55, sz / comps.length)
+    center.applyAxisAngle(new THREE.Vector3(0, 1, 0), rot.yaw)
+    center.applyAxisAngle(new THREE.Vector3(1, 0, 0), rot.pitch)
+    camTarget.copy(center)
     camFramed = true
     applyCamera()
   }
