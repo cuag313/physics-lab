@@ -478,7 +478,7 @@ export function createLabRenderer(container, opt = {}) {
     // 位置/自转/透视/选中立即对齐
     entry.group.position.copy(compToLocal(c))
     entry.group.rotation.y = c.rot || 0
-    applyXrayTo(entry, xrayOn)
+    applyXrayTo(entry, xrayOnFor(entry))
     if (selected && selected.kind === 'comp' && selected.id === c.id) {
       outline.selectedObjects = [entry.group]
     }
@@ -539,7 +539,19 @@ export function createLabRenderer(container, opt = {}) {
   }
   function setXray(on) {
     xrayOn = !!on
+    xrayIds.clear()
     for (const e of equips.values()) applyXrayTo(e, xrayOn)
+  }
+  /** 单件拆壳：双击某件器材单独剖开它（对标"点击拆开模型"），与全局开关互不干扰 */
+  const xrayIds = new Set()
+  function xrayOnFor(entry) {
+    return xrayOn || xrayIds.has(entry.id)
+  }
+  function toggleXrayComp(id) {
+    if (xrayIds.has(id)) xrayIds.delete(id)
+    else xrayIds.add(id)
+    const en = equips.get(id)
+    if (en) applyXrayTo(en, xrayOnFor(en))
   }
 
   /* ── 选中（OutlinePass） ── */
@@ -1043,6 +1055,9 @@ export function createLabRenderer(container, opt = {}) {
     }
   }
 
+  /** 上次 pointerup 命中的器材，用于双击自检 */
+  let tapRef = { id: null, t: 0 }
+
   function onUp(e) {
     const info = pointerDownInfo
     pointerDownInfo = null
@@ -1058,6 +1073,16 @@ export function createLabRenderer(container, opt = {}) {
       draggingRef.rotComp = false
     }
     if (!info) return
+    // 双击自检：同一件器材 420ms 内连点两次即视为双击（不依赖浏览器 dblclick）
+    if ((info.moved || 0) < 6 && info.compId != null) {
+      const now = performance.now()
+      if (tapRef.id === info.compId && now - tapRef.t < 420) {
+        tapRef = { id: null, t: 0 }
+        handleDoubleComp(info.compId, e.clientX, e.clientY)
+        return
+      }
+      tapRef = { id: info.compId, t: now }
+    }
     if (info.mode === 'rotate') {
       // 点击空白（几乎无位移）→ 相机复位（req 7）
       if ((info.moved || 0) < 6) resetCamera()
@@ -1085,11 +1110,37 @@ export function createLabRenderer(container, opt = {}) {
   function onDblClick(e) {
     const hit = pick(e)
     if (!hit || hit.kind !== 'comp') return
-    const en = equips.get(hit.compId)
+    handleDoubleComp(hit.compId, e.clientX, e.clientY)
+  }
+
+  /**
+   * 双击某件器材的统一入口。
+   * 浏览器 dblclick 常被两次单击吞掉（pointerup 已处理过一次点击），
+   * 所以 onUp 里也会用时间窗自检双击，两条路径都汇到这里，由 dblGuard 去重。
+   */
+  let dblGuard = { id: null, t: 0 }
+  function handleDoubleComp(compId, clientX, clientY) {
+    const now = performance.now()
+    if (dblGuard.id === compId && now - dblGuard.t < 600) return
+    dblGuard = { id: compId, t: now }
+
+    const en = equips.get(compId)
     if (!en || !en.build) return
-    // 双击电表盘：切换读数显示（与 2D 轻点语义一致），随后再拉近相机
     const ty = TYPES[en.type]
-    if (ty && ty.meter) opt.onMeterRead && opt.onMeterRead(en.id)
+    // 双击电表 → 读数浮层（把光标位置一并带出去，气泡贴在被双击的那只表附近）
+    if (ty && ty.meter) {
+      const rect = el.getBoundingClientRect()
+      opt.onMeterRead &&
+        opt.onMeterRead(en.id, {
+          x: (clientX - rect.left) / Math.max(1, rect.width),
+          y: (clientY - rect.top) / Math.max(1, rect.height),
+        })
+    } else {
+      // 双击其它器材 → 拆开这件模型看内部结构（对标"点击拆开模型"）
+      toggleXrayComp(en.id)
+      opt.onDissectComp && opt.onDissectComp(en.id)
+      return
+    }
     // 目标：表针枢轴（无表针则取器材中心顶面）
     const t = TYPES[en.type]
     let target = new THREE.Vector3()
@@ -1210,6 +1261,14 @@ export function createLabRenderer(container, opt = {}) {
     sync,
     /** 透视：外壳件半透明，壳内零件（电芯/磁钢/动圈/游丝）透出来 */
     setXray,
+    /** 单件拆壳 / 合上（选中器材后的"拆开看内部"按钮调用） */
+    toggleXrayComp(id) {
+      toggleXrayComp(id)
+    },
+    /** 某件当前是否处于拆开状态 */
+    isXrayOpen(id) {
+      return xrayOn || xrayIds.has(id)
+    },
     /** 改写新建导线的默认颜色（场景里点色块时调用） */
     setWireColor,
     /** 选中高亮（OutlinePass） */

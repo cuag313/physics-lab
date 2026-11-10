@@ -80,6 +80,26 @@ const CSS = `
 .esvg-lab3d{position:absolute;inset:12px;border-radius:14px;overflow:hidden;
   background:#e8eef6;box-shadow:inset 0 0 0 1px #dbe3ec,0 10px 30px rgba(15,23,42,.07)}
 .esvg-lab3d canvas{display:block;width:100%;height:100%}
+/* 3D 读数浮层：双击电表后贴在画面右上，直接给数字（对标"双击查看读数"） */
+.esvg-3d-readout{position:absolute;top:24px;right:24px;z-index:20;min-width:168px;
+  display:flex;flex-direction:column;gap:5px;padding:9px 11px;border-radius:10px;
+  background:rgba(15,23,42,.84);border:1px solid rgba(148,163,184,.35);
+  box-shadow:0 8px 20px rgba(2,6,23,.4);backdrop-filter:blur(4px);
+  font-size:13px;color:#e2e8f0;pointer-events:none}
+.esvg-3d-readout .row{display:flex;justify-content:space-between;gap:12px}
+.esvg-3d-readout .name{color:#94a3b8}
+.esvg-3d-readout .val{font-weight:600;font-variant-numeric:tabular-nums}
+.esvg-3d-readout .hint{margin-top:2px;font-size:11px;color:#64748b;text-align:right}
+/* 3D 操作提示：不遮挡器材，只交代双击/点柱这两条交互 */
+.esvg-3d-hint{position:absolute;left:24px;bottom:88px;z-index:19;
+  padding:5px 10px;border-radius:8px;background:rgba(15,23,42,.62);
+  font-size:12px;color:#cbd5e1;pointer-events:none;white-space:nowrap}
+/* 选中器材后的操作条：读数 / 拆开看内部（比双击更可发现） */
+.esvg-3d-actions{position:absolute;right:24px;bottom:24px;z-index:21;display:flex;gap:8px}
+.esvg-3d-actions button{padding:7px 12px;border-radius:8px;border:1px solid rgba(148,163,184,.45);
+  background:rgba(15,23,42,.86);color:#e2e8f0;font-size:12.5px;cursor:pointer;
+  box-shadow:0 6px 16px rgba(2,6,23,.35)}
+.esvg-3d-actions button:hover{background:rgba(30,41,59,.95);border-color:#64748b}
 .esvg-wirelayer{position:absolute;inset:0;pointer-events:none;z-index:1}
 .esvg-partlayer{position:absolute;inset:0;z-index:2;pointer-events:none}
 .esvg-comp{position:absolute;cursor:grab;touch-action:none;pointer-events:auto}
@@ -329,12 +349,21 @@ const WIRE_COLORS = [
 
 const keyOf = (cid, tid) => cid + ':' + tid
 
+/** 3D 读数浮层里的表名 */
+const METER_NAME = {
+  ammeter: '电流表',
+  voltmeter: '电压表',
+  energyMeter: '电能表',
+  multimeter: '多用电表',
+}
+
 export default function ElectricSvgLabScene() {
   const [comps, setComps] = useState([])
   const [wires, setWires] = useState([])
   const [selected, setSelected] = useState(null)   // {kind:'comp'|'wire', id}
   const [pending, setPending] = useState(null)     // {cid, tid}
   const [dissect, setDissect] = useState(false)
+  const [readAll, setReadAll] = useState(false)   // 顶部"🔢 读数"：所有电表读数常显（不依赖双击）
   const [helpOpen, setHelpOpen] = useState(false)
   const [ghost, setGhost] = useState(null)         // {type, x, y}
   const [toast, setToast] = useState('就绪')
@@ -754,6 +783,8 @@ export default function ElectricSvgLabScene() {
           const c = compsRef.current.find((x) => x.id === id)
           if (c) tapComp(c, true)
         },
+        // 双击非表器材 → 已单独拆开该件（3D 内部已切好剖视，这里只给一条反馈）
+        onDissectComp: () => setToast('已拆开这件器材，再双击可还原'),
         // 滑变电阻丝轨道（与 2D RHEO_TRACK 同一常量）
         rheoTrack: RHEO_TRACK,
         // 滑变当前接法 → 3D 贴图的「有效电阻丝高亮」（与 2D 的 dynOf 同一定义）
@@ -1058,6 +1089,9 @@ export default function ElectricSvgLabScene() {
           {/* 视图切换（req 9）：平面画布 / 3D 实验台 随时互切 */}
           <button type="button" className={`btn${view3d ? '' : ' on'}`} onClick={() => setView3d(false)} title="切回 2D 平面画布（调试）">📐 平面画布</button>
           <button type="button" className={`btn${view3d ? ' on' : ''}`} onClick={() => setView3d(true)} title="可旋转 3D 实验台">🧊 3D 实验台</button>
+          <button type="button" className={`btn${readAll ? ' on' : ''}`} onClick={() => setReadAll((v) => !v)} title="把每只电表的读数直接以数字显示">
+            {readAll ? '🔢 读数（开）' : '🔢 读数'}
+          </button>
           <button type="button" className={`btn${dissect ? ' on' : ''}`} onClick={() => setDissect((d) => !d)}>
             {dissect ? '🔍 内部结构（开）' : '🔍 内部结构'}
           </button>
@@ -1106,7 +1140,54 @@ export default function ElectricSvgLabScene() {
         <main className="esvg-stage" ref={stageRef}>
           {view3d ? (
             /* 3D 实验台容器：替换 2D 画布区域（同一位置二选一显示） */
-            <div className="esvg-lab3d" ref={lab3dRef} />
+            <>
+              <div className="esvg-lab3d" ref={lab3dRef} />
+              {(() => {
+                // 3D 读数字幕：只显示"双击开过读数"的表，直接给数字，不依赖看指针
+                const list = comps
+                  .filter((c) => T(c) && T(c).meter && (c.showRead || readAll))
+                  .map((c) => {
+                    const ro = readoutOf(c)
+                    return ro ? { id: c.id, name: METER_NAME[c.type] || '电表', ...ro } : null
+                  })
+                  .filter(Boolean)
+                if (!list.length) return null
+                return (
+                  <div className="esvg-3d-readout">
+                    {list.map((r) => (
+                      <div className="row" key={r.id}>
+                        <span className="name">{r.name}</span>
+                        <span className="val" style={{ color: r.color }}>{r.text}</span>
+                      </div>
+                    ))}
+                    <div className="hint">双击电表可单独开/关</div>
+                  </div>
+                )
+              })()}
+              <div className="esvg-3d-hint">
+                双击电表看读数 · 双击器材拆开看内部 · 点接线柱拉出一根导线
+              </div>
+              {(() => {
+                // 选中某件器材 → 浮出操作条（读数 / 拆开看内部），比双击更可发现
+                const c = selected && selected.kind === 'comp' ? comps.find((x) => x.id === selected.id) : null
+                if (!c) return null
+                const isMeter = !!(T(c) && T(c).meter)
+                return (
+                  <div className="esvg-3d-actions">
+                    {isMeter && (
+                      <button
+                        type="button"
+                        onClick={() => setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, showRead: !x.showRead } : x)))}
+                      >{c.showRead ? '隐藏读数' : '显示读数'}</button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => labApiRef.current?.toggleXrayComp?.(c.id)}
+                    >拆开 / 合上</button>
+                  </div>
+                )
+              })()}
+            </>
           ) : (
           <div className={`esvg-canvas${dissect ? ' dissect' : ''}`} ref={canvasRef}>
             {/* 导线层（Verlet 粒子链 + 电流动画） */}
