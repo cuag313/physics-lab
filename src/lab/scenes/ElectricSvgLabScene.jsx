@@ -1165,7 +1165,7 @@ export default function ElectricSvgLabScene() {
                 )
               })()}
               <div className="esvg-3d-hint">
-                双击电表看读数 · 双击器材拆开看内部 · 点接线柱拉出一根导线
+                点接线柱拉出导线（再点另一柱即可连上）· 双击电表看读数 · 双击器材拆开看内部
               </div>
               {(() => {
                 // 选中某件器材 → 浮出操作条（读数 / 拆开看内部），比双击更可发现

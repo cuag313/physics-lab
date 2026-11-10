@@ -846,6 +846,26 @@ export function createLabRenderer(container, opt = {}) {
     if (hitW.length) {
       return { kind: 'wire', wireId: hitW[0].object.userData.wireId, point: hitW[0].point }
     }
+    // 导线只有 0.045 粗，管状 mesh 极难点中：再用「射线到折线段的最近距离」兜底，
+    // 容差 0.09 世界单位（约 9cm），点线选中/换色才真的可用。
+    let bestWireId = null
+    let bestD = 0.09 ** 2
+    for (const rec of wires.values()) {
+      const pts = rec.wire.pos
+      if (!pts || pts.length < 2) continue
+      for (let i = 0; i + 1 < pts.length; i++) {
+        tmpV.copy(pts[i])
+        tmpV2.copy(pts[i + 1])
+        labTableGroup.localToWorld(tmpV)
+        labTableGroup.localToWorld(tmpV2)
+        const d = raycaster.ray.distanceSqToSegment(tmpV, tmpV2)
+        if (d < bestD) {
+          bestD = d
+          bestWireId = rec.wire.mesh.userData.wireId
+        }
+      }
+    }
+    if (bestWireId != null) return { kind: 'wire', wireId: bestWireId, point: null }
     return null
   }
 
@@ -871,6 +891,11 @@ export function createLabRenderer(container, opt = {}) {
 
   function onDown(e) {
     if (e.button !== 0 && e.button !== 2) return
+    // 接线中按右键 = 放弃这根线
+    if (pending && e.button === 2) {
+      cancelPending()
+      return
+    }
     renderer.domElement.setPointerCapture?.(e.pointerId)
     tween = null // 用户接管相机
     const hit = pick(e)
@@ -886,8 +911,12 @@ export function createLabRenderer(container, opt = {}) {
         const a = pending.cid + ':' + pending.tid
         const b = target.compId + ':' + target.tid
         if (a !== b) opt.onWireConnect && opt.onWireConnect(a, b)
+        cancelPending()
+        return
       }
-      cancelPending()
+      // 落在空白/桌面上：保留待连状态，不取消。
+      // 这样「点一根柱 → 再点另一根柱」也能成线（小视口下比拖拽可靠得多），
+      // 预览线会继续跟随光标；点同一根柱 / 右键 / ESC 可取消。
       return
     }
 
