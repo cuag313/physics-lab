@@ -133,7 +133,7 @@ export class VerletWire {
   constructor(opt = {}) {
     const count = opt.count ?? 18
     this.count = count
-    this.radius = opt.radius ?? 0.03
+    this.radius = opt.radius ?? 0.045
     this.slack = opt.slack ?? 1.28
     this.radial = opt.radial ?? 7
     this.damping = 0.985
@@ -162,6 +162,9 @@ export class VerletWire {
     this.mesh = new THREE.Mesh(this.geometry, this.material)
     this.mesh.castShadow = true
     this.mesh.receiveShadow = true
+    // 顶点每帧被重写，但包围球不会跟着更新：若开启视锥剔除，three 会拿初始
+    // （全零坐标）的包围球做判断，导线一离开原点就被整个剔掉——表现就是"线都没连"。
+    this.mesh.frustumCulled = false
     this.mesh.userData.role = 'wire'
   }
 
@@ -209,6 +212,12 @@ export class VerletWire {
       p.x += vx + gravity.x * dt2
       p.y += vy + gravity.y * dt2
       p.z += vz + gravity.z * dt2
+      // 桌面是实心的：下垂到台面就停住，否则粒子会穿到桌面下方被挡住，
+      // 视觉上整根导线"消失"（表现为"线都没连接"）。
+      if (p.y < 0.02) {
+        p.y = 0.02
+        q.y = Math.max(q.y, 0.02)
+      }
     }
     // 端点钉死（prev 同步，避免下帧误判“有位移”）
     this.pos[0].copy(this._pinA)

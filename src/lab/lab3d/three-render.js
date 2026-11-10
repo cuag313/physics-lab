@@ -37,15 +37,25 @@ const TERM_SNAP_PX = 34      // 接线柱磁吸半径（px，与 2D 命中手感
 const TERM_DROP = 7          // 接线锚点相对柱帽下移（与 2D termAnchor 一致）
 const ROT_YAW_K = 0.0062     // 拖动 → 转台角速度
 const ROT_PITCH_K = 0.0042
-const ROT_PITCH_MIN = -0.10
-const ROT_PITCH_MAX = 0.62
+const ROT_PITCH_MIN = 0.0    // 平视
+const ROT_PITCH_MAX = 0.62   // 俯视（~35°）
+const ROT_YAW_MAX = Math.PI / 4 // 左右各 45°
 const INERTIA_DAMP = 0.925   // 惯性衰减
-const CAM_ELEV = 0.68        // 相机俯仰（sin 分量）
-const CAM_BACK = 0.74
+const CAM_ELEV = 0.56        // 相机俯仰（sin 分量）：俯角约 33°，正对立式表盘
+const CAM_BACK = 0.83
+const CAM_DIST0 = 12         // 默认视距：让器材占据视野主体，而不是一张空桌子
 const CAM_DIST_MIN = 5.5
 const CAM_DIST_MAX = 34
 const NEEDLE_BASE_DEG = -52 // 与 needleSVG 一致：frac 0~1 → -52°~+52°
 const NEEDLE_SPAN_DEG = 104
+
+/**
+ * 真实器材里这几件是「立式方表」：面板竖直朝前、机身有厚度地立在桌上。
+ * 其余（电池/开关/滑变/电阻箱…）真实就是平放的，保持薄实体姿态。
+ * 这些类型进出 buildEquipment 时要带 stand 标记，装配逻辑整条跟着变。
+ */
+const STAND_TYPES = new Set(['ammeter', 'voltmeter', 'energyMeter', 'electroscope'])
+const isStandType = (type) => STAND_TYPES.has(type)
 
 /**
  * 创建 3D 实验台。
@@ -83,13 +93,37 @@ export function createLabRenderer(container, opt = {}) {
   container.appendChild(renderer.domElement)
   renderer.domElement.style.display = 'block'
   renderer.domElement.style.touchAction = 'none'
+  if (getComputedStyle(container).position === 'static') container.style.position = 'relative'
+
+  /* ── 转台把手：只有按住右下角这块圆形区域才旋转实验台 ──
+     覆盖层直接挂在容器上（canvas 之上、其它 UI 之下），不依赖外部 CSS。 */
+  const orbitPad = document.createElement('div')
+  orbitPad.className = 'l3d-orbitpad'
+  orbitPad.setAttribute('aria-label', '拖动旋转实验台')
+  orbitPad.style.cssText = [
+    'position:absolute', 'right:14px', 'bottom:14px', 'width:104px', 'height:104px',
+    'border-radius:50%', 'display:flex', 'flex-direction:column', 'align-items:center',
+    'justify-content:center', 'gap:1px', 'z-index:6', 'cursor:grab', 'touch-action:none',
+    'user-select:none', 'color:#e0f2fe', 'font:600 11px/1.15 system-ui,-apple-system,sans-serif',
+    'letter-spacing:2px', 'box-shadow:0 6px 18px rgba(15,23,42,.28)',
+    'border:1.5px solid rgba(147,197,253,.55)',
+    'background:radial-gradient(circle at 50% 38%,rgba(59,130,246,.30),rgba(15,23,42,.44))',
+  ].join(';')
+  const padIcon = document.createElement('span')
+  padIcon.textContent = '⟲'
+  padIcon.style.cssText = 'font-size:23px;line-height:1;opacity:.92'
+  const padLabel = document.createElement('em')
+  padLabel.textContent = '转台'
+  padLabel.style.cssText = 'font-style:normal;opacity:.86'
+  orbitPad.append(padIcon, padLabel)
+  container.appendChild(orbitPad)
 
   const scene = new THREE.Scene()
   scene.background = new THREE.Color('#e8eef6')
 
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 220)
-  const camTarget = new THREE.Vector3(0, 0.15, 0)
-  let camDist = 21
+  const camTarget = new THREE.Vector3(0, 0.55, 0)
+  let camDist = CAM_DIST0
 
   function applyCamera() {
     camera.position.set(
@@ -186,14 +220,16 @@ export function createLabRenderer(container, opt = {}) {
   }
   function defaultCameraPose() {
     return {
-      pos: new THREE.Vector3(0, 21 * CAM_ELEV, 21 * CAM_BACK).add(new THREE.Vector3(0, 0.15, 0)),
-      target: new THREE.Vector3(0, 0.15, 0),
+      pos: new THREE.Vector3(0, CAM_DIST0 * CAM_ELEV, CAM_DIST0 * CAM_BACK).add(
+        new THREE.Vector3(camTarget.x, camTarget.y, camTarget.z)
+      ),
+      target: camTarget.clone(),
     }
   }
   function resetCamera() {
     const d = defaultCameraPose()
     tweenCamera(d.pos, d.target)
-    camDist = 21
+    camDist = CAM_DIST0
   }
 
   /* ── 器材 / 导线仓储 ── */
@@ -201,6 +237,22 @@ export function createLabRenderer(container, opt = {}) {
   const equips = new Map()
   /** @type {Map<number, any>} wireId → 导线条目 */
   const wires = new Map()
+
+  /** 首次拿到器材时把镜头对准器材重心，否则开局对着空桌角（器材挤在视野边缘） */
+  let camFramed = false
+  function frameToComps(comps) {
+    if (camFramed || !comps || !comps.length) return
+    let sx = 0
+    let sz = 0
+    for (const c of comps) {
+      const p = compToLocal(c)
+      sx += p.x
+      sz += p.z
+    }
+    camTarget.set(sx / comps.length, 0.55, sz / comps.length)
+    camFramed = true
+    applyCamera()
+  }
   const raycaster = new THREE.Raycaster()
   const ndc = new THREE.Vector2()
   const tmpV = new THREE.Vector3()
@@ -288,15 +340,27 @@ export function createLabRenderer(container, opt = {}) {
     if (!t || !t.terminals) return
     const size = entry.build ? entry.build.size : { w: 1, h: 1 }
     const th = entry.build ? entry.build.thickness : 0.1
+    const stand = !!(entry.build && entry.build.stand)
     for (const tm of t.terminals) {
       const g = new THREE.SphereGeometry((TERM_SNAP_PX * SCALE) / 2, 8, 6)
       const m = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
       const s = new THREE.Mesh(g, m)
-      s.position.set(
-        (tm.x - t.w / 2) * SCALE,
-        th + 0.03,
-        (tm.y + TERM_DROP - t.h / 2) * SCALE
-      )
+      if (stand) {
+        // 立式：端子长在竖直面板上，高度按 SVG 的 y 换算；
+        // z 要落在面板表面之外（面板朝 -Z，机身占 z ∈ [-th, 0]），
+        // 否则射线先打到面板，接线柱根本点不到。
+        s.position.set(
+          (tm.x - t.w / 2) * SCALE,
+          (t.h - (tm.y + TERM_DROP)) * SCALE,
+          -(th + 0.03)
+        )
+      } else {
+        s.position.set(
+          (tm.x - t.w / 2) * SCALE,
+          th + 0.03,
+          (tm.y + TERM_DROP - t.h / 2) * SCALE
+        )
+      }
       s.userData.role = 'terminal'
       s.userData.compId = entry.id
       s.userData.tid = tm.id
@@ -333,6 +397,7 @@ export function createLabRenderer(container, opt = {}) {
         width: t.w,
         height: t.h,
         scale: SCALE,
+        stand: isStandType(c.type),
       })
     } catch (e) {
       console.warn('[lab3d] buildEquipment 失败：', c.type, e)
@@ -411,8 +476,22 @@ export function createLabRenderer(container, opt = {}) {
   }
 
   /* ── 导线：Verlet 软导线（端点钉在接线柱） ── */
+  function findEquip(cid) {
+    let e = equips.get(cid) || equips.get(+cid)
+    if (!e) {
+      // id 类型/前缀不一致时按字符串逐项比对（导线里的 id 与 comps 的 id 可能不同型）
+      for (const v of equips.values()) {
+        if (String(v.id) === String(cid)) {
+          e = v
+          break
+        }
+      }
+    }
+    return e || null
+  }
+
   function terminalWorldPos(cid, tid) {
-    const e = equips.get(+cid)
+    const e = findEquip(cid)
     if (!e || !e.group) return null
     const hs = e.hotspots.get(tid)
     if (!hs) return null
@@ -436,6 +515,7 @@ export function createLabRenderer(container, opt = {}) {
   function sync(state) {
     const { comps = [], wires: wireList = [], solved = {} } = state || {}
     latestComps = comps
+    frameToComps(comps)
 
     // 1) 器材：增删改
     const alive = new Set()
@@ -486,8 +566,10 @@ export function createLabRenderer(container, opt = {}) {
         if (o._over) frac = 1.06 // 超量程：指针顶到限位（左右都顶）
         let deg = NEEDLE_BASE_DEG + frac * NEEDLE_SPAN_DEG
         if (o._rev || raw < 0) deg = -deg // 接反：指针反向偏转
-        // SVG 转角顺时针为正；表格平面里 -z 朝上，故取负号
-        entry.build.pointer.rotation.y = -(deg * Math.PI) / 180
+        // SVG 转角顺时针为正；平放时表格平面里 -z 朝上（绕 Y），
+        // 立式时指针在竖直面板平面内转（绕 Z），故取负号。
+        if (entry.build.stand) entry.build.pointer.rotation.z = -(deg * Math.PI) / 180
+        else entry.build.pointer.rotation.y = -(deg * Math.PI) / 180
       }
       if (c.type === 'bulb') {
         const bright = (o._P || 0) > 0 ? Math.min(1, o._P / BULB_RATED) : 0
@@ -537,8 +619,25 @@ export function createLabRenderer(container, opt = {}) {
     for (const rec of wires.values()) {
       const [ca, ta] = rec.a.split(':')
       const [cb, tb] = rec.b.split(':')
-      const pa = terminalWorldPos(ca, ta)
-      const pb = terminalWorldPos(cb, tb)
+      // 端子热区没建出来时（如光栅化失败/该类型缺 terminals）兜底到器材本身，
+      // 否则 pa/pb 为 null 会 continue——导线既不 pin 也不 simulate，
+      // 几何停在初始全零坐标，视觉上就是"一条线都没有"。
+      let pa = terminalWorldPos(ca, ta)
+      let pb = terminalWorldPos(cb, tb)
+      if (!pa) {
+        const e = findEquip(ca)
+        if (e && e.group) {
+          pa = e.group.position.clone()
+          pa.y += 0.18
+        }
+      }
+      if (!pb) {
+        const e = findEquip(cb)
+        if (e && e.group) {
+          pb = e.group.position.clone()
+          pb.y += 0.18
+        }
+      }
       if (!pa || !pb) continue
       rec.wire.pin(pa, pb)
       if (!rec.seeded) {
@@ -548,8 +647,7 @@ export function createLabRenderer(container, opt = {}) {
       rec.wire.simulate(localGravity, dt)
     }
     // 预览线（接线中）
-    if (pending && pending.wire) {
-      const pa = terminalWorldPos(pending.cid, pending.tid)
+    if (pending && pending.wire) {      const pa = terminalWorldPos(pending.cid, pending.tid)
       if (pa) {
         pending.wire.pin(pa, pending.cursor)
         if (!pending.seeded) {
@@ -710,15 +808,9 @@ export function createLabRenderer(container, opt = {}) {
       return
     }
 
-    // 空白处：转台旋转
-    pointerDownInfo = {
-      x: e.clientX,
-      y: e.clientY,
-      mode: 'rotate',
-      yaw0: rot.yaw,
-      pitch0: rot.pitch,
-      moved: 0,
-    }
+    // 空白处：只取消选中。转台旋转改用右下角专用把手（见 orbitPad），
+    // 免得在桌面上随手一拖就把整个实验台甩出去。
+    pointerDownInfo = null
     opt.onSelect && opt.onSelect(null)
   }
 
@@ -765,7 +857,7 @@ export function createLabRenderer(container, opt = {}) {
     }
 
     if (info.mode === 'rotate') {
-      rot.yaw = info.yaw0 + dx * ROT_YAW_K
+      rot.yaw = Math.max(-ROT_YAW_MAX, Math.min(ROT_YAW_MAX, info.yaw0 + dx * ROT_YAW_K))
       rot.pitch = Math.max(ROT_PITCH_MIN, Math.min(ROT_PITCH_MAX, info.pitch0 + dy * ROT_PITCH_K))
       rot.vYaw = dx * ROT_YAW_K * 0.35 // 惯性种子（按当前速度）
       rot.vPitch = dy * ROT_PITCH_K * 0.25
@@ -804,6 +896,7 @@ export function createLabRenderer(container, opt = {}) {
   function onUp(e) {
     const info = pointerDownInfo
     pointerDownInfo = null
+    orbitPad.style.cursor = 'grab'
     if (draggingRef.compId != null) {
       const en = equips.get(draggingRef.compId)
       if (en && en.group) {
@@ -897,6 +990,24 @@ export function createLabRenderer(container, opt = {}) {
   el.addEventListener('wheel', onWheel, { passive: false })
   window.addEventListener('keydown', onKey)
 
+  /* 把手上的按下 → 进入 rotate 模式；移动/抬起仍走上面的 window 监听 */
+  function onPadDown(e) {
+    e.preventDefault()
+    e.stopPropagation()
+    tween = null
+    pointerDownInfo = {
+      x: e.clientX,
+      y: e.clientY,
+      mode: 'rotate',
+      yaw0: rot.yaw,
+      pitch0: rot.pitch,
+      moved: 0,
+    }
+    orbitPad.style.cursor = 'grabbing'
+    opt.onSelect && opt.onSelect(null)
+  }
+  orbitPad.addEventListener('pointerdown', onPadDown)
+
   /* ── 尺寸自适应 ── */
   function resize() {
     const w = container.clientWidth || 1
@@ -919,9 +1030,9 @@ export function createLabRenderer(container, opt = {}) {
     const dt = Math.min(0.05, (now - last) / 1000)
     last = now
 
-    // 转台惯性
+    // 转台惯性（同样受左右 45° / 平视~俯视 的硬限幅约束）
     if (!pointerDownInfo || pointerDownInfo.mode !== 'rotate') {
-      rot.yaw += rot.vYaw
+      rot.yaw = Math.max(-ROT_YAW_MAX, Math.min(ROT_YAW_MAX, rot.yaw + rot.vYaw))
       rot.pitch = Math.max(ROT_PITCH_MIN, Math.min(ROT_PITCH_MAX, rot.pitch + rot.vPitch))
       rot.vYaw *= INERTIA_DAMP
       rot.vPitch *= INERTIA_DAMP
@@ -980,6 +1091,8 @@ export function createLabRenderer(container, opt = {}) {
       for (const tt of trailTimers.values()) clearTimeout(tt)
       trailTimers.clear()
       el.removeEventListener('pointerdown', onDown)
+      orbitPad.removeEventListener('pointerdown', onPadDown)
+      orbitPad.remove()
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
       el.removeEventListener('dblclick', onDblClick)

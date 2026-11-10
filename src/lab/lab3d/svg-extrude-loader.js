@@ -391,13 +391,20 @@ export async function buildEquipment(p) {
   }
   if (!shapes.length) shapes = [rectShape(0, 0, width, height, Math.min(width, height) * 0.12)]
 
-  // —— 挤出：厚度取短边 ~10%（薄实体观感），夹在 8~22px ——
-  const thicknessPx = Math.max(8, Math.min(22, Math.min(width, height) * 0.1))
-  const bevel = Math.min(1.6, thicknessPx * 0.18)
+  // —— 挤出 ——
+  // 平放类（电池/开关/滑变…）：厚度取短边 ~10%，夹 8~22px，薄实体观感。
+  // 立式类（电流表/电压表等真实立式方表）：机身厚度取短边 ~20%（夹 14~34px），
+  // 再把整块绕 X 转 90°，让面板竖起来正对相机——真实表是立在桌上的，
+  // 不是一片"睡"在桌面上的贴片。
+  const stand = !!p.stand
+  const bodyPx = stand
+    ? Math.max(14, Math.min(34, Math.min(width, height) * 0.2))
+    : Math.max(8, Math.min(22, Math.min(width, height) * 0.1))
+  const bevel = Math.min(1.6, bodyPx * 0.18)
   let geom
   try {
     geom = new THREE.ExtrudeGeometry(shapes, {
-      depth: thicknessPx - bevel * 2,
+      depth: bodyPx - bevel * 2,
       bevelEnabled: true,
       bevelThickness: bevel,
       bevelSize: bevel,
@@ -412,7 +419,7 @@ export async function buildEquipment(p) {
       return r
     })
     geom = new THREE.ExtrudeGeometry(flat, {
-      depth: thicknessPx - bevel * 2,
+      depth: bodyPx - bevel * 2,
       bevelEnabled: true,
       bevelThickness: bevel,
       bevelSize: bevel,
@@ -421,20 +428,28 @@ export async function buildEquipment(p) {
     })
   }
 
-  // 坐标系：Extrude 在 XY 平面沿 +Z；旋转后 x=svgX、z=svgY、y=高度
-  geom.rotateX(-Math.PI / 2)
+  // 坐标系：Extrude 在 XY 平面沿 +Z
+  geom.rotateX(-Math.PI / 2) // 第一步：面板朝上（平放姿态）
+  if (stand) geom.rotateX(-Math.PI / 2) // 第二步：面板朝 -Z（正对默认相机）
   geom.computeBoundingBox()
   const bb = geom.boundingBox
   const W = bb.max.x - bb.min.x
-  const H = bb.max.z - bb.min.z
-  // 顶面 UV：u=(x-minX)/W，v=1-(z-minZ)/H（贴图 v=1 在 SVG 顶部）
+  // 面板平面里的"高度"：平放看 z 轴，立式看 y 轴
+  const H = stand ? bb.max.y - bb.min.y : bb.max.z - bb.min.z
+  // 面板 UV：u 沿 x；v 沿面板高度，v=1 落在 SVG 顶部
   const pos = geom.attributes.position
   const uv = geom.attributes.uv
   for (let i = 0; i < pos.count; i++) {
-    uv.setXY(i, (pos.getX(i) - bb.min.x) / W, 1 - (pos.getZ(i) - bb.min.z) / H)
+    const u = (pos.getX(i) - bb.min.x) / W
+    // 平放：v 沿 z（z 即 SVG 的 y）；立式：几何 y 已被 rotateX(-180) 翻成 -svgY，
+    // 故这里反过来用 +y/H 才能让 SVG 顶部落在 v=1。
+    const v = stand
+      ? (pos.getY(i) - bb.min.y) / H
+      : 1 - (pos.getZ(i) - bb.min.z) / H
+    uv.setXY(i, u, v)
   }
   uv.needsUpdate = true
-  // 原点强制落在底面中心
+  // 原点强制落在底面中心（两种姿态通用：平放的 min.y 在 -depth，立式的 min.y 在 0）
   geom.translate(-(bb.min.x + bb.max.x) / 2, -bb.min.y, -(bb.min.z + bb.max.z) / 2)
   geom.scale(scale, scale, scale)
   geom.computeVertexNormals()
@@ -472,8 +487,13 @@ export async function buildEquipment(p) {
     const innerTex = new THREE.CanvasTexture(innerCanvas)
     innerTex.colorSpace = THREE.SRGBColorSpace
     const innerGeom = new THREE.PlaneGeometry(width * scale, height * scale)
-    innerGeom.rotateX(-Math.PI / 2)
-    innerGeom.translate(0, thicknessPx * scale * 0.55, 0)
+    if (stand) {
+      // 立式：面板在 XY 平面，剖视层贴在面板厚度中点（略偏前）
+      innerGeom.translate(0, height * scale * 0.5, -(bodyPx * scale) * 0.35)
+    } else {
+      innerGeom.rotateX(-Math.PI / 2)
+      innerGeom.translate(0, bodyPx * scale * 0.55, 0)
+    }
     inner = new THREE.Mesh(
       innerGeom,
       new THREE.MeshBasicMaterial({
@@ -493,13 +513,18 @@ export async function buildEquipment(p) {
   if (needle && needle.len > 4) {
     pointer = new THREE.Group()
     pointer.userData.role = 'pointer'
+    pointer.userData.stand = stand ? 1 : 0
     // 指针截面：按 px 定尺寸（约 1.5px 宽），再换算到世界单位。
     // 注意不能再写 Math.max(1.1, …)—— 那会把 1.1 世界单位当成下限，
     // 比整台器材还粗，渲染出来是一块红板。
     const pw = Math.max(0.011, width * scale * 0.012)
-    const nGeom = new THREE.BoxGeometry(pw, pw * 0.55, needle.len * scale)
-    // 针体从枢轴伸向 -Z（SVG 上方），枢轴对齐原点
-    nGeom.translate(0, 0, (-needle.len * scale) / 2)
+    const lenW = needle.len * scale
+    // 平放姿态：针体沿 -Z 平伸；立式姿态：针体沿 +Y 在面板平面内竖着伸
+    const nGeom = stand
+      ? new THREE.BoxGeometry(pw, lenW, pw * 0.55)
+      : new THREE.BoxGeometry(pw, pw * 0.55, lenW)
+    if (stand) nGeom.translate(0, lenW / 2, 0)
+    else nGeom.translate(0, 0, -lenW / 2)
     const nMesh = new THREE.Mesh(
       nGeom,
       new THREE.MeshStandardMaterial({ color: '#e11d48', roughness: 0.45, metalness: 0.1 })
@@ -508,16 +533,29 @@ export async function buildEquipment(p) {
     pointer.add(nMesh)
     // 小配重尾
     const tail = new THREE.Mesh(
-      new THREE.BoxGeometry(pw * 1.3, pw * 0.5, needle.len * scale * 0.18),
+      stand
+        ? new THREE.BoxGeometry(pw * 1.3, lenW * 0.18, pw * 0.5)
+        : new THREE.BoxGeometry(pw * 1.3, pw * 0.5, lenW * 0.18),
       new THREE.MeshStandardMaterial({ color: '#8d96a1', roughness: 0.5 })
     )
-    tail.position.z = needle.len * scale * 0.09
+    if (stand) tail.position.y = -lenW * 0.09
+    else tail.position.z = lenW * 0.09
     pointer.add(tail)
-    pointer.position.set(
-      (needle.x - width / 2) * scale,
-      thicknessPx * scale + pw * 0.42,
-      (needle.y - height / 2) * scale
-    )
+    if (stand) {
+      // 立式：枢轴贴在面板表面外侧（面板朝 -Z，机身占 z ∈ [-th, 0]），
+      // 高度按 SVG 的 y 换算。必须真的浮在面板之外，否则会被面板挡住。
+      pointer.position.set(
+        (needle.x - width / 2) * scale,
+        (height - needle.y) * scale,
+        -(bodyPx * scale) - 0.02
+      )
+    } else {
+      pointer.position.set(
+        (needle.x - width / 2) * scale,
+        bodyPx * scale + pw * 0.42,
+        (needle.y - height / 2) * scale
+      )
+    }
   }
 
   const group = new THREE.Group()
@@ -530,7 +568,8 @@ export async function buildEquipment(p) {
     outer,
     inner,
     pointer,
-    thickness: thicknessPx * scale,
+    thickness: bodyPx * scale,
+    stand,
     size: { w: width * scale, h: height * scale },
     needle,
     dispose() {

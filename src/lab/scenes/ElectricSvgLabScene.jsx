@@ -49,6 +49,20 @@ const CSS = `
   font-size:12px;color:#334155}
 .esvg-pitem:hover{background:#eff6ff;border-color:#93c5fd;box-shadow:0 2px 8px rgba(37,99,235,.12)}
 .esvg-pitem svg{width:42px;height:26px;flex:0 0 42px}
+/* 3D 模式下的元件库：收窄成竖排小牌，图标做等轴透视 + 投影。
+   一来 2D SVG 图标不再是平板贴纸的观感，二来给 3D 画布腾出横向空间。 */
+.esvg-palette.is3d{width:98px;flex:0 0 98px;padding:9px 6px;
+  background:linear-gradient(#f6f9fd,#e9f0f9)}
+.esvg-palette.is3d .esvg-pitem{flex-direction:column;gap:3px;padding:6px 4px;margin-bottom:6px;
+  border-radius:9px;background:linear-gradient(#ffffff,#eff4fa);
+  box-shadow:0 3px 6px rgba(15,23,42,.10),inset 0 1px 0 #fff}
+.esvg-palette.is3d .esvg-pitem > span:first-child{display:flex;align-items:flex-end;
+  justify-content:center;height:34px;
+  transform:perspective(180px) rotateX(26deg);transform-origin:50% 100%;
+  filter:drop-shadow(0 4px 3px rgba(15,23,42,.22))}
+.esvg-palette.is3d .esvg-pitem svg{width:52px;height:32px}
+.esvg-palette.is3d .esvg-pitem > span:last-child{font-size:10.5px;line-height:1.2;text-align:center}
+.esvg-palette.is3d .esvg-ptip{font-size:10px;line-height:1.5}
 .esvg-ptip{margin-top:12px;font-size:10.5px;color:#94a3b8;text-align:center;line-height:1.6;
   border-top:1px dashed #e2e8f0;padding-top:9px}
 .esvg-stage{flex:1;position:relative;overflow:auto;padding:12px;background:#eef2f7}
@@ -1017,7 +1031,7 @@ export default function ElectricSvgLabScene() {
       </header>
 
       <div className="esvg-body">
-        <aside className="esvg-palette">
+        <aside className={`esvg-palette${view3d ? ' is3d' : ''}`}>
           <div className="esvg-ptitle">元 件 库</div>
           {PALETTE_GROUPS.map((g) => (
             <div key={g.title}>
