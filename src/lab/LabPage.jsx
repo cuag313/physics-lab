@@ -569,5 +569,8 @@ const styles = {
     overflow: 'hidden',
     display: 'flex',
     flexDirection: 'column',
+    // 必须建定位上下文：场景根节点是 position:absolute; inset:0，
+    // 少了这一行它会越过 lab-body 相对 #root 铺满全屏，把「返回目录」顶栏盖住。
+    position: 'relative',
   },
 }

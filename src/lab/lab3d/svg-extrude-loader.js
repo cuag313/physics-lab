@@ -171,15 +171,32 @@ export function rasterize(svg, width, height, pxScale = 2) {
 
 /**
  * 抠出内部结构层 <g class="inner">…</g>，包装成独立 SVG（透视贴图用）。
- * 注：fitInner 生成的 inner 组内没有嵌套 <g>，首个 </g> 即闭合。
+ * 内层可能含嵌套 <g>（如表头线圈组 <g transform="rotate(…)">），
+ * 所以不能按首个 </g> 截断——必须按 <g>/</g> 配平找真正的闭合位置，
+ * 否则产出的 SVG 标签不闭合，光栅化会直接失败。
  * @returns {string|null}
  */
 export function extractInner(svgString, width, height) {
-  const m = svgString.match(/<g class="inner"[\s\S]*?<\/g>/)
-  if (!m) return null
+  const start = svgString.indexOf('<g class="inner"')
+  if (start < 0) return null
+  const TAG_RE = /<g(?=[\s>])|<\/g>/g
+  TAG_RE.lastIndex = start
+  let depth = 0
+  let end = -1
+  let m
+  while ((m = TAG_RE.exec(svgString))) {
+    if (m[0] === '</g>') depth--
+    else depth++
+    if (depth === 0) {
+      end = m.index + m[0].length
+      break
+    }
+  }
+  if (end < 0) return null
+  const frag = svgString.slice(start, end)
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">` +
-    SVG_GRADIENT_DEFS + INNER_LABEL_STYLE + m[0] + '</svg>'
+    SVG_GRADIENT_DEFS + INNER_LABEL_STYLE + frag + '</svg>'
   )
 }
 
@@ -222,105 +239,68 @@ export function traceLoops(canvas, alphaTh = 24, eps = 2.2) {
   const mask = new Uint8Array(W * H)
   for (let i = 0, p = 3; i < W * H; i++, p += 4) mask[i] = data[p] > alphaTh ? 1 : 0
 
-  // 角位：TL=1 TR=2 BR=4 BL=8；边点 L/T/R/B 为格边中点（整数*2 存键避免浮点误差）
-  const CASES = [
-    [], [['L', 'T']], [['T', 'R']], [['L', 'R']],
-    [['R', 'B']], [['L', 'T'], ['R', 'B']], [['T', 'B']], [['L', 'B']],
-    [['B', 'L']], [['T', 'B']], [['T', 'R'], ['B', 'L']], [['R', 'B']],
-    [['L', 'R']], [['T', 'R']], [['L', 'T']], [],
-  ]
-  const posOf = (x, y, side) =>
-    side === 'L' ? [x, y + 0.5] : side === 'T' ? [x + 0.5, y] : side === 'R' ? [x + 1, y + 0.5] : [x + 0.5, y + 1]
+  // 只有「边界像素」（4 邻域里有背景）才允许当起点：
+  // 实心内部的像素当起点会让 Moore 跟踪走出一个错误的环。
+  const isEdge = (x, y) =>
+    x === 0 || y === 0 || x === W - 1 || y === H - 1 ||
+    !mask[y * W + x - 1] || !mask[y * W + x + 1] ||
+    !mask[(y - 1) * W + x] || !mask[(y + 1) * W + x]
 
-  // 邻接表（点 → 点集合，支持重边）
-  const adj = new Map()
-  const ptMap = new Map()
-  const pkey = (p) => (p[0] * 2) + ',' + (p[1] * 2)
-  const addEdge = (a, b) => {
-    const ka = pkey(a), kb = pkey(b)
-    if (ka === kb) return
-    if (!adj.has(ka)) adj.set(ka, [])
-    if (!adj.has(kb)) adj.set(kb, [])
-    adj.get(ka).push(kb)
-    adj.get(kb).push(ka)
-    ptMap.set(ka, a)
-    ptMap.set(kb, b)
-  }
+  // Moore 邻域追踪：8 邻域顺时针，每次从「上一步来向的下一格」开始扫。
+  // 相比 marching squares 拼边段再按邻接表串环，它天然保证每条轮廓是
+  // 单条闭合链，不会因为邻段选错把整块图形连成一个大三角形。
+  const NB = [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]]
+  const seen = new Uint8Array(W * H)
+  const raw = []
 
-  for (let y = 0; y < H - 1; y++) {
-    for (let x = 0; x < W - 1; x++) {
-      const tl = mask[y * W + x], tr = mask[y * W + x + 1]
-      const br = mask[(y + 1) * W + x + 1], bl = mask[(y + 1) * W + x]
-      const idx = tl | (tr << 1) | (br << 2) | (bl << 3)
-      for (const [s1, s2] of CASES[idx]) addEdge(posOf(x, y, s1), posOf(x, y, s2))
-    }
-  }
+  for (let sy = 0; sy < H; sy++) {
+    for (let sx = 0; sx < W; sx++) {
+      const i0 = sy * W + sx
+      if (!mask[i0] || seen[i0] || !isEdge(sx, sy)) continue
 
-  // 走环：反复取未用边，直到回到起点
-  const takeEdge = (a, b) => {
-    const ka = pkey(a), kb = pkey(b)
-    const la = adj.get(ka)
-    if (!la) return false
-    const i = la.indexOf(kb)
-    if (i < 0) return false
-    la.splice(i, 1)
-    const lb = adj.get(kb)
-    const j = lb.indexOf(ka)
-    if (j >= 0) lb.splice(j, 1)
-    return true
-  }
-  const loops = []
-  for (const [k0] of adj) {
-    while (adj.get(k0) && adj.get(k0).length) {
-      const start = ptMap.get(k0)
-      const loop = [start]
-      let prev = start
-      let cur = ptMap.get(adj.get(k0)[0])
-      takeEdge(start, cur)
+      const pts = [[sx + 0.5, sy + 0.5]]
+      let cx = sx, cy = sy, dir = 7 // 起始从西侧方向开始扫
       let guard = 0
+      let closed = false
       while (guard++ < W * H * 4) {
-        loop.push(cur)
-        const nbrs = adj.get(pkey(cur))
-        if (!nbrs || !nbrs.length) break
-        let next = null
-        for (const nk of nbrs) {
-          const cand = ptMap.get(nk)
-          // 不走回头路（除非只剩回头边）
-          if (!(cand[0] === prev[0] && cand[1] === prev[1])) { next = cand; break }
+        let moved = false
+        for (let k = 0; k < 8; k++) {
+          const d = (dir + k) & 7
+          const nx = cx + NB[d][0], ny = cy + NB[d][1]
+          if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue
+          if (!mask[ny * W + nx]) continue
+          cx = nx
+          cy = ny
+          dir = (d + 6) & 7
+          moved = true
+          break
         }
-        if (!next) next = ptMap.get(nbrs[0])
-        if (!takeEdge(cur, next)) break
-        prev = cur
-        cur = next
-        if (cur[0] === start[0] && cur[1] === start[1]) break
+        if (!moved) break
+        if (cx === sx && cy === sy) { closed = true; break }
+        pts.push([cx + 0.5, cy + 0.5])
       }
-      if (loop.length >= 4) loops.push(loop)
+      if (!closed || pts.length < 8) continue
+
+      // 标记这条轮廓走过的像素，同一圈不要被重复追踪
+      for (const [px, py] of pts) {
+        const ix = Math.floor(px), iy = Math.floor(py)
+        if (ix >= 0 && iy >= 0 && ix < W && iy < H) seen[iy * W + ix] = 1
+      }
+      seen[i0] = 1
+      raw.push(pts)
     }
   }
 
-  // 简化 + 面积/岛孔分类
+  // 简化 + 面积过滤（<6×6 px 的碎屑丢掉）
   const out = []
-  for (const loop of loops) {
+  for (const loop of raw) {
     const pts = rdp(loop, eps)
     if (pts.length < 3) continue
-    const area = shoelace(pts)
-    if (Math.abs(area) < 36) continue // 忽略碎屑（<6×6 px）
+    const area = Math.abs(shoelace(pts))
+    if (area < 36) continue
     out.push({ points: pts, area, isHole: false })
   }
-  // 面积符号（像素坐标 y 向下）：正 = 逆时针视觉 = 岛；负 = 孔。
-  // 用包围盒包含关系修正：小环被大环包住且符号相反 → 孔。
-  out.sort((a, b) => Math.abs(b.area) - Math.abs(a.area))
-  for (let i = 0; i < out.length; i++) {
-    for (let j = 0; j < i; j++) {
-      if (out[j].isHole) continue
-      if (Math.abs(out[i].area) > Math.abs(out[j].area) * 0.92) continue
-      if (containsPoint(out[j].points, out[i].points[0])) {
-        // 与外环同向 = 岛中岛（独立实体）；反向 = 孔
-        out[i].isHole = Math.sign(out[i].area) !== Math.sign(out[j].area)
-        break
-      }
-    }
-  }
+  out.sort((a, b) => b.area - a.area)
   return { loops: out }
 }
 
@@ -477,6 +457,8 @@ export async function buildEquipment(p) {
     opacity: 1,
     alphaTest: 0,
   })
+  // three 文档约定：数组材质里 material[0] 用于端面（顶/底），material[1] 用于侧壁。
+  // 这里 capMat 必须在前面，否则顶面没有 SVG 纹理，器材只剩一块灰板。
   const outer = new THREE.Mesh(geom, [capMat, sideMat])
   outer.castShadow = true
   outer.receiveShadow = true
@@ -511,7 +493,10 @@ export async function buildEquipment(p) {
   if (needle && needle.len > 4) {
     pointer = new THREE.Group()
     pointer.userData.role = 'pointer'
-    const pw = Math.max(1.1, width * scale * 0.012)
+    // 指针截面：按 px 定尺寸（约 1.5px 宽），再换算到世界单位。
+    // 注意不能再写 Math.max(1.1, …)—— 那会把 1.1 世界单位当成下限，
+    // 比整台器材还粗，渲染出来是一块红板。
+    const pw = Math.max(0.011, width * scale * 0.012)
     const nGeom = new THREE.BoxGeometry(pw, pw * 0.55, needle.len * scale)
     // 针体从枢轴伸向 -Z（SVG 上方），枢轴对齐原点
     nGeom.translate(0, 0, (-needle.len * scale) / 2)
@@ -571,28 +556,48 @@ export async function buildEquipment(p) {
 /** 轮廓追踪结果 → THREE.Shape（px 坐标，y 翻转为向上） */
 function shapesFromTrace(canvas, width, height) {
   const { loops } = traceLoops(canvas)
-  const islands = loops.filter((l) => !l.isHole)
-  const holes = loops.filter((l) => l.isHole)
-  if (!islands.length) return []
-  const maxArea = Math.abs(islands[0].area)
-  const keepIslands = islands.filter((l) => Math.abs(l.area) > maxArea * 0.045)
+  if (!loops.length) return []
+
+  // 轮廓是在 pxScale（默认 2×）的光栅坐标里走的，必须缩回器材逻辑尺寸，
+  // 否则挤出的实体尺寸翻倍、厚度相对变薄，看上去就是一张纸片。
+  const sx = width / canvas.width
+  const sy = height / canvas.height
+
+  const maxArea = loops[0].area
+  const keep = []
+  for (const l of loops) {
+    if (l.area < maxArea * 0.05) break // 已按面积降序，后面只会更小
+    if (keep.some((k) => bboxContained(k.points, l.points))) continue // 内边界轮廓，跳过
+    keep.push(l)
+    if (keep.length >= 3) break
+  }
 
   const shapes = []
-  for (const isl of keepIslands) {
-    const pts = isl.points.map(([x, y]) => new THREE.Vector2(x, -y))
-    const shape = new THREE.Shape(pts)
-    // 配孔：孔须完全落在该岛内（取孔首点判定），且面积不太大
-    for (const hl of holes) {
-      if (Math.abs(hl.area) > maxArea * 0.85) continue
-      if (!containsPoint(isl.points, hl.points[0])) continue
-      if (hl.isHole === false) continue
-      try {
-        shape.holes.push(new THREE.Path(hl.points.map(([x, y]) => new THREE.Vector2(x, -y))))
-      } catch (e) { /* 忽略非法孔 */ }
-    }
-    shapes.push(shape)
+  for (const isl of keep) {
+    const pts = isl.points.map(([x, y]) => new THREE.Vector2(x * sx, -y * sy))
+    try {
+      shapes.push(new THREE.Shape(pts))
+    } catch (e) { /* 忽略非法轮廓 */ }
   }
   return shapes
+}
+
+/** 点集的包围盒 */
+function bboxOf(pts) {
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+  for (const [x, y] of pts) {
+    if (x < minX) minX = x
+    if (x > maxX) maxX = x
+    if (y < minY) minY = y
+    if (y > maxY) maxY = y
+  }
+  return { minX, maxX, minY, maxY }
+}
+
+/** inner 的包围盒是否被 outer 的包围盒包住（判断内边界轮廓） */
+function bboxContained(outer, inner) {
+  const A = bboxOf(outer), B = bboxOf(inner)
+  return B.minX >= A.minX - 1 && B.maxX <= A.maxX + 1 && B.minY >= A.minY - 1 && B.maxY <= A.maxY + 1
 }
 
 /** 圆角矩形轮廓（降级方案） */
