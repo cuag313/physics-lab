@@ -138,9 +138,10 @@ export function createLabRenderer(container, opt = {}) {
 
   const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 220)
   const camTarget = new THREE.Vector3(0, 0.55, 0)
-  let camDist = CAM_DIST0
+  let camDist = 0 // 0 → 首次 applyCamera 按视口宽高比自适应（见 fitDist）
 
   function applyCamera() {
+    if (!camDist) camDist = fitDist()
     camera.position.set(
       camTarget.x,
       camTarget.y + camDist * CAM_ELEV,
@@ -181,7 +182,7 @@ export function createLabRenderer(container, opt = {}) {
     roughness: 0.9,
     metalness: 0,
   })
-  const tableSide = new THREE.MeshStandardMaterial({ color: '#c8d2df', roughness: 0.85 })
+  const tableSide = new THREE.MeshStandardMaterial({ color: '#123f28', roughness: 0.85 })
   const table = new THREE.Mesh(
     new THREE.BoxGeometry(TABLE_W, 0.55, TABLE_H),
     [tableSide, tableSide, tableTop, tableSide, tableSide, tableSide]
@@ -233,9 +234,18 @@ export function createLabRenderer(container, opt = {}) {
     camera.lookAt(camTarget)
     if (t >= 1) tween = null
   }
+  /** 视口宽高比自适应视距：窄/竖视口必须拉远，否则器材一出屏就看不见 */
+  function fitDist() {
+    const w = container.clientWidth || 800
+    const h = container.clientHeight || 600
+    const aspect = w / h
+    const d = aspect < 1.25 ? CAM_DIST0 * (1.3 + (1.25 - aspect) * 1.15) : CAM_DIST0
+    return Math.min(CAM_DIST_MAX, Math.max(CAM_DIST_MIN, d))
+  }
   function defaultCameraPose() {
+    const dist = fitDist()
     return {
-      pos: new THREE.Vector3(0, CAM_DIST0 * CAM_ELEV, CAM_DIST0 * CAM_BACK).add(
+      pos: new THREE.Vector3(0, dist * CAM_ELEV, dist * CAM_BACK).add(
         new THREE.Vector3(camTarget.x, camTarget.y, camTarget.z)
       ),
       target: camTarget.clone(),
@@ -244,7 +254,7 @@ export function createLabRenderer(container, opt = {}) {
   function resetCamera() {
     const d = defaultCameraPose()
     tweenCamera(d.pos, d.target)
-    camDist = CAM_DIST0
+    camDist = fitDist()
   }
 
   /* ── 器材 / 导线仓储 ── */
@@ -379,12 +389,12 @@ export function createLabRenderer(container, opt = {}) {
         s.position.set(
           (tm.x - t.w / 2) * SCALE,
           (t.h - (tm.y + TERM_DROP)) * SCALE,
-          pz
+          pz + 0.06 // 柱身向后伸 0.16，命中球放在柱中段
         )
       } else {
         s.position.set(
           (tm.x - t.w / 2) * SCALE,
-          th + 0.03,
+          th + 0.03 + 0.06, // 柱身净高 0.16，命中球放在柱中段
           (tm.y + TERM_DROP - t.h / 2) * SCALE
         )
       }
@@ -1157,6 +1167,13 @@ export function createLabRenderer(container, opt = {}) {
     outline.resolution.set(w, h)
     camera.aspect = w / h
     camera.updateProjectionMatrix()
+    // 视口比例明显变化（如窄窗/竖屏）时重新适配视距，否则器材会被裁出画面。
+    // 阈值 0.4 保证用户小幅滚轮缩放不被打断。
+    const nd = fitDist()
+    if (!camDist || Math.abs(nd - camDist) > 0.4) {
+      camDist = nd
+      applyCamera()
+    }
   }
   resize()
   const ro = new ResizeObserver(resize)
@@ -1267,23 +1284,23 @@ function makeGridTexture(cellsX, cellsY) {
   canvas.width = Math.round(cellsX * PX)
   canvas.height = Math.round(cellsY * PX)
   const g = canvas.getContext('2d')
-  // 桌面底色：柔和浅灰蓝（教学课件风）
+  // 桌面底色：绿色防静电实验垫（对标实物实验室桌面）
   const grad = g.createLinearGradient(0, 0, 0, canvas.height)
-  grad.addColorStop(0, '#f4f7fb')
-  grad.addColorStop(1, '#e7edf5')
+  grad.addColorStop(0, '#1f6b45')
+  grad.addColorStop(1, '#175b3a')
   g.fillStyle = grad
   g.fillRect(0, 0, canvas.width, canvas.height)
-  // 栅格
+  // 细格纹（浅白，只做垫子的编织感，不抢器材）
   g.lineWidth = 1
   for (let i = 0; i <= cellsX; i++) {
-    g.strokeStyle = i % 5 === 0 ? 'rgba(148,163,184,0.55)' : 'rgba(203,213,225,0.55)'
+    g.strokeStyle = i % 5 === 0 ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.06)'
     g.beginPath()
     g.moveTo(i * PX + 0.5, 0)
     g.lineTo(i * PX + 0.5, canvas.height)
     g.stroke()
   }
   for (let j = 0; j <= cellsY; j++) {
-    g.strokeStyle = j % 5 === 0 ? 'rgba(148,163,184,0.55)' : 'rgba(203,213,225,0.55)'
+    g.strokeStyle = j % 5 === 0 ? 'rgba(255,255,255,0.13)' : 'rgba(255,255,255,0.06)'
     g.beginPath()
     g.moveTo(0, j * PX + 0.5)
     g.lineTo(canvas.width, j * PX + 0.5)

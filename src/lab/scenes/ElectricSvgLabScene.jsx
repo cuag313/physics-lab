@@ -488,7 +488,7 @@ export default function ElectricSvgLabScene() {
       mk('ammeter', 330, 134),
       mk('switch', 150, 360, { closed: false }),
     ]
-    const w = (ca, ta, cb, tb) => ({ id: uidRef.current++, a: keyOf(ca, ta), b: keyOf(cb, tb), color: WIRE_COLORS[2].hex })
+    const w = (ca, ta, cb, tb) => ({ id: uidRef.current++, a: keyOf(ca, ta), b: keyOf(cb, tb), color: WIRE_COLORS[0].hex })
     setComps(list)
     setWires([
       w(ids.battery, 'p', ids.rheostat, 'bl'),

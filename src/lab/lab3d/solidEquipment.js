@@ -60,16 +60,43 @@ function cyl(rTop, rBottom, h, material, seg = 20) {
   return m
 }
 
-/** 接线柱：铜柱 + 顶部压环，柱高 0.16，保证导线端点扎眼可见 */
-function makePost(material = MAT.copper()) {
+/**
+ * 接线柱：对标实物实验室的红/黑压线旋钮
+ *  - 负极/公共端用黑色旋钮，正极用红色旋钮（按 terminals.id 判断）
+ *  - 结构：金属基座 → 细柱 → 彩色旋钮 → 顶部中心凸起
+ *  - 总高约 0.16，与 three-render 的磁吸热区中心对齐
+ */
+function makePost(id = '') {
+  const isNeg = /^(neg|n|-)/i.test(id) || /neg|black/i.test(id)
+  const knobColor = isNeg ? '#1c2026' : '#cf1f22'
   const g = new THREE.Group()
-  const body = cyl(0.035, 0.045, 0.16, material)
-  body.position.y = 0.08
-  g.add(body)
-  const cap = cyl(0.055, 0.05, 0.02, MAT.brass(), 16)
-  cap.position.y = 0.17
+
+  const base = cyl(0.052, 0.058, 0.02, MAT.steel(), 16)
+  base.position.y = 0.01
+  g.add(base)
+
+  const stem = cyl(0.022, 0.022, 0.07, MAT.steel(), 12)
+  stem.position.y = 0.05
+  g.add(stem)
+
+  const knob = cyl(
+    0.052,
+    0.056,
+    0.062,
+    // 旋钮是绝缘塑料：不要金属度，环境反射压低，红色才压得住不会被洗成粉
+    std(knobColor, { roughness: 0.55, metalness: 0, envMapIntensity: 0.55 }),
+    20
+  )
+  knob.position.y = 0.115
+  g.add(knob)
+
+  // 旋钮顶部的凹槽 + 中心凸起（实物接线柱的压线螺钉）
+  const cap = cyl(0.03, 0.03, 0.012, std(isNeg ? '#3a3f45' : '#e0483f', { roughness: 0.5 }), 14)
+  cap.position.y = 0.152
   g.add(cap)
+
   g.userData.role = 'post'
+  g.userData.neg = isNeg
   return g
 }
 
@@ -376,7 +403,7 @@ function buildRheostat(w, h) {
 function placePosts(group, terminals, w, h, stand, thickness) {
   if (!terminals) return
   for (const tm of terminals) {
-    const p = makePost()
+    const p = makePost(tm.id)
     const x = (tm.x - w / 2) * SCALE
     if (stand) {
       p.position.set(x, (h - (tm.y + 7)) * SCALE, thickness + 0.03)
