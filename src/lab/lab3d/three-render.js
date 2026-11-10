@@ -46,7 +46,7 @@ const INERTIA_DAMP = 0.925   // 惯性衰减
 const CAM_ELEV = 0.40        // 相机俯仰（sin 分量）：俯角约 23°，正对立式表盘
 const CAM_BACK = 0.83
 const CAM_DIST0 = 6.6        // 默认视距：让器材占据视野主体，而不是一张空桌子
-const ROT_PITCH0 = 0.82      // 初始视角：桌面近乎正对相机（"正视图"，方便在平面内拖器材布电路）
+const ROT_PITCH0 = 0.36      // 初始视角：桌面翻起约 20°，叠加相机 23° 俯角 ≈ 45°（正对可布电路，又能看清器材立体）
 const CAM_DIST_MIN = 4.2
 const CAM_DIST_MAX = 22
 const NEEDLE_BASE_DEG = -52 // 与 needleSVG 一致：frac 0~1 → -52°~+52°
@@ -286,6 +286,8 @@ export function createLabRenderer(container, opt = {}) {
     const center = new THREE.Vector3(sx / comps.length, 0.55, sz / comps.length)
     center.applyAxisAngle(new THREE.Vector3(0, 1, 0), rot.yaw)
     center.applyAxisAngle(new THREE.Vector3(1, 0, 0), rot.pitch)
+    // 桌面整体往画面左侧让一点（构图偏右时给右侧的器材/浮层腾位置）
+    center.x += 1.2
     camTarget.copy(center)
     camFramed = true
     applyCamera()
