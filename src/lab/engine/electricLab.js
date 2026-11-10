@@ -52,6 +52,10 @@ export const CFG = {
   // 单相电能表：1↔3 是电流线圈（计量相线），2↔4 是零线直通
   METER_COIL_R: 0.02,           // 电流线圈电阻（Ω）
   METER_LINE_R: 0.001,          // 零线直通段电阻（Ω）
+  // 焦耳定律 U 形管：两支管内各一段电阻丝串联，电流相同 → Q ∝ R
+  JOULE_R1: 2,                  // 左管电阻丝（Ω）
+  JOULE_R2: 4,                  // 右管电阻丝（Ω）
+  JOULE_Q_FULL: 40,             // 液柱从初始升到满刻度所需热量（J），仅作显示标度
 }
 
 /** 电阻箱拨盘 → 阻值（dials: [×1k, ×100, ×10, ×1]，各位 0~9） */
@@ -83,6 +87,7 @@ export const TERM_IDS = {
   relay: ['ct1', 'ct2', 'ck1', 'ck2'], // 触点 ×2 + 线圈 ×2
   energyMeter: ['i1', 'i2', 'o1', 'o2'], // 单相电能表：1/2 进线，3/4 出线（1-3 电流线圈，2-4 零线直通）
   mains: ['n', 'l'],                 // 家庭电源：零线 N / 火线 L
+  jouleTube: ['a', 'b'],             // 焦耳定律 U 形管：左管 R1、右管 R2 串联，a/b 两接线柱
 }
 
 const keyOf = (cid, tid) => cid + ':' + tid
@@ -370,6 +375,13 @@ export function solveCircuit(comps, wires, opts) {
       els.push({ kind: 'R', a: p1, b: p3, R: CFG.METER_COIL_R, comp: c, tA: 'i1', tB: 'o1', role: 'coil' })
       stampR(A, n2, n4, CFG.METER_LINE_R)
       els.push({ kind: 'R', a: n2, b: n4, R: CFG.METER_LINE_R, comp: c, tA: 'i2', tB: 'o2', role: 'line' })
+    } else if (c.type === 'jouleTube') {
+      // 焦耳定律 U 形管：左管 R1、右管 R2 串在同一支路，电流相同 → Q ∝ R
+      const a = netOf(c, 'a')
+      const bb = netOf(c, 'b')
+      const R = CFG.JOULE_R1 + CFG.JOULE_R2
+      stampR(A, a, bb, R)
+      els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
     }
     }
 
@@ -487,6 +499,13 @@ export function solveCircuit(comps, wires, opts) {
         o._I = Math.abs(I)
         o._Vd = Math.abs(v[e.a] - v[e.b])
       }
+    } else if (c.type === 'jouleTube') {
+      o._I = Math.abs(I)
+      o._R1 = CFG.JOULE_R1
+      o._R2 = CFG.JOULE_R2
+      // 瞬时功率，热量由场景按时间积分（Q = I²Rt），引擎本身无时间状态
+      o._P1 = I * I * CFG.JOULE_R1
+      o._P2 = I * I * CFG.JOULE_R2
     }
   }
 

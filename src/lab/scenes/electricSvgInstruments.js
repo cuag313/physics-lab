@@ -251,6 +251,21 @@ const INNER = {
       <path d="M130 66 H152" stroke="#8a6a3c" stroke-width="2"/>
       <text class="plabel" x="156" y="70" text-anchor="end">齿轮 → 计数器</text>`
   },
+  jouleTube() {
+    return `
+      <!-- 焦耳定律 U 形管剖视：电阻丝浸在液体里，通电发热使液体膨胀、液柱上升 -->
+      <rect x="46" y="120" width="16" height="26" rx="3" fill="#b45309" opacity=".85"/>
+      <rect x="128" y="112" width="16" height="34" rx="3" fill="#b45309" opacity=".85"/>
+      <path d="M54 138 q8 -10 0 -20 q-8 -10 0 -20" stroke="#fca5a5" stroke-width="1.6" fill="none"/>
+      <path d="M136 138 q8 -10 0 -20 q-8 -10 0 -20 q8 -10 0 -20 q-8 -10 0 -20" stroke="#fca5a5" stroke-width="1.6" fill="none"/>
+      <text class="plabel" x="54" y="42">R1 = 2Ω（2 段）</text>
+      <text class="plabel" x="136" y="42">R2 = 4Ω（4 段）</text>
+      <path d="M62 108 h6 M62 96 h6 M62 84 h6" stroke="#fb7185" stroke-width="1.4" opacity=".9"/>
+      <path d="M144 104 h6 M144 92 h6 M144 80 h6" stroke="#fb7185" stroke-width="1.4" opacity=".9"/>
+      <text class="plabel" x="95" y="72">液体受热膨胀</text>
+      <text class="plabel" x="95" y="82">→ 液柱沿玻璃管上升</text>
+      <text class="plabel" x="95" y="164">两支管串联，电流相同 → Q ∝ R</text>`
+  },
   resBox() {
     return `
       <!-- 电阻箱剖视：盘式电阻 + 刷片 -->
@@ -954,6 +969,66 @@ export const TYPES = {
         { x: 76, y: 132, label: '2', dark: true },
         { x: 114, y: 132, label: '3', dark: false },
         { x: 150, y: 132, label: '4', dark: false },
+      ])}
+    </svg>` }
+  },
+  jouleTube: {
+    label: '焦耳定律演示器', w: 190, h: 190,
+    terminals: [
+      { id: 'a', label: 'a', name: '接线柱 a', x: 30, y: 166 },
+      { id: 'b', label: 'b', name: '接线柱 b', x: 160, y: 166 },
+    ],
+    render(c, dyn = {}) {
+      const h1 = Math.max(0, Math.min(1, Number(dyn.h1) || 0))
+      const h2 = Math.max(0, Math.min(1, Number(dyn.h2) || 0))
+      const q1 = Math.max(0, Number(dyn.q1) || 0)
+      const q2 = Math.max(0, Number(dyn.q2) || 0)
+      const I = Math.abs(Number(dyn.I) || 0)
+      // 初始液面 y=118，满刻度再升 62（液柱高度 62 → 0）
+      const Y0 = 118
+      const SPAN = 62
+      const yL = Y0 - h1 * SPAN
+      const yR = Y0 - h2 * SPAN
+      // 电阻丝：左 2 段、右 4 段，密绕成横向扁环（像线圈，不像一排数字）
+      const coil = (cx, ys) => ys.map((y) =>
+        `<ellipse cx="${cx}" cy="${y}" rx="5.4" ry="1.25" fill="none" stroke="#7f1d1d" stroke-width="1.1"/>`).join('')
+      const ticks = [0, 1, 2, 3, 4, 5].map((i) => {
+        const y = Y0 - i * 12.4
+        return `<line x1="144" y1="${y}" x2="149" y2="${y}" stroke="#94a3b8" stroke-width="1"/>`
+          + (i ? `<text x="151" y="${y + 2.4}" font-size="6.5" fill="#64748b">${i * 10}</text>` : '')
+      }).join('')
+      return `
+    <svg width="190" height="190" viewBox="0 0 190 190">
+      ${fitInner(190, 190, 190, 190, INNER.jouleTube())}
+      <g class="casing">
+        <rect x="16" y="156" width="158" height="20" rx="5" fill="#cbd5e1" stroke="#94a3b8" stroke-width="1.2"/>
+        <!-- 玻璃管：左右竖管 + 底部连通的横管 -->
+        <rect x="52" y="46" width="16" height="96" rx="3" fill="#eaf4ff" stroke="#a8b5c4" stroke-width="1.4"/>
+        <rect x="122" y="46" width="16" height="96" rx="3" fill="#eaf4ff" stroke="#a8b5c4" stroke-width="1.4"/>
+        <rect x="52" y="132" width="86" height="14" rx="3" fill="#eaf4ff" stroke="#a8b5c4" stroke-width="1.4"/>
+        <ellipse cx="60" cy="46" rx="8" ry="3" fill="none" stroke="#a8b5c4" stroke-width="1.2"/>
+        <ellipse cx="130" cy="46" rx="8" ry="3" fill="none" stroke="#a8b5c4" stroke-width="1.2"/>
+        <!-- 有色液体：底部连通段常满，两竖管液面各自独立 -->
+        <rect x="54" y="134" width="82" height="10" fill="#ef5350" opacity=".88"/>
+        <rect x="54" y="${yL}" width="12" height="${134 - yL}" fill="#ef5350" opacity=".88"/>
+        <rect x="124" y="${yR}" width="12" height="${134 - yR}" fill="#ef5350" opacity=".88"/>
+        <ellipse cx="60" cy="${yL}" rx="6" ry="1.6" fill="#fca5a5"/>
+        <ellipse cx="130" cy="${yR}" rx="6" ry="1.6" fill="#fca5a5"/>
+        <!-- 电阻丝：浸在液体里，圈数即阻值 -->
+        ${coil(60, [131, 127])}
+        ${coil(130, [131, 128, 125, 122])}
+        <!-- 刻度（mm） -->
+        <line x1="144" y1="46" x2="144" y2="132" stroke="#e2e8f0" stroke-width="1"/>
+        ${ticks}
+        <rect x="26" y="24" width="138" height="16" rx="4" fill="#334155"/>
+        <text x="95" y="35.5" text-anchor="middle" font-size="9" fill="#dbeafe"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">焦耳定律演示器 · R1 2Ω / R2 4Ω</text>
+        <text x="95" y="187" text-anchor="middle" font-size="8.5" fill="#475569"
+          font-family="ui-monospace,Consolas,monospace">Q1 ${q1.toFixed(1)} J · Q2 ${q2.toFixed(1)} J${I > 0.005 ? '' : ' · 断电'}</text>
+      </g>
+      ${termDotsSVG([
+        { x: 30, y: 166, label: 'a', dark: true },
+        { x: 160, y: 166, label: 'b', dark: false },
       ])}
     </svg>` }
   },

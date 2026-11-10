@@ -13,7 +13,8 @@ const near = (a, b, tol = 1e-3) => Math.abs(a - b) <= tol
 describe('TERM_IDS 注册', () => {
   it('全部新类型都有接线柱定义', () => {
     for (const t of ['resistor5', 'resistor10', 'resistor15', 'switch2', 'motor', 'diode',
-      'fuse', 'testPencil', 'electroscope', 'resBox', 'multimeter', 'relay', 'mains', 'energyMeter']) {
+      'fuse', 'testPencil', 'electroscope', 'resBox', 'multimeter', 'relay', 'mains', 'energyMeter',
+      'jouleTube']) {
       expect(TERM_IDS[t], t).toBeTruthy()
       expect(TERM_IDS[t].length).toBeGreaterThan(1)
     }
@@ -293,6 +294,32 @@ describe('伏安法测电阻的系统误差（内接 / 外接）', () => {
         { id: 4, a: '4:neg', b: '1:n' },
       ])
     expect(out._va).toBeUndefined()
+  })
+})
+
+describe('焦耳定律 U 形管', () => {
+  it('两支管串联：电流相同，发热功率之比 = R2 : R1', () => {
+    const out = loop(
+      [{ id: 1, type: 'battery' }, { id: 2, type: 'jouleTube' }],
+      [{ id: 1, a: '1:p', b: '2:a' }, { id: 2, a: '2:b', b: '1:n' }])
+    const I = 3 / (CFG.JOULE_R1 + CFG.JOULE_R2 + CFG.VS.r)
+    expect(near(out[2]._I, I, 1e-6)).toBe(true)
+    expect(near(out[2]._P1, I * I * CFG.JOULE_R1, 1e-9)).toBe(true)
+    expect(near(out[2]._P2, I * I * CFG.JOULE_R2, 1e-9)).toBe(true)
+    // R2 = 4Ω 是 R1 = 2Ω 的两倍 → 同一时刻右侧液柱上升也是左侧的两倍
+    expect(near(out[2]._P2 / out[2]._P1, 2, 1e-9)).toBe(true)
+  })
+
+  it('断电后 _I 归零，热量不再增加（液柱靠场景积分保持，不回落）', () => {
+    const out = loop(
+      [{ id: 1, type: 'battery' }, { id: 2, type: 'switch', closed: false }, { id: 3, type: 'jouleTube' }],
+      [
+        { id: 1, a: '1:p', b: '2:a' },
+        { id: 2, a: '2:b', b: '3:a' },
+        { id: 3, a: '3:b', b: '1:n' },
+      ])
+    expect(Math.abs(out[3]._I)).toBeLessThan(1e-6)
+    expect(out[3]._P1).toBeCloseTo(0, 12)
   })
 })
 

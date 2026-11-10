@@ -219,7 +219,7 @@ const PALETTE_ICONS = {
 /* 元件库分组（按教学批次展示） */
 const PALETTE_GROUPS = [
   { title: '基础器材', keys: ['battery', 'bulb', 'switch', 'ammeter', 'voltmeter', 'rheostat'] },
-  { title: '初中必做实验', keys: ['resistor5', 'resistor10', 'resistor15', 'switch2', 'motor', 'diode'] },
+  { title: '初中必做实验', keys: ['resistor5', 'resistor10', 'resistor15', 'switch2', 'motor', 'diode', 'jouleTube'] },
   { title: '家庭电路', keys: ['mains', 'energyMeter', 'fuse', 'testPencil', 'electroscope'] },
   { title: '高中拓展', keys: ['resBox', 'multimeter', 'relay'] },
 ]
@@ -334,6 +334,10 @@ export default function ElectricSvgLabScene() {
   const meterAccRef = useRef(0)         // 计数器刷新节流（秒）
   const [meterTick, setMeterTick] = useState(0) // 每秒触发一次重渲染，刷新计数器读数
   void meterTick
+  const jouleHeatRef = useRef({})       // U 形管 id → { q1, q2 } 累计焦耳热（J）
+  const jouleAccRef = useRef(0)         // 液柱刷新节流（秒）
+  const [jouleTick, setJouleTick] = useState(0) // 0.25s 触发一次重渲染，刷新液柱高度
+  void jouleTick
   const previewChainRef = useRef(null)
   const previewPathRef = useRef(null)
   const previewTipRef = useRef(null)    // 拉线时的鼠标点
@@ -793,6 +797,29 @@ export default function ElectricSvgLabScene() {
             setMeterTick((t) => t + 1)
           }
         }
+
+        // ── 焦耳定律 U 形管：按 Q = I²Rt 逐侧积分，液柱高度由热量换算 ──
+        const tubes = cs.filter((x) => x.type === 'jouleTube')
+        if (tubes.length) {
+          const qj = jouleHeatRef.current
+          let heating = false
+          for (const t of tubes) {
+            if (!qj[t.id]) qj[t.id] = { q1: 0, q2: 0 }
+            const rec = qj[t.id]
+            const I = Math.abs(sv[t.id]?._I || 0)
+            if (I > 1e-4) {
+              rec.q1 += I * I * CFG.JOULE_R1 * dt
+              rec.q2 += I * I * CFG.JOULE_R2 * dt
+              heating = true
+            }
+          }
+          jouleAccRef.current += dt
+          // 0.25s 刷一次，肉眼看是连续上升，又不必每帧重排 SVG
+          if (heating && jouleAccRef.current >= 0.25) {
+            jouleAccRef.current = 0
+            setJouleTick((n) => n + 1)
+          }
+        }
       }
       for (const w of wiresRef.current) {
         const ch = chainsRef.current.get(w.id)
@@ -865,6 +892,13 @@ export default function ElectricSvgLabScene() {
     if (c.type === 'energyMeter') {
       const kwh = meterKwhRef.current[c.id] ?? (Number(c.kwh0) || 0)
       return { kwh, I: o._I || 0 }
+    }
+    if (c.type === 'jouleTube') {
+      const rec = jouleHeatRef.current[c.id] || { q1: 0, q2: 0 }
+      // 液柱高度是热量的线性标度：Q 到 JOULE_Q_FULL 时液柱升到满刻度
+      const h1 = Math.min(1, rec.q1 / CFG.JOULE_Q_FULL)
+      const h2 = Math.min(1, rec.q2 / CFG.JOULE_Q_FULL)
+      return { h1, h2, q1: rec.q1, q2: rec.q2, I: o._I || 0 }
     }
     if (c.type === 'multimeter') {
       const mode = c.mode === 'A' || c.mode === 'Ω' ? c.mode : 'V'
