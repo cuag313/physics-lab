@@ -426,7 +426,7 @@ export const TYPES = {
     </svg>` }
   },
 
-  /* ── 小灯泡（实拍图 1:1：玻璃泡+灯丝+白瓷灯座+台板，左黑右红接线柱） ── */
+  /* ── 小灯泡（实拍图 1:1：玻璃泡+灯丝+白瓷灯座+台板，左黑右红接线柱 + 四档灯丝色温） ── */
   bulb: {
     label: '小灯泡', w: 176, h: 83,
     terminals: [
@@ -434,12 +434,49 @@ export const TYPES = {
       { id: 'b', label: '2', name: '接线柱 2', x: 151, y: 56 },
     ],
     render(c, dyn = {}) {
-      const bright = dyn.bright || 0
+      const bright = Math.max(0, Math.min(1, Number(dyn.bright) || 0))
+      const over = !!dyn.over // 超过额定功率：刺白 + 闪烁警示
+
+      // 灯丝色温四档（对照帧理：暗红 → 橙红 → 亮黄 → 刺眼白），档间线性插值
+      const STAGE = [
+        [0.0, [104, 112, 124], [104, 112, 124]], // 断路：冷灰
+        [0.18, [127, 29, 29], [220, 38, 38]],     // 暗红（低电流）
+        [0.42, [194, 65, 12], [249, 115, 22]],    // 橙红
+        [0.68, [251, 191, 36], [251, 191, 36]],   // 亮黄
+        [1.0, [255, 253, 235], [255, 255, 240]],  // 刺眼白（额定）
+      ]
+      let si = 0
+      while (si < STAGE.length - 2 && bright > STAGE[si + 1][0]) si++
+      const t0 = STAGE[si][0], c0 = STAGE[si][1], h0 = STAGE[si][2]
+      const t1 = STAGE[si + 1][0], c1 = STAGE[si + 1][1], h1 = STAGE[si + 1][2]
+      const u = t1 > t0 ? Math.max(0, Math.min(1, (bright - t0) / (t1 - t0))) : 0
+      const mix = (a, b) => a.map((v, j) => Math.round(v + (b[j] - v) * u))
+      const core = mix(c0, c1)
+      const halo = mix(h0, h1)
+      const rgb = (a) => `rgb(${a[0]},${a[1]},${a[2]})`
+
+      // 渐变 id 必须按器材 + 亮度唯一，否则同一文档里多只亮度不同的灯泡会串色
+      const gid = `es-bulbfil-${String(c.id || 'x').replace(/[^A-Za-z0-9_-]/g, '')}-${Math.round(bright * 100)}${over ? '-o' : ''}`
+      const animOver = over
+        ? '<animate attributeName="opacity" values="1;0.55;1" dur="0.9s" repeatCount="indefinite"/>'
+        : ''
+      const rad = (30 + bright * 14).toFixed(1)
+
       return `
     <svg width="176" height="83" viewBox="0 0 176 83">
+      <defs>
+        <radialGradient id="${gid}" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="${rgb(core)}" stop-opacity="${(0.92 * bright).toFixed(3)}"/>
+          <stop offset="38%" stop-color="${rgb(halo)}" stop-opacity="${(0.62 * bright).toFixed(3)}"/>
+          <stop offset="100%" stop-color="${rgb(halo)}" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
       ${fitInner(256, 121, 176, 83, INNER.bulb())}
-      <circle cx="89" cy="25" r="${(30 + bright * 14).toFixed(1)}" fill="url(#es-g-glow)" opacity="${(bright * 0.95).toFixed(3)}"/>
+      <circle cx="89" cy="25" r="${rad}" fill="url(#es-g-glow)" opacity="${(bright * 0.55).toFixed(3)}"/>
       ${photo('bulb_c.png', 176, 83, `filter:brightness(${(0.42 + 0.68 * bright).toFixed(2)}) saturate(${(0.6 + 0.4 * bright).toFixed(2)})`)}
+      ${bright > 0.02
+        ? `<circle class="es-bulb-halo" cx="89" cy="25" r="${rad}" fill="url(#${gid})" style="mix-blend-mode:screen">${animOver}</circle>`
+        : ''}
     </svg>` }
   },
 

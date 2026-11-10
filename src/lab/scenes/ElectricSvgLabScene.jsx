@@ -799,7 +799,11 @@ export default function ElectricSvgLabScene() {
   /* ── 渲染 ── */
   const dynOf = (c) => {
     const o = solved[c.id] || {}
-    if (c.type === 'bulb') return { bright: o._P > 0 ? Math.min(1, o._P / CFG.BULB_RATED) : 0 }
+    if (c.type === 'bulb') {
+      const p = o._P || 0
+      // bright 按额定功率归一（钳到 1）；over 单独给，用于「刺眼白 + 闪烁」过载警示
+      return { bright: p > 0 ? Math.min(1, p / CFG.BULB_RATED) : 0, over: p > CFG.BULB_RATED * 1.02 }
+    }
     if (c.type === 'ammeter') return { frac: Math.abs(o._I || 0) / (o._fs || CFG.AMM_FS) }
     if (c.type === 'voltmeter') return { frac: Math.abs(o._V || 0) / (o._fs || CFG.VOLT_FS) }
     if (c.type === 'rheostat') {
