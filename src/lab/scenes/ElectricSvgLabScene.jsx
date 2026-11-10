@@ -876,6 +876,17 @@ export default function ElectricSvgLabScene() {
     if (c.type === 'resBox') {
       return { text: `R = ${(o._R ?? 0).toFixed(1)} Ω`, color: '#4ade80' }
     }
+    if (c.type === 'battery' || c.type === 'mains') {
+      // 端电压 = E − I·r；短路时端电压塌到 0，全部电动势都降在内阻上
+      const emf = o._emf ?? (c.type === 'mains' ? CFG.MAINS_V : CFG.VS.V)
+      const u = o._V ?? emf
+      const drop = Math.max(0, emf - u)
+      const danger = u < emf * 0.15 && Math.abs(o._I || 0) > 0.3
+      return {
+        text: `${danger ? '⚠ 短路 · ' : ''}U端 ${u.toFixed(2)}V · 内阻降 ${drop.toFixed(2)}V`,
+        color: danger ? '#fb7185' : drop > 0.05 ? '#fbbf24' : '#93c5fd',
+      }
+    }
     return null
   }
 

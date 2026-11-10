@@ -210,6 +210,25 @@ describe('电磁继电器', () => {
   })
 })
 
+describe('电池端电压（内阻分压）', () => {
+  it('带载时 U端 = E − I·r', () => {
+    const out = loop(
+      [{ id: 1, type: 'battery' }, { id: 2, type: 'resistor5' }],
+      [{ id: 1, a: '1:p', b: '2:a' }, { id: 2, a: '2:b', b: '1:n' }])
+    const I = 3 / (CFG.VS.r + 5)
+    expect(near(out[1]._I, I, 1e-6)).toBe(true)
+    expect(near(out[1]._V, 3 - I * CFG.VS.r, 1e-6)).toBe(true)
+    expect(near(out[1]._Ir, I * CFG.VS.r, 1e-6)).toBe(true)
+    expect(out[1]._emf).toBe(3)
+  })
+  it('短路时端电压塌到 0，电动势全部降在内阻上', () => {
+    const out = loop([{ id: 1, type: 'battery' }], [{ id: 1, a: '1:p', b: '1:n' }])
+    expect(near(out[1]._I, 3 / CFG.VS.r, 1e-3)).toBe(true) // 30A
+    expect(out[1]._V).toBeLessThan(0.01)
+    expect(near(out[1]._Ir, 3, 1e-3)).toBe(true)
+  })
+})
+
 describe('小电动机 / 家庭电源', () => {
   it('电动机线圈电阻参与求解', () => {
     const out = loop(

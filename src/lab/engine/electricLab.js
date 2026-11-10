@@ -417,6 +417,12 @@ export function solveCircuit(comps, wires, opts) {
       o._over = Math.abs(o._V) > o._fs * 1.001
     } else if (c.type === 'battery' || c.type === 'mains') {
       o._I = I
+      // 端电压 = 电动势 − 内阻分压；短路时 I 很大，端电压趋近 0（这是「短路为什么危险」的教学点）
+      const emf = c.type === 'mains' ? CFG.MAINS_V : CFG.VS.V
+      const rIn = c.type === 'mains' ? CFG.MAINS_R : CFG.VS.r
+      o._V = Math.abs(v[e.b] - v[e.a])
+      o._Ir = Math.abs(I) * rIn
+      o._emf = emf
     } else if (c.type === 'rheostat') {
       o._I = Math.abs(I)
     } else if (c.type === 'resistor5' || c.type === 'resistor10' || c.type === 'resistor15') {

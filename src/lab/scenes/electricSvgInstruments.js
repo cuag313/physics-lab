@@ -103,19 +103,24 @@ const INNER = {
       <rect class="plabel" x="30" y="30" width="18" height="18" rx="3" fill="none" stroke="#e11d48" stroke-width="1.4"/>
       <rect class="plabel" x="100" y="26" width="22" height="14" rx="3" fill="none" stroke="#e11d48" stroke-width="1.4"/>`
   },
-  meter() {
+  meter(deg = 0) {
+    // 磁电式表头：线圈在 N/S 极磁场中随电流转动 → 游丝扭转 → 指针偏转。
+    // 剖视时线圈按指针比例同步偏转（绕中心 65,61），不是静态图。
     return `
       <rect x="26" y="40" width="16" height="42" rx="3" fill="#e11d48" opacity=".75"/>
       <rect x="88" y="40" width="16" height="42" rx="3" fill="#2563eb" opacity=".75"/>
       <text class="plabel" x="34" y="36">N 极</text>
       <text class="plabel" x="96" y="36">S 极</text>
-      <rect x="50" y="46" width="30" height="30" rx="4" fill="#a16207" stroke="#78350f"/>
-      <line x1="50" y1="52" x2="80" y2="52" stroke="#fde68a" stroke-width="1.4"/>
-      <line x1="50" y1="58" x2="80" y2="58" stroke="#fde68a" stroke-width="1.4"/>
-      <line x1="50" y1="64" x2="80" y2="64" stroke="#fde68a" stroke-width="1.4"/>
-      <line x1="50" y1="70" x2="80" y2="70" stroke="#fde68a" stroke-width="1.4"/>
-      <text class="plabel" x="65" y="88">通电线圈</text>
-      <text class="plabel" x="65" y="98">（在磁场中受力偏转）</text>`
+      <g transform="rotate(${Number(deg || 0).toFixed(1)} 65 61)">
+        <rect x="50" y="46" width="30" height="30" rx="4" fill="#a16207" stroke="#78350f"/>
+        <line x1="50" y1="52" x2="80" y2="52" stroke="#fde68a" stroke-width="1.4"/>
+        <line x1="50" y1="58" x2="80" y2="58" stroke="#fde68a" stroke-width="1.4"/>
+        <line x1="50" y1="64" x2="80" y2="64" stroke="#fde68a" stroke-width="1.4"/>
+        <line x1="50" y1="70" x2="80" y2="70" stroke="#fde68a" stroke-width="1.4"/>
+        <line x1="65" y1="61" x2="65" y2="90" stroke="#d6b25f" stroke-width="2"/>
+      </g>
+      <text class="plabel" x="65" y="88">通电线圈（随指针偏转）</text>
+      <text class="plabel" x="65" y="98">游丝提供反力矩</text>`
   },
   rheostat() {
     return `
@@ -534,7 +539,7 @@ export const TYPES = {
     render(c, dyn) {
       return `
     <svg width="130" height="152" viewBox="0 0 130 152">
-      ${fitInner(130, 150, 130, 152, INNER.meter())}
+      ${fitInner(130, 150, 130, 152, INNER.meter((dyn?.frac || 0) * 22))}
       ${photo('ammeter_c.png', 130, 152)}
       ${termDotsSVG([
         { x: 31, y: 110, label: '−', dark: true },
@@ -556,7 +561,7 @@ export const TYPES = {
     render(c, dyn) {
       return `
     <svg width="130" height="133" viewBox="0 0 130 133">
-      ${fitInner(130, 150, 130, 133, INNER.meter())}
+      ${fitInner(130, 150, 130, 133, INNER.meter((dyn?.frac || 0) * 22))}
       ${photo('voltmeter_c.png', 130, 133)}
       ${needleSVG(65, 83, 62, dyn?.frac || 0)}
     </svg>` }
