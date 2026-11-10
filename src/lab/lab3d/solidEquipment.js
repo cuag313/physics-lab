@@ -104,8 +104,7 @@ function helixTube(radius, y0, y1, turns, tubeR, material) {
 }
 
 /** 简易文字贴图（铭牌/型号标签），省掉外部图片依赖 */
-function labelTexture(lines, opt = {}) {
-  const W = opt.w || 256
+function labelTexture(lines, opt = {}) {  const W = opt.w || 256
   const H = opt.h || 128
   const cv = document.createElement('canvas')
   cv.width = W
@@ -130,6 +129,96 @@ function labelTexture(lines, opt = {}) {
   tex.anisotropy = 4
   return tex
 }
+
+/* ── 实拍图贴面：2D 视图里的器材本来就是实拍/渲染图，3D 直接复用同一张图 ──
+ * 这是"1:1"最直接的做法：占桌面尺寸 = 2D 的 w×h（1px = 1cm），
+ * 顶面贴同一张实拍图，再把接线柱按 terminals 像素坐标从顶面伸出来，
+ * 于是"看到的形状"和 2D 视图完全一致，还多了真实厚度。
+ * 图片是白底，必须只抠掉"与画布边界连通的白色"（flood fill），
+ * 否则表盘内部的白也会被抠成透明洞。 */
+const PHOTO_BASE = '/physics-lab/assets/equipment/fig/'
+const _photoCache = new Map()
+
+/** 只把与边界连通的近白像素置透明，保留器材内部的白 */
+function whiteBorderToAlpha(cv, g) {
+  const W = cv.width
+  const H = cv.height
+  const data = g.getImageData(0, 0, W, H)
+  const px = data.data
+  const seen = new Uint8Array(W * H)
+  const stack = []
+  for (let x = 0; x < W; x++) {
+    stack.push(x)
+    stack.push((H - 1) * W + x)
+  }
+  for (let y = 0; y < H; y++) {
+    stack.push(y * W)
+    stack.push(y * W + W - 1)
+  }
+  const white = (i) => px[i * 4] > 236 && px[i * 4 + 1] > 236 && px[i * 4 + 2] > 236
+  while (stack.length) {
+    const idx = stack.pop()
+    if (seen[idx]) continue
+    seen[idx] = 1
+    if (!white(idx)) continue
+    px[idx * 4 + 3] = 0
+    const x = idx % W
+    const y = (idx - x) / W
+    if (x > 0) stack.push(idx - 1)
+    if (x < W - 1) stack.push(idx + 1)
+    if (y > 0) stack.push(idx - W)
+    if (y < H - 1) stack.push(idx + W)
+  }
+  g.putImageData(data, 0, 0)
+}
+
+/** 取实拍图贴图（异步载入；先用 1×1 空白占位，载入后自动替换） */
+function photoTexture(file) {
+  // 无 DOM（node 测试 / 离屏无 canvas）时直接放弃贴面，器材照常能造出来
+  if (typeof document === 'undefined') return null
+  const key = String(file)
+  const hit = _photoCache.get(key)
+  if (hit) return hit
+  const cv = document.createElement('canvas')
+  cv.width = 2
+  cv.height = 2
+  const tex = new THREE.CanvasTexture(cv)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.anisotropy = 4
+  _photoCache.set(key, tex)
+  const img = new Image()
+  img.onload = () => {
+    const c2 = document.createElement('canvas')
+    c2.width = img.width
+    c2.height = img.height
+    const g = c2.getContext && c2.getContext('2d')
+    if (!g) return
+    g.drawImage(img, 0, 0)
+    whiteBorderToAlpha(c2, g)
+    tex.image = c2
+    tex.needsUpdate = true
+  }
+  img.src = PHOTO_BASE + file
+  return tex
+}
+
+/** 顶面贴一张实拍图（尺寸即 2D 的 w×h，1px=1cm） */
+function photoTop(file, w, h, y, opt = {}) {
+  const tex = photoTexture(file)
+  if (!tex) return null
+  const mat = new THREE.MeshBasicMaterial({
+    map: photoTexture(file),
+    transparent: true,
+    toneMapped: false,
+  })
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat)
+  m.rotation.x = -Math.PI / 2
+  m.position.set(0, y, 0)
+  m.userData.role = 'photo'
+  if (opt.z) m.position.z = opt.z
+  return m
+}
+
 
 
 /**
@@ -238,67 +327,43 @@ function dialTexture(kind, fs, subTicks) {
 
 /* ── 各类器材 ── */
 
-/** 电池组：圆角深蓝塑料壳 + 白色顶盖 + 顶面铭牌；壳内是三节干电池 */
+/** 电池组：平放方块（占地严格等于 2D 的 w×h）+ 顶面实拍贴面 + 内部两节干电池 */
 function buildBattery(w, h) {
   const g = new THREE.Group()
-  const bw = 1.24
-  const bd = 1.0
-  const bh = 0.44
+  const bw = w * SCALE // 1.50
+  const bd = h * SCALE // 1.54
+  const bh = 0.5
   const shell = []
 
-  // 内部：三节干电池（剖视时露出来）
+  // 内部：两节 1.5V 干电池串联（3V 方块电池就是这么装的）
   const inner = new THREE.Group()
   inner.name = 'battery-inner'
-  for (let i = 0; i < 3; i++) {
-    const cell = cyl(0.105, 0.105, 0.6, std('#1f2937', { roughness: 0.5, metalness: 0.3 }), 18)
-    cell.rotation.z = Math.PI / 2
-    cell.position.set(0, 0.02 + bh / 2, -0.24 + i * 0.24)
+  for (let i = 0; i < 2; i++) {
+    const x = i === 0 ? -0.3 : 0.3
+    const cell = cyl(0.15, 0.15, 0.4, std('#232a33', { roughness: 0.5, metalness: 0.3 }), 20)
+    cell.position.set(x, 0.02 + bh / 2, 0)
     inner.add(cell)
-    // 正极铜帽 + 负极锌壳环 + 中间商标色环（干电池的辨识特征）
-    const cap = cyl(0.07, 0.07, 0.028, MAT.brass(), 14)
-    cap.rotation.z = Math.PI / 2
-    cap.position.set(0.31, 0.02 + bh / 2, -0.24 + i * 0.24)
-    inner.add(cap)
-    const band = cyl(0.108, 0.108, 0.17, std('#e0b93f', { roughness: 0.45 }), 16)
-    band.rotation.z = Math.PI / 2
-    band.position.set(-0.16, 0.02 + bh / 2, -0.24 + i * 0.24)
+    const band = cyl(0.152, 0.152, 0.1, std('#d8b23c', { roughness: 0.45 }), 20)
+    band.position.set(x, 0.02 + bh / 2 - 0.02, 0)
     inner.add(band)
-    const ring = cyl(0.107, 0.107, 0.05, std('#b3261f', { roughness: 0.5 }), 16)
-    ring.rotation.z = Math.PI / 2
-    ring.position.set(0.06, 0.02 + bh / 2, -0.24 + i * 0.24)
-    inner.add(ring)
+    const cap = cyl(0.055, 0.055, 0.03, MAT.brass(), 14)
+    cap.position.set(x, 0.02 + bh / 2 + 0.215, 0)
+    inner.add(cap)
   }
-  // 内部串联铜片
-  const lead = box(0.5, 0.02, 0.02, MAT.copper(), -0.1, 0.02 + bh * 0.78, 0)
-  inner.add(lead)
+  inner.add(box(0.6, 0.018, 0.02, MAT.copper(), 0, 0.02 + bh / 2 + 0.19, 0))
   g.add(inner)
 
-  // 壳身（圆角深蓝塑料）+ 白色圆角顶盖
-  const bodyMesh = rbox(bw, bh, bd, 0.075, MAT.bluePlastic(), 0, 0.02 + bh / 2, 0)
+  // 壳身：圆角方块（不再是之前的卧式长条）
+  const bodyMesh = rbox(bw, bh, bd, 0.05, MAT.bluePlastic(), 0, 0.02 + bh / 2, 0)
   shell.push(bodyMesh)
-  const topMesh = rbox(bw - 0.04, 0.055, bd - 0.04, 0.038, std('#eceff4', { roughness: 0.66 }), 0, 0.02 + bh + 0.016, 0)
-  shell.push(topMesh)
 
-  // 顶面铭牌（真电池组顶面都有印刷标签）
-  const labelMat = std('#ffffff', { roughness: 0.78 })
-  const labelTex = labelTexture(['电池组 3V', 'J0401 · 三节干电池'], {
-    w: 320, h: 150, border: '#2c5fa8', color: '#14407e', bg: '#f7f9fc',
-  })
-  if (labelTex) {
-    labelMat.map = labelTex
-    labelMat.needsUpdate = true
-  }
-  const lab = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.33), labelMat)
-  lab.rotation.x = -Math.PI / 2
-  lab.position.set(0, 0.02 + bh + 0.0455, 0.16)
-  g.add(lab)
+  // 顶面：实拍图（尺寸与 2D 完全一致 —— 照片上的柱、+/- 印字都落在同一位置）
+  const top = photoTop('battery_c.png', bw * 0.99, bd * 0.99, 0.02 + bh + 0.0015)
+  if (top) g.add(top)
 
-  // 底部四角的小垫脚（实物壳底有支撑台）
-  for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) {
-      g.add(rbox(0.1, 0.02, 0.1, 0.008, std('#16406f'), sx * (bw / 2 - 0.1), 0.008, sz * (bd / 2 - 0.09)))
-    }
-  }
+  // 底沿一圈深色包边，让方块在台面上有"落座感"
+  shell.push(rbox(bw + 0.01, 0.03, bd + 0.01, 0.012, std('#16406f'), 0, 0.015, 0))
+
   for (const m of shell) g.add(m)
   return { group: g, shell, inner }
 }
@@ -844,7 +909,7 @@ export function buildSolid(type, opt = {}) {
   switch (type) {
     case 'battery': {
       const b = buildBattery(w, h)
-      const thickness = 0.44
+      const thickness = 0.52 // 壳顶面高度：柱脚要落在顶面上
       placePosts(b.group, terms, w, h, false, thickness)
       return { group: b.group, size, thickness, stand: false, shell: b.shell, inner: b.inner }
     }
