@@ -141,12 +141,12 @@ function gauss(A0, b0) {
  * 求解电路。返回 { [compId]: { _I,_V,_P,_rev,_over }, _wireI, diagnostics }
  * opts.noDiag —— 探针重解时跳过错误接法检测（避免递归）
  */
-export function solveCircuit(comps, wires, opts) {
-  const out = {}
-  for (const c of comps) out[c.id] = { _I: 0, _V: 0, _P: 0, _rev: false, _over: false }
-  if (!comps.length) return out
-
-  // ── 并查集求节点 ──
+/**
+ * 接线 → 等电位节点划分。
+ * 滑变的 tl / tr 是同一根滑杆（等电位），先合并，再并入导线网络。
+ * 求解器与伏安法判定共用这一份，避免两套并查集算出不同节点号。
+ */
+function buildNets(comps, wires) {
   const keys = []
   const idx = new Map()
   for (const c of comps) {
@@ -159,7 +159,6 @@ export function solveCircuit(comps, wires, opts) {
   const find = (x) => { while (par[x] !== x) { par[x] = par[par[x]]; x = par[x] } return x }
   const uni = (a, b) => { a = find(a); b = find(b); if (a !== b) par[a] = b }
 
-  // 变阻器上端两柱（滑杆）等电位
   for (const c of comps) {
     if (c.type === 'rheostat') uni(idx.get(keyOf(c.id, 'tl')), idx.get(keyOf(c.id, 'tr')))
   }
@@ -169,14 +168,24 @@ export function solveCircuit(comps, wires, opts) {
     if (ia === undefined || ib === undefined) continue
     uni(ia, ib)
   }
+
   const nmap = new Map()
   const net = (i) => { const r = find(i); if (!nmap.has(r)) nmap.set(r, nmap.size); return nmap.get(r) }
   const netOf = (c, tid) => {
     const i = idx.get(keyOf(c.id, tid))
     return i === undefined ? 0 : net(i)
   }
-
   const N = new Set(keys.map((_, i) => net(i))).size
+  return { netOf, N }
+}
+
+export function solveCircuit(comps, wires, opts) {
+  const out = {}
+  for (const c of comps) out[c.id] = { _I: 0, _V: 0, _P: 0, _rev: false, _over: false }
+  if (!comps.length) return out
+
+  // ── 并查集求节点 ──
+  const { netOf, N } = buildNets(comps, wires)
   if (N === 0) return out
 
   // ── 非线性/状态元件迭代：二极管（分段线性）· 电磁继电器（吸合判定）· 保险丝（过流熔断）──
@@ -489,7 +498,70 @@ export function solveCircuit(comps, wires, opts) {
   if (!opts || !opts.noDiag) {
     out.diagnostics = detectMisuse(comps, wires, out)
   }
+  // ── 伏安法测电阻的系统误差（内接 / 外接）──
+  const va = voltammetry(comps, wires, out)
+  if (va.length) out._va = va
   return out
+}
+
+/** 伏安法可测的定值电阻与标称值 */
+export const VOLTAMMETRY_R = { resistor5: 5, resistor10: 10, resistor15: 15 }
+
+/**
+ * 伏安法测电阻的系统误差：判「内接 / 外接」，给出测量值与真实值的偏差。
+ *
+ *   内接 —— 电压表跨在 R + 电流表 上：表读数含电流表内阻分压，R测 = R + R_A，偏大
+ *   外接 —— 电压表只并在 R 上，电流表读的是 R ∥ R_V 的总电流，R测 = R∥R_V，偏小
+ *
+ * 判据是节点关系而不是数值：看电压表两柱落在哪两个等电位节点上。
+ * 接法不成立（电压表并在电源两端、电流表不在 R 边上等）时返回空，不乱报。
+ */
+export function voltammetry(comps, wires, out) {
+  const { netOf } = buildNets(comps, wires)
+  const am = comps.find((c) => c.type === 'ammeter')
+  const vm = comps.find((c) => c.type === 'voltmeter')
+  if (!am || !vm) return []
+
+  const aSet = new Set([netOf(am, meterRangeTap(am, wires)), netOf(am, 'neg')])
+  const vSet = new Set([netOf(vm, meterRangeTap(vm, wires)), netOf(vm, 'neg')])
+  if (aSet.size === 1 || vSet.size === 1) return [] // 两柱短接在一处，读数无意义
+
+  const list = []
+  for (const c of comps) {
+    const R = VOLTAMMETRY_R[c.type]
+    if (!R) continue
+    const rSet = new Set([netOf(c, 'a'), netOf(c, 'b')])
+    if (rSet.size === 1) continue
+
+    let mode = null
+    if (vSet.size === rSet.size && [...vSet].every((k) => rSet.has(k))) {
+      mode = 'external'
+      // 外接还要求电流表紧挨着这只电阻（否则它测的是别的支路的总电流）
+      if (![...aSet].some((k) => rSet.has(k))) mode = null
+    } else {
+      const shared = [...vSet].filter((k) => rSet.has(k))
+      const outer = [...vSet].filter((k) => !rSet.has(k))
+      if (shared.length === 1 && outer.length === 1) {
+        const otherR = [...rSet].find((k) => k !== shared[0])
+        if (aSet.has(outer[0]) && aSet.has(otherR)) mode = 'internal'
+      }
+    }
+    if (!mode) continue
+
+    const U = Math.abs(out?.[vm.id]?._V || 0)
+    const I = Math.abs(out?.[am.id]?._I || 0)
+    if (!(U > 1e-6) || !(I > 1e-6)) continue
+    const measured = U / I
+    list.push({
+      id: c.id,
+      type: c.type,
+      trueR: R,
+      measured,
+      mode,
+      errorPct: ((measured - R) / R) * 100,
+    })
+  }
+  return list
 }
 
 /** 端口流分析：返回 { [wireId]: 带符号电流 }，正=沿 wire a→b 方向 */

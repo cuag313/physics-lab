@@ -244,6 +244,58 @@ describe('小电动机 / 家庭电源', () => {
   })
 })
 
+describe('伏安法测电阻的系统误差（内接 / 外接）', () => {
+  // 共同部分：battery → 电流表 → R → battery
+  const base = [
+    { id: 1, a: '1:p', b: '3:neg' },
+    { id: 2, a: '3:full', b: '2:a' },
+    { id: 3, a: '2:b', b: '1:n' },
+  ]
+  const comps = [
+    { id: 1, type: 'battery' },
+    { id: 2, type: 'resistor5' },
+    { id: 3, type: 'ammeter' },
+    { id: 4, type: 'voltmeter' },
+  ]
+
+  it('内接：电压表跨在 R + 电流表 上，R测 = R + R_A，偏大', () => {
+    const out = loop(comps, [
+      ...base,
+      { id: 4, a: '4:full', b: '3:neg' }, // 跨到电流表靠电源那一端
+      { id: 5, a: '4:neg', b: '2:b' },
+    ])
+    const va = out._va.find((x) => x.id === 2)
+    expect(va.mode).toBe('internal')
+    expect(near(va.measured, 5 + CFG.AMM_R, 1e-3)).toBe(true)
+    expect(va.errorPct).toBeGreaterThan(0)
+  })
+
+  it('外接：电压表只并在 R 上，R测 = R∥R_V，偏小但可忽略', () => {
+    const out = loop(comps, [
+      ...base,
+      { id: 4, a: '4:full', b: '2:a' }, // 直接并到 R 两端
+      { id: 5, a: '4:neg', b: '2:b' },
+    ])
+    const va = out._va.find((x) => x.id === 2)
+    expect(va.mode).toBe('external')
+    expect(va.measured).toBeLessThan(5)
+    expect(5 - va.measured).toBeLessThan(1e-3)
+    expect(va.errorPct).toBeLessThan(0)
+  })
+
+  it('电路里没有定值电阻时不产生测量记录（不乱报）', () => {
+    const out = loop(
+      [{ id: 1, type: 'battery' }, { id: 3, type: 'ammeter' }, { id: 4, type: 'voltmeter' }],
+      [
+        { id: 1, a: '1:p', b: '3:neg' },
+        { id: 2, a: '3:full', b: '1:n' },
+        { id: 3, a: '4:full', b: '1:p' },
+        { id: 4, a: '4:neg', b: '1:n' },
+      ])
+    expect(out._va).toBeUndefined()
+  })
+})
+
 describe('单相电能表', () => {
   it('1↔3 是电流线圈：串进回路后干路电流按线圈电阻算', () => {
     const out = loop(

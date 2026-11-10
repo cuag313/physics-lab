@@ -378,6 +378,14 @@ export default function ElectricSvgLabScene() {
     const d = solved.diagnostics || {}
     if (d.ammeterParallel) out.push({ tone: 'bad', text: '电流表必须串联' })
     if (d.voltmeterSeries) out.push({ tone: 'bad', text: '电压表必须并联' })
+    for (const x of solved._va || []) {
+      out.push({
+        tone: 'warn',
+        text: x.mode === 'internal'
+          ? `内接法：R测偏大 ${x.errorPct.toFixed(2)}%（含电流表内阻）`
+          : `外接法：R测偏小 ${Math.abs(x.errorPct).toFixed(3)}%（电压表分流）`,
+      })
+    }
     if (d.short) out.push({ tone: 'bad', text: '短路！请立即断开电源' })
     return out
   }, [comps, wires, solved])
@@ -765,7 +773,8 @@ export default function ElectricSvgLabScene() {
         if (meters.length) {
           let pTot = 0
           for (const k in sv) {
-            if (k === '_wireI' || k === 'diagnostics') continue
+            if (k === 'diagnostics') continue
+            if (k[0] === '_') continue // _wireI / _va 等非元件字段
             pTot += sv[k]?._P || 0
           }
           const km = meterKwhRef.current
@@ -872,6 +881,15 @@ export default function ElectricSvgLabScene() {
     if (c.type === 'voltmeter') {
       const num = Math.abs(o._V || 0) < 0.0005 ? '0.000' : Math.abs(o._V || 0).toFixed(3)
       return { text: `U = ${num} V`, color: o._over ? '#fb7185' : o._rev ? '#fbbf24' : '#4ade80' }
+    }
+    if (c.type === 'resistor5' || c.type === 'resistor10' || c.type === 'resistor15') {
+      // 只有接了电压表 + 电流表（伏安法成立）才有测量值；否则不显示
+      const va = (solved._va || []).find((x) => x.id === c.id)
+      if (!va) return null
+      return {
+        text: `R测 ${va.measured.toFixed(3)}Ω · 真 ${va.trueR}Ω`,
+        color: va.mode === 'internal' ? '#fbbf24' : '#4ade80',
+      }
     }
     if (c.type === 'resBox') {
       return { text: `R = ${(o._R ?? 0).toFixed(1)} Ω`, color: '#4ade80' }
