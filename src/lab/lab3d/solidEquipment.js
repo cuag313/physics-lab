@@ -263,8 +263,10 @@ function photoFace(file, w, h, opt = {}) {
  *  - 结构：金属基座 → 细柱 → 彩色旋钮 → 顶部中心凸起
  *  - 总高约 0.16，与 three-render 的磁吸热区中心对齐
  */
-function makePost(id = '') {
-  const isNeg = /^(neg|n|-)/i.test(id) || /neg|black/i.test(id)
+function makePost(id = '', forceNeg) {
+  const isNeg = typeof forceNeg === 'boolean'
+    ? forceNeg
+    : (/^(neg|n|-)/i.test(id) || /neg|black/i.test(id))
   const knobColor = isNeg ? '#1c2026' : '#cf1f22'
   const g = new THREE.Group()
 
@@ -372,92 +374,81 @@ function dialTexture(kind, fs, subTicks) {
  * 顶面贴图的上段、正面贴图的下段，两张图拼起来才是完整的实物 ——
  * 这正是之前"把整张图贴在顶面"看起来不像的原因。
  */
-function buildBattery(w, h) {
+function buildBattery(w, h, terms = []) {
   const g = new THREE.Group()
-  const bw = w * SCALE // 1.50（宽）
-  // 实拍图 175×180 的实际布局：顶部约 14% 是"顶面"（两个白色圆环柱 + 浅蓝台面），
-  // 其余 86% 是正面，且 +/− 标记在正面"顶部"（紧贴顶面下方）——分界取 0.26 会把
-  // 两个标记整块切掉，正面就变成一块无字的蓝板。
-  const bh = 1.32 // 正面段高度 = 1.54 × 0.86
-  const bd = 0.9 // 进深（由顶面段的斜投影定）
-  const topFrac = 0.14 // 照片里顶面占整幅高度的比例
   const shell = []
+  // 按 E:\cuag313\physics-lab\public\assets\iconsnewname\4电池.png（真实电池盒）重做：
+  // 浅灰底座 + 中段深灰托盘 + 两节横躺的干电池（深灰筒身、铜色正极段、白"+"标）
+  // + 底座两端的黑/红接线柱。不再是之前那个"蓝色方箱 + 顶盖两白环"。
+  const bw = 1.68 // 底座宽
+  const bd = 0.86 // 底座进深
+  const baseH = 0.16
+  const CELL_Y = baseH + 0.15
+  const CELL_R = 0.145
 
-  // 内部：两节 1.5V 干电池串联。剖视时要能看出"一极金属、一极石墨"：
-  // 锌筒（银灰金属外壳）+ 中心石墨棒（哑光深黑）+ 顶部铜帽 + 底部锌皮。
-  // 只画一根黑圆柱的话，剖开来两节电池长得一模一样，看不出极性材料。
+  // 底座（浅灰，边缘倒圆）
+  shell.push(rbox(bw, baseH, bd, 0.03, std('#c6cbd2', { roughness: 0.55, metalness: 0.15 }), 0, baseH / 2, 0))
+  // 中段托盘（深灰凹槽，两节电池坐在里面）
+  shell.push(rbox(bw * 0.84, 0.05, bd * 0.68, 0.018, std('#8b9199', { roughness: 0.7, metalness: 0.1 }), 0, baseH + 0.012, 0))
+
+  // 两节干电池：轴沿 X 横躺
+  const cellBody = std('#4b525a', { roughness: 0.62, metalness: 0.18 })
+  const cellCopper = std('#c17a3f', { roughness: 0.42, metalness: 0.55 })
+  for (const bx of [-0.335, 0.335]) {
+    const body = cyl(CELL_R, CELL_R, 0.56, cellBody, 22)
+    body.rotation.z = Math.PI / 2
+    body.position.set(bx, CELL_Y, 0)
+    shell.push(body)
+    // 正极（铜色）段：靠 +X 一端
+    const copper = cyl(CELL_R * 1.005, CELL_R * 1.005, 0.12, cellCopper, 22)
+    copper.rotation.z = Math.PI / 2
+    copper.position.set(bx + 0.21, CELL_Y, 0)
+    shell.push(copper)
+    // 正极凸头
+    const nub = cyl(CELL_R * 0.34, CELL_R * 0.34, 0.035, MAT.brass(), 14)
+    nub.rotation.z = Math.PI / 2
+    nub.position.set(bx + 0.29, CELL_Y, 0)
+    shell.push(nub)
+    // 负极平底（锌皮）
+    const flat = cyl(CELL_R, CELL_R, 0.02, std('#9aa2ac', { roughness: 0.4, metalness: 0.6 }), 22)
+    flat.rotation.z = Math.PI / 2
+    flat.position.set(bx - 0.27, CELL_Y, 0)
+    shell.push(flat)
+  }
+
+  // 内部（剖视时露出）：锌筒壁 → 电解膏 → 中心石墨棒，材料色明显区分
   const inner = new THREE.Group()
   inner.name = 'battery-inner'
   const zincMat = std('#aeb7c2', { roughness: 0.38, metalness: 0.72 })
   const graphiteMat = std('#171b21', { roughness: 0.9, metalness: 0.04 })
-  for (let i = 0; i < 2; i++) {
-    const x = i === 0 ? -0.28 : 0.28
-    // 锌筒（外壳）
-    const zinc = cyl(0.15, 0.15, bh - 0.20, zincMat, 20)
-    zinc.position.set(x, 0.02 + bh / 2, 0)
+  for (const bx of [-0.32, 0.32]) {
+    const zinc = cyl(0.132, 0.132, 0.60, zincMat, 20)
+    zinc.rotation.z = Math.PI / 2
+    zinc.position.set(bx, CELL_Y, 0)
     inner.add(zinc)
-    // 石墨棒（正极的中心碳棒，比筒略细、略高，从顶部伸出来）
-    const rod = cyl(0.055, 0.055, bh - 0.10, graphiteMat, 14)
-    rod.position.set(x, 0.02 + bh / 2 + 0.03, 0)
-    inner.add(rod)
-    // 电解膏/隔离层（浅灰）——让石墨棒与锌筒之间不是空的
-    const paste = cyl(0.122, 0.122, bh - 0.30, std('#c9cdd3', { roughness: 0.95 }), 18)
-    paste.position.set(x, 0.02 + bh / 2, 0)
+    const paste = cyl(0.108, 0.108, 0.54, std('#c9cdd3', { roughness: 0.95 }), 18)
+    paste.rotation.z = Math.PI / 2
+    paste.position.set(bx, CELL_Y, 0)
     inner.add(paste)
-    // 底部锌皮（负极薄片）
-    const bottom = cyl(0.152, 0.152, 0.025, zincMat, 20)
-    bottom.position.set(x, 0.035, 0)
-    inner.add(bottom)
-    const band = cyl(0.152, 0.152, 0.12, std('#d8b23c', { roughness: 0.45 }), 20)
-    band.position.set(x, 0.02 + bh * 0.35, 0)
-    inner.add(band)
-    const cap = cyl(0.055, 0.055, 0.035, MAT.brass(), 14)
-    cap.position.set(x, 0.02 + bh - 0.02, 0)
-    inner.add(cap)
+    const rod = cyl(0.05, 0.05, 0.56, graphiteMat, 14)
+    rod.rotation.z = Math.PI / 2
+    rod.position.set(bx, CELL_Y, 0)
+    inner.add(rod)
   }
-  inner.add(box(0.56, 0.02, 0.03, MAT.copper(), 0, 0.02 + bh - 0.05, 0))
   g.add(inner)
 
-  // ── 形体：优先 Blender 导出的 GLB（真倒角圆角壳 + 裁切好的正面贴图）──
-  const panel = []
-  const gear = gearReady('battery')
-  if (!gear && typeof document !== 'undefined') preloadGear('battery')
-
-  if (gear) {
-    const model = gear.clone(true)
-    model.traverse((o) => {
-      if (!o.isMesh) return
-      o.castShadow = true
-      o.receiveShadow = true
-      if (/frontphoto/i.test(o.name)) panel.push(o)
-      else shell.push(o)
-    })
-    g.add(model)
-  } else {
-
-  // 壳身：圆角方块
-  shell.push(rbox(bw, bh, bd, 0.055, MAT.bluePlastic(), 0, 0.02 + bh / 2, 0))
-
-  // 正面：贴图的下段（+/- 标记、底沿）
-  const front = photoFace('battery_c.png', bw, bh, { v0: 0, frac: 1 - topFrac })
-  if (front) {
-    front.position.set(0, 0.02 + bh / 2, bd / 2 + 0.004)
-    g.add(front)
-    panel.push(front)
+  // 接线柱：17版照片里就立在底座两端的顶面上（沿用 2D 图纸的左负右正）
+  const posts = []
+  for (const tm of terms) {
+    const p = makePost(tm.id)
+    p.position.set((tm.x < w / 2 ? -1 : 1) * 0.68, baseH, 0)
+    p.userData.terminal = tm.id
+    g.add(p)
+    posts.push(p)
   }
-
-  // 顶面：贴图的上段（两个接线柱的底座 + 深色边）
-  const top = photoFace('battery_c.png', bw, bd, { v0: 1 - topFrac, frac: topFrac })
-  if (top) {
-    top.rotation.x = -Math.PI / 2
-    top.position.set(0, 0.02 + bh + 0.004, 0)
-    g.add(top)
-    panel.push(top)
-  }
-  } // ← 代码几何兜底分支结束
 
   for (const m of shell) g.add(m)
-  return { group: g, shell, inner, panel }
+  return { group: g, shell, inner, panel: [], posts }
 }
 
 /** 小灯泡：浅灰底板 + 黑胶木灯座 + 连续螺纹灯口 + 玻璃泡 + 螺旋灯丝 */
@@ -544,23 +535,23 @@ function buildBulb(w, h) {
   return { group: g, bulbMat: filMat, glassMat, shell }
 }
 
-/** 单刀开关：瓷质圆角底板 + 铜刀座与铰链 + 铜刀 + 红色手柄 + 铜夹片 */
 /**
- * 单刀开关：按实拍图做"平放薄板"。
- * 图是俯视（板面 + 左右两个柱 + 中间那根几乎压平的刀），所以整张图贴顶面，
- * 板面尺寸 = 2D 的 w×h（1px=1cm），板厚 8mm。
- * 刀是真几何，绕 X 轴（铰链方向）抬起 —— 平放开关的刀是"抬起来"的，
- * 不是绕竖直轴水平摆；这是旧版看起来像"转一格的指针"的原因。
+ * 单刀开关：按 E:\cuag313\physics-lab\public\assets\iconsnewname\2.单向开关.png 做。
+ * 真实件是"灰色薄板 + 两端立起的金属支架 + 一根斜抬的银色刀杆 + 末端黑胶木方手柄"，
+ * 断开时刀明显翘起。旧版把照片里"压平的刀"整张铺在顶面，真刀叠上去就是两条刀影，
+ * 于是既看不出是什么、也没有开合动作。
  */
 function buildSwitch(w, h) {
   const g = new THREE.Group()
   const shell = []
   const W = w * SCALE // 1.50
   const D = h * SCALE // 1.05
-  const TH = 0.08
+  const TH = 0.055
+  const plateMat = std('#b9bec6', { roughness: 0.5, metalness: 0.25 })
+  const steelMat = std('#cfd4da', { roughness: 0.3, metalness: 0.75 })
 
-  // 瓷质底板（米白，圆角）
-  const base = rbox(W * 0.99, TH, D * 0.99, 0.026, MAT.ceramic(), 0, TH / 2, 0)
+  // 灰色薄底板（边缘倒圆）
+  const base = rbox(W * 0.99, TH, D * 0.99, 0.022, plateMat, 0, TH / 2, 0)
   shell.push(base)
   g.add(base)
 
@@ -573,43 +564,31 @@ function buildSwitch(w, h) {
   }
   g.add(inner)
 
-  // 不再把 switch_c.png 整张铺在顶面 —— 照片里已经印着"压平的刀和柱"，
-  // 真刀再叠上去会两条刀影重叠，合闸时看着像一根铜条、断开时又和照片打架，
-  // 这就是"不知道是什么东西、也没有开合动作"的根因。开关很小，纯几何完全造得出来。
-
-  // 铰链轴：刀沿 X 伸展，抬起末端必须绕 **Z 轴**转；铰链圆柱也要沿 Z 横穿。
-  // （旧代码写成 rotation.z = PI/2 让轴沿 X，再绕 X 抬刀 —— 刀和转轴平行，
-  //  转多少度都不会抬起来，所以看上去"有通断、没动作"。）
+  // 柱在 2D 图的靠前一侧（z≈+0.405），刀与支架都压在两柱之间
   const hz = 0.405
-  const hingeX = -0.50
-  const hinge = cyl(0.030, 0.030, 0.24, MAT.brass(), 12)
-  hinge.rotation.x = Math.PI / 2 // 圆柱默认沿 Y，绕 X 转 90° 后沿 Z 横穿
-  hinge.position.set(hingeX, TH + 0.062, hz)
-  g.add(hinge)
-  // 铰链两端的铜耳：必须明显高过板面，否则合闸时整根刀贴着板，看不出这里有个"转轴"
-  for (const sx of [-1, 1]) {
-    g.add(box(0.034, 0.115, 0.10, MAT.brass(), hingeX + sx * 0.095, TH + 0.058, hz))
-  }
-  // 静触点（右端）：底座 + 两片高过刀面的铜夹，刀头从中间插进去
-  g.add(rbox(0.17, 0.05, 0.17, 0.014, MAT.brass(), 0.55, TH + 0.025, hz))
-  for (const sz of [-1, 1]) {
-    g.add(box(0.16, 0.115, 0.016, MAT.brass(), 0.55, TH + 0.062, hz + sz * 0.038))
-  }
-  // 静触点下方引出的小铜片（接线柱从这里进板）
-  g.add(box(0.05, 0.014, 0.17, MAT.copper(), 0.55, TH + 0.008, hz))
+  const hingeX = -0.44
+  const contactX = 0.30
+  const BOSS_Y = TH + 0.17 // 刀轴高度 = 立片顶
+  // 铰链支架：立起的金属片 + 顶部横轴（刀从这里抬起）
+  g.add(box(0.09, 0.20, 0.19, steelMat, hingeX, TH + 0.10, hz))
+  const axle = cyl(0.028, 0.028, 0.12, MAT.brass(), 12)
+  axle.rotation.x = Math.PI / 2
+  axle.position.set(hingeX, BOSS_Y, hz)
+  g.add(axle)
+  // 静触点：与铰链同一形状的立片（合闸时刀落在它顶上）
+  g.add(box(0.09, 0.20, 0.19, steelMat, contactX, TH + 0.10, hz))
+  // 静触点下方引出的铜片（接线柱从板面进这里）
+  g.add(box(0.04, 0.012, 0.20, MAT.copper(), contactX, TH + 0.006, hz))
 
-  // 刀片：pivot 在铰链位置，绕 **Z 轴**抬起（不是绕竖直轴水平摆，也不是绕 X 轴自转）
+  // 刀：pivot 在铰链轴，绕 **Z 轴**抬起（刀沿 X 伸展，绕 X 轴转是与自身平行的自转，
+  // 转多少度都不会抬起来 —— 旧版"有通断、没动作"就是这个错轴）
   const pivot = new THREE.Group()
-  pivot.position.set(hingeX, TH + 0.064, hz)
-  const blade = rbox(1.02, 0.026, 0.058, 0.010, std('#c9982f', { roughness: 0.34, metalness: 0.62 }), 0.53, 0, 0)
-  pivot.add(blade)
-  // 弧形刀头（断开时能被夹片夹住的那一小段）
-  pivot.add(box(0.12, 0.030, 0.052, std('#b8862a', { roughness: 0.35, metalness: 0.6 }), 0.98, 0, 0))
-  // 红胶木手柄：实物是"立起来的捏手"，明显高过刀面，才能看出可以掰
-  pivot.add(rbox(0.10, 0.075, 0.06, 0.022, MAT.redPlastic(), 0.62, 0.050, 0))
-  const knuckle = cyl(0.026, 0.030, 0.10, MAT.redPlastic(), 12)
-  knuckle.position.set(0.62, 0.115, 0)
-  pivot.add(knuckle)
+  pivot.position.set(hingeX, BOSS_Y, hz)
+  pivot.add(rbox(0.70, 0.062, 0.090, 0.024, steelMat, 0.35, 0, 0))
+  pivot.add(box(0.13, 0.068, 0.095, steelMat, 0.72, 0, 0))
+  // 黑胶木方手柄：真实件末端那个厚实的大黑块
+  pivot.add(rbox(0.20, 0.115, 0.115, 0.030,
+    std('#1f2328', { roughness: 0.65, metalness: 0.05 }), 0.80, 0.018, 0))
   g.add(pivot)
 
   /** 合闸=0，断开时刀绕 Z 轴抬起约 38° */
@@ -764,79 +743,108 @@ function buildMeter(w, h, kind, fs, subTicks) {
   return { group: g, pointer: pivot, shell, inner, panel }
 }
 
-/** 滑动变阻器：深灰圆角底座 + 瓷管 + 连续镍铬丝 + 金属滑片 + 四柱 */
-function buildRheostat(w, h) {
+/**
+ * 滑动变阻器：按 E:\cuag313\physics-lab\public\assets\iconsnewname\11滑线变阻器 .png 做。
+ * 真实件没有大平板底座：灰蓝色瓷管由两个银色 U 形夹脚托住，管上密绕亮银电阻丝，
+ * 管上方架一根横贯的亮银滑杆，滑片捏着红色手柄左右滑；四个接线柱分列管两端与滑杆两端。
+ */
+function buildRheostat(w, h, terms = []) {
   const g = new THREE.Group()
   const W = w * SCALE // 1.9
   const shell = []
-  // 底座（实物是深灰塑料座，四角有支撑）
-  const base = rbox(W * 0.99, 0.062, 0.5, 0.022, std('#33383f', { roughness: 0.62, metalness: 0.05 }), 0, 0.031, 0.02)
-  shell.push(base)
-  g.add(base)
+  const tubeLen = 1.30
+  const tubeY = 0.44
+  const tubeR = 0.21
+  const rodY = 0.86
+  const steelMat = std('#c8ced6', { roughness: 0.28, metalness: 0.8 })
 
-  // 瓷管（横躺）。管径按实拍图定：图上管径约占图高的一半（≈5cm），
-  // 原来 0.226 直径看着像根细棍，整件就不像变阻器了。
-  const tubeLen = 1.42
-  const tubeY = 0.36
-  const tubeZ = 0.02
-  const tube = cyl(0.26, 0.26, tubeLen, MAT.ceramic(), 28)
+  // 瓷管（灰蓝，实物是这种冷灰，不是纯白瓷）
+  const tube = cyl(tubeR, tubeR, tubeLen, std('#7d8896', { roughness: 0.55, metalness: 0.1 }), 30)
   tube.rotation.z = Math.PI / 2
-  tube.position.set(0, tubeY, tubeZ)
+  tube.position.set(0, tubeY, 0)
   shell.push(tube)
   g.add(tube)
 
-  // 连续镍铬丝：一根螺旋管绕满瓷管（原来叠 26 个独立圆环，环间有空当，一眼假）
-  // 镍铬丝是亮银色的，压暗成灰会像"缠了麻绳"。
-  const coilMat = std('#cfd5dc', { roughness: 0.22, metalness: 0.78 })
-  // 密绕：圈距要贴近丝径，否则像一根弹簧而不是电阻丝绕线
-  const winding = helixTube(0.272, -tubeLen / 2 + 0.07, tubeLen / 2 - 0.07, 64, 0.011, coilMat)
-  winding.rotation.z = -Math.PI / 2 // 轴从 +Y 放倒到 +X
-  winding.position.set(0, tubeY, tubeZ)
+  // 密绕镍铬丝（亮银，圈距贴近丝径）
+  const coilMat = std('#dfe4ea', { roughness: 0.2, metalness: 0.85 })
+  const winding = helixTube(tubeR + 0.012, -tubeLen / 2 + 0.06, tubeLen / 2 - 0.06, 78, 0.009, coilMat)
+  winding.rotation.z = -Math.PI / 2
+  winding.position.set(0, tubeY, 0)
   winding.castShadow = false
   g.add(winding)
 
-  // 两端金属支架：夹住瓷管的环 + 立在底板上的脚 + 黑色胶木端盖
+  // 两个 U 形银色夹脚（托住瓷管，替代旧版那块"深灰大平板"）
   for (const sx of [-1, 1]) {
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.278, 0.018, 8, 22), MAT.steel())
+    const xa = sx * 0.52
+    // 竖脚
+    g.add(box(0.06, 0.34, 0.44, steelMat, xa, 0.19, 0))
+    // 底部横脚（贴台面）
+    g.add(box(0.10, 0.035, 0.62, steelMat, xa, 0.018, 0))
+    // 夹住瓷管的环
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(tubeR + 0.014, 0.020, 8, 24), steelMat)
     ring.rotation.y = Math.PI / 2
-    ring.position.set(sx * (tubeLen / 2 - 0.02), tubeY, tubeZ)
+    ring.position.set(xa, tubeY, 0)
     g.add(ring)
-    g.add(box(0.05, 0.32, 0.22, MAT.steel(), sx * (tubeLen / 2 - 0.03), 0.19, tubeZ))
-    // 瓷管两端的黑色胶木端盖（实物都有，缺了就像一根裸露的白管）
-    const capEnd = cyl(0.268, 0.268, 0.06, std('#1e2228', { roughness: 0.6 }), 24)
-    capEnd.rotation.z = Math.PI / 2
-    capEnd.position.set(sx * (tubeLen / 2 + 0.02), tubeY, tubeZ)
-    g.add(capEnd)
-    // 滑杆的两端支柱（滑片上的金属杆在这两根之间滑）
-    g.add(box(0.05, 0.5, 0.06, MAT.steel(), sx * 0.74, 0.5, tubeZ))
+    // 管两端金属端帽（挡丝）
+    const endCap = cyl(tubeR + 0.022, tubeR + 0.022, 0.045, steelMat, 24)
+    endCap.rotation.z = Math.PI / 2
+    endCap.position.set(sx * (tubeLen / 2 + 0.03), tubeY, 0)
+    g.add(endCap)
+    // 滑杆支座：从管端向上伸到滑杆
+    g.add(box(0.04, rodY - tubeY, 0.05, steelMat, sx * 0.80, (rodY + tubeY) / 2, 0))
   }
 
-  // 滑片：U 形金属夹骑在瓷管上，上面有方滑块、随动的金属滑杆、竖直的红色胶木手柄。
-  // 外部只改 position.x（±0.59 范围内滑动）。
-  // 之前手柄是朝 +Z 横伸的，从默认视角看像一块"贴在管侧的灰块"，整件就认不出是变阻器了。
+  // 横贯的滑杆（固定不动的导轨）
+  const rail = cyl(0.026, 0.026, 1.66, steelMat, 14)
+  rail.rotation.z = Math.PI / 2
+  rail.position.set(0, rodY, 0)
+  g.add(rail)
+
+  // 内部（剖视露出）：瓷芯 + 两端引线
+  const inner = new THREE.Group()
+  inner.name = 'rheostat-inner'
+  const core = cyl(0.07, 0.07, tubeLen - 0.06, std('#d9dee4', { roughness: 0.85 }), 16)
+  core.rotation.z = Math.PI / 2
+  core.position.set(0, tubeY, 0)
+  inner.add(core)
+  inner.add(box(0.06, 0.05, 0.05, MAT.copper(), -tubeLen / 2 + 0.05, tubeY, 0))
+  inner.add(box(0.06, 0.05, 0.05, MAT.copper(), tubeLen / 2 - 0.05, tubeY, 0))
+  g.add(inner)
+
+  // 滑片：夹块骑在管上 + 顶部滑块扣在滑杆上 + 竖直红手柄。外部只改 position.x。
   const slider = new THREE.Group()
-  slider.position.set(0, tubeY, tubeZ)
-  // 夹块（包住管的上半）
-  slider.add(rbox(0.12, 0.34, 0.50, 0.016, MAT.steel(), 0, 0.02, 0))
-  // 两片触指压在绕线上
+  slider.position.set(0, tubeY, 0)
+  slider.add(rbox(0.11, 0.32, 0.46, 0.016, steelMat, 0, 0.0, 0))
   for (const sz of [-1, 1]) {
-    slider.add(box(0.075, 0.44, 0.018, std('#9aa1aa', { roughness: 0.35, metalness: 0.6 }), 0, -0.12, sz * 0.16))
+    slider.add(box(0.07, 0.42, 0.016, std('#a9b0b8', { roughness: 0.35, metalness: 0.6 }), 0, -0.10, sz * 0.15))
   }
-  // 顶部方滑块（滑片与滑杆的连接件）
-  slider.add(rbox(0.13, 0.12, 0.13, 0.02, MAT.steel(), 0, 0.32, 0))
-  // 随动的金属滑杆（长 1.5，两端伸到支柱里）
-  const rod = cyl(0.022, 0.022, 1.5, std('#b8bdc4', { roughness: 0.3, metalness: 0.8 }), 12)
-  rod.rotation.z = Math.PI / 2
-  rod.position.set(0, 0.38, 0)
-  slider.add(rod)
-  // 竖直的红色胶木手柄（实物就是捏着它左右滑）
-  const handle = cyl(0.03, 0.042, 0.26, MAT.redPlastic(), 14)
-  handle.position.set(0, 0.52, 0)
+  // 连到滑杆的桥
+  slider.add(box(0.07, rodY - tubeY + 0.02, 0.07, steelMat, 0, (rodY - tubeY) / 2 + 0.02, 0))
+  // 扣在滑杆上的滑块
+  slider.add(rbox(0.13, 0.12, 0.14, 0.022, steelMat, 0, rodY - tubeY, 0))
+  // 竖直红色胶木手柄
+  const handle = cyl(0.030, 0.040, 0.24, MAT.redPlastic(), 14)
+  handle.position.set(0, rodY - tubeY + 0.18, 0)
   slider.add(handle)
-  slider.add(box(0.09, 0.05, 0.09, MAT.redPlastic(), 0, 0.40, 0))
   g.add(slider)
 
-  return { group: g, slider, shell }
+  // 四柱：滑杆两端（上排）+ 瓷管两端（下排），左负右正
+  const postPos = {
+    tl: [-0.86, rodY - 0.02, 0],
+    tr: [0.86, rodY - 0.02, 0],
+    bl: [-0.66, tubeY + 0.10, 0],
+    br: [0.66, tubeY + 0.10, 0],
+  }
+  for (const tm of terms) {
+    const p = postPos[tm.id]
+    if (!p) continue
+    const post = makePost(tm.id, tm.id === 'tl' || tm.id === 'bl')
+    post.position.set(p[0], p[1], p[2])
+    post.userData.terminal = tm.id
+    g.add(post)
+  }
+
+  return { group: g, slider, shell, inner }
 }
 
 /**
@@ -1266,15 +1274,15 @@ export function buildSolid(type, opt = {}) {
 
   switch (type) {
     case 'battery': {
-      const b = buildBattery(w, h)
-      // 电池组的两个接线柱是"立在顶盖上"的（2D 俯视图里就在顶面靠后），
-      // 柱脚高度必须取箱体顶面 1.34，否则柱会埋进箱子里看不见
-      const thickness = 1.34
-      placePosts(b.group, terms, w, h, false, thickness, { topY: 1.34, zClamp: 0 })
-      // 实拍图上柱座是两个明显的白色圆环（中央才是螺旋柱），
-      // 只画一根细柱的话顶面空空，和照片差得远。柱与环都夹在顶盖中心线（z=0）。
-      addTerminalRings(b.group, terms, w, h, 1.34, 0)
-      return { group: b.group, size, thickness, stand: false, shell: b.shell, inner: b.inner, panel: b.panel }
+      // 新造型（电池盒）里接线柱已经由 buildBattery 直接摆在底座两端，
+      // 所以只给厚度让包围盒/命中用，不再走 placePosts 的像素换算
+      // （那套换算会把柱算到箱体前面，导线端点也就落在箱壁上）。
+      const b = buildBattery(w, h, terms)
+      const thickness = 0.16
+      return {
+        group: b.group, size, thickness, stand: false,
+        shell: b.shell, inner: b.inner, panel: b.panel,
+      }
     }
     case 'bulb': {
       const b = buildBulb(w, h)
@@ -1315,10 +1323,13 @@ export function buildSolid(type, opt = {}) {
       }
     }
     case 'rheostat': {
-      const b = buildRheostat(w, h)
+      // 四柱位置按参考图直接摆在滑杆两端 / 瓷管两端（buildRheostat 内部建）
+      const b = buildRheostat(w, h, terms)
       const thickness = 0.07
-      placePosts(b.group, terms, w, h, false, thickness)
-      return { group: b.group, size, thickness, stand: false, slider: b.slider, shell: b.shell }
+      return {
+        group: b.group, size, thickness, stand: false,
+        slider: b.slider, shell: b.shell, inner: b.inner,
+      }
     }
     default: {
       // 其余器材：底座 + 主体 + 特征件的通用实体（不再是 SVG 剪影挤出）

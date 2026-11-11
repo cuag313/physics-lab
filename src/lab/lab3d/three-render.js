@@ -419,6 +419,18 @@ export function createLabRenderer(container, opt = {}) {
     const size = entry.build ? entry.build.size : { w: 1, h: 1 }
     const th = entry.build ? entry.build.thickness : 0.1
     const stand = !!(entry.build && entry.build.stand)
+
+    // 优先：直接挂到 build 真正摆出来的那根柱上（placePosts 生成的 group 带 userData.terminal）。
+    // 旧实现按 SVG 像素坐标再算一遍位置，与 placePosts 的 opts(topY / zClamp) 不一致：
+    // 电池组这类"柱长在顶盖上"的件，热区会算到箱体前面下方，
+    // 于是导线端点落在箱壁上而不是柱上 —— 就是"接线没有在接线柱上"。
+    const posts = new Map()
+    if (entry.group) {
+      entry.group.traverse((o) => {
+        if (o.userData && o.userData.terminal && !o.isMesh) posts.set(String(o.userData.terminal), o)
+      })
+    }
+
     for (const tm of t.terminals) {
       // 命中球直径按"柱本身的粗细"给（不再用磁吸半径），
       // 否则电流表三柱间距只有 0.35 世界单位，0.26 半径的球会互相盖住，
@@ -434,7 +446,13 @@ export function createLabRenderer(container, opt = {}) {
       })
       m.userData.keepOpacity = true
       const s = new THREE.Mesh(g, m)
-      if (stand) {
+      const post = posts.get(String(tm.id))
+      if (post) {
+        // 柱的局部原点在柱底、柱身高约 0.15：命中球放在柱中段，
+        // 导线端点也就钉在柱身上，不再悬在壳体旁边。
+        s.position.set(0, 0.09, 0)
+        post.add(s)
+      } else if (stand) {
         // 立式：端子长在竖直面板上，高度按 SVG 的 y 换算；
         // z 落在面板表面之外，否则射线先打到面板，接线柱根本点不到。
         // 实体表盘的朝向由 build 决定（postZ），与旧挤出立式（朝 -Z）区分开。
@@ -444,12 +462,15 @@ export function createLabRenderer(container, opt = {}) {
           (t.h - (tm.y + TERM_DROP)) * SCALE,
           pz + 0.06 // 柱身向后伸 0.16，命中球放在柱中段
         )
+        entry.group.add(s)
       } else {
+        const topY = entry.build && entry.build.postTopY != null ? entry.build.postTopY : null
         s.position.set(
           (tm.x - t.w / 2) * SCALE,
-          th + 0.03 + 0.06, // 柱身净高 0.16，命中球放在柱中段
+          (topY != null ? topY : th + 0.03) + 0.075, // 柱身净高 0.16，命中球放在柱中段
           (tm.y + TERM_DROP - t.h / 2) * SCALE
         )
+        entry.group.add(s)
       }
       s.userData.role = 'terminal'
       s.userData.compId = entry.id
@@ -469,7 +490,6 @@ export function createLabRenderer(container, opt = {}) {
       glow.userData.role = 'terminalGlow'
       glow.userData.keepOpacity = true
       s.add(glow)
-      entry.group.add(s)
       entry.hotspots.set(tm.id, s)
     }
   }
