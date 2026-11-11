@@ -714,7 +714,14 @@ export function createLabRenderer(container, opt = {}) {
   }
 
   // GLB 模型加载完成后重建一次，把代码几何顶替成真网格
-  const onGearReady = () => {
+  // 关键：rebuildComp 开头有 `entry.key === key && entry.build → return` 的缓存短路，
+  // 不把 key 清掉的话，加载完成这次 sync 会被直接跳过，场景里永远停在代码几何上
+  // （表现就是"电流表在场景里没刻度、器材像光板"，而离屏对照图却是好的）。
+  const onGearReady = (ev) => {
+    const type = ev && ev.detail ? ev.detail.type : null
+    for (const en of equips.values()) {
+      if (!type || en.type === type) en.key = null
+    }
     if (lastState) sync(lastState)
   }
   if (typeof window !== 'undefined') window.addEventListener('gear-ready', onGearReady)
