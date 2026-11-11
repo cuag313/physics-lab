@@ -424,16 +424,16 @@ function buildBulb(w, h) {
   core.position.y = 0.33
   g.add(core)
 
-  // 玻璃：颈部 + 泡体（实物泡径约 2cm）
+  // 玻璃：颈部 + 泡体。尺寸按实拍图定（泡径明显大于灯座，约 5.5cm）
   const glassMat = MAT.glass()
   glassMat.opacity = 0.36
-  const neck = cyl(0.09, 0.072, 0.12, glassMat, 18)
+  const neck = cyl(0.1, 0.08, 0.12, glassMat, 18)
   neck.position.y = 0.45
   neck.castShadow = false
   g.add(neck)
-  const globe = new THREE.Mesh(new THREE.SphereGeometry(0.195, 30, 22), glassMat)
-  globe.position.y = 0.60
-  globe.scale.y = 1.08
+  const globe = new THREE.Mesh(new THREE.SphereGeometry(0.275, 32, 24), glassMat)
+  globe.position.y = 0.63
+  globe.scale.y = 1.1
   globe.castShadow = false
   g.add(globe)
 
@@ -444,8 +444,8 @@ function buildBulb(w, h) {
     roughness: 0.4,
     metalness: 0.3,
   })
-  const fil = helixTube(0.022, 0.0, 0.075, 4, 0.0065, filMat)
-  fil.position.y = 0.555
+  const fil = helixTube(0.026, 0.0, 0.085, 4, 0.0075, filMat)
+  fil.position.y = 0.57
   g.add(fil)
   // 两根引线：灯口 → 灯丝
   for (const sx of [-1, 1]) {
@@ -457,55 +457,75 @@ function buildBulb(w, h) {
 }
 
 /** 单刀开关：瓷质圆角底板 + 铜刀座与铰链 + 铜刀 + 红色手柄 + 铜夹片 */
+/**
+ * 单刀开关：按实拍图做"平放薄板"。
+ * 图是俯视（板面 + 左右两个柱 + 中间那根几乎压平的刀），所以整张图贴顶面，
+ * 板面尺寸 = 2D 的 w×h（1px=1cm），板厚 8mm。
+ * 刀是真几何，绕 X 轴（铰链方向）抬起 —— 平放开关的刀是"抬起来"的，
+ * 不是绕竖直轴水平摆；这是旧版看起来像"转一格的指针"的原因。
+ */
 function buildSwitch(w, h) {
   const g = new THREE.Group()
   const shell = []
-  // 瓷底板（实物底板是米白瓷/胶木，圆角，比器材本体略大一圈）
-  const base = rbox(w * SCALE * 0.96, 0.058, 0.62, 0.02, MAT.ceramic(), 0, 0.029, 0)
+  const W = w * SCALE // 1.50
+  const D = h * SCALE // 1.05
+  const TH = 0.08
+
+  // 瓷质底板（米白，圆角）
+  const base = rbox(W * 0.99, TH, D * 0.99, 0.026, MAT.ceramic(), 0, TH / 2, 0)
   shell.push(base)
   g.add(base)
-  // 底板下缘的深色包边
-  shell.push(rbox(w * SCALE * 0.96 - 0.01, 0.018, 0.62 - 0.01, 0.008, std('#c9c1b2', { roughness: 0.7 }), 0, 0.009, 0))
 
-  // 内部：底座下的静触点与引线（剖视时露出来）
+  // 内部：静触点、弹簧片、引线（剖视时露出来）
   const inner = new THREE.Group()
   inner.name = 'switch-inner'
   for (const sx of [-1, 1]) {
-    inner.add(box(0.1, 0.03, 0.12, MAT.brass(), sx * 0.42, 0.02, 0))
-    inner.add(box(0.5, 0.012, 0.012, MAT.copper(), sx * 0.14, 0.02, 0))
+    inner.add(box(0.12, 0.035, 0.16, MAT.brass(), sx * 0.45, 0.03, 0))
+    inner.add(box(0.55, 0.014, 0.014, MAT.copper(), sx * 0.12, 0.02, 0))
   }
   g.add(inner)
 
-  // 两端刀座（铜）
-  for (const sx of [-1, 1]) {
-    g.add(rbox(0.15, 0.11, 0.17, 0.012, MAT.brass(), sx * 0.4, 0.115, 0))
-  }
-  // 铰链轴（横穿的铜轴，刀从这里转）
-  const hinge = cyl(0.032, 0.032, 0.2, MAT.brass(), 12)
-  hinge.rotation.x = Math.PI / 2
-  hinge.position.set(-0.42, 0.175, 0)
-  g.add(hinge)
-  // 另一端静触点夹片（两片铜片夹住刀头）
-  for (const sz of [-1, 1]) {
-    g.add(box(0.16, 0.09, 0.012, MAT.brass(), 0.42, 0.16, sz * 0.028))
+  // 顶面实拍图（板面、柱座、压平的刀都在图上；真刀叠在它上面）
+  const top = photoFace('switch_c.png', W * 0.98, D * 0.98, { v0: 0, frac: 1 })
+  if (top) {
+    top.rotation.x = -Math.PI / 2
+    top.position.set(0, TH + 0.004, 0)
+    g.add(top)
   }
 
-  // 刀片（铜刀：扁条 + 前端略收）
+  // 铰链轴 + 两端刀座（黄铜）。柱在图的靠前一侧（z≈+0.40），刀就压在柱之间。
+  const hz = 0.4
+  const hingeX = -0.5
+  const hinge = cyl(0.026, 0.026, 0.2, MAT.brass(), 12)
+  hinge.rotation.z = Math.PI / 2 // 圆柱默认沿 Y，转 90° 后沿 X 横穿
+  hinge.position.set(hingeX, TH + 0.045, hz)
+  g.add(hinge)
+  for (const sx of [-1, 1]) {
+    g.add(rbox(0.13, 0.055, 0.13, 0.012, MAT.brass(), sx * 0.46, TH + 0.028, hz))
+    // 静触点夹片（两片铜片，刀头插进去）
+    for (const sz of [-1, 1]) {
+      g.add(box(0.15, 0.06, 0.012, MAT.brass(), sx * 0.46, TH + 0.05, hz + sz * 0.026))
+    }
+  }
+
+  // 刀片：pivot 在铰链位置，绕 X 轴抬起（不是绕竖直轴水平摆）
   const pivot = new THREE.Group()
-  pivot.position.set(-0.42, 0.19, 0)
-  const blade = rbox(0.82, 0.024, 0.062, 0.01, std('#c9982f', { roughness: 0.34, metalness: 0.62 }), 0.41, 0, 0)
+  pivot.position.set(hingeX, TH + 0.05, hz)
+  const blade = rbox(0.98, 0.022, 0.05, 0.008, std('#c9982f', { roughness: 0.34, metalness: 0.62 }), 0.49, 0, 0)
   pivot.add(blade)
-  // 刀头下压的弧形触点
-  const tip = box(0.1, 0.03, 0.05, std('#b8862a', { roughness: 0.35, metalness: 0.6 }), 0.8, -0.02, 0)
-  pivot.add(tip)
-  // 绝缘手柄（红色胶木，不是小球）
-  pivot.add(rbox(0.14, 0.05, 0.055, 0.02, MAT.redPlastic(), 0.74, 0.04, 0))
-  const knob = cyl(0.028, 0.028, 0.03, MAT.redPlastic(), 14)
-  knob.rotation.z = Math.PI / 2
-  knob.position.set(0.82, 0.055, 0)
-  pivot.add(knob)
+  // 弧形刀头
+  pivot.add(box(0.1, 0.026, 0.046, std('#b8862a', { roughness: 0.35, metalness: 0.6 }), 0.94, 0, 0))
+  // 红胶木手柄（捏手的地方，略高于刀面）
+  pivot.add(rbox(0.16, 0.045, 0.05, 0.018, MAT.redPlastic(), 0.56, 0.03, 0))
   g.add(pivot)
-  return { group: g, blade: pivot, shell, inner }
+
+  /** 合闸=0，断开时刀抬起约 34° */
+  const setBlade = (closed) => {
+    pivot.rotation.x = closed ? 0 : -0.6
+  }
+  setBlade(true)
+
+  return { group: g, blade: pivot, setBlade, shell, inner, top }
 }
 
 /** 立式方表（电流表 / 电压表）：浅灰紫底台 + 楔形后壳 + 白面板 + 表盘 + 玻璃 + 三柱 */
@@ -568,7 +588,8 @@ function buildMeter(w, h, kind, fs, subTicks) {
   shell.push(panelMesh)
   g.add(panelMesh)
 
-  // 表盘平面（贴在白面板前面，朝 +Z —— 相机在 +Z 侧，能看到读数）
+  // 表盘面：直接用实拍图（表盘刻度、量程字、底部旋钮印字全在图上）。
+  // 自绘的 dialTexture 只作兜底（离屏无 canvas / 图未载入时）。
   const dialMat = std('#f2f0ea', { roughness: 0.85 })
   const dialTex = dialTexture(kind, fs, subTicks)
   if (dialTex) {
@@ -578,6 +599,20 @@ function buildMeter(w, h, kind, fs, subTicks) {
   const dial = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.84, H * 0.7), dialMat)
   dial.position.set(0, H * 0.585 + 0.02, front + 0.032)
   g.add(dial)
+
+  // 实拍图贴面：整张正面（电压表/电流表几乎没有"顶面段"，所以取整幅）
+  const photo = photoFace(kind === 'voltmeter' ? 'voltmeter_c.png' : 'ammeter_c.png', W * 0.995, H * 0.995, {
+    v0: 0,
+    frac: 1,
+  })
+  if (photo) {
+    photo.position.set(0, H / 2 + 0.02, front + 0.033)
+    g.add(photo)
+    // 图载入后把自绘表盘藏起来，免得两张表盘打架
+    photoCanvasLoad(kind === 'voltmeter' ? 'voltmeter_c.png' : 'ammeter_c.png', () => {
+      dial.visible = false
+    })
+  }
 
   // 玻璃面板：只压四条细边当边框 —— 千万别用实心 box 当"框"，
   // 否则它会把前面的表盘整个盖住（表盘看着就是一块黑板）。
@@ -606,8 +641,8 @@ function buildMeter(w, h, kind, fs, subTicks) {
   pivot.add(box(0.008, H * 0.1, 0.006, std('#b03028', { roughness: 0.35 }), 0, H * 0.42, 0))
   g.add(pivot)
 
-  // 剖视时要临时隐掉表盘和玻璃，否则它们挡在动圈前面，透出来还是白的
-  return { group: g, pointer: pivot, shell, inner, panel: [dial, glass] }
+  // 剖视时要临时隐掉表盘、贴面和玻璃，否则它们挡在动圈前面，透出来还是白的
+  return { group: g, pointer: pivot, shell, inner, panel: photo ? [dial, glass, photo] : [dial, glass] }
 }
 
 /** 滑动变阻器：深灰圆角底座 + 瓷管 + 连续镍铬丝 + 金属滑片 + 四柱 */
@@ -956,9 +991,12 @@ export function buildSolid(type, opt = {}) {
     }
     case 'switch': {
       const b = buildSwitch(w, h)
-      const thickness = 0.06
+      const thickness = 0.08 // 瓷板厚：柱脚正好落在板面上
       placePosts(b.group, terms, w, h, false, thickness)
-      return { group: b.group, size, thickness, stand: false, blade: b.blade, shell: b.shell, inner: b.inner }
+      return {
+        group: b.group, size, thickness, stand: false,
+        blade: b.blade, setBlade: b.setBlade, shell: b.shell, inner: b.inner,
+      }
     }
     case 'ammeter':
     case 'voltmeter': {

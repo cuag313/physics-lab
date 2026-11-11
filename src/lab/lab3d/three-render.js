@@ -793,9 +793,11 @@ export function createLabRenderer(container, opt = {}) {
           }
         }
       }
-      // 刀片开合：绕铰链（Z 轴）抬起，合上归零
+      // 刀片开合：优先用 build 自己给的 setter（平放开关的刀是绕 X 轴抬起的，
+      // 立式老件的接口是 rotation.z；两种都支持，避免"刀只会水平摆"）
       if (c.type === 'switch' && entry.build.blade) {
-        entry.build.blade.rotation.z = c.closed ? 0 : 0.55
+        if (entry.build.setBlade) entry.build.setBlade(!!c.closed)
+        else entry.build.blade.rotation.z = c.closed ? 0 : 0.55
       }
       // 单刀双掷：刀闸按 pos 摆向左 / 右掷点
       if (c.type === 'switch2' && entry.build.blade) {
