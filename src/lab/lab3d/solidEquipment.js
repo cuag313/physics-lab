@@ -862,27 +862,67 @@ function buildBoxUnit(w, h, o = {}) {
   return { group: g, thickness: y0 + H + 0.035, stand: false, shell, panel }
 }
 
-/** 电动机：卧式圆柱机壳 + 两端盖 + 转轴 */
+/**
+ * 演示电动机：按实拍图（200×169）重建 ——
+ * 木底座 + 立式大皮带轮（5 个通气孔）+ 蹄形磁铁（N 红 / S 蓝）+ 电枢 + 两柱。
+ * 原来做的是"躺着的圆柱 + 端盖"，跟照片不是一件东西。
+ */
 function buildMotor(w, h) {
   const g = new THREE.Group()
-  const r = Math.min(w * 0.2, h * 0.26) * SCALE
-  const L = w * 0.46 * SCALE
-  const y = 0.015 + r
-  const body = cyl(r, r, L, MAT.steel(), 24)
-  body.rotation.z = Math.PI / 2
-  body.position.set(0, y, 0)
-  g.add(body)
-  for (const f of [-1, 1]) {
-    const cap = cyl(r * 1.04, r * 1.04, 0.028, MAT.bakelite(), 24)
-    cap.rotation.z = Math.PI / 2
-    cap.position.set(f * L * 0.5, y, 0)
-    g.add(cap)
+  const shell = []
+  const W = w * SCALE // 2.0
+  const H = h * SCALE // 1.69
+  const baseT = 0.13
+
+  // 木底座
+  const base = box(W * 0.98, baseT, 1.6, std('#b07a41', { roughness: 0.55, metalness: 0.03 }), 0, baseT / 2, 0)
+  shell.push(base)
+  g.add(base)
+
+  // 立式皮带轮（盘面朝 +Z）
+  const R = H * 0.36
+  const cx = -W * 0.22
+  const cy = baseT + R + 0.1
+  const disc = cyl(R, R, 0.07, std('#2c2f34', { roughness: 0.48, metalness: 0.25 }), 36)
+  disc.rotation.x = Math.PI / 2
+  disc.position.set(cx, cy, 0.02)
+  shell.push(disc)
+  g.add(disc)
+  // 盘上五个通气孔
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2 + 0.35
+    const hole = cyl(R * 0.19, R * 0.19, 0.01, std('#101215', { roughness: 0.8 }), 16)
+    hole.rotation.x = Math.PI / 2
+    hole.position.set(cx + Math.cos(a) * R * 0.55, cy + Math.sin(a) * R * 0.55, 0.055)
+    g.add(hole)
   }
-  const shaft = cyl(0.02, 0.02, 0.13, MAT.steel(), 12)
-  shaft.rotation.z = Math.PI / 2
-  shaft.position.set(L * 0.5 + 0.075, y, 0)
-  g.add(shaft)
-  return { group: g, thickness: Math.max(0.13, y + r), stand: false, shell: body }
+  // 中心轴帽
+  const hub = cyl(R * 0.13, R * 0.13, 0.05, MAT.steel(), 6)
+  hub.rotation.x = Math.PI / 2
+  hub.position.set(cx, cy, 0.062)
+  g.add(hub)
+  // 盘背后的立柱
+  g.add(box(0.11, R * 1.15, 0.13, std('#2c2f34', { roughness: 0.5 }), cx, baseT + R * 0.58, -0.05))
+
+  // 蹄形磁铁：左 N（红）、右 S（蓝），正面两块板（照片里磁极块接近底座高的一半）
+  const mY = baseT + 0.5
+  const mW = 0.28
+  g.add(box(mW, 0.86, 0.26, std('#bf3a30', { roughness: 0.42 }), W * 0.28, mY, 0.06))
+  g.add(box(mW, 0.86, 0.26, std('#2f6cb2', { roughness: 0.42 }), W * 0.28 + mW + 0.06, mY, 0.06))
+  // 磁极间电枢：横圆柱 + 铜绕线
+  const arm = cyl(0.1, 0.1, mW * 2 + 0.1, std('#c9a227', { roughness: 0.4, metalness: 0.55 }), 20)
+  arm.rotation.z = Math.PI / 2
+  arm.position.set(W * 0.3 + mW / 2, mY, 0.06)
+  g.add(arm)
+  // 电枢两端的黑色端环
+  for (const sx of [-1, 1]) {
+    const ring = cyl(0.105, 0.105, 0.03, std('#2c2f34', { roughness: 0.6 }), 20)
+    ring.rotation.z = Math.PI / 2
+    ring.position.set(W * 0.3 + mW / 2 + sx * (mW + 0.02), mY, 0.06)
+    g.add(ring)
+  }
+
+  return { group: g, thickness: baseT, stand: false, shell }
 }
 
 /** 焦耳管：底座 + 立式玻璃管 + 管内电阻丝 + 顶盖 */
@@ -977,13 +1017,41 @@ function buildSwitch2(w, h) {
   return { group: g, thickness: 0.09, stand: false, blade: pivot, shell: null }
 }
 
+/**
+ * 保险丝座：实拍图是一个木色方箱（正面印"保险丝"）+ 底部灰台 + 两孔之间横一根保险管。
+ * 原来 buildLeadPart 只做了一根裸管，跟实物完全不是一件东西。
+ */
+function buildFuseBox(w, h) {
+  const b = buildPanelPhoto(w, h, 'fuse_c.png', 0.42, { mat: std('#c69f68', { roughness: 0.6, metalness: 0.04 }) })
+  const g = b.group
+  const W = w * SCALE
+  const H = h * SCALE
+  const D = 0.42
+  const yT = H * 0.52
+
+  // 保险管：半透明玻璃管 + 两端金属帽 + 中间熔丝
+  const glassTube = cyl(0.045, 0.045, W * 0.6, std('#d7dde4', { roughness: 0.25, metalness: 0.3, transparent: true, opacity: 0.55 }), 20)
+  glassTube.rotation.z = Math.PI / 2
+  glassTube.position.set(0, yT, D / 2 + 0.03)
+  g.add(glassTube)
+  for (const sx of [-1, 1]) {
+    const cap = cyl(0.052, 0.052, 0.07, MAT.steel(), 16)
+    cap.rotation.z = Math.PI / 2
+    cap.position.set(sx * W * 0.3, yT, D / 2 + 0.03)
+    g.add(cap)
+  }
+  g.add(box(W * 0.44, 0.008, 0.008, std('#9aa1aa', { roughness: 0.45, metalness: 0.4 }), 0, yT, D / 2 + 0.03))
+
+  return { group: g, shell: b.shell, panel: b.panel, thickness: D / 2, stand: true }
+}
+
 function buildGeneric(type, w, h) {
   if (type.startsWith('resistor')) return buildLeadPart(w, h, 'resistor')
   switch (type) {
     case 'diode':
       return buildLeadPart(w, h, 'diode')
     case 'fuse':
-      return buildLeadPart(w, h, 'fuse')
+      return buildFuseBox(w, h)
     case 'motor':
       return buildMotor(w, h)
     case 'jouleTube':
