@@ -12,7 +12,7 @@
 
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
-import { gearReady, preloadGear } from './glbEquipment.js'
+import { gearReady, preloadGear, cloneGear } from './glbEquipment.js'
 
 const SCALE = 0.01
 
@@ -447,6 +447,50 @@ function buildBattery(w, h) {
 function buildBulb(w, h) {
   const g = new THREE.Group()
   const shell = []
+
+  // 灯丝与引线是"动态件"：亮度随电流实时变，必须留在代码里。
+  // 其余形体（底板 / 胶木灯座 / 螺纹灯口 / A 型玻壳）走 Blender 模型，
+  // 玻壳是剖面回转出来的，代码用球+圆柱拼永远收不出那个肩部弧度。
+  const filMat = std('#5c3417', {
+    emissive: new THREE.Color('#ff9a3c'),
+    emissiveIntensity: 0,
+    roughness: 0.4,
+    metalness: 0.3,
+  })
+  const glassMat = MAT.glass()
+  glassMat.opacity = 0.36
+
+  const addFilament = (globeY) => {
+    const fil = helixTube(0.026, 0.0, 0.085, 4, 0.0075, filMat)
+    fil.position.y = globeY - 0.06
+    g.add(fil)
+    for (const sx of [-1, 1]) {
+      const lead = cyl(0.007, 0.007, 0.14, MAT.steel(), 6)
+      lead.position.set(sx * 0.03, globeY - 0.10, 0)
+      g.add(lead)
+    }
+  }
+
+  const gear = gearReady('bulb')
+  if (!gear && typeof document !== 'undefined') preloadGear('bulb')
+  if (gear) {
+    const model = cloneGear('bulb')
+    model.traverse((o) => {
+      if (!o.isMesh) return
+      if (/globe/i.test(o.name || '')) {
+        // 玻壳换成带透明度的玻璃材质，好让 three 侧按亮度调 emissive/opacity
+        o.material = glassMat
+        o.castShadow = false
+        o.receiveShadow = false
+      } else {
+        shell.push(o)
+      }
+    })
+    g.add(model)
+    addFilament(0.68)
+    return { group: g, bulbMat: filMat, glassMat, shell }
+  }
+
   // 底板（实物是浅灰塑料薄板，不是黑板条）；进深按实拍图 176×83 的比例取 0.70
   const base = rbox(w * SCALE * 0.94, 0.045, 0.7, 0.015, std('#d6d9de', { roughness: 0.62 }), 0, 0.0225, 0)
   shell.push(base)
@@ -469,8 +513,6 @@ function buildBulb(w, h) {
   g.add(core)
 
   // 玻璃：颈部 + 泡体。尺寸按实拍图定（泡径明显大于灯座，约 5.5cm）
-  const glassMat = MAT.glass()
-  glassMat.opacity = 0.36
   const neck = cyl(0.12, 0.1, 0.12, glassMat, 18)
   neck.position.y = 0.56
   neck.castShadow = false
@@ -481,22 +523,7 @@ function buildBulb(w, h) {
   globe.castShadow = false
   g.add(globe)
 
-  // 灯丝：真实的灯丝是一小段螺旋（不是一圈环）
-  const filMat = std('#5c3417', {
-    emissive: new THREE.Color('#ff9a3c'),
-    emissiveIntensity: 0,
-    roughness: 0.4,
-    metalness: 0.3,
-  })
-  const fil = helixTube(0.026, 0.0, 0.085, 4, 0.0075, filMat)
-  fil.position.y = 0.66
-  g.add(fil)
-  // 两根引线：灯口 → 灯丝
-  for (const sx of [-1, 1]) {
-    const lead = cyl(0.007, 0.007, 0.14, MAT.steel(), 6)
-    lead.position.set(sx * 0.03, 0.62, 0)
-    g.add(lead)
-  }
+  addFilament(0.68)
   return { group: g, bulbMat: filMat, glassMat, shell }
 }
 

@@ -9,6 +9,7 @@
 """
 import sys
 import os
+import math
 import bpy
 import bmesh
 from mathutils import Vector
@@ -235,12 +236,68 @@ def build_battery():
     cube('cap', W * 0.99, D * 0.99, 0.025, 0, 0, H - 0.012, light, bevel=0.008)
 
 
+def revolve(name, prof, segs, mat=None):
+    """把 (半径, 高度) 剖面绕 Z 轴旋转成回转体 —— 灯泡玻壳这种"上圆下收颈"的
+    形体，用立方体/球体拼永远差点意思，只能靠剖面回转。"""
+    verts = []
+    faces = []
+    n = len(prof)
+    for i in range(segs):
+        a = 2 * math.pi * i / segs
+        ca, sa = math.cos(a), math.sin(a)
+        for (r, z) in prof:
+            verts.append((r * ca, r * sa, z))
+    for i in range(segs):
+        j = (i + 1) % segs
+        for k in range(n - 1):
+            a0 = i * n + k
+            b0 = i * n + k + 1
+            c0 = j * n + k + 1
+            d0 = j * n + k
+            faces.append((a0, b0, c0, d0))
+    return poly(name, verts, faces, mat)
+
+
+def build_bulb():
+    """小灯泡：浅灰塑料底板 + 黑胶木矮灯座 + 金属螺纹灯口 + A 型玻璃泡。
+    尺寸按 bulb_c.png 176×83（1px = 1cm）：总高 0.83，泡径 0.55。
+    灯丝与引线仍由 three 侧画（发光强度要随电流实时变，放进 GLB 就没法调）。"""
+    base_m = mat_solid('bulbbase', (0.80, 0.82, 0.85), 0.62)
+    bakelite = mat_solid('bulbsocket', (0.075, 0.085, 0.10), 0.62, 0.03)
+    steel = mat_solid('bulbsteel', (0.55, 0.57, 0.60), 0.34, 0.85)
+    glass = mat_solid('bulbglass', (0.92, 0.95, 0.98), 0.08)
+    glass.blend_method = 'BLEND'
+
+    W, D = 1.76, 0.70
+    cube('base', W * 0.94, D, 0.045, 0, 0, 0.0225, base_m, bevel=0.016)
+    # 黑胶木灯座（矮而粗）
+    revolve('socket', [(0.175, 0.045), (0.19, 0.06), (0.19, 0.20), (0.175, 0.215),
+                       (0.155, 0.222)], 32, bakelite)
+    # 金属承口 + 4 圈螺纹（实物灯口就是这种连续螺纹）
+    revolve('cup', [(0.132, 0.215), (0.136, 0.235), (0.136, 0.33), (0.118, 0.345)], 32, steel)
+    for k in range(4):
+        z = 0.238 + k * 0.025
+        revolve('thread%d' % k, [(0.130, z), (0.138, z + 0.006), (0.138, z + 0.014),
+                                 (0.130, z + 0.020)], 32, steel)
+    # 灯口内芯（玻璃颈从这里插进去）
+    revolve('core', [(0.106, 0.33), (0.106, 0.395)], 24, steel)
+    # A 型玻璃泡：颈部 → 肩部鼓起 → 球部 → 顶部收圆
+    revolve('globe', [
+        (0.118, 0.345), (0.122, 0.375), (0.135, 0.410), (0.168, 0.450),
+        (0.215, 0.495), (0.252, 0.545), (0.272, 0.600), (0.274, 0.650),
+        (0.262, 0.700), (0.232, 0.750), (0.180, 0.790), (0.110, 0.815),
+        (0.040, 0.826), (0.008, 0.829),
+    ], 40, glass)
+
+
 def main():
     reset()
     if G == 'ammeter' or G == 'voltmeter':
         build_meter(G)
     elif G == 'battery':
         build_battery()
+    elif G == 'bulb':
+        build_bulb()
     else:
         raise SystemExit('unknown type: ' + G)
     bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', use_selection=False,
