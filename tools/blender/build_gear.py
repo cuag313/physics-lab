@@ -55,22 +55,32 @@ def mat_solid(name, rgb, rough=0.55, metal=0.0):
 
 
 def mat_photo(name, png):
-    """照片材质：整幅图铺满 UV 0..1，用自发光保证导进 three 后亮度与 2D 一致。"""
+    """照片材质：整幅图铺满 UV，走 Principled 的 Base Color（不是纯 Emission）。
+
+    早先直接 Emission 直连会导致：glTF 里 baseColor 仍是白色，three 端受强光照射后
+    面板整体发白（实拍深蓝的电池正面被冲成一片白），所以改成 PBR 贴图 + 极弱自发光，
+    既能保住照片原色，又不会在阴影里变成灰板。
+    """
     m = bpy.data.materials.new(name)
     m.use_nodes = True
     nt = m.node_tree
     for n in list(nt.nodes):
-        if n.type != 'OUTPUT_MATERIAL':
-            nt.nodes.remove(n)
-    out = next(n for n in nt.nodes if n.type == 'OUTPUT_MATERIAL')
+        nt.nodes.remove(n)
+    out = nt.nodes.new('ShaderNodeOutputMaterial')
+    bsdf = nt.nodes.new('ShaderNodeBsdfPrincipled')
     tex = nt.nodes.new('ShaderNodeTexImage')
     img = bpy.data.images.load(png, check_existing=True)
     tex.image = img
     tex.interpolation = 'Linear'
-    emi = nt.nodes.new('ShaderNodeEmission')
-    emi.inputs['Strength'].default_value = 1.0
-    nt.links.new(tex.outputs['Color'], emi.inputs['Color'])
-    nt.links.new(emi.outputs['Emission'], out.inputs['Surface'])
+    nt.links.new(tex.outputs['Color'], bsdf.inputs['Base Color'])
+    # 印刷纸面板：粗糙、无金属
+    bsdf.inputs['Roughness'].default_value = 0.82
+    bsdf.inputs['Metallic'].default_value = 0.0
+    if 'Emission Color' in bsdf.inputs:
+        nt.links.new(tex.outputs['Color'], bsdf.inputs['Emission Color'])
+    if 'Emission Strength' in bsdf.inputs:
+        bsdf.inputs['Emission Strength'].default_value = 0.10
+    nt.links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
     return m
 
 
@@ -190,9 +200,11 @@ def build_meter(kind):
     # 前面板（白塑料薄板）
     cube('panel', W * 0.99, 0.05, H * 0.985, 0, FRONT - 0.022, H / 2.0, white, bevel=0.010)
 
-    # 表盘实拍图：只取照片里的"表盘区"（下部 15% 是柱与底台，取进来会和真柱打架）
+    # 表盘实拍图：只取照片里的"白表盘"（上方黑壳、下方柱与底台都不能取进来）。
+    # glTF 导出后 UV 的 v 会被翻转（导出数据里 y=+顶 对应 v 较小），所以要取
+    # 照片的 [0.055, 0.80] 就必须写 (1-0.80, 1-0.055) = (0.2, 0.945)。
     plane('dial', W * 0.985, H * 0.86, 0, FRONT - 0.049, H * 0.56 + 0.02,
-          mat_photo('dialphoto', PNG), uvbox=(0.03, 0.17, 0.97, 0.99))
+          mat_photo('dialphoto', PNG), uvbox=(0.02, 0.20, 0.98, 0.945))
 
     # 底台（比外壳大一圈）
     cube('base', W + 0.08, D + 0.22, 0.05, 0, -0.01, 0.025, grey, bevel=0.014)
@@ -210,12 +222,15 @@ def build_battery():
     W, H, D = 1.50, 1.32, 0.90
     PNG = os.path.join(FIG, 'battery_c.png')
     blue = mat_solid('batteryblue', (0.069, 0.176, 0.384), 0.55, 0.03)
-    light = mat_solid('batterycap', (0.72, 0.80, 0.93), 0.6)
+    light = mat_solid('batterycap', (0.46, 0.53, 0.64), 0.58)
 
     cube('shell', W, D, H, 0, 0, H / 2.0, blue, bevel=0.05)
-    # 正面贴图：只取照片下段 86%（上段是顶面，贴上来会和顶盖打架）
+    # 正面贴图：只裁上下（顶部 14% 是顶面 + 白圆环柱，底部 7% 是桌面白边）。
+    # 宽度必须取满（0.02..0.98）：照片里电池主体几乎占满画幅，收窄会把右下角的 "+"
+    # 号一起裁掉，看上去 −/+ 只剩半截。
+    # 方向实测：glTF 导出后 UV 的 v 与照片上下相反，取照片 [0.17, 0.93] 要写 (0.07, 0.83)。
     plane('frontphoto', W * 0.99, H * 0.985, 0, -D / 2.0 - 0.002, H / 2.0,
-          mat_photo('batteryfront', PNG), uvbox=(0.02, 0.0, 0.98, 0.855))
+          mat_photo('batteryfront', PNG), uvbox=(0.02, 0.07, 0.98, 0.83))
     # 顶盖：浅蓝台面（柱由 three 侧的 placePosts 摆，位置与 2D terminals 一致）
     cube('cap', W * 0.99, D * 0.99, 0.025, 0, 0, H - 0.012, light, bevel=0.008)
 

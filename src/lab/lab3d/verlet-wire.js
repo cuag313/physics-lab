@@ -197,9 +197,9 @@ export class VerletWire {
     this.geometry = createTubeGeometry(count - 1, this.radial)
     this.material = new THREE.MeshStandardMaterial({
       color: new THREE.Color(opt.color ?? '#c0392b'),
-      // PVC 绝缘皮：哑光，几乎无金属感
-      roughness: 0.62,
-      metalness: 0.04,
+      // PVC 绝缘皮：哑光、几乎无金属感，粗糙度给高一点才不会像塑料带反光
+      roughness: 0.74,
+      metalness: 0.02,
     })
     this.mesh = new THREE.Mesh(this.geometry, this.material)
     this.mesh.castShadow = true
@@ -233,20 +233,29 @@ export class VerletWire {
     const A = this._curA
     const B = this._curB
     const c = this._ctrl
-
-    // 单段二次贝塞尔：两端 + 一个"低于弦线"的控制点。
-    // 曲线中点 = (A + 2C + B)/4，故控制点下移 2×下垂量，中点正好垂 sag。
-    c[0].lerpVectors(A, B, 0.5)
-    const sag = Math.min(0.55, Math.max(0.04, A.distanceTo(B) * 0.32))
-    c[0].y = Math.max(TABLE_Y + 0.02, c[0].y - sag * 2)
-    // 稍微把控制点往桌面中心推一点，长线不至于贴着某件器材的边过去
     const dx = B.x - A.x
     const dz = B.z - A.z
     const flat = Math.hypot(dx, dz) || 1e-6
-    c[0].x += (B.z - A.z) / flat * 0.12
-    c[0].z -= (B.x - A.x) / flat * 0.12
 
-    const curve = new THREE.QuadraticBezierCurve3(A, c[0], B)
+    // 真实香蕉插头导线的形状：两端从接线柱**竖直向下**出线，中间自然垂到桌面附近。
+    // 之前用单段二次贝塞尔，两端切线是指向中央控制点的斜线，观感是"斜着折过去"，
+    // 不像一根垂下来的导线。改成穿过 5 个点的 Catmull-Rom：
+    //   A → A 正下方一小段（竖直切线）→ 中点（贴桌）→ B 正下方 → B
+    const dropLen = Math.min(0.30, Math.max(0.06, flat * 0.22))
+    c[0].set(A.x, A.y - dropLen, A.z)
+    c[3].set(B.x, B.y - dropLen, B.z)
+
+    const midX = (A.x + B.x) * 0.5
+    const midZ = (A.z + B.z) * 0.5
+    const midY = Math.max(
+      TABLE_Y + this.radius + 0.004,
+      Math.min(A.y, B.y) - Math.min(0.62, flat * 0.5)
+    )
+    // 长线略往法线方向让一点，避免贴着某件器材的边擦过去
+    c[1].set(midX + (dz / flat) * 0.10, midY, midZ - (dx / flat) * 0.10)
+
+    const seq = [A, c[0], c[1], c[3], B]
+    const curve = new THREE.CatmullRomCurve3(seq, false, 'catmullrom', 0.5)
     const pts = curve.getPoints(this.count - 1)
     for (let i = 0; i < this.count; i++) {
       const p = pts[Math.min(i, pts.length - 1)]

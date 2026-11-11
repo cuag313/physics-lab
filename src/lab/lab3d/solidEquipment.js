@@ -778,6 +778,26 @@ function buildRheostat(w, h) {
  * 按 TYPES[type].terminals 的像素坐标摆接线柱，位置与
  * three-render 的 attachHotspots 完全一致，保证"看得见的柱"就是"点得到的柱"。
  */
+/**
+ * 接线柱的白色塑料环座（电池组那种"顶盖上两个大白圆环"的实物特征）。
+ * 不挂 userData.terminal —— 热区仍只由 placePosts 的柱决定，避免出现重复命中。
+ */
+function addTerminalRings(group, terminals, w, h, topY, zClamp) {
+  if (!terminals) return
+  // 环要略深于顶盖（顶盖是浅灰），否则白环贴在浅色顶面上完全看不出来
+  const mat = std('#d5dbe4', { roughness: 0.5 })
+  for (const tm of terminals) {
+    const x = (tm.x - w / 2) * SCALE
+    const raw = (tm.y + 7 - h / 2) * SCALE
+    const z = Math.max(-zClamp, Math.min(zClamp, raw))
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.105, 0.033, 10, 26), mat)
+    ring.rotation.x = Math.PI / 2
+    ring.position.set(x, topY + 0.014, z)
+    ring.castShadow = true
+    group.add(ring)
+  }
+}
+
 function placePosts(group, terminals, w, h, stand, thickness, opts = {}) {
   if (!terminals) return
   for (const tm of terminals) {
@@ -1186,6 +1206,9 @@ export function buildSolid(type, opt = {}) {
       // 柱脚高度必须取箱体顶面 1.34，否则柱会埋进箱子里看不见
       const thickness = 1.34
       placePosts(b.group, terms, w, h, false, thickness, { topY: 1.34, zClamp: 0.30 })
+      // 实拍图上柱座是两个明显的白色圆环（中央才是螺旋柱），
+      // 只画一根细柱的话顶面空空，和照片差得远。
+      addTerminalRings(b.group, terms, w, h, 1.34, 0.30)
       return { group: b.group, size, thickness, stand: false, shell: b.shell, inner: b.inner, panel: b.panel }
     }
     case 'bulb': {

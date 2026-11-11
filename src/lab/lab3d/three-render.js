@@ -665,7 +665,9 @@ export function createLabRenderer(container, opt = {}) {
   function wireColorFor(w, solved) {
     const base = new THREE.Color(w.color || defaultWireColor)
     const I = Math.abs((solved && solved._wireI && solved._wireI[w.id]) || 0)
-    if (I > 0.02) base.lerp(new THREE.Color('#f59e0b'), Math.min(0.62, I * 0.32))
+    // 通电只做轻微提亮：原来向琥珀色插到 0.62，用户选了红/绿/黑之后一通电线就变黄，
+    // 看起来就是"换色按钮没生效"。电流的视觉反馈交给流动光点。
+    if (I > 0.02) base.lerp(new THREE.Color('#f59e0b'), Math.min(0.18, I * 0.12))
     return base
   }
 
@@ -983,6 +985,33 @@ export function createLabRenderer(container, opt = {}) {
         point: hitT[0].point,
       }
     }
+    // 导线比器材外壳细得多（0.045 粗）：先给一次"紧容差"（5cm）的折线距离判定，
+    // 否则导线贴着器材表面走过时永远先命中器材，点线选中/换色会像"点不到"。
+    const wireMeshes = []
+    for (const rec of wires.values()) wireMeshes.push(rec.wire.mesh)
+    const hitW = raycaster.intersectObjects(wireMeshes, false)
+    if (hitW.length) {
+      return { kind: 'wire', wireId: hitW[0].object.userData.wireId, point: hitW[0].point }
+    }
+    let bestWireId = null
+    let bestD = 0.05 ** 2
+    for (const rec of wires.values()) {
+      const pts = rec.wire.pos
+      if (!pts || pts.length < 2) continue
+      for (let i = 0; i + 1 < pts.length; i++) {
+        tmpV.copy(pts[i])
+        tmpV2.copy(pts[i + 1])
+        labTableGroup.localToWorld(tmpV)
+        labTableGroup.localToWorld(tmpV2)
+        const d = raycaster.ray.distanceSqToSegment(tmpV, tmpV2)
+        if (d < bestD) {
+          bestD = d
+          bestWireId = rec.wire.mesh.userData.wireId
+        }
+      }
+    }
+    if (bestWireId != null) return { kind: 'wire', wireId: bestWireId, point: null }
+
     const compMeshes = []
     for (const en of equips.values()) {
       if (!en.build) continue
@@ -997,16 +1026,9 @@ export function createLabRenderer(container, opt = {}) {
         return { kind: 'comp', compId: o.userData.compId, point: hitC[0].point }
       }
     }
-    const wireMeshes = []
-    for (const rec of wires.values()) wireMeshes.push(rec.wire.mesh)
-    const hitW = raycaster.intersectObjects(wireMeshes, false)
-    if (hitW.length) {
-      return { kind: 'wire', wireId: hitW[0].object.userData.wireId, point: hitW[0].point }
-    }
-    // 导线只有 0.045 粗，管状 mesh 极难点中：再用「射线到折线段的最近距离」兜底，
-    // 容差 0.09 世界单位（约 9cm），点线选中/换色才真的可用。
-    let bestWireId = null
-    let bestD = 0.09 ** 2
+    // 放宽到 9cm 再兜一次，保证细线在任何姿态下都能被点中
+    bestWireId = null
+    bestD = 0.09 ** 2
     for (const rec of wires.values()) {
       const pts = rec.wire.pos
       if (!pts || pts.length < 2) continue
