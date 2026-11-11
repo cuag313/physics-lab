@@ -204,12 +204,32 @@ def build_meter(kind):
                               export_image_format='AUTO', export_apply=True)
 
 
+def build_battery():
+    """电池组：俯视长方形（1.50×0.90）、平视近正方形（1.32 高）。
+    实拍图 175×180 的顶部约 14% 是顶面，其余 86% 是正面，+/− 在正面顶部。"""
+    W, H, D = 1.50, 1.32, 0.90
+    PNG = os.path.join(FIG, 'battery_c.png')
+    blue = mat_solid('batteryblue', (0.069, 0.176, 0.384), 0.55, 0.03)
+    light = mat_solid('batterycap', (0.72, 0.80, 0.93), 0.6)
+
+    cube('shell', W, D, H, 0, 0, H / 2.0, blue, bevel=0.05)
+    # 正面贴图：只取照片下段 86%（上段是顶面，贴上来会和顶盖打架）
+    plane('frontphoto', W * 0.99, H * 0.985, 0, -D / 2.0 - 0.002, H / 2.0,
+          mat_photo('batteryfront', PNG), uvbox=(0.02, 0.0, 0.98, 0.855))
+    # 顶盖：浅蓝台面（柱由 three 侧的 placePosts 摆，位置与 2D terminals 一致）
+    cube('cap', W * 0.99, D * 0.99, 0.025, 0, 0, H - 0.012, light, bevel=0.008)
+
+
 def main():
     reset()
     if G == 'ammeter' or G == 'voltmeter':
         build_meter(G)
+    elif G == 'battery':
+        build_battery()
     else:
         raise SystemExit('unknown type: ' + G)
+    bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', use_selection=False,
+                              export_image_format='AUTO', export_apply=True)
     print('WROTE %s size=%s' % (OUT, os.path.getsize(OUT) if os.path.exists(OUT) else -1))
 
 

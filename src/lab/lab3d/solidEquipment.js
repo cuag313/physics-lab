@@ -401,11 +401,27 @@ function buildBattery(w, h) {
   inner.add(box(0.56, 0.02, 0.03, MAT.copper(), 0, 0.02 + bh - 0.05, 0))
   g.add(inner)
 
+  // ── 形体：优先 Blender 导出的 GLB（真倒角圆角壳 + 裁切好的正面贴图）──
+  const panel = []
+  const gear = gearReady('battery')
+  if (!gear && typeof document !== 'undefined') preloadGear('battery')
+
+  if (gear) {
+    const model = gear.clone(true)
+    model.traverse((o) => {
+      if (!o.isMesh) return
+      o.castShadow = true
+      o.receiveShadow = true
+      if (/frontphoto/i.test(o.name)) panel.push(o)
+      else shell.push(o)
+    })
+    g.add(model)
+  } else {
+
   // 壳身：圆角方块
   shell.push(rbox(bw, bh, bd, 0.055, MAT.bluePlastic(), 0, 0.02 + bh / 2, 0))
 
   // 正面：贴图的下段（+/- 标记、底沿）
-  const panel = []
   const front = photoFace('battery_c.png', bw, bh, { v0: 0, frac: 1 - topFrac })
   if (front) {
     front.position.set(0, 0.02 + bh / 2, bd / 2 + 0.004)
@@ -421,6 +437,7 @@ function buildBattery(w, h) {
     g.add(top)
     panel.push(top)
   }
+  } // ← 代码几何兜底分支结束
 
   for (const m of shell) g.add(m)
   return { group: g, shell, inner, panel }
@@ -761,7 +778,7 @@ function buildRheostat(w, h) {
  * 按 TYPES[type].terminals 的像素坐标摆接线柱，位置与
  * three-render 的 attachHotspots 完全一致，保证"看得见的柱"就是"点得到的柱"。
  */
-function placePosts(group, terminals, w, h, stand, thickness) {
+function placePosts(group, terminals, w, h, stand, thickness, opts = {}) {
   if (!terminals) return
   for (const tm of terminals) {
     const p = makePost(tm.id)
@@ -770,7 +787,13 @@ function placePosts(group, terminals, w, h, stand, thickness) {
       p.position.set(x, (h - (tm.y + 7)) * SCALE, thickness + 0.03)
       p.rotation.x = Math.PI / 2 // 柱头朝 +Z（从面板向外伸，与表盘同侧）
     } else {
-      p.position.set(x, thickness + 0.03, (tm.y + 7 - h / 2) * SCALE)
+      // zClamp：柱必须落在器材顶面之内。电池组这种"柱在顶盖上"的件，
+      // 按 2D 俯视图的像素 y 换算会算出箱体外的位置，必须夹回顶面范围。
+      const raw = (tm.y + 7 - h / 2) * SCALE
+      const z = opts.zClamp != null
+        ? Math.max(-opts.zClamp, Math.min(opts.zClamp, raw))
+        : raw
+      p.position.set(x, opts.topY != null ? opts.topY : thickness + 0.03, z)
     }
     p.userData.terminal = tm.id
     group.add(p)
@@ -1159,9 +1182,11 @@ export function buildSolid(type, opt = {}) {
   switch (type) {
     case 'battery': {
       const b = buildBattery(w, h)
-      const thickness = 1.12 // 顶面高度：柱脚落在顶面上
-      placePosts(b.group, terms, w, h, false, thickness)
-      return { group: b.group, size, thickness, stand: false, shell: b.shell, inner: b.inner }
+      // 电池组的两个接线柱是"立在顶盖上"的（2D 俯视图里就在顶面靠后），
+      // 柱脚高度必须取箱体顶面 1.34，否则柱会埋进箱子里看不见
+      const thickness = 1.34
+      placePosts(b.group, terms, w, h, false, thickness, { topY: 1.34, zClamp: 0.30 })
+      return { group: b.group, size, thickness, stand: false, shell: b.shell, inner: b.inner, panel: b.panel }
     }
     case 'bulb': {
       const b = buildBulb(w, h)
