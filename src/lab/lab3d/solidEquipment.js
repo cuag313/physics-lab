@@ -12,6 +12,7 @@
 
 import * as THREE from 'three'
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
+import { gearReady, preloadGear } from './glbEquipment.js'
 
 const SCALE = 0.01
 
@@ -230,6 +231,11 @@ function photoFace(file, w, h, opt = {}) {
   const tex = new THREE.CanvasTexture(cv)
   tex.colorSpace = THREE.SRGBColorSpace
   tex.anisotropy = 4
+  // 实拍贴面是"一张会被放大看的图"，绝不能生成 mipmap：
+  // 缩到小尺寸时 mip 层会取到透明/空白像素，远看就是一块白板（刻度全丢）。
+  tex.generateMipmaps = false
+  tex.minFilter = THREE.LinearFilter
+  tex.magFilter = THREE.LinearFilter
   tex.repeat.set(1, opt.frac ?? 1)
   tex.offset.set(0, opt.v0 ?? 0)
   photoCanvasLoad(file, (c2) => {
@@ -242,7 +248,8 @@ function photoFace(file, w, h, opt = {}) {
   // 这张纹理指向共享的 canvas 源，不能随"临时场景销毁"被 dispose，
   // 否则同一张实拍图在别的器材/图标上会变成白板。
   tex.userData.sharedPhoto = true
-  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false })
+  // DoubleSide：贴面万一被转了向，也不会因为背面剔除而"整块消失"
+  const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, side: THREE.DoubleSide })
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat)
   m.userData.role = 'photo'
   return m
@@ -556,6 +563,7 @@ function buildMeter(w, h, kind, fs, subTicks) {
   const D = 0.36
   const front = D / 2 // 面板前缘 z
   const shell = []
+  const panel = [] // 剖视时要整块隐掉的面（表盘、玻璃、实拍贴面）
 
   // 内部：U 形磁铁 + 动圈 + 游丝（剖视时露出来，这就是真实电表的表头）
   const inner = new THREE.Group()
@@ -573,6 +581,24 @@ function buildMeter(w, h, kind, fs, subTicks) {
   }
   inner.add(box(W * 0.7, 0.012, 0.012, MAT.copper(), 0, H * 0.24, 0.05))
   g.add(inner)
+
+  // ── 形体来源：优先用 Blender 导出的 GLB（真网格 + 真倒角 + 真 UV）──
+  // 代码几何只作兜底：模型未就绪时先画一版，加载完成后由 gear-ready 事件触发重建。
+  const glbType = kind === 'V' ? 'voltmeter' : 'ammeter'
+  const gear = gearReady(glbType)
+  if (!gear && typeof document !== 'undefined') preloadGear(glbType)
+
+  if (gear) {
+    const model = gear.clone(true)
+    model.traverse((o) => {
+      if (!o.isMesh) return
+      o.castShadow = true
+      o.receiveShadow = true
+      if (/dial/i.test(o.name)) panel.push(o)
+      else shell.push(o)
+    })
+    g.add(model)
+  } else {
 
   // 底台：浅灰紫圆角板（实物表的底板比外壳大一圈，表放上去有"座"）
   g.add(rbox(W + 0.07, 0.05, D + 0.2, 0.022, std('#cfc9d8', { roughness: 0.58, metalness: 0.04 }), 0, 0.025, 0.03))
@@ -619,6 +645,7 @@ function buildMeter(w, h, kind, fs, subTicks) {
   const dial = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.84, H * 0.7), dialMat)
   dial.position.set(0, H * 0.585 + 0.02, front + 0.032)
   g.add(dial)
+  panel.push(dial)
 
   // 实拍图贴面：整张正面（电压表/电流表几乎没有"顶面段"，所以取整幅）
   // 注意 kind 传进来是 'A'/'V'（不是类型名），取错图会让电压表显示电流表盘
@@ -631,11 +658,13 @@ function buildMeter(w, h, kind, fs, subTicks) {
   if (photo) {
     photo.position.set(0, H / 2 + 0.02, front + 0.033)
     g.add(photo)
+    panel.push(photo)
     // 图载入后把自绘表盘藏起来，免得两张表盘打架
     photoCanvasLoad(meterFile, () => {
       dial.visible = false
     })
   }
+  } // ← 代码几何兜底分支结束
 
   // 玻璃面板：只压四条细边当边框 —— 千万别用实心 box 当"框"，
   // 否则它会把前面的表盘整个盖住（表盘看着就是一块黑板）。
@@ -654,6 +683,7 @@ function buildMeter(w, h, kind, fs, subTicks) {
   )
   glass.position.set(0, frY, front + 0.038)
   g.add(glass)
+  panel.push(glass)
 
   // 指针：pivot 在表盘下缘中心，针绕 Z 转
   const pivot = new THREE.Group()
@@ -665,7 +695,7 @@ function buildMeter(w, h, kind, fs, subTicks) {
   g.add(pivot)
 
   // 剖视时要临时隐掉表盘、贴面和玻璃，否则它们挡在动圈前面，透出来还是白的
-  return { group: g, pointer: pivot, shell, inner, panel: photo ? [dial, glass, photo] : [dial, glass] }
+  return { group: g, pointer: pivot, shell, inner, panel }
 }
 
 /** 滑动变阻器：深灰圆角底座 + 瓷管 + 连续镍铬丝 + 金属滑片 + 四柱 */

@@ -1,0 +1,216 @@
+"""Blender 建模脚本：把 2D 实拍图的器材做成真 3D 网格并导出 GLB。
+
+尺寸基准：与 2D 的 SVG 一致，1px = 1cm，1 世界单位 = 1m。
+坐标约定：Blender 里 +Z 朝上、正面朝 -Y；glTF 导出后 Blender 的 -Y 变成 three 的 +Z，
+所以 three 里"正面朝 +Z"正好对上。
+
+用法：
+  D:\\Blender\\blender.exe -b -P tools/blender/build_gear.py -- --type ammeter --out public/assets/models/ammeter.glb
+"""
+import sys
+import os
+import bpy
+import bmesh
+from mathutils import Vector
+
+ARGV = sys.argv
+args = ARGV[ARGV.index('--') + 1:] if '--' in ARGV else []
+
+
+def arg(name, default=None):
+    key = '--' + name
+    if key in args:
+        i = args.index(key)
+        if i + 1 < len(args):
+            return args[i + 1]
+    return default
+
+
+G = arg('type', 'ammeter')
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+FIG = os.path.join(ROOT, 'public', 'assets', 'equipment', 'fig')
+OUT = arg('out', os.path.join(ROOT, 'public', 'assets', 'models', G + '.glb'))
+
+
+def reset():
+    bpy.ops.wm.read_factory_settings(use_empty=True)
+
+
+def mat_solid(name, rgb, rough=0.55, metal=0.0):
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    bsdf = None
+    for n in m.node_tree.nodes:
+        if n.type == 'BSDF_PRINCIPLED':
+            bsdf = n
+            break
+    if bsdf is None:
+        bsdf = m.node_tree.nodes.new('ShaderNodeBsdfPrincipled')
+        out = next(n for n in m.node_tree.nodes if n.type == 'OUTPUT_MATERIAL')
+        m.node_tree.links.new(bsdf.outputs['BSDF'], out.inputs['Surface'])
+    bsdf.inputs['Base Color'].default_value = (rgb[0], rgb[1], rgb[2], 1.0)
+    bsdf.inputs['Roughness'].default_value = rough
+    bsdf.inputs['Metallic'].default_value = metal
+    return m
+
+
+def mat_photo(name, png):
+    """照片材质：整幅图铺满 UV 0..1，用自发光保证导进 three 后亮度与 2D 一致。"""
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    nt = m.node_tree
+    for n in list(nt.nodes):
+        if n.type != 'OUTPUT_MATERIAL':
+            nt.nodes.remove(n)
+    out = next(n for n in nt.nodes if n.type == 'OUTPUT_MATERIAL')
+    tex = nt.nodes.new('ShaderNodeTexImage')
+    img = bpy.data.images.load(png, check_existing=True)
+    tex.image = img
+    tex.interpolation = 'Linear'
+    emi = nt.nodes.new('ShaderNodeEmission')
+    emi.inputs['Strength'].default_value = 1.0
+    nt.links.new(tex.outputs['Color'], emi.inputs['Color'])
+    nt.links.new(emi.outputs['Emission'], out.inputs['Surface'])
+    return m
+
+
+def poly(name, verts, faces, mat=None, bevel=0.0, seg=2):
+    me = bpy.data.meshes.new(name)
+    me.from_pydata(verts, [], faces)
+    me.update()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.collection.objects.link(ob)
+    if mat:
+        ob.data.materials.append(mat)
+    if bevel > 0:
+        bv = ob.modifiers.new('bev', 'BEVEL')
+        bv.width = bevel
+        bv.segments = seg
+        bv.limit_method = 'ANGLE'
+        bv.angle_limit = 0.5
+        bpy.context.view_layer.objects.active = ob
+        bpy.ops.object.modifier_apply(modifier=bv.name)
+    return ob
+
+
+def cube(name, sx, sy, sz, x, y, z, mat, bevel=0.0):
+    me = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1.0)
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.collection.objects.link(ob)
+    ob.scale = (sx, sy, sz)
+    ob.location = (x, y, z)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.transform_apply(scale=True)
+    if mat:
+        ob.data.materials.append(mat)
+    if bevel > 0:
+        bv = ob.modifiers.new('bev', 'BEVEL')
+        bv.width = bevel
+        bv.segments = 2
+        bpy.ops.object.modifier_apply(modifier=bv.name)
+    return ob
+
+
+def cyl(name, r, h, x, y, z, mat, segs=24, axis='Z'):
+    me = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=segs,
+                          radius1=r, radius2=r, depth=h)
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.collection.objects.link(ob)
+    # 默认沿 Z；若是柱朝面板前方（-Y）需要转 90°
+    if axis == '-Y':
+        ob.rotation_euler = (1.5708, 0, 0)
+    ob.location = (x, y, z)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.transform_apply(rotation=True)
+    if mat:
+        ob.data.materials.append(mat)
+    return ob
+
+
+def plane(name, w, h, x, y, z, mat, uvbox=(0.0, 0.0, 1.0, 1.0)):
+    me = bpy.data.meshes.new(name)
+    verts = [(-w / 2, 0, -h / 2), (w / 2, 0, -h / 2), (w / 2, 0, h / 2), (-w / 2, 0, h / 2)]
+    faces = [(0, 1, 2, 3)]
+    me.from_pydata(verts, [], faces)
+    me.update()
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.collection.objects.link(ob)
+    ob.location = (x, y, z)
+    u0, v0, u1, v1 = uvbox
+    uvl = ob.data.uv_layers.new(name='UVMap')
+    # 平面顶点顺序：左下、右下、右上、左上 → UV 与照片方向一致；
+    # uvbox 用来只取照片里"表盘那一块"，避免把照片上印的柱、底台一起贴上去
+    coords = [(u0, v0), (u1, v0), (u1, v1), (u0, v1)]
+    for i, loop in enumerate(ob.data.loops):
+        uvl.data[i].uv = coords[loop.vertex_index]
+    if mat:
+        ob.data.materials.append(mat)
+    return ob
+
+
+# ────────────────────────────────────────────────────────────
+# 电流表 / 电压表：楔形斜背壳 + 前面板（整幅实拍图）+ 底台 + 三个柱
+# 依据 ammeter_c.png 130×152 / voltmeter_c.png 130×133
+# ────────────────────────────────────────────────────────────
+def build_meter(kind):
+    if kind == 'voltmeter':
+        W, H, PNG = 1.30, 1.33, os.path.join(FIG, 'voltmeter_c.png')
+        posts = [(-0.34, 0.42), (0.0, 0.42), (0.35, 0.42)]
+    else:
+        W, H, PNG = 1.30, 1.52, os.path.join(FIG, 'ammeter_c.png')
+        posts = [(-0.34, 0.42), (0.0, 0.42), (0.35, 0.42)]
+
+    D = 0.38
+    FRONT = -D / 2.0          # 前缘（glTF 后 = three 的 +Z）
+    BACK = D / 2.0
+    BACK_H = H * 0.66         # 斜背降到这里
+    shell = mat_solid('bakelite', (0.055, 0.06, 0.065), 0.5, 0.05)
+    white = mat_solid('panelwhite', (0.86, 0.84, 0.80), 0.72)
+    grey = mat_solid('basegrey', (0.60, 0.57, 0.65), 0.6)
+    brass = mat_solid('brass', (0.72, 0.53, 0.16), 0.35, 0.85)
+
+    # 楔形壳（前全高、后斜降）
+    v = [
+        (-W / 2, FRONT, 0.0), (W / 2, FRONT, 0.0),
+        (W / 2, BACK, 0.0), (-W / 2, BACK, 0.0),
+        (-W / 2, FRONT, H), (W / 2, FRONT, H),
+        (W / 2, BACK, BACK_H), (-W / 2, BACK, BACK_H),
+    ]
+    f = [(0, 1, 2, 3), (4, 5, 6, 7), (0, 4, 5, 1), (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)]
+    poly('shell', v, f, shell, bevel=0.014, seg=2)
+
+    # 前面板（白塑料薄板）
+    cube('panel', W * 0.99, 0.05, H * 0.985, 0, FRONT - 0.022, H / 2.0, white, bevel=0.010)
+
+    # 表盘实拍图：只取照片里的"表盘区"（下部 15% 是柱与底台，取进来会和真柱打架）
+    plane('dial', W * 0.985, H * 0.86, 0, FRONT - 0.049, H * 0.56 + 0.02,
+          mat_photo('dialphoto', PNG), uvbox=(0.03, 0.17, 0.97, 0.99))
+
+    # 底台（比外壳大一圈）
+    cube('base', W + 0.08, D + 0.22, 0.05, 0, -0.01, 0.025, grey, bevel=0.014)
+
+    # 接线柱不在这里建：柱必须与 2D 的 terminals 像素坐标一一对应（热区也用它），
+    # 统一由 three 侧的 placePosts 摆，模型只负责形体。
+
+    bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', use_selection=False,
+                              export_image_format='AUTO', export_apply=True)
+
+
+def main():
+    reset()
+    if G == 'ammeter' or G == 'voltmeter':
+        build_meter(G)
+    else:
+        raise SystemExit('unknown type: ' + G)
+    print('WROTE %s size=%s' % (OUT, os.path.getsize(OUT) if os.path.exists(OUT) else -1))
+
+
+main()

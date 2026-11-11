@@ -555,11 +555,12 @@ export function createLabRenderer(container, opt = {}) {
 
   function disposeGroup(group) {
     group.traverse((o) => {
-      if (o.geometry) o.geometry.dispose()
+      // GLB 模型的多份副本共用同一份几何/贴图，dispose 掉会让其他件一起坏掉
+      if (o.geometry && !o.geometry.userData.sharedGeo) o.geometry.dispose()
       const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : []
       for (const m of mats) {
-        if (m.map) m.map.dispose()
-        if (m.emissiveMap) m.emissiveMap.dispose()
+        if (m.map && !m.map.userData.sharedPhoto && !m.map.userData.sharedGeo) m.map.dispose()
+        if (m.emissiveMap && !m.emissiveMap.userData.sharedPhoto) m.emissiveMap.dispose()
         m.dispose()
       }
     })
@@ -691,8 +692,13 @@ export function createLabRenderer(container, opt = {}) {
   function isCompActive(id) {
     return draggingRef.compId === id || (pointerDownInfo && pointerDownInfo.compId === id)
   }
+  // 最近一次同步参数：Blender 模型是异步加载的，模型到位后要用同一份参数再同步一次，
+  // 把"先用代码几何顶着的器材"换成真网格。没有它就只能等用户下一次操作才看到成品。
+  let lastState = null
+
   function sync(state) {
     try {
+      lastState = state
       return syncInner(state)
     } catch (e) {
       // 单件器材/单根导线出问题不应该拖垮整个页面：
@@ -704,6 +710,12 @@ export function createLabRenderer(container, opt = {}) {
       return undefined
     }
   }
+
+  // GLB 模型加载完成后重建一次，把代码几何顶替成真网格
+  const onGearReady = () => {
+    if (lastState) sync(lastState)
+  }
+  if (typeof window !== 'undefined') window.addEventListener('gear-ready', onGearReady)
 
   function syncInner(state) {
     const { comps = [], wires: wireList = [], solved = {} } = state || {}
@@ -1502,6 +1514,7 @@ export function createLabRenderer(container, opt = {}) {
       el.removeEventListener('dblclick', onDblClick)
       el.removeEventListener('wheel', onWheel)
       window.removeEventListener('keydown', onKey)
+      window.removeEventListener('gear-ready', onGearReady)
       for (const e of equips.values()) {
         if (e.group) disposeGroup(e.group)
       }
