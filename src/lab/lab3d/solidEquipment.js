@@ -228,6 +228,9 @@ function photoFace(file, w, h, opt = {}) {
     tex.image = c2
     tex.needsUpdate = true
   })
+  // 这张纹理指向共享的 canvas 源，不能随"临时场景销毁"被 dispose，
+  // 否则同一张实拍图在别的器材/图标上会变成白板。
+  tex.userData.sharedPhoto = true
   const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false })
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat)
   m.userData.role = 'photo'
@@ -655,11 +658,12 @@ function buildRheostat(w, h) {
   shell.push(base)
   g.add(base)
 
-  // 瓷管（横躺）
-  const tubeLen = 1.34
-  const tubeY = 0.25
+  // 瓷管（横躺）。管径按实拍图定：图上管径约占图高的一半（≈5cm），
+  // 原来 0.226 直径看着像根细棍，整件就不像变阻器了。
+  const tubeLen = 1.42
+  const tubeY = 0.36
   const tubeZ = 0.02
-  const tube = cyl(0.113, 0.113, tubeLen, MAT.ceramic(), 24)
+  const tube = cyl(0.26, 0.26, tubeLen, MAT.ceramic(), 28)
   tube.rotation.z = Math.PI / 2
   tube.position.set(0, tubeY, tubeZ)
   shell.push(tube)
@@ -668,7 +672,7 @@ function buildRheostat(w, h) {
   // 连续镍铬丝：一根螺旋管绕满瓷管（原来叠 26 个独立圆环，环间有空当，一眼假）
   const coilMat = std('#b6bcc4', { roughness: 0.32, metalness: 0.68 })
   // 密绕：圈距要贴近丝径，否则像一根弹簧而不是电阻丝绕线
-  const winding = helixTube(0.119, -tubeLen / 2 + 0.06, tubeLen / 2 - 0.06, 72, 0.0078, coilMat)
+  const winding = helixTube(0.272, -tubeLen / 2 + 0.07, tubeLen / 2 - 0.07, 64, 0.011, coilMat)
   winding.rotation.z = -Math.PI / 2 // 轴从 +Y 放倒到 +X
   winding.position.set(0, tubeY, tubeZ)
   winding.castShadow = false
@@ -676,27 +680,27 @@ function buildRheostat(w, h) {
 
   // 两端金属支架：夹住瓷管的环 + 立在底板上的脚
   for (const sx of [-1, 1]) {
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.121, 0.012, 8, 20), MAT.steel())
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.278, 0.016, 8, 22), MAT.steel())
     ring.rotation.y = Math.PI / 2
     ring.position.set(sx * (tubeLen / 2 - 0.02), tubeY, tubeZ)
     g.add(ring)
-    g.add(box(0.035, 0.14, 0.16, MAT.steel(), sx * (tubeLen / 2 - 0.03), 0.12, tubeZ))
+    g.add(box(0.05, 0.32, 0.22, MAT.steel(), sx * (tubeLen / 2 - 0.03), 0.19, tubeZ))
   }
 
   // 滑片：金属夹块骑在瓷管上（外部只改 position.x，±0.59 范围内滑动）
   const slider = new THREE.Group()
-  slider.position.set(0, 0.36, tubeZ)
-  slider.add(rbox(0.13, 0.14, 0.3, 0.014, MAT.steel(), 0, 0, 0.02))
+  slider.position.set(0, tubeY + 0.02, tubeZ)
+  slider.add(rbox(0.15, 0.3, 0.44, 0.016, MAT.steel(), 0, 0, 0.02))
   // 两片触指压在绕线上
   for (const sz of [-1, 1]) {
-    slider.add(box(0.06, 0.16, 0.014, std('#9aa1aa', { roughness: 0.35, metalness: 0.6 }), 0, -0.13, sz * 0.1))
+    slider.add(box(0.07, 0.34, 0.016, std('#9aa1aa', { roughness: 0.35, metalness: 0.6 }), 0, -0.16, sz * 0.14))
   }
   // 顶部压紧弹簧片
-  slider.add(box(0.12, 0.016, 0.22, MAT.brass(), 0, 0.075, 0.02))
+  slider.add(box(0.14, 0.018, 0.3, MAT.brass(), 0, 0.16, 0.02))
   // 红色胶木手柄（实物是侧面伸出的柄）
-  const handle = cyl(0.028, 0.034, 0.18, MAT.redPlastic(), 14)
+  const handle = cyl(0.034, 0.042, 0.22, MAT.redPlastic(), 14)
   handle.rotation.x = Math.PI / 2
-  handle.position.set(0, 0.055, 0.2)
+  handle.position.set(0, 0.12, 0.26)
   slider.add(handle)
   g.add(slider)
 
@@ -775,6 +779,51 @@ function buildLeadPart(w, h, kind) {
     g.add(lead)
   }
   return { group: g, thickness: yBody + r, stand: false, shell: body }
+}
+
+/**
+ * 立式面板类器材（电阻箱 / 多用电表）：箱体 + 正面整幅实拍图 + 真旋钮。
+ * 老版把它们做成了"矮方盒"（高 20cm、厚 22cm），跟 2D 里 150×204 的立式面板
+ * 完全不是一件东西 —— 这是这类器材一直"不像"的根因。
+ * 照片是正面平视/轻微斜投影，顶面占比极小，所以整幅贴正面；箱体厚度单独给。
+ */
+function buildPanelPhoto(w, h, file, depth, o = {}) {
+  const g = new THREE.Group()
+  const shell = []
+  const W = w * SCALE
+  const H = h * SCALE
+  const D = depth
+
+  // 箱体（深灰胶木）
+  const body = box(W, H, D, o.mat || std('#39404a', { roughness: 0.56, metalness: 0.1 }), 0, H / 2, 0)
+  shell.push(body)
+  g.add(body)
+  // 背面/侧面的暗边，让正面图有"嵌在壳里"的感觉（rbox 的参数是 w,h,d,圆角半径,材质,x,y,z）
+  g.add(rbox(W * 1.01, H * 1.01, 0.014, 0.02, std('#2b3037', { roughness: 0.7 }), 0, H / 2, -D / 2 + 0.006))
+
+  // 正面实拍图
+  const photo = photoFace(file, W * 0.995, H * 0.995, { v0: 0, frac: 1 })
+  if (photo) {
+    photo.position.set(0, H / 2, D / 2 + 0.006)
+    g.add(photo)
+  }
+
+  // 真旋钮（照片上已画着旋钮，真件叠在前面；转得动才有"仪器"的感觉）
+  for (const k of o.knobs || []) {
+    const kp = new THREE.Group()
+    kp.position.set((k.x - 0.5) * W, (1 - k.y) * H, D / 2 + 0.012)
+    const rr = k.r * W
+    const drum = cyl(rr, rr * 0.9, 0.06, std('#1e2228', { roughness: 0.44, metalness: 0.18 }), 28)
+    drum.rotation.x = Math.PI / 2
+    drum.position.z = 0.03
+    kp.add(drum)
+    // 端面指示线（白/银）
+    kp.add(box(rr * 0.22, rr * 0.9, 0.005, std('#cdd3db', { roughness: 0.4 }), 0, rr * 0.42, 0.062))
+    // 中心小凹点
+    g.add(kp)
+  }
+
+  return { group: g, shell, panel: photo ? [photo] : [] }
 }
 
 /** 方箱类：电阻箱 / 电能表 / 多用电表 / 继电器 / 家庭电源 —— 箱体 + 面板 + 旋钮 / 显示窗 */
@@ -945,10 +994,27 @@ function buildGeneric(type, w, h) {
       return buildTestPencil(w, h)
     case 'switch2':
       return buildSwitch2(w, h)
-    case 'resBox':
-      return buildBoxUnit(w, h, { knobs: 4, panelMat: MAT.ceramic(), height: 0.26 })
-    case 'multimeter':
-      return buildBoxUnit(w, h, { lcd: true, knobs: 1, mat: std('#2b2f36', { roughness: 0.6 }), height: 0.2, depth: 0.26 })
+    case 'resBox': {
+      // 电阻箱：150×204 的立式面板箱，四个拨盘旋钮在照片上的位置
+      const b = buildPanelPhoto(w, h, 'resbox_c.png', 0.95, {
+        knobs: [
+          { x: 0.29, y: 0.3, r: 0.16 },
+          { x: 0.71, y: 0.3, r: 0.16 },
+          { x: 0.29, y: 0.63, r: 0.16 },
+          { x: 0.71, y: 0.63, r: 0.16 },
+        ],
+      })
+      const thickness = 0.95 / 2
+      return { group: b.group, thickness, stand: true, shell: b.shell, panel: b.panel }
+    }
+    case 'multimeter': {
+      // 多用电表：150×207，中间一个大档位旋钮，底部两插孔
+      const b = buildPanelPhoto(w, h, 'multimeter_c.png', 0.55, {
+        knobs: [{ x: 0.5, y: 0.56, r: 0.3 }],
+      })
+      const thickness = 0.55 / 2
+      return { group: b.group, thickness, stand: true, shell: b.shell, panel: b.panel }
+    }
     case 'relay':
       return buildBoxUnit(w, h, { knobs: 2, height: 0.16 })
     case 'mains':
@@ -1087,12 +1153,12 @@ export function renderIcon(type, opt = {}) {
   _iconR.render(scene, cam)
   const url = _iconR.domElement.toDataURL('image/png')
 
-  // 释放本次临时场景
+  // 释放本次临时场景（共享的实拍纹理不能动，否则下一件器材的图会变白板）
   scene.traverse((o) => {
     if (o.geometry) o.geometry.dispose()
     const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : []
     for (const m of mats) {
-      if (m.map) m.map.dispose()
+      if (m.map && !m.map.userData.sharedPhoto) m.map.dispose()
       m.dispose()
     }
   })
