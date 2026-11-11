@@ -177,22 +177,29 @@ const _photoRec = new Map()
 function photoCanvasLoad(file, onReady) {
   let rec = _photoRec.get(file)
   if (!rec) {
-    rec = { canvas: null, waiters: [] }
+    rec = { canvas: null, raw: null, waiters: [] }
     _photoRec.set(file, rec)
     if (typeof document === 'undefined') return
     const img = new Image()
     img.onload = () => {
-      const c2 = document.createElement('canvas')
-      c2.width = img.width
-      c2.height = img.height
-      const g = c2.getContext && c2.getContext('2d')
-      if (!g) return
-      g.drawImage(img, 0, 0)
-      whiteBorderToAlpha(c2, g)
-      rec.canvas = c2
+      // 两份画布：cut = 抠掉与边界连通的近白（素材件，如电池组的抠图）；
+      //           raw = 保留原图（照片本身就是一件器材的完整正面，抠白会
+      //                 在浅色外壳上抠出洞、露出底板 → 看着像"灰框里塞了个小图"）
+      const make = (doCut) => {
+        const c2 = document.createElement('canvas')
+        c2.width = img.width
+        c2.height = img.height
+        const g = c2.getContext && c2.getContext('2d')
+        if (!g) return null
+        g.drawImage(img, 0, 0)
+        if (doCut) whiteBorderToAlpha(c2, g)
+        return c2
+      }
+      rec.raw = make(false)
+      rec.canvas = make(true)
       for (const fn of rec.waiters) {
         try {
-          fn(c2)
+          fn(rec.canvas)
         } catch (e) {
           /* ignore */
         }
@@ -212,10 +219,11 @@ function photoCanvasLoad(file, onReady) {
  * @param {string} file
  * @param {number} w 平面宽
  * @param {number} h 平面高
- * @param {object} opt {v0: 起始 v（从图像底部算）, frac: 取的高度比例}
+ * @param {object} opt {v0: 起始 v（从图像底部算）, frac: 取的高度比例, cut: 是否抠白（默认 true）}
  */
 function photoFace(file, w, h, opt = {}) {
   if (typeof document === 'undefined') return null
+  const cut = opt.cut !== false
   const cv = document.createElement('canvas')
   cv.width = 2
   cv.height = 2
@@ -225,7 +233,10 @@ function photoFace(file, w, h, opt = {}) {
   tex.repeat.set(1, opt.frac ?? 1)
   tex.offset.set(0, opt.v0 ?? 0)
   photoCanvasLoad(file, (c2) => {
-    tex.image = c2
+    // 整面贴满时（cut:false）用未抠的原图，否则浅色外壳会被抠出洞
+    const rec = _photoRec.get(file)
+    const useCut = cut && rec && rec.canvas ? rec.canvas : (rec && (rec.raw || rec.canvas)) || c2
+    tex.image = useCut
     tex.needsUpdate = true
   })
   // 这张纹理指向共享的 canvas 源，不能随"临时场景销毁"被 dispose，
@@ -357,9 +368,12 @@ function dialTexture(kind, fs, subTicks) {
 function buildBattery(w, h) {
   const g = new THREE.Group()
   const bw = w * SCALE // 1.50（宽）
-  const bh = 1.1 // 高（照片正面段）
-  const bd = 1.1 // 深（照片顶面段，斜投影下压缩后与正面高度相当）
-  const topFrac = 0.26 // 照片里顶面占整幅高度的比例
+  // 实拍图 175×180 的实际布局：顶部约 14% 是"顶面"（两个白色圆环柱 + 浅蓝台面），
+  // 其余 86% 是正面，且 +/− 标记在正面"顶部"（紧贴顶面下方）——分界取 0.26 会把
+  // 两个标记整块切掉，正面就变成一块无字的蓝板。
+  const bh = 1.32 // 正面段高度 = 1.54 × 0.86
+  const bd = 0.9 // 进深（由顶面段的斜投影定）
+  const topFrac = 0.14 // 照片里顶面占整幅高度的比例
   const shell = []
 
   // 内部：两节 1.5V 干电池串联
@@ -406,36 +420,36 @@ function buildBattery(w, h) {
 function buildBulb(w, h) {
   const g = new THREE.Group()
   const shell = []
-  // 底板（实物是浅灰塑料薄板，不是黑板条）
-  const base = rbox(w * SCALE * 0.94, 0.045, 0.5, 0.015, std('#d6d9de', { roughness: 0.62 }), 0, 0.0225, 0)
+  // 底板（实物是浅灰塑料薄板，不是黑板条）；进深按实拍图 176×83 的比例取 0.70
+  const base = rbox(w * SCALE * 0.94, 0.045, 0.7, 0.015, std('#d6d9de', { roughness: 0.62 }), 0, 0.0225, 0)
   shell.push(base)
-  // 黑胶木灯座（实物灯座矮而粗，不是细高瓷柱）
-  const socket = cyl(0.162, 0.178, 0.2, std('#22262c', { roughness: 0.68, metalness: 0.03 }), 24)
-  socket.position.y = 0.14
+  // 黑胶木灯座（实物灯座矮而粗，不是细高瓷柱）；按 176×83 的图：座高约 0.34、座径约 0.40
+  const socket = cyl(0.19, 0.2, 0.34, std('#22262c', { roughness: 0.68, metalness: 0.03 }), 24)
+  socket.position.y = 0.215
   shell.push(socket)
   // 灯座顶面金属承口（螺纹在承口里面）
-  const cup = cyl(0.108, 0.112, 0.022, MAT.steel(), 20)
-  cup.position.y = 0.248
+  const cup = cyl(0.128, 0.132, 0.022, MAT.steel(), 20)
+  cup.position.y = 0.39
   shell.push(cup)
   for (const m of shell) g.add(m)
 
   // 连续螺纹的灯口（原来用几个圆环叠，近景能看到环间空当）
-  const screw = helixTube(0.098, 0.252, 0.392, 4.5, 0.0085, MAT.steel())
+  const screw = helixTube(0.124, 0.4, 0.55, 4.5, 0.0085, MAT.steel())
   g.add(screw)
   // 灯口内芯
-  const core = cyl(0.082, 0.082, 0.15, std('#8b9099', { roughness: 0.5, metalness: 0.3 }), 16)
-  core.position.y = 0.33
+  const core = cyl(0.104, 0.104, 0.15, std('#8b9099', { roughness: 0.5, metalness: 0.3 }), 16)
+  core.position.y = 0.47
   g.add(core)
 
   // 玻璃：颈部 + 泡体。尺寸按实拍图定（泡径明显大于灯座，约 5.5cm）
   const glassMat = MAT.glass()
   glassMat.opacity = 0.36
-  const neck = cyl(0.1, 0.08, 0.12, glassMat, 18)
-  neck.position.y = 0.45
+  const neck = cyl(0.12, 0.1, 0.12, glassMat, 18)
+  neck.position.y = 0.56
   neck.castShadow = false
   g.add(neck)
   const globe = new THREE.Mesh(new THREE.SphereGeometry(0.275, 32, 24), glassMat)
-  globe.position.y = 0.63
+  globe.position.y = 0.72
   globe.scale.y = 1.1
   globe.castShadow = false
   g.add(globe)
@@ -448,12 +462,12 @@ function buildBulb(w, h) {
     metalness: 0.3,
   })
   const fil = helixTube(0.026, 0.0, 0.085, 4, 0.0075, filMat)
-  fil.position.y = 0.57
+  fil.position.y = 0.66
   g.add(fil)
   // 两根引线：灯口 → 灯丝
   for (const sx of [-1, 1]) {
     const lead = cyl(0.007, 0.007, 0.14, MAT.steel(), 6)
-    lead.position.set(sx * 0.03, 0.50, 0)
+    lead.position.set(sx * 0.03, 0.62, 0)
     g.add(lead)
   }
   return { group: g, bulbMat: filMat, glassMat, shell }
@@ -489,7 +503,7 @@ function buildSwitch(w, h) {
   g.add(inner)
 
   // 顶面实拍图（板面、柱座、压平的刀都在图上；真刀叠在它上面）
-  const top = photoFace('switch_c.png', W * 0.98, D * 0.98, { v0: 0, frac: 1 })
+  const top = photoFace('switch_c.png', W * 0.98, D * 0.98, { v0: 0, frac: 1, cut: false })
   if (top) {
     top.rotation.x = -Math.PI / 2
     top.position.set(0, TH + 0.004, 0)
@@ -604,15 +618,18 @@ function buildMeter(w, h, kind, fs, subTicks) {
   g.add(dial)
 
   // 实拍图贴面：整张正面（电压表/电流表几乎没有"顶面段"，所以取整幅）
-  const photo = photoFace(kind === 'voltmeter' ? 'voltmeter_c.png' : 'ammeter_c.png', W * 0.995, H * 0.995, {
+  // 注意 kind 传进来是 'A'/'V'（不是类型名），取错图会让电压表显示电流表盘
+  const meterFile = kind === 'V' ? 'voltmeter_c.png' : 'ammeter_c.png'
+  const photo = photoFace(meterFile, W * 0.995, H * 0.995, {
     v0: 0,
     frac: 1,
+    cut: false,
   })
   if (photo) {
     photo.position.set(0, H / 2 + 0.02, front + 0.033)
     g.add(photo)
     // 图载入后把自绘表盘藏起来，免得两张表盘打架
-    photoCanvasLoad(kind === 'voltmeter' ? 'voltmeter_c.png' : 'ammeter_c.png', () => {
+    photoCanvasLoad(meterFile, () => {
       dial.visible = false
     })
   }
@@ -802,7 +819,7 @@ function buildPanelPhoto(w, h, file, depth, o = {}) {
   g.add(rbox(W * 1.01, H * 1.01, 0.014, 0.02, std('#2b3037', { roughness: 0.7 }), 0, H / 2, -D / 2 + 0.006))
 
   // 正面实拍图
-  const photo = photoFace(file, W * 0.995, H * 0.995, { v0: 0, frac: 1 })
+  const photo = photoFace(file, W * 0.995, H * 0.995, { v0: 0, frac: 1, cut: false })
   if (photo) {
     photo.position.set(0, H / 2, D / 2 + 0.006)
     g.add(photo)
@@ -1210,13 +1227,23 @@ export function renderIcon(type, opt = {}) {
   const sz = bb.getSize(new THREE.Vector3())
   const radius = Math.max(sz.x, sz.y, sz.z) * 0.92 + 0.12
 
-  const cam = new THREE.PerspectiveCamera(30, 1, 0.05, 80)
-  // 立式表用更正的机位（看清读数），其余用等轴俯视
-  const dir = b.stand ? new THREE.Vector3(0.18, 0.22, 1) : new THREE.Vector3(0.55, 0.62, 0.85)
-  dir.normalize()
-  const dist = radius / Math.sin((30 * Math.PI) / 180 / 2) * 0.5 + radius * 0.4
-  cam.position.copy(c).add(dir.multiplyScalar(dist))
-  cam.lookAt(c)
+  // 立式表用更正的机位（看清读数），其余用等轴俯视。
+  // view:'front' = 正交前视，专供"与 2D 实拍图并排对照"用：照片是正交前视拍的，
+  // 用透视俯视去比会永远觉得"不像"，那是机位差异而不是形体差异。
+  let cam
+  if (opt.view === 'front') {
+    const half = Math.max(Math.max(sz.x, 0.05) * 0.5, Math.max(sz.y, 0.05) * 0.5)
+    cam = new THREE.OrthographicCamera(-half, half, half, -half, 0.05, 80)
+    cam.position.set(c.x, c.y, c.z + 5)
+    cam.lookAt(c.x, c.y, c.z)
+  } else {
+    cam = new THREE.PerspectiveCamera(30, 1, 0.05, 80)
+    const dir = b.stand ? new THREE.Vector3(0.18, 0.22, 1) : new THREE.Vector3(0.55, 0.62, 0.85)
+    dir.normalize()
+    const dist = (radius / Math.sin(((30 * Math.PI) / 180) / 2)) * 0.5 + radius * 0.4
+    cam.position.copy(c).add(dir.multiplyScalar(dist))
+    cam.lookAt(c)
+  }
 
   _iconR.render(scene, cam)
   const url = _iconR.domElement.toDataURL('image/png')
