@@ -588,10 +588,13 @@ export function createLabRenderer(container, opt = {}) {
           mat.needsUpdate = true
         }
       }
-      // 表盘/玻璃挡在动圈前面：剖视时直接隐藏（不碰它们的材质，免得贴图被洗白）
+      // 表盘/玻璃/实拍贴面挡在动圈前面：剖视时直接隐藏（不碰它们的材质，免得贴图被洗白）
       if (entry.build.panel) {
         for (const m of entry.build.panel) m.visible = !on
       }
+      // 内部件必须在这里显出来：实体器材没有 outer，若只在 outer 分支里开 inner，
+      // 电池/开关/灯泡/电表的内部结构在 3D 里永远看不到（这就是"不能看内部结构"的原因）。
+      if (entry.build.inner) entry.build.inner.visible = on
       return
     }
     const mats = Array.isArray(entry.build.outer.material)

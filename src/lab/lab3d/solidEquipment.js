@@ -398,10 +398,12 @@ function buildBattery(w, h) {
   shell.push(rbox(bw, bh, bd, 0.055, MAT.bluePlastic(), 0, 0.02 + bh / 2, 0))
 
   // 正面：贴图的下段（+/- 标记、底沿）
+  const panel = []
   const front = photoFace('battery_c.png', bw, bh, { v0: 0, frac: 1 - topFrac })
   if (front) {
     front.position.set(0, 0.02 + bh / 2, bd / 2 + 0.004)
     g.add(front)
+    panel.push(front)
   }
 
   // 顶面：贴图的上段（两个接线柱的底座 + 深色边）
@@ -410,10 +412,11 @@ function buildBattery(w, h) {
     top.rotation.x = -Math.PI / 2
     top.position.set(0, 0.02 + bh + 0.004, 0)
     g.add(top)
+    panel.push(top)
   }
 
   for (const m of shell) g.add(m)
-  return { group: g, shell, inner }
+  return { group: g, shell, inner, panel }
 }
 
 /** 小灯泡：浅灰底板 + 黑胶木灯座 + 连续螺纹灯口 + 玻璃泡 + 螺旋灯丝 */
@@ -542,7 +545,7 @@ function buildSwitch(w, h) {
   }
   setBlade(true)
 
-  return { group: g, blade: pivot, setBlade, shell, inner, top }
+  return { group: g, blade: pivot, setBlade, shell, inner, top, panel: top ? [top] : [] }
 }
 
 /** 立式方表（电流表 / 电压表）：浅灰紫底台 + 楔形后壳 + 白面板 + 表盘 + 玻璃 + 三柱 */
