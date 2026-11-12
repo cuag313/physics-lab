@@ -922,7 +922,59 @@ function placePosts(group, terminals, w, h, stand, thickness, opts = {}) {
  */
 
 /** 引线类：电阻 / 二极管 / 保险丝 —— 底座 + 水平圆柱 + 特征环 + 铜引线 */
+/**
+ * 二极管（发光二极管）：基准 TYPES.diode（170×120）。
+ * 图纸是"竖立的深绿 PCB 小块 + 左右两块半导体（P 型红 / N 型蓝）+ 中间 PN 结缝
+ * + 两根铜引脚引到底座 + 浅灰小底座"，不是一根黑棒子。
+ */
+function buildDiode(w, h) {
+  const g = new THREE.Group()
+  const shell = []
+  const W = w * SCALE // 1.70
+  const baseH = 0.07
+  // 浅灰底座
+  const base = rbox(W * 0.62, baseH, 0.52, 0.02, std('#cdd4dd', { roughness: 0.55 }), 0, baseH / 2, 0)
+  shell.push(base)
+  g.add(base)
+  // 底座上的黑色丝印块（图纸底部那条"二极管"标签位）
+  g.add(box(W * 0.34, 0.012, 0.30, std('#20242a', { roughness: 0.7 }), 0, baseH + 0.006, 0.06))
+
+  // 竖立的深绿 PCB
+  const pcbH = 0.50
+  const pcbW = 1.06
+  const pcbY = baseH + pcbH / 2 + 0.06
+  const pcbMat = std('#2c6a5c', { roughness: 0.62, metalness: 0.15 })
+  const pcb = box(pcbW, pcbH, 0.035, pcbMat, 0, pcbY, 0)
+  shell.push(pcb)
+  g.add(pcb)
+
+  // 两块半导体：P 型（红）/ N 型（蓝），中间留一道 PN 结缝
+  const blockH = 0.34
+  const blockW = 0.42
+  for (const [bx, color] of [[-0.24, '#c8463f'], [0.24, '#3a63c8']]) {
+    const blk = rbox(blockW, blockH, 0.07, 0.012, std(color, { roughness: 0.42, metalness: 0.2 }), bx, pcbY + 0.02, 0.055)
+    shell.push(blk)
+    g.add(blk)
+  }
+  // PN 结位置的一道细亮缝
+  g.add(box(0.03, blockH * 0.9, 0.02, std('#e8eef8', { roughness: 0.3, metalness: 0.6 }), 0, pcbY + 0.02, 0.095))
+
+  // 两根铜引脚：从两块半导体底部折到底座上的柱位
+  for (const sx of [-1, 1]) {
+    const stem = cyl(0.014, 0.014, pcbY - baseH - 0.02, MAT.copper(), 10)
+    stem.position.set(sx * 0.24, (pcbY + baseH) / 2 - 0.02, 0.02)
+    g.add(stem)
+    const foot = cyl(0.014, 0.014, 0.46, MAT.copper(), 10)
+    foot.rotation.z = Math.PI / 2
+    foot.position.set(sx * 0.44, baseH + 0.02, 0.02)
+    g.add(foot)
+  }
+
+  return { group: g, thickness: 0.26, stand: false, shell }
+}
+
 function buildLeadPart(w, h, kind) {
+  if (kind === 'diode') return buildDiode(w, h)
   const g = new THREE.Group()
   const baseH = 0.03
   g.add(box(w * 0.66 * SCALE, baseH, h * 0.26 * SCALE, MAT.darkPlastic(), 0, baseH / 2, 0))
@@ -1138,29 +1190,50 @@ function buildTube(w, h) {
   return { group: g, thickness: 0.1, stand: false, shell: glass }
 }
 
-/** 验电器：底座 + 金属杆 + 两片金箔 + 玻璃罩 */
+/**
+ * 验电器：基准 TYPES.electroscope（130×210，立式）。
+ * 图纸是"黑色圆底座 + 高玻璃罩（筒身 + 圆顶）+ 罩顶金属球 + 罩内金属杆 + 两片张开金箔"。
+ * 旧版罩只有一半高、玻璃太透明，远看就剩一根杆。
+ */
 function buildElectroscope(w, h) {
   const g = new THREE.Group()
-  const foot = cyl(w * 0.26 * SCALE, w * 0.3 * SCALE, 0.04, MAT.bakelite(), 24)
-  foot.position.y = 0.02
+  const W = w * SCALE   // 1.30
+  const H = h * SCALE   // 2.10
+  // 黑色胶木底座（带一圈台阶）
+  const footH = 0.10
+  const foot = cyl(W * 0.30, W * 0.32, footH, MAT.bakelite(), 28)
+  foot.position.y = footH / 2
   g.add(foot)
-  const r = Math.min(w * 0.34, h * 0.34) * SCALE
-  const H = h * 0.5 * SCALE
-  const dome = cyl(r, r, H, MAT.glass(), 26)
-  dome.position.set(0, 0.04 + H / 2, 0)
-  g.add(dome)
-  const rod = cyl(0.014, 0.014, H * 0.55, MAT.steel(), 12)
-  rod.position.set(0, 0.04 + H * 0.72, 0)
+
+  // 玻璃罩：筒身 + 半球顶（图纸罩高约占整件 0.72）
+  const domeH = H * 0.72
+  const r = W * 0.30
+  const glassMat = MAT.glass()
+  glassMat.opacity = 0.24
+  const tube = cyl(r, r, domeH, glassMat, 32)
+  tube.position.y = footH + domeH / 2
+  tube.castShadow = false
+  g.add(tube)
+  const cap = new THREE.Mesh(new THREE.SphereGeometry(r, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), glassMat)
+  cap.position.y = footH + domeH
+  cap.castShadow = false
+  g.add(cap)
+
+  // 罩内金属杆 + 顶部小球 + 底部两片金箔（张开角随电荷变，这里给静态张角）
+  const rodH = domeH * 0.62
+  const rod = cyl(0.016, 0.016, rodH, MAT.steel(), 12)
+  rod.position.y = footH + domeH * 0.58
   g.add(rod)
-  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.05, 16, 12), MAT.steel())
-  knob.position.set(0, 0.04 + H, 0)
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.055, 16, 12), MAT.steel())
+  knob.position.y = footH + domeH - 0.02
   g.add(knob)
   for (const f of [-1, 1]) {
-    const foil = box(0.008, H * 0.26, 0.05, std('#e7c65a', { roughness: 0.35, metalness: 0.35 }), f * 0.02, 0.04 + H * 0.2, 0)
-    foil.rotation.z = f * 0.22
+    const foil = box(0.010, domeH * 0.30, 0.055,
+      std('#e7c65a', { roughness: 0.35, metalness: 0.4 }), f * 0.025, footH + domeH * 0.30, 0)
+    foil.rotation.z = f * 0.24
     g.add(foil)
   }
-  return { group: g, thickness: 0.1, stand: false, shell: dome }
+  return { group: g, thickness: 0.20, stand: false, shell: [tube, cap] }
 }
 
 /** 试电笔：细长笔杆 + 金属探针 + 氖泡窗 */
@@ -1181,28 +1254,56 @@ function buildTestPencil(w, h) {
   return { group: g, thickness: 0.09, stand: false, shell: barrel }
 }
 
-/** 单刀双掷开关：底板 + 中央刀 + 两个掷点 +
- *  （刀闸由 three-render 按 pos 驱动旋转，与 2D 的 pos 语义一致） */
+/**
+ * 单刀双掷开关：基准 TYPES.switch2（180×130）。
+ * 图纸是"黑色 U 形/凹槽底座 + 中间一根绝缘立杆手柄 + 两侧一黑一红静触点立柱"。
+ * 旧版只是一块平板加一根横刀，认不出是双掷开关。
+ */
 function buildSwitch2(w, h) {
   const g = new THREE.Group()
-  const bw = w * 0.72 * SCALE
-  const bd = h * 0.36 * SCALE
-  g.add(box(bw, 0.05, bd, MAT.bakelite(), 0, 0.025, 0))
-  for (const f of [-1, 1]) {
-    const stud = cyl(0.03, 0.03, 0.03, MAT.brass(), 14)
-    stud.position.set(f * bw * 0.32, 0.06, 0)
-    g.add(stud)
+  const shell = []
+  const W = w * SCALE   // 1.80
+  const D = h * SCALE   // 1.30
+  const bw = W * 0.78
+  const bd = D * 0.46
+  const plateMat = std('#23272d', { roughness: 0.6, metalness: 0.08 })
+  const brassMat = MAT.brass()
+  const steelMat = std('#c9ced4', { roughness: 0.3, metalness: 0.8 })
+
+  // 底盘
+  const plate = rbox(bw, 0.06, bd, 0.018, plateMat, 0, 0.03, 0)
+  shell.push(plate)
+  g.add(plate)
+  // 两侧立起的挡板，形成图纸那种"凹槽"感
+  for (const sx of [-1, 1]) {
+    const wall = rbox(0.06, 0.20, bd * 0.96, 0.014, plateMat, sx * bw * 0.48, 0.10, 0)
+    shell.push(wall)
+    g.add(wall)
   }
+
+  // 两侧静触点立柱（左黑右红），顶端带触点帽
+  for (const [sx, col] of [[-1, '#1c2026'], [1, '#cf1f22']]) {
+    const post = cyl(0.030, 0.030, 0.16, std(col, { roughness: 0.5, metalness: 0.2 }), 14)
+    post.position.set(sx * bw * 0.30, 0.14, 0.01)
+    g.add(post)
+    const capTop = cyl(0.052, 0.052, 0.022, brassMat, 14)
+    capTop.position.set(sx * bw * 0.30, 0.235, 0.01)
+    g.add(capTop)
+  }
+
+  // 中央刀：绕 Y 轴摆向左右，刀头带红色胶木手柄（与 2D 的 pos 语义一致）
   const pivot = new THREE.Group()
-  pivot.position.set(-bw * 0.1, 0.055, 0)
-  const blade = box(bw * 0.5, 0.012, 0.028, MAT.steel(), bw * 0.25, 0, 0)
+  pivot.position.set(-bw * 0.02, 0.235, 0.01)
+  const blade = rbox(0.44, 0.022, 0.045, 0.01, steelMat, 0.22, 0, 0)
   pivot.add(blade)
-  const handle = new THREE.Mesh(new THREE.SphereGeometry(0.032, 14, 10), MAT.redPlastic())
-  handle.position.set(bw * 0.5, 0, 0)
+  const handle = cyl(0.030, 0.036, 0.16, MAT.redPlastic(), 14)
+  handle.rotation.z = Math.PI / 2
+  handle.position.set(0.46, 0.01, 0)
   pivot.add(handle)
-  pivot.rotation.y = 0.34
+  pivot.rotation.y = 0.30
   g.add(pivot)
-  return { group: g, thickness: 0.09, stand: false, blade: pivot, shell: null }
+
+  return { group: g, thickness: 0.09, stand: false, blade: pivot, shell }
 }
 
 /**
