@@ -63,6 +63,19 @@ function cyl(rTop, rBottom, h, material, seg = 20) {
 }
 
 /**
+ * 缺一角的开口圆柱 —— 给电池做"剖切筒"用。
+ * 完整同心圆柱不论怎么调透明度，俯视时中心那根碳棒都会被外层挡住；
+ * 缺掉朝向相机的那 90° 之后，从缺口就能直接看到里面的层。
+ */
+function arcCyl(r, h, material, thetaLen = Math.PI * 0.75, seg = 26) {
+  const geo = new THREE.CylinderGeometry(r, r, h, seg, 1, true, Math.PI * 0.25, thetaLen)
+  const m = new THREE.Mesh(geo, material)
+  m.castShadow = false
+  m.receiveShadow = false
+  return m
+}
+
+/**
  * 圆角盒 —— 真实塑料/胶木件的每一条棱都是圆的。
  * 用纯 BoxGeometry 拼出来的器材，一眼就是"积木"：棱线笔直、没有过渡面，
  * 抗锯齿再好也像贴纸。圆角是"像实物"最便宜也最有效的一步。
@@ -436,24 +449,37 @@ function buildBattery(w, h, terms = []) {
   const inner = new THREE.Group()
   inner.name = 'battery-inner'
   const zincMat = std('#dbe2ea', {
-    roughness: 0.34, metalness: 0.62, transparent: true, opacity: 0.42,
+    roughness: 0.34, metalness: 0.62,
+    transparent: true, opacity: 0.38,
+    // 透明层必须关掉深度写入，否则它会挡住里面的电解糊和碳棒，
+    // 剖视看上去还是"一根灰白实心柱"。
+    depthWrite: false, side: THREE.DoubleSide,
   })
   const pasteMat = std('#7b5b3e', {
-    roughness: 0.95, metalness: 0.02, transparent: true, opacity: 0.55,
+    roughness: 0.95, metalness: 0.02,
+    transparent: true, opacity: 0.45,
+    depthWrite: false, side: THREE.DoubleSide,
   })
-  const graphiteMat = std('#15181d', { roughness: 0.55, metalness: 0.25 })
+  const graphiteMat = std('#0e1013', { roughness: 0.5, metalness: 0.35 })
   const cellH = bodyH * 0.78
   for (const cx of [-0.34, 0.34]) {
-    const zinc = cyl(0.19, 0.19, cellH, zincMat, 24)
+    // 锌筒与电解糊都做成"缺一角"的开口筒（缺口朝 +Z 即朝向相机），
+    // 剖视时从缺口能直接看到里面褐色的糊和中心的黑碳棒。
+    const zinc = arcCyl(0.19, cellH, zincMat)
     zinc.position.set(cx, cellH / 2 + 0.05, 0)
-    zinc.castShadow = false
     inner.add(zinc)
-    const paste = cyl(0.155, 0.155, cellH - 0.05, pasteMat, 22)
+    // 筒底／筒口各补一块圆盘，别看成"通透的管子"
+    for (const dy of [-cellH / 2, cellH / 2]) {
+      const disc = cyl(0.19, 0.19, 0.012, zincMat, 24)
+      disc.position.set(cx, cellH / 2 + 0.05 + dy, 0)
+      disc.castShadow = false
+      inner.add(disc)
+    }
+    const paste = arcCyl(0.145, cellH - 0.05, pasteMat, Math.PI * 1.1)
     paste.position.set(cx, cellH / 2 + 0.05, 0)
-    paste.castShadow = false
     inner.add(paste)
-    // 中心碳棒（正极）：做粗一点、顶端加个铜帽，远看也能认出"一根黑棒"
-    const rod = cyl(0.075, 0.075, cellH + 0.04, graphiteMat, 16)
+    // 中心碳棒（正极）：做粗一点，远看也能认出"一根黑棒"
+    const rod = cyl(0.095, 0.095, cellH + 0.04, graphiteMat, 16)
     rod.position.set(cx, cellH / 2 + 0.05, 0)
     inner.add(rod)
     // 正极凸头
