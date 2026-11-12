@@ -263,11 +263,12 @@ function photoFace(file, w, h, opt = {}) {
  *  - 结构：金属基座 → 细柱 → 彩色旋钮 → 顶部中心凸起
  *  - 总高约 0.16，与 three-render 的磁吸热区中心对齐
  */
-function makePost(id = '', forceNeg) {
+function makePost(id = '', forceNeg, opts = {}) {
   const isNeg = typeof forceNeg === 'boolean'
     ? forceNeg
     : (/^(neg|n|-)/i.test(id) || /neg|black/i.test(id))
-  const knobColor = isNeg ? '#1c2026' : '#cf1f22'
+  // 电表的柱帽在图纸上是深蓝塑料（不是红/黑），所以允许按器材指定帽色
+  const knobColor = opts.knobColor || (isNeg ? '#1c2026' : '#cf1f22')
   const g = new THREE.Group()
 
   const base = cyl(0.052, 0.058, 0.02, MAT.steel(), 16)
@@ -752,7 +753,10 @@ function buildMeter(w, h, kind, fs, subTicks) {
 
   // 玻璃面板：只压四条细边当边框 —— 千万别用实心 box 当"框"，
   // 否则它会把前面的表盘整个盖住（表盘看着就是一块黑板）。
-  const frZ = front + 0.036
+  // 注意：这些装饰件必须放在**模型表盘之前**。GLB 版的表盘贴面在 z≈0.239
+  // （Blender 里 FRONT-0.049 换算过来），按代码分支的 front=0.18 摆就会被贴在后面，
+  // 表现就是"表上有刻度但一根指针都看不见"。所以这里用绝对 z。
+  const frZ = 0.252
   const frW = W * 0.9
   const frH = H * 0.76
   const frY = H * 0.585 + 0.02
@@ -765,13 +769,13 @@ function buildMeter(w, h, kind, fs, subTicks) {
     new THREE.PlaneGeometry(W * 0.86, H * 0.72),
     std('#cfe0ef', { transparent: true, opacity: 0.09, roughness: 0.04, metalness: 0.25 })
   )
-  glass.position.set(0, frY, front + 0.038)
+  glass.position.set(0, frY, 0.272)
   g.add(glass)
   panel.push(glass)
 
   // 指针：pivot 在表盘下缘中心，针绕 Z 转
   const pivot = new THREE.Group()
-  pivot.position.set(0, H * 0.24, front + 0.042)
+  pivot.position.set(0, H * 0.24, 0.262)
   const needle = box(0.016, H * 0.42, 0.007, std('#c0392b', { roughness: 0.35 }), 0, H * 0.21, 0)
   pivot.add(needle)
   // 针尖一小段更细，视觉上才像"针"而不是一根红条
@@ -913,7 +917,7 @@ function addTerminalRings(group, terminals, w, h, topY, zClamp) {
 function placePosts(group, terminals, w, h, stand, thickness, opts = {}) {
   if (!terminals) return
   for (const tm of terminals) {
-    const p = makePost(tm.id)
+    const p = makePost(tm.id, undefined, opts)
     const x = (tm.x - w / 2) * SCALE
     if (stand) {
       p.position.set(x, (h - (tm.y + 7)) * SCALE, thickness + 0.03)
@@ -1449,7 +1453,8 @@ export function buildSolid(type, opt = {}) {
       const fs = opt.fs || (type === 'ammeter' ? 3 : 15)
       const b = buildMeter(w, h, kind, fs, 30)
       const thickness = 0.18 // 半深：表壳厚 0.36，柱在表面前缘外 0.03
-      placePosts(b.group, terms, w, h, true, thickness)
+      // 电表三柱按图纸是**深蓝塑料帽**（负柱同色，不带红/黑），柱帽上才是白字
+      placePosts(b.group, terms, w, h, true, thickness, { knobColor: '#2b5aa8' })
       return {
         group: b.group,
         size,

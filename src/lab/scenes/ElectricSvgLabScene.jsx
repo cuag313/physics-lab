@@ -767,6 +767,13 @@ export default function ElectricSvgLabScene() {
           handlersRef.current.addWire({ cid: +ca, tid: ta }, { cid: +cb, tid: tb })
         },
         onWireDelete: (id) => setWires((ws) => ws.filter((w) => w.id !== id)),
+        // 选中器材后按 Delete/Backspace：删掉这件器材和挂在上面的导线
+        onDeleteComp: (id) => {
+          setComps((cs) => cs.filter((c) => c.id !== id))
+          setWires((ws) => ws.filter((w) => !w.a.startsWith(id + ':') && !w.b.startsWith(id + ':')))
+          setSelected(null)
+          setToast('已删除选中的器材')
+        },
         // 轻点开关 → 通断（复用 2D 同一份 tapComp）
         onSwitch: (id) => {
           const c = compsRef.current.find((x) => x.id === id)

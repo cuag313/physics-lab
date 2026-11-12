@@ -228,6 +228,19 @@ export class VerletWire {
     this._dirty = true
   }
 
+  /**
+   * 设定"整根线不得低于的高度"。
+   * 两端之间如果横着别的器材（比如电池组），原来的中点会压到桌面附近、
+   * 直接从仪器壳体里穿过去；给一个抬升下限，线就从器材上方跨过去。
+   * @param {number|null} y 局部坐标下的最低允许高度
+   */
+  setClearance(y) {
+    if (this._clearY !== y) {
+      this._clearY = y
+      this._dirty = true
+    }
+  }
+
   /** 按两端与下垂量重建曲线采样点 */
   _rebuildCurve() {
     const A = this._curA
@@ -249,7 +262,9 @@ export class VerletWire {
     const midZ = (A.z + B.z) * 0.5
     const midY = Math.max(
       TABLE_Y + this.radius + 0.004,
-      Math.min(A.y, B.y) - Math.min(0.62, flat * 0.5)
+      Math.min(A.y, B.y) - Math.min(0.62, flat * 0.5),
+      // 中点被抬高到"中间器材的顶面之上"，避免导线从仪器壳体内部穿过去
+      this._clearY != null ? this._clearY : -Infinity
     )
     // 长线略往法线方向让一点，避免贴着某件器材的边擦过去
     c[1].set(midX + (dz / flat) * 0.10, midY, midZ - (dx / flat) * 0.10)

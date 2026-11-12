@@ -916,6 +916,27 @@ export function createLabRenderer(container, opt = {}) {
         }
       }
       if (!pa || !pb) continue
+      // 导线跨越检测：如果两端之间的中点落在**另一件器材**的占地范围内，
+      // 就把线抬到那件器材顶上，别让它从仪器壳体里穿过去（不符合常识）。
+      let clearY = null
+      {
+        const mx = (pa.x + pb.x) * 0.5
+        const mz = (pa.z + pb.z) * 0.5
+        for (const [eid, en] of equips) {
+          if (!en || !en.group) continue
+          if (String(eid) === String(ca) || String(eid) === String(cb)) continue
+          const t = TYPES[en.type]
+          if (!t) continue
+          const half = t.w * SCALE * 0.5 + 0.16
+          const gx = en.group.position.x
+          const gz = en.group.position.z
+          if (Math.abs(mx - gx) <= half && Math.abs(mz - gz) <= half) {
+            const top = t.h * SCALE + 0.14
+            clearY = Math.max(clearY == null ? -Infinity : clearY, top)
+          }
+        }
+      }
+      rec.wire.setClearance(clearY)
       rec.wire.pin(pa, pb)
       if (!rec.seeded) {
         rec.wire.reseed()
@@ -1412,6 +1433,15 @@ export function createLabRenderer(container, opt = {}) {
     if (e.key === 'Escape') {
       if (pending) cancelPending()
       resetCamera()
+      return
+    }
+    // 选中器材后按 Delete / Backspace 删除（拖错了不用清空整张桌面）
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selected && selected.kind === 'comp') {
+      const tag = document.activeElement && document.activeElement.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return // 输入框里退格不删器材
+      e.preventDefault()
+      opt.onDeleteComp && opt.onDeleteComp(selected.id)
+      setSelection(null)
     }
   }
 
