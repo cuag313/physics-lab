@@ -994,10 +994,10 @@ function buildAmmeterA(w, h, terms = []) {
     const tex = new THREE.CanvasTexture(labelCanvas)
     tex.colorSpace = THREE.SRGBColorSpace
     const lm = new THREE.Mesh(
-      new THREE.PlaneGeometry(W - 0.06, 0.1),
+      new THREE.PlaneGeometry(W - 0.06, 0.042),
       new THREE.MeshBasicMaterial({ map: tex })
     )
-    lm.position.set(0, 0.016, baseD / 2 + 0.012)
+    lm.position.set(0, 0.027, baseD / 2 + 0.010)
     g.add(lm)
   }
 
