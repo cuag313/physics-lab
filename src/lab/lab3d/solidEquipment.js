@@ -289,10 +289,17 @@ function makePost(id = '', forceNeg) {
   knob.position.y = 0.115
   g.add(knob)
 
-  // 旋钮顶部的凹槽 + 中心凸起（实物接线柱的压线螺钉）
-  const cap = cyl(0.03, 0.03, 0.012, std(isNeg ? '#3a3f45' : '#e0483f', { roughness: 0.5 }), 14)
-  cap.position.y = 0.152
-  g.add(cap)
+  // 顶面：实物接线柱是**平顶 + 中心一个压线螺钉的凹孔**，不是圆顶。
+  // 这里用"齐平的深色圆片（凹孔底）+ 一圈齐平亮环（凹孔边）"表现，
+  // 全部与旋钮顶面同高，不再往上叠一个凸台（旧版的"圆顶/重叠"就是那个 cap）。
+  const knobTop = 0.115 + 0.062 / 2 // 0.146
+  const hole = cyl(0.029, 0.029, 0.004, std('#22262c', { roughness: 0.85, metalness: 0.1 }), 16)
+  hole.position.y = knobTop - 0.002
+  g.add(hole)
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.029, 0.0032, 8, 22), MAT.steel())
+  rim.rotation.x = Math.PI / 2
+  rim.position.y = knobTop + 0.0005
+  g.add(rim)
 
   g.userData.role = 'post'
   g.userData.neg = isNeg
@@ -1484,7 +1491,8 @@ export function renderIcon(type, opt = {}) {
   const size = opt.size || 132
   if (!_iconR) {
     _iconR = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true })
-    _iconR.setPixelRatio(1)
+    // 离屏图标以前按 1 倍像素渲染，132px 画布放大到界面里就糊了 —— 这里按 2 倍出图
+    _iconR.setPixelRatio(2)
   }
   _iconR.setSize(size, size, false)
   _iconR.setClearColor(0x000000, 0)

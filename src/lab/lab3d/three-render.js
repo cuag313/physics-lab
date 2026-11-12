@@ -448,9 +448,10 @@ export function createLabRenderer(container, opt = {}) {
       const s = new THREE.Mesh(g, m)
       const post = posts.get(String(tm.id))
       if (post) {
-        // 柱的局部原点在柱底、柱身高约 0.15：命中球放在柱中段，
-        // 导线端点也就钉在柱身上，不再悬在壳体旁边。
-        s.position.set(0, 0.09, 0)
+        // 柱的局部原点在柱底、柱身净高 0.146：命中球放到**柱帽顶面**，
+        // 导线端点才会落在柱头上；放在 0.09（柱中段）会让导线头插进柱身，
+        // 视觉上就是"线没有接在柱子上"。
+        s.position.set(0, 0.148, 0)
         post.add(s)
       } else if (stand) {
         // 立式：端子长在竖直面板上，高度按 SVG 的 y 换算；
