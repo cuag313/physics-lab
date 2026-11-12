@@ -905,7 +905,7 @@ function ammeterFaceA() {
   // 负量程段：8 条短线（最左一条是端线，略粗）
   for (let i = 0; i <= 8; i++) {
     const a = AL + (AZ - AL) * (i / 8)
-    tick(a, Hc * 0.049, i === 0 ? 2.6 : 1.3, i === 0 ? '#14171b' : '#4e545a')
+    tick(a, Hc * 0.049, i === 0 ? 3.2 : 1.7, i === 0 ? '#14171b' : '#3a4046')
   }
   // 正量程段：30 小格（0.02A 一格，0.1A 中刻度、0.2A 主刻度）
   for (let i = 0; i <= 30; i++) {
@@ -913,7 +913,7 @@ function ammeterFaceA() {
     const major = i % 10 === 0
     const mid = i % 5 === 0
     const len = major ? Hc * 0.068 : mid ? Hc * 0.058 : Hc * 0.049
-    tick(a, len, major ? 3.4 : mid ? 2 : 1.3, major ? '#14171b' : '#4e545a')
+    tick(a, len, major ? 4 : mid ? 2.4 : 1.7, major ? '#14171b' : '#3a4046')
   }
 
   const mark = (a, str, rr, size, color) => {
@@ -930,11 +930,11 @@ function ammeterFaceA() {
   // 外圈 0/1/2/3（3A 量程）
   for (let v = 0; v <= 3; v++) mark(AZ + (AR - AZ) * (v / 3), String(v), Hc * 0.869, Hc * 0.136, '#14171b')
   // 内圈 0.2/0.4/0.6（0.6A 量程）
-  mark(AZ + (AR - AZ) / 3, '0.2', Hc * 0.665, Hc * 0.094, '#1c2026')
-  mark(AZ + (AR - AZ) * 2 / 3, '0.4', Hc * 0.665, Hc * 0.094, '#1c2026')
-  mark(AR, '0.6', Hc * 0.665, Hc * 0.094, '#1c2026')
+  mark(AZ + (AR - AZ) / 3, '0.2', Hc * 0.63, Hc * 0.09, '#1c2026')
+  mark(AZ + (AR - AZ) * 2 / 3, '0.4', Hc * 0.63, Hc * 0.09, '#1c2026')
+  mark(AR, '0.6', Hc * 0.63, Hc * 0.09, '#1c2026')
   // 负量程端那个 0.2（前面配 −，读作 −0.2）
-  mark(Math.PI * (233 / 180), '0.2', Hc * 0.665, Hc * 0.094, '#1c2026')
+  mark(Math.PI * (233 / 180), '0.2', Hc * 0.63, Hc * 0.09, '#1c2026')
 
   const sym = (a, str, rr, size) => {
     g.save()

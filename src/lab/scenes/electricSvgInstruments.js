@@ -361,10 +361,10 @@ function ammeterFaceSVG(x, y, w, h) {
 
   let nums = ''
   for (let v = 0; v <= 3; v++) nums += mark(AZ + (AR - AZ) * (v / 3), String(v), h * 0.869, h * 0.136, '#14171b')
-  nums += mark(AZ + (AR - AZ) / 3, '0.2', h * 0.665, h * 0.094, '#1c2026')
-  nums += mark(AZ + (AR - AZ) * 2 / 3, '0.4', h * 0.665, h * 0.094, '#1c2026')
-  nums += mark(AR, '0.6', h * 0.665, h * 0.094, '#1c2026')
-  nums += mark(233, '0.2', h * 0.665, h * 0.094, '#1c2026')
+  nums += mark(AZ + (AR - AZ) / 3, '0.2', h * 0.63, h * 0.09, '#1c2026')
+  nums += mark(AZ + (AR - AZ) * 2 / 3, '0.4', h * 0.63, h * 0.09, '#1c2026')
+  nums += mark(AR, '0.6', h * 0.63, h * 0.09, '#1c2026')
+  nums += mark(233, '0.2', h * 0.63, h * 0.09, '#1c2026')
 
   return `
     <rect x="${F(x)}" y="${F(y)}" width="${F(w)}" height="${F(h)}" fill="url(#es-g-meterfaceA)"/>
