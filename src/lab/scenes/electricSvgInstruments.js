@@ -313,6 +313,59 @@ function needleSVG(px, py, len, frac) {
     <circle cx="${px}" cy="${py}" r="3.6" fill="#2b3038"/>`
 }
 
+/**
+ * 安培表表盘（2D 图纸层自绘）：**一条共用刻度弧带**，外圈 0/1/2/3、内圈 0.2/0.4/0.6
+ * 都用这条带，数字沿弧线倾斜，左端 −、右端 ±，中央大字 A（A 下有短横线），
+ * 盘面浅灰白径向渐变，指针轴处画银色轴盖。
+ * 用它盖住实拍照片上原本的表盘和那根固定的针，2D 上就只剩一根动态红针。
+ */
+function ammeterFaceSVG(x, y, w, h) {
+  const cx = x + w / 2
+  const R = h * 0.69
+  const cy = y + h * 0.795
+  const a0 = 220
+  const a1 = 320
+  const rad = (d) => (d * Math.PI) / 180
+  const F = (v) => v.toFixed(1)
+
+  let ticks = ''
+  for (let i = 0; i <= 30; i++) {
+    const a = rad(a0 + (a1 - a0) * (i / 30))
+    const major = i % 10 === 0
+    const mid = i % 5 === 0
+    const len = major ? h * 0.155 : mid ? h * 0.105 : h * 0.055
+    ticks += `<line x1="${F(cx + Math.cos(a) * R)}" y1="${F(cy + Math.sin(a) * R)}" x2="${F(cx + Math.cos(a) * (R - len))}" y2="${F(cy + Math.sin(a) * (R - len))}" stroke="${major ? '#1c2026' : '#565c62'}" stroke-width="${major ? 1.25 : 0.7}"/>`
+  }
+
+  const mark = (t, str, rr, size) => {
+    const a = rad(a0 + (a1 - a0) * t)
+    const deg = (a * 180) / Math.PI + 90
+    return `<text x="${F(cx + Math.cos(a) * rr)}" y="${F(cy + Math.sin(a) * rr)}" transform="rotate(${F(deg)} ${F(cx + Math.cos(a) * rr)} ${F(cy + Math.sin(a) * rr)})" text-anchor="middle" font-size="${F(size)}" font-weight="700" fill="#1e2228">${str}</text>`
+  }
+
+  let nums = ''
+  for (let v = 0; v <= 3; v++) nums += mark(v / 3, String(v), R + h * 0.06, h * 0.155)
+  nums += mark(1 / 3, '0.2', R - h * 0.12, h * 0.135)
+  nums += mark(2 / 3, '0.4', R - h * 0.12, h * 0.135)
+  nums += mark(1, '0.6', R - h * 0.12, h * 0.135)
+
+  const sym = (degBase, str, size) => {
+    const a = rad(degBase)
+    const deg = (a * 180) / Math.PI + 90
+    const rr = R + h * 0.03
+    return `<text x="${F(cx + Math.cos(a) * rr)}" y="${F(cy + Math.sin(a) * rr)}" transform="rotate(${F(deg)} ${F(cx + Math.cos(a) * rr)} ${F(cy + Math.sin(a) * rr)})" text-anchor="middle" font-size="${F(size)}" font-weight="700" fill="#242a30">${str}</text>`
+  }
+
+  return `
+    <rect x="${F(x)}" y="${F(y)}" width="${F(w)}" height="${F(h)}" fill="url(#es-g-meterfaceA)"/>
+    ${ticks}
+    ${nums}
+    ${sym(a0 - 8, '\u2212', h * 0.145)}
+    ${sym(a1 + 8, '\u00b1', h * 0.135)}
+    <text x="${F(cx)}" y="${F(cy - h * 0.20)}" text-anchor="middle" font-size="${F(h * 0.30)}" font-weight="700" fill="#33373d">A</text>
+    <rect x="${F(cx - w * 0.15)}" y="${F(cy - h * 0.135)}" width="${F(w * 0.30)}" height="1.2" fill="#3f444a"/>`
+}
+
 /** 接线柱圆点叠层：黑、红、红（金属座圈 + 彩色柱帽，照片缺中柱时补齐三个柱位） */
 function termDotsSVG(dots) {
   return dots.map(({ x, y, label, dark }) => `
@@ -574,11 +627,25 @@ export const TYPES = {
       { id: 'full', label: '3', name: '3A 接线柱', x: 115, y: 120 },
     ],
     render(c, dyn) {
+      const frac = Math.max(0, Math.min(1, dyn?.frac || 0))
+      const ang = (-52 + frac * 104).toFixed(2)
       return `
     <svg width="150" height="150" viewBox="0 0 150 150">
-      ${fitInner(150, 150, 150, 150, INNER.meter((dyn?.frac || 0) * 22))}
+      <defs>
+        <radialGradient id="es-g-meterfaceA" cx="50%" cy="38%" r="62%">
+          <stop offset="0%" stop-color="#fdfcfa"/>
+          <stop offset="55%" stop-color="#f8f7f3"/>
+          <stop offset="100%" stop-color="#ebeae5"/>
+        </radialGradient>
+      </defs>
+      ${fitInner(150, 150, 150, 150, INNER.meter(frac * 22))}
       ${photo('ammeterA_c.png', 150, 150)}
-      ${needleSVG(75, 89, 66, dyn?.frac || 0)}
+      <rect x="17.6" y="11.7" width="114.8" height="97.4" rx="1.6" fill="#0f1215"/>
+      ${ammeterFaceSVG(18.8, 12.9, 112.5, 94.9)}
+      <line x1="75" y1="88.3" x2="75" y2="24.3" stroke="#d01f24" stroke-width="1.7" stroke-linecap="round"
+        transform="rotate(${ang} 75 88.3)"/>
+      <circle cx="75" cy="88.3" r="3.4" fill="#cdd2d7" stroke="#98a0a8" stroke-width="0.8"/>
+      <circle cx="75" cy="88.3" r="1.2" fill="#7d858d"/>
     </svg>` }
   },
 
