@@ -513,35 +513,35 @@ function buildBulb(w, h) {
     return { group: g, bulbMat: filMat, glassMat, shell }
   }
 
-  // 底板（实物是浅灰塑料薄板，不是黑板条）；进深按实拍图 176×83 的比例取 0.70
-  const base = rbox(w * SCALE * 0.94, 0.045, 0.7, 0.015, std('#d6d9de', { roughness: 0.62 }), 0, 0.0225, 0)
+  // 底板（实物是浅灰塑料薄板）：板要够厚，图纸上前缘能看到明显的一条板边
+  const base = rbox(w * SCALE * 0.96, 0.075, 0.70, 0.016, std('#d8dbe0', { roughness: 0.6 }), 0, 0.0375, 0)
   shell.push(base)
-  // 黑胶木灯座（实物灯座矮而粗，不是细高瓷柱）；按 176×83 的图：座高约 0.34、座径约 0.40
-  const socket = cyl(0.19, 0.2, 0.34, std('#22262c', { roughness: 0.68, metalness: 0.03 }), 24)
-  socket.position.y = 0.215
+  // 黑胶木灯座（图纸上是"矮而粗"的圆台，座径约 0.45、座高约 0.30；细高就成了瓷柱）
+  const socket = cyl(0.215, 0.225, 0.30, std('#22262c', { roughness: 0.68, metalness: 0.03 }), 24)
+  socket.position.y = 0.225
   shell.push(socket)
   // 灯座顶面金属承口（螺纹在承口里面）
-  const cup = cyl(0.128, 0.132, 0.022, MAT.steel(), 20)
-  cup.position.y = 0.39
+  const cup = cyl(0.138, 0.142, 0.022, MAT.steel(), 20)
+  cup.position.y = 0.395
   shell.push(cup)
   for (const m of shell) g.add(m)
 
   // 连续螺纹的灯口（原来用几个圆环叠，近景能看到环间空当）
-  const screw = helixTube(0.124, 0.4, 0.55, 4.5, 0.0085, MAT.steel())
+  const screw = helixTube(0.130, 0.40, 0.55, 4.5, 0.0085, MAT.steel())
   g.add(screw)
   // 灯口内芯
-  const core = cyl(0.104, 0.104, 0.15, std('#8b9099', { roughness: 0.5, metalness: 0.3 }), 16)
+  const core = cyl(0.108, 0.108, 0.15, std('#8b9099', { roughness: 0.5, metalness: 0.3 }), 16)
   core.position.y = 0.47
   g.add(core)
 
-  // 玻璃：颈部 + 泡体。尺寸按实拍图定（泡径明显大于灯座，约 5.5cm）
-  const neck = cyl(0.12, 0.1, 0.12, glassMat, 18)
-  neck.position.y = 0.56
+  // 玻璃：颈部 + 泡体。图纸上泡径 ≈ 0.60（相对总宽 1.76 的 1/3），明显大于灯座
+  const neck = cyl(0.135, 0.115, 0.13, glassMat, 18)
+  neck.position.y = 0.57
   neck.castShadow = false
   g.add(neck)
-  const globe = new THREE.Mesh(new THREE.SphereGeometry(0.275, 32, 24), glassMat)
-  globe.position.y = 0.72
-  globe.scale.y = 1.1
+  const globe = new THREE.Mesh(new THREE.SphereGeometry(0.305, 32, 24), glassMat)
+  globe.position.y = 0.745
+  globe.scale.y = 1.12
   globe.castShadow = false
   g.add(globe)
 

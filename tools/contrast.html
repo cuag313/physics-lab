@@ -53,6 +53,7 @@ const types = (qs.get('t') || 'battery,switch,ammeter,rheostat,bulb,voltmeter').
 const VIEWS = (qs.get('v') || 'front,top').split(',')
 const H = Number(qs.get('h') || 170)          // 图纸高（px），宽度按 w/h 自动
 const wrap = document.getElementById('wrap')
+const rows3d = [] // 需要重画的 3D 行（GLB 异步就绪后要再渲一次）
 
 function cell(width, capHtml) {
   const c = document.createElement('div')
@@ -80,6 +81,7 @@ for (const t of types) {
   }
   const row = document.createElement('div')
   row.className = 'row'
+  row.dataset.type = t
 
   // ① 图纸：SVG render 原样
   const pw = Math.round(H * def.w / def.h)
@@ -116,9 +118,31 @@ for (const t of types) {
   }
 
   wrap.appendChild(row)
-  // 让下一件先渲染：renderIcon 是同步离屏渲染，逐件串行不影响
+
+  // 记下每格：GLB 异步加载完成后（gear-ready）要重画一次，否则看到的是代码兜底几何
+  if (VIEWS.length) rows3d.push(row)
   await new Promise((r) => setTimeout(r, 60))
 }
+
+/** GLB 就绪后重画所有 3D 格（第一次渲染必然是代码兜底几何） */
+function repaint3d() {
+  for (const row of rows3d) {
+    const pics = row.querySelectorAll('.pic')
+    for (let i = 1; i < pics.length; i++) {
+      const t = row.dataset.type
+      let url = ''
+      try {
+        url = renderIcon(t, { size: Math.round(H * 3), view: VIEWS[i - 1], terminals: (TYPES[t] || {}).terminals })
+      } catch (e) { url = '' }
+      if (!url) continue
+      const old = pics[i].querySelector('img')
+      if (old) old.src = url
+    }
+  }
+}
+window.addEventListener('gear-ready', () => setTimeout(repaint3d, 120))
+setTimeout(repaint3d, 1800)
+
 document.body.dataset.contrast = 'done:' + types.length
 </script>
 </body>
