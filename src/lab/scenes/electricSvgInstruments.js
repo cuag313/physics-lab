@@ -314,57 +314,66 @@ function needleSVG(px, py, len, frac) {
 }
 
 /**
- * 安培表表盘（2D 图纸层自绘）：**一条共用刻度弧带**，外圈 0/1/2/3、内圈 0.2/0.4/0.6
- * 都用这条带，数字沿弧线倾斜，左端 −、右端 ±，中央大字 A（A 下有短横线），
- * 盘面浅灰白径向渐变，指针轴处画银色轴盖。
- * 用它盖住实拍照片上原本的表盘和那根固定的针，2D 上就只剩一根动态红针。
+ * 安培表表盘（2D 图纸层，**与 3D 的 ammeterFaceA 同一套实测几何**）。
+ * 实测自 iconsnewname\8电流表.png：轴心在白面板自顶 0.97H 处，刻度带外缘 0.746H，
+ * 带左端 228.6°、零点 246.3°、右端 307°；左段是负量程（标 −、内圈 -0.2）；
+ * 外圈 0/1/2/3 在 0.869H，内圈 0.2/0.4/0.6 在 0.683H；每格刻度是斜齿。
+ * 用它盖住实拍照片原本印的表盘和固定红针，2D 上只留一根动态针。
  */
 function ammeterFaceSVG(x, y, w, h) {
   const cx = x + w / 2
-  const R = h * 0.556
-  const cy = y + h * 0.80
-  const a0 = 220
-  const a1 = 320
+  const cy = y + h * 0.97
+  const R = h * 0.746
+  const AL = 228.6
+  const AZ = 246.3
+  const AR = 307
   const rad = (d) => (d * Math.PI) / 180
   const F = (v) => v.toFixed(1)
+  const SKEW = 0.38 * 180 / Math.PI
+
+  const at = (a, rr) => [cx + Math.cos(rad(a)) * rr, cy + Math.sin(rad(a)) * rr]
 
   let ticks = ''
+  const tick = (a, len, sw, color) => {
+    const [x1, y1] = at(a, R)
+    const [x2, y2] = at(a + SKEW, R - len)
+    ticks += `<line x1="${F(x1)}" y1="${F(y1)}" x2="${F(x2)}" y2="${F(y2)}" stroke="${color}" stroke-width="${F(sw)}"/>`
+  }
+  // 负量程段
+  for (let i = 0; i <= 8; i++) {
+    const a = AL + (AZ - AL) * (i / 8)
+    tick(a, h * 0.049, i === 0 ? 1.5 : 0.75, i === 0 ? '#14171b' : '#4e545a')
+  }
+  // 正量程段 30 小格
   for (let i = 0; i <= 30; i++) {
-    const a = rad(a0 + (a1 - a0) * (i / 30))
-    const da = a + 0.38 // 短齿是斜的（与径向差约 22°）
+    const a = AZ + (AR - AZ) * (i / 30)
     const major = i % 10 === 0
     const mid = i % 5 === 0
-    const len = major ? h * 0.072 : mid ? h * 0.062 : h * 0.055
-    ticks += `<line x1="${F(cx + Math.cos(a) * R)}" y1="${F(cy + Math.sin(a) * R)}" x2="${F(cx + Math.cos(da) * (R - len))}" y2="${F(cy + Math.sin(da) * (R - len))}" stroke="${major ? '#14171b' : '#4e545a'}" stroke-width="${major ? 1.5 : mid ? 0.9 : 0.6}"/>`
+    const len = major ? h * 0.068 : mid ? h * 0.058 : h * 0.049
+    tick(a, len, major ? 1.6 : mid ? 0.9 : 0.6, major ? '#14171b' : '#4e545a')
   }
 
-  const mark = (t, str, rr, size) => {
-    const a = rad(a0 + (a1 - a0) * t)
-    const deg = (a * 180) / Math.PI + 90
-    return `<text x="${F(cx + Math.cos(a) * rr)}" y="${F(cy + Math.sin(a) * rr)}" transform="rotate(${F(deg)} ${F(cx + Math.cos(a) * rr)} ${F(cy + Math.sin(a) * rr)})" text-anchor="middle" font-size="${F(size)}" font-weight="700" fill="#1e2228">${str}</text>`
+  const mark = (a, str, rr, size, color) => {
+    const [tx, ty] = at(a, rr)
+    const deg = a + 90
+    return `<text x="${F(tx)}" y="${F(ty)}" transform="rotate(${F(deg)} ${F(tx)} ${F(ty)})" text-anchor="middle" dominant-baseline="middle" font-size="${F(size)}" font-weight="700" fill="${color}">${str}</text>`
   }
 
   let nums = ''
-  for (let v = 0; v <= 3; v++) nums += mark(v / 3, String(v), h * 0.665, h * 0.165)
-  nums += mark(1 / 3, '0.2', h * 0.435, h * 0.118)
-  nums += mark(2 / 3, '0.4', h * 0.435, h * 0.118)
-  nums += mark(1, '0.6', h * 0.435, h * 0.118)
-
-  const sym = (degBase, str, size) => {
-    const a = rad(degBase)
-    const deg = (a * 180) / Math.PI + 90
-    const rr = h * 0.63
-    return `<text x="${F(cx + Math.cos(a) * rr)}" y="${F(cy + Math.sin(a) * rr)}" transform="rotate(${F(deg)} ${F(cx + Math.cos(a) * rr)} ${F(cy + Math.sin(a) * rr)})" text-anchor="middle" font-size="${F(size)}" font-weight="700" fill="#242a30">${str}</text>`
-  }
+  for (let v = 0; v <= 3; v++) nums += mark(AZ + (AR - AZ) * (v / 3), String(v), h * 0.869, h * 0.136, '#14171b')
+  nums += mark(AZ + (AR - AZ) / 3, '0.2', h * 0.665, h * 0.094, '#1c2026')
+  nums += mark(AZ + (AR - AZ) * 2 / 3, '0.4', h * 0.665, h * 0.094, '#1c2026')
+  nums += mark(AR, '0.6', h * 0.665, h * 0.094, '#1c2026')
+  nums += mark(233, '0.2', h * 0.665, h * 0.094, '#1c2026')
 
   return `
     <rect x="${F(x)}" y="${F(y)}" width="${F(w)}" height="${F(h)}" fill="url(#es-g-meterfaceA)"/>
     ${ticks}
     ${nums}
-    ${sym(a0 - 8, '\u2212', h * 0.145)}
-    ${sym(a1 + 8, '\u00b1', h * 0.135)}
-    <text x="${F(cx)}" y="${F(cy - h * 0.20)}" text-anchor="middle" font-size="${F(h * 0.25)}" font-weight="700" fill="#1e2228">A</text>
-    <rect x="${F(cx - w * 0.16)}" y="${F(cy - h * 0.135)}" width="${F(w * 0.32)}" height="1.1" fill="#3f444a"/>`
+    ${mark(AL, '\u2212', h * 0.82, h * 0.14, '#2b2f35')}
+    ${mark(313, '\u00b1', h * 0.80, h * 0.135, '#2b2f35')}
+    <text x="${F(cx)}" y="${F(cy - h * 0.503)}" text-anchor="middle" dominant-baseline="middle" font-size="${F(h * 0.218)}" font-weight="700" fill="#33373d">A</text>
+    <rect x="${F(cx - 46 * h / 434)}" y="${F(cy - h * 0.415)}" width="${F(92 * h / 434)}" height="1.1" fill="#3f444a"/>`
 }
 
 /** 接线柱圆点叠层：黑、红、红（金属座圈 + 彩色柱帽，照片缺中柱时补齐三个柱位） */
@@ -643,10 +652,10 @@ export const TYPES = {
       ${photo('ammeterA_c.png', 150, 150)}
       <rect x="17.6" y="11.7" width="114.8" height="97.4" rx="1.6" fill="#0f1215"/>
       ${ammeterFaceSVG(18.8, 12.9, 112.5, 94.9)}
-      <line x1="75" y1="88.3" x2="75" y2="24.3" stroke="#d01f24" stroke-width="1.7" stroke-linecap="round"
-        transform="rotate(${ang} 75 88.3)"/>
-      <circle cx="75" cy="88.3" r="3.4" fill="#cdd2d7" stroke="#98a0a8" stroke-width="0.8"/>
-      <circle cx="75" cy="88.3" r="1.2" fill="#7d858d"/>
+      <line x1="75" y1="105" x2="75" y2="38" stroke="#d01f24" stroke-width="1.7" stroke-linecap="round"
+        transform="rotate(${ang} 75 105)"/>
+      <circle cx="75" cy="105" r="3.4" fill="#cdd2d7" stroke="#98a0a8" stroke-width="0.8"/>
+      <circle cx="75" cy="105" r="1.2" fill="#7d858d"/>
     </svg>` }
   },
 

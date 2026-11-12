@@ -855,23 +855,27 @@ function knurlMap() {
 }
 
 /**
- * 安培表表盘：**一条共用刻度弧带**（外圈 0/1/2/3，内圈 0.2/0.4/0.6 都用这条带），
- * 数字沿弧线方向倾斜，左端 −、右端 ±，中央大字 A（A 下有一根短横线），
- * 盘面是中心略亮的浅灰白径向渐变，指针轴处有银色轴盖。
- * 基准：iconsnewname\8电流表.png（256×256 实拍）。
+ * 安培表表盘（**按像素实测的几何**，基准 iconsnewname\8电流表.png 256×256）。
+ *
+ * 实测（极坐标扫描刻度带上缘拟合圆，圆心 (130,200)，白面板 y22..205）：
+ *   轴心在白面板自顶 0.97H 处（面板下方，不是中间）；
+ *   刻度带外缘半径 0.746H、带厚 0.049H；
+ *   带左端 228.6°、零点 246.3°、右端 307°（canvas 角，270° 为正上）；
+ *   左段 228.6°→246.3° 是**负量程**（标 −，内圈标 -0.2），右段才是 0~3 / 0~0.6；
+ *   外圈 0/1/2/3 在 0.869H、字高 0.142H；内圈 0.2/0.4/0.6 在 0.683H、字高 0.098H；
+ *   − 在 0.82H、± 在 0.80H；A 字高 0.218H、中心在轴上方 0.503H。
+ *   每一格刻度是**斜齿**（与径向差 0.38rad），密排像毛刷，不是放射线。
  */
 function ammeterFaceA() {
-  // 画布宽高比 = 白面板宽高比（1.125 : 0.95）
   const S = 512
-  const Hc = 434
+  const Hc = Math.round(S * 183 / 192) // 白面板 192×183 → 宽高比 1.049
   const cv = document.createElement('canvas')
   cv.width = S
   cv.height = Hc
   const g = cv.getContext && cv.getContext('2d')
   if (!g) return null
 
-  // 盘面：中心略亮、边缘略暗
-  const grad = g.createRadialGradient(S * 0.5, Hc * 0.40, 40, S * 0.5, Hc * 0.55, 340)
+  const grad = g.createRadialGradient(S * 0.5, Hc * 0.45, 40, S * 0.5, Hc * 0.6, 360)
   grad.addColorStop(0, '#fdfcfa')
   grad.addColorStop(0.55, '#f8f7f3')
   grad.addColorStop(1, '#ebeae5')
@@ -879,88 +883,94 @@ function ammeterFaceA() {
   g.fillRect(0, 0, S, Hc)
 
   const cx = S / 2
-  const cy = Hc * 0.80 // 指针轴：面板自底往上 20% 处
-  // 半径全部按实拍量出来的比例（面板高 = Hc）：
-  //   刻度带外缘 0.556H、带厚 0.055H、外圈数字 0.66H、内圈数字 0.42H
-  const R = Hc * 0.556
-  const a0 = Math.PI * (220 / 180) // 弧带左端（canvas 里 270° 是正上）
-  const a1 = Math.PI * (320 / 180) // 弧带右端
+  const cy = Hc * 0.97
+  const R = Hc * 0.746
+  const AL = Math.PI * (228.6 / 180)
+  const AZ = Math.PI * (246.3 / 180)
+  const AR = Math.PI * (307 / 180)
   const cos = Math.cos
   const sin = Math.sin
 
-  // 共用刻度带：0~0.6 分 30 小格（0.02 A 一格，0.1 A 中刻度、0.2 A 主刻度）。
-  // 实拍上每一格是**斜的短齿**（与径向差约 22°），不是规规矩矩指向圆心的射线。
   g.lineCap = 'butt'
   const SKEW = 0.38
-  for (let i = 0; i <= 30; i++) {
-    const a = a0 + (a1 - a0) * (i / 30)
-    const major = i % 10 === 0
-    const mid = i % 5 === 0
-    const len = major ? Hc * 0.072 : mid ? Hc * 0.062 : Hc * 0.055
-    g.strokeStyle = major ? '#14171b' : '#4e545a'
-    g.lineWidth = major ? 3.4 : mid ? 2 : 1.3
+  const tick = (a, len, w, color) => {
     const da = a + SKEW
+    g.strokeStyle = color
+    g.lineWidth = w
     g.beginPath()
     g.moveTo(cx + cos(a) * R, cy + sin(a) * R)
     g.lineTo(cx + cos(da) * (R - len), cy + sin(da) * (R - len))
     g.stroke()
   }
+  // 负量程段：8 条短线（最左一条是端线，略粗）
+  for (let i = 0; i <= 8; i++) {
+    const a = AL + (AZ - AL) * (i / 8)
+    tick(a, Hc * 0.049, i === 0 ? 2.6 : 1.3, i === 0 ? '#14171b' : '#4e545a')
+  }
+  // 正量程段：30 小格（0.02A 一格，0.1A 中刻度、0.2A 主刻度）
+  for (let i = 0; i <= 30; i++) {
+    const a = AZ + (AR - AZ) * (i / 30)
+    const major = i % 10 === 0
+    const mid = i % 5 === 0
+    const len = major ? Hc * 0.068 : mid ? Hc * 0.058 : Hc * 0.049
+    tick(a, len, major ? 3.4 : mid ? 2 : 1.3, major ? '#14171b' : '#4e545a')
+  }
 
-  // 数字：沿弧线方向倾斜（t ∈ [0,1] 是整段弧上的位置）
-  const mark = (t, str, rr, size, color) => {
-    const a = a0 + (a1 - a0) * t
+  const mark = (a, str, rr, size, color) => {
     g.save()
     g.translate(cx + cos(a) * rr, cy + sin(a) * rr)
     g.rotate(a + Math.PI / 2)
     g.fillStyle = color
-    g.font = 'bold ' + size + 'px sans-serif'
+    g.font = 'bold ' + Math.round(size) + 'px sans-serif'
     g.textAlign = 'center'
     g.textBaseline = 'middle'
     g.fillText(str, 0, 0)
     g.restore()
   }
-  // 外圈 0/1/2/3（量程 3 A，紧贴刻度带外侧，字高 0.185H）
-  for (let v = 0; v <= 3; v++) mark(v / 3, String(v), Hc * 0.665, Hc * 0.165, '#14171b')
-  // 内圈 0.2/0.4/0.6（量程 0.6 A，紧贴带内侧；起点就是 0.2，没有 0；字略小 0.16H）
-  mark(1 / 3, '0.2', Hc * 0.435, Hc * 0.118, '#1c2026')
-  mark(2 / 3, '0.4', Hc * 0.435, Hc * 0.118, '#1c2026')
-  mark(1, '0.6', Hc * 0.435, Hc * 0.118, '#1c2026')
+  // 外圈 0/1/2/3（3A 量程）
+  for (let v = 0; v <= 3; v++) mark(AZ + (AR - AZ) * (v / 3), String(v), Hc * 0.869, Hc * 0.136, '#14171b')
+  // 内圈 0.2/0.4/0.6（0.6A 量程）
+  mark(AZ + (AR - AZ) / 3, '0.2', Hc * 0.665, Hc * 0.094, '#1c2026')
+  mark(AZ + (AR - AZ) * 2 / 3, '0.4', Hc * 0.665, Hc * 0.094, '#1c2026')
+  mark(AR, '0.6', Hc * 0.665, Hc * 0.094, '#1c2026')
+  // 负量程端那个 0.2（前面配 −，读作 −0.2）
+  mark(Math.PI * (233 / 180), '0.2', Hc * 0.665, Hc * 0.094, '#1c2026')
 
-  // 两端符号：左 −（弧带最左头外侧），右 ±（弧带最右头外侧）
   const sym = (a, str, rr, size) => {
     g.save()
     g.translate(cx + cos(a) * rr, cy + sin(a) * rr)
     g.rotate(a + Math.PI / 2)
     g.fillStyle = '#2b2f35'
-    g.font = 'bold ' + size + 'px sans-serif'
+    g.font = 'bold ' + Math.round(size) + 'px sans-serif'
     g.textAlign = 'center'
     g.textBaseline = 'middle'
     g.fillText(str, 0, 0)
     g.restore()
   }
-  sym(a0 - 0.12, '\u2212', Hc * 0.63, Hc * 0.17)
-  sym(a1 + 0.12, '\u00b1', Hc * 0.62, Hc * 0.16)
+  sym(AL, '\u2212', Hc * 0.82, Hc * 0.14)
+  sym(Math.PI * (313 / 180), '\u00b1', Hc * 0.80, Hc * 0.135)
 
-  // 中央大字 A + A 下方的短横线
+  // 中央大字 A + A 下方短横线
   g.fillStyle = '#33373d'
   g.textAlign = 'center'
   g.textBaseline = 'middle'
-  g.font = 'bold 110px sans-serif'
-  g.fillText('A', cx, cy - 117)
+  g.font = 'bold ' + Math.round(Hc * 0.218) + 'px sans-serif'
+  g.fillText('A', cx, cy - Hc * 0.503)
   g.fillStyle = '#3f444a'
-  g.fillRect(cx - 46, cy - 62, 92, 4)
+  g.fillRect(cx - 46, cy - Hc * 0.415, 92, 4)
 
-  // 指针轴盖（银色小圆，带高光）
+  // 指针轴盖
+  const ar = Math.round(Hc * 0.042)
   g.beginPath()
-  g.arc(cx, cy, 17, 0, Math.PI * 2)
+  g.arc(cx, cy, ar, 0, Math.PI * 2)
   g.fillStyle = '#cdd2d7'
   g.fill()
   g.beginPath()
-  g.arc(cx, cy - 4, 12, 0, Math.PI * 2)
+  g.arc(cx, cy - ar * 0.24, ar * 0.7, 0, Math.PI * 2)
   g.fillStyle = '#eef2f5'
   g.fill()
   g.beginPath()
-  g.arc(cx, cy + 3, 9, 0, Math.PI * 2)
+  g.arc(cx, cy + ar * 0.18, ar * 0.52, 0, Math.PI * 2)
   g.fillStyle = '#9aa1a8'
   g.fill()
 
@@ -985,7 +995,7 @@ function buildAmmeterA(w, h, terms = []) {
   const baseD = 0.72
   const baseH = 0.32
   const bodyW = 1.27
-  const bodyH = 1.10
+  const bodyH = 1.22
   const bodyD = 0.36
   const TILT = -0.0785 // 上仰 4.5°
   const dark = std('#22252a', { roughness: 0.62, metalness: 0.1 })
@@ -1047,14 +1057,14 @@ function buildAmmeterA(w, h, terms = []) {
 
   // 表盘外黑框（照片里白盘四周那圈近黑压边）
   const frameW = 1.20
-  const frameH = 1.02
+  const frameH = 1.142
   const frame = rbox(frameW, frameH, 0.03, 0.014, darker, 0, bodyH / 2, bodyD / 2 - 0.02)
   shell.push(frame)
   tilt.add(frame)
 
   // 白面板
   const faceW = 1.125
-  const faceH = 0.95
+  const faceH = 1.072 // 实拍白面板 192×183 → 宽高比 1.049
   const faceY = bodyH / 2
   const faceZ = bodyD / 2 + 0.004
   const white = rbox(faceW, faceH, 0.02, 0.008, std('#f4f3ef', { roughness: 0.84 }), 0, faceY, faceZ)
@@ -1063,11 +1073,10 @@ function buildAmmeterA(w, h, terms = []) {
 
   // 表盘贴面
   const faceTex = ammeterFaceA()
-  const dialMat = std('#f4f3ef', { roughness: 0.86 })
-  if (faceTex) {
-    dialMat.map = faceTex
-    dialMat.needsUpdate = true
-  }
+  // 表盘用无光照材质：贴图本身就是照片级表盘，受光会发灰、字迹发糊
+  const dialMat = faceTex
+    ? new THREE.MeshBasicMaterial({ map: faceTex, toneMapped: false })
+    : std('#f4f3ef', { roughness: 0.86 })
   const dial = new THREE.Mesh(new THREE.PlaneGeometry(faceW, faceH), dialMat)
   dial.position.set(0, faceY, faceZ + 0.012)
   dial.visible = !!faceTex
@@ -1075,12 +1084,12 @@ function buildAmmeterA(w, h, terms = []) {
   tilt.add(dial)
 
   // 指针：轴在面板自底往上 20% 处
-  const pivotY = faceY - faceH / 2 + faceH * 0.20
+  const pivotY = faceY - faceH * 0.47 // 轴心在白面板自顶 0.97H（实测）
   const pivot = new THREE.Group()
   pivot.position.set(0, pivotY, faceZ + 0.024)
-  pivot.rotation.z = -0.908 // 零位在左（−52°），运行时由 three-render 按读数覆盖
-  pivot.add(box(0.016, 0.64, 0.006, std('#d01f24', { roughness: 0.32 }), 0, 0.32, 0))
-  pivot.add(box(0.007, 0.14, 0.006, std('#b81a1f', { roughness: 0.32 }), 0, 0.58, 0))
+  pivot.rotation.z = 0.908 // 零位在左（deg −52 → rotation.z 取 +52°，与 three-render 一致）
+  pivot.add(box(0.016, 0.78, 0.006, std('#d01f24', { roughness: 0.32 }), 0, 0.39, 0))
+  pivot.add(box(0.007, 0.16, 0.006, std('#b81a1f', { roughness: 0.32 }), 0, 0.71, 0))
   tilt.add(pivot)
 
   // 玻璃
