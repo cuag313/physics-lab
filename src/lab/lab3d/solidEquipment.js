@@ -429,20 +429,30 @@ function buildBattery(w, h, terms = []) {
     g.add(p)
   }
 
-  // 内部（剖视时露出）：两节竖直干电池 —— 外层锌筒、里层电解膏、中心石墨棒，三段颜色明显区分
+  // 内部（剖视时露出）：两节竖直干电池 —— 锌筒（金属负极）/ 电解糊（褐色）/ 石墨棒（黑色正极）。
+  // 三层同心，外层必须半透明，否则剖视时只看到最外面那层灰筒，
+  // "一极金属、一极碳棒"根本看不见 —— 这是内部结构一直读不出来的原因。
   const inner = new THREE.Group()
   inner.name = 'battery-inner'
-  const zincMat = std('#aeb7c2', { roughness: 0.38, metalness: 0.72 })
-  const graphiteMat = std('#171b21', { roughness: 0.9, metalness: 0.04 })
+  const zincMat = std('#dbe2ea', {
+    roughness: 0.34, metalness: 0.62, transparent: true, opacity: 0.42,
+  })
+  const pasteMat = std('#7b5b3e', {
+    roughness: 0.95, metalness: 0.02, transparent: true, opacity: 0.55,
+  })
+  const graphiteMat = std('#15181d', { roughness: 0.55, metalness: 0.25 })
   const cellH = bodyH * 0.78
   for (const cx of [-0.34, 0.34]) {
-    const zinc = cyl(0.19, 0.19, cellH, zincMat, 22)
+    const zinc = cyl(0.19, 0.19, cellH, zincMat, 24)
     zinc.position.set(cx, cellH / 2 + 0.05, 0)
+    zinc.castShadow = false
     inner.add(zinc)
-    const paste = cyl(0.16, 0.16, cellH - 0.05, std('#c9cdd3', { roughness: 0.95 }), 20)
+    const paste = cyl(0.155, 0.155, cellH - 0.05, pasteMat, 22)
     paste.position.set(cx, cellH / 2 + 0.05, 0)
+    paste.castShadow = false
     inner.add(paste)
-    const rod = cyl(0.062, 0.062, cellH + 0.03, graphiteMat, 14)
+    // 中心碳棒（正极）：做粗一点、顶端加个铜帽，远看也能认出"一根黑棒"
+    const rod = cyl(0.075, 0.075, cellH + 0.04, graphiteMat, 16)
     rod.position.set(cx, cellH / 2 + 0.05, 0)
     inner.add(rod)
     // 正极凸头
