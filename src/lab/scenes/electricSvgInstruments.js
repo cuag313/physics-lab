@@ -321,8 +321,8 @@ function needleSVG(px, py, len, frac) {
  */
 function ammeterFaceSVG(x, y, w, h) {
   const cx = x + w / 2
-  const R = h * 0.69
-  const cy = y + h * 0.795
+  const R = h * 0.556
+  const cy = y + h * 0.80
   const a0 = 220
   const a1 = 320
   const rad = (d) => (d * Math.PI) / 180
@@ -331,10 +331,11 @@ function ammeterFaceSVG(x, y, w, h) {
   let ticks = ''
   for (let i = 0; i <= 30; i++) {
     const a = rad(a0 + (a1 - a0) * (i / 30))
+    const da = a + 0.38 // 短齿是斜的（与径向差约 22°）
     const major = i % 10 === 0
     const mid = i % 5 === 0
-    const len = major ? h * 0.155 : mid ? h * 0.105 : h * 0.055
-    ticks += `<line x1="${F(cx + Math.cos(a) * R)}" y1="${F(cy + Math.sin(a) * R)}" x2="${F(cx + Math.cos(a) * (R - len))}" y2="${F(cy + Math.sin(a) * (R - len))}" stroke="${major ? '#1c2026' : '#565c62'}" stroke-width="${major ? 1.25 : 0.7}"/>`
+    const len = major ? h * 0.072 : mid ? h * 0.062 : h * 0.055
+    ticks += `<line x1="${F(cx + Math.cos(a) * R)}" y1="${F(cy + Math.sin(a) * R)}" x2="${F(cx + Math.cos(da) * (R - len))}" y2="${F(cy + Math.sin(da) * (R - len))}" stroke="${major ? '#14171b' : '#4e545a'}" stroke-width="${major ? 1.5 : mid ? 0.9 : 0.6}"/>`
   }
 
   const mark = (t, str, rr, size) => {
@@ -344,15 +345,15 @@ function ammeterFaceSVG(x, y, w, h) {
   }
 
   let nums = ''
-  for (let v = 0; v <= 3; v++) nums += mark(v / 3, String(v), R + h * 0.06, h * 0.155)
-  nums += mark(1 / 3, '0.2', R - h * 0.12, h * 0.135)
-  nums += mark(2 / 3, '0.4', R - h * 0.12, h * 0.135)
-  nums += mark(1, '0.6', R - h * 0.12, h * 0.135)
+  for (let v = 0; v <= 3; v++) nums += mark(v / 3, String(v), h * 0.665, h * 0.165)
+  nums += mark(1 / 3, '0.2', h * 0.435, h * 0.118)
+  nums += mark(2 / 3, '0.4', h * 0.435, h * 0.118)
+  nums += mark(1, '0.6', h * 0.435, h * 0.118)
 
   const sym = (degBase, str, size) => {
     const a = rad(degBase)
     const deg = (a * 180) / Math.PI + 90
-    const rr = R + h * 0.03
+    const rr = h * 0.63
     return `<text x="${F(cx + Math.cos(a) * rr)}" y="${F(cy + Math.sin(a) * rr)}" transform="rotate(${F(deg)} ${F(cx + Math.cos(a) * rr)} ${F(cy + Math.sin(a) * rr)})" text-anchor="middle" font-size="${F(size)}" font-weight="700" fill="#242a30">${str}</text>`
   }
 
@@ -362,8 +363,8 @@ function ammeterFaceSVG(x, y, w, h) {
     ${nums}
     ${sym(a0 - 8, '\u2212', h * 0.145)}
     ${sym(a1 + 8, '\u00b1', h * 0.135)}
-    <text x="${F(cx)}" y="${F(cy - h * 0.20)}" text-anchor="middle" font-size="${F(h * 0.30)}" font-weight="700" fill="#33373d">A</text>
-    <rect x="${F(cx - w * 0.15)}" y="${F(cy - h * 0.135)}" width="${F(w * 0.30)}" height="1.2" fill="#3f444a"/>`
+    <text x="${F(cx)}" y="${F(cy - h * 0.20)}" text-anchor="middle" font-size="${F(h * 0.25)}" font-weight="700" fill="#1e2228">A</text>
+    <rect x="${F(cx - w * 0.16)}" y="${F(cy - h * 0.135)}" width="${F(w * 0.32)}" height="1.1" fill="#3f444a"/>`
 }
 
 /** 接线柱圆点叠层：黑、红、红（金属座圈 + 彩色柱帽，照片缺中柱时补齐三个柱位） */

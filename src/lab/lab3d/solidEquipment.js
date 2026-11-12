@@ -880,24 +880,29 @@ function ammeterFaceA() {
 
   const cx = S / 2
   const cy = Hc * 0.80 // 指针轴：面板自底往上 20% 处
-  const R = 268
+  // 半径全部按实拍量出来的比例（面板高 = Hc）：
+  //   刻度带外缘 0.556H、带厚 0.055H、外圈数字 0.66H、内圈数字 0.42H
+  const R = Hc * 0.556
   const a0 = Math.PI * (220 / 180) // 弧带左端（canvas 里 270° 是正上）
   const a1 = Math.PI * (320 / 180) // 弧带右端
   const cos = Math.cos
   const sin = Math.sin
 
-  // 共用刻度带：0~0.6 分 30 小格（每小格 0.02 A，每 0.1 A 中刻度、每 0.2 A 主刻度）
+  // 共用刻度带：0~0.6 分 30 小格（0.02 A 一格，0.1 A 中刻度、0.2 A 主刻度）。
+  // 实拍上每一格是**斜的短齿**（与径向差约 22°），不是规规矩矩指向圆心的射线。
   g.lineCap = 'butt'
+  const SKEW = 0.38
   for (let i = 0; i <= 30; i++) {
     const a = a0 + (a1 - a0) * (i / 30)
     const major = i % 10 === 0
     const mid = i % 5 === 0
-    const len = major ? 26 : mid ? 18 : 10
-    g.strokeStyle = major ? '#1c2026' : '#565c62'
-    g.lineWidth = major ? 2.6 : 1.4
+    const len = major ? Hc * 0.072 : mid ? Hc * 0.062 : Hc * 0.055
+    g.strokeStyle = major ? '#14171b' : '#4e545a'
+    g.lineWidth = major ? 3.4 : mid ? 2 : 1.3
+    const da = a + SKEW
     g.beginPath()
     g.moveTo(cx + cos(a) * R, cy + sin(a) * R)
-    g.lineTo(cx + cos(a) * (R - len), cy + sin(a) * (R - len))
+    g.lineTo(cx + cos(da) * (R - len), cy + sin(da) * (R - len))
     g.stroke()
   }
 
@@ -914,12 +919,12 @@ function ammeterFaceA() {
     g.fillText(str, 0, 0)
     g.restore()
   }
-  // 外圈 0/1/2/3（量程 3 A，标在弧带外侧）
-  for (let v = 0; v <= 3; v++) mark(v / 3, String(v), R + 22, 58, '#1e2228')
-  // 内圈 0.2/0.4/0.6（量程 0.6 A，标在弧带内侧；起点就是 0.2，没有 0）
-  mark(1 / 3, '0.2', R - 42, 50, '#2a2f35')
-  mark(2 / 3, '0.4', R - 42, 50, '#2a2f35')
-  mark(1, '0.6', R - 42, 50, '#2a2f35')
+  // 外圈 0/1/2/3（量程 3 A，紧贴刻度带外侧，字高 0.185H）
+  for (let v = 0; v <= 3; v++) mark(v / 3, String(v), Hc * 0.665, Hc * 0.165, '#14171b')
+  // 内圈 0.2/0.4/0.6（量程 0.6 A，紧贴带内侧；起点就是 0.2，没有 0；字略小 0.16H）
+  mark(1 / 3, '0.2', Hc * 0.435, Hc * 0.118, '#1c2026')
+  mark(2 / 3, '0.4', Hc * 0.435, Hc * 0.118, '#1c2026')
+  mark(1, '0.6', Hc * 0.435, Hc * 0.118, '#1c2026')
 
   // 两端符号：左 −（弧带最左头外侧），右 ±（弧带最右头外侧）
   const sym = (a, str, rr, size) => {
@@ -933,8 +938,8 @@ function ammeterFaceA() {
     g.fillText(str, 0, 0)
     g.restore()
   }
-  sym(a0 - 0.14, '\u2212', R + 6, 56)
-  sym(a1 + 0.14, '\u00b1', R + 6, 52)
+  sym(a0 - 0.12, '\u2212', Hc * 0.63, Hc * 0.17)
+  sym(a1 + 0.12, '\u00b1', Hc * 0.62, Hc * 0.16)
 
   // 中央大字 A + A 下方的短横线
   g.fillStyle = '#33373d'
