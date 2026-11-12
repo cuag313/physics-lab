@@ -709,10 +709,8 @@ function buildMeter(w, h, kind, fs, subTicks, terms = []) {
       o.castShadow = true
       o.receiveShadow = true
       if (/dial|frontphoto|face/i.test(o.name)) {
-        // 模型自带的表盘贴的是 fig/ammeter_c.png，上面印的是「mA 毫安表」。
-        // 这件器材在项目里是 0.6 A 的安培表，表盘必须写 A —— 所以把模型表盘
-        // （以及可能同在一个位置的实拍贴面）隐掉，改用下面统一画的那张表盘。
-        o.visible = false
+        // 模型自带的那张表盘贴的是 fig/ammeter_c.png（mA 毫安表）/
+        // voltmeter_c.png（V 电压表）—— 这就是这两件器材的图纸基准，直接用。
         panel.push(o)
       } else shell.push(o)
     })
@@ -766,9 +764,9 @@ function buildMeter(w, h, kind, fs, subTicks, terms = []) {
   g.add(rbox(W + 0.22, 0.016, baseD + 0.02, 0.014,
     std('#0c0e12', { roughness: 0.6 }), 0, 0.008, (baseZ0 + baseZ1) / 2))
 
-  // 表盘：整块自绘（0~fs，单位 A / V）。
-  // 实拍图 ammeter_c.png 印的是「mA 毫安表」，与这件 0.6 A 安培表对不上，
-  // 所以 3D 这面表盘统一自绘，GLB 自带的贴图面在上面的分支里已经隐掉了。
+  // 表盘：只在**没有 GLB 模型**时用它兜底。
+  // 有模型时模型自带的那张实拍表盘面才是图纸基准（ammeter_c.png 印 mA、
+  // voltmeter_c.png 印 V），自绘面盖上去反而会丢掉实拍刻度。
   const dialMat = std('#f4f2ec', { roughness: 0.86 })
   const dialTex = dialTexture(kind, fs, subTicks)
   if (dialTex) {
@@ -777,7 +775,7 @@ function buildMeter(w, h, kind, fs, subTicks, terms = []) {
   }
   const dial = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.86, H * 0.72), dialMat)
   dial.position.set(0, H * 0.585 + 0.02, 0.246)
-  dial.visible = !!dialTex
+  dial.visible = !gear && !!dialTex
   g.add(dial)
   panel.push(dial)
 
@@ -834,6 +832,189 @@ function buildMeter(w, h, kind, fs, subTicks, terms = []) {
 
   // 剖视时要临时隐掉表盘、贴面和玻璃，否则它们挡在动圈前面，透出来还是白的
   return { group: g, pointer: pivot, shell, inner, panel, posts }
+}
+
+/**
+ * 安培表（J0407）表盘：双刻度弧 —— 外圈 0~3 A、内圈 0~0.6 A，中央大字 A。
+ * 基准是 E:\cuag313\physics-lab\public\assets\iconsnewname\8电流表.png（实拍 256×256）。
+ * 圆心取指针轴位置（面板内 79% 高处），半径按针长，保证弧顶正好落在针尖上。
+ */
+function ammeterFaceA() {
+  // 画布宽高比必须等于面板宽高比（1.19 : 0.97），否则贴上去刻度会被拉扁
+  const S = 512
+  const Hc = 418
+  const cv = document.createElement('canvas')
+  cv.width = S
+  cv.height = Hc
+  const g = cv.getContext && cv.getContext('2d')
+  if (!g) return null
+  g.fillStyle = '#f6f5f1'
+  g.fillRect(0, 0, S, Hc)
+
+  const cx = S / 2
+  const cy = Hc * 0.79 // 指针轴在面板 79% 高处（下方），与 3D 里的 pivot 一致
+  const R = 258
+  const a0 = Math.PI * (220 / 180) // 弧左端（canvas 里 270° 为正上，220° 即左上）
+  const a1 = Math.PI * (320 / 180) // 弧右端（右上）
+
+  const arcTicks = (radius, total, step, labelEvery, labels) => {
+    // 主弧线
+    g.strokeStyle = '#20242a'
+    g.lineWidth = 3
+    g.beginPath()
+    g.arc(cx, cy, radius, a0, a1)
+    g.stroke()
+    const n = Math.round(total / step)
+    for (let i = 0; i <= n; i++) {
+      const t = i / n
+      const a = a0 + (a1 - a0) * t
+      const major = i % Math.round(labelEvery / step) === 0
+      const r0 = radius - (major ? 26 : 13)
+      g.strokeStyle = major ? '#20242a' : '#7d838a'
+      g.lineWidth = major ? 3.2 : 1.6
+      g.beginPath()
+      g.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0)
+      g.lineTo(cx + Math.cos(a) * radius, cy + Math.sin(a) * radius)
+      g.stroke()
+    }
+    g.fillStyle = '#15181c'
+    g.textAlign = 'center'
+    g.font = 'bold 22px sans-serif'
+    for (const [val, text] of labels) {
+      const t = val / total
+      const a = a0 + (a1 - a0) * t
+      const rr = radius + 26
+      g.fillText(text, cx + Math.cos(a) * rr, cy + Math.sin(a) * rr + 9)
+    }
+  }
+
+  // 外圈 0~3 A（大字 0/1/2/3，弧外侧）
+  arcTicks(R, 3, 0.1, 0.5, [[0, '0'], [1, '1'], [2, '2'], [3, '3']])
+  // 内圈 0~0.6 A（0/0.2/0.4/0.6，弧内侧）
+  arcTicks(R - 54, 0.6, 0.02, 0.1, [[0, '0'], [0.2, '0.2'], [0.4, '0.4'], [0.6, '0.6']])
+
+  // 中央单位
+  g.fillStyle = '#15181c'
+  g.textAlign = 'center'
+  g.font = 'bold 76px sans-serif'
+  g.fillText('A', cx, cy - 44)
+  // 两端符号（左 −、右 ±），贴在弧两端外侧
+  g.font = 'bold 34px sans-serif'
+  g.fillText('\u2212', cx + Math.cos(a0 - 0.12) * (R + 16), cy + Math.sin(a0 - 0.12) * (R + 16) + 22)
+  g.fillText('\u00b1', cx + Math.cos(a1 + 0.12) * (R + 16), cy + Math.sin(a1 + 0.12) * (R + 16) + 22)
+
+  const tex = new THREE.CanvasTexture(cv)
+  tex.anisotropy = 4
+  tex.colorSpace = THREE.SRGBColorSpace
+  return tex
+}
+
+/**
+ * 安培表（1:1 复刻 iconsnewname\8电流表.png）。
+ * 形态：近黑外壳 + 白色双刻度表盘 + 红色指针 + **黑色外伸底座**（比表体宽、
+ * 正面印 − / 0.6A / 3A），底座上三根**竖直向上**的柱：左黑、中红、右红。
+ * 与 mA 毫安表是两件不同的器材，各自独立。
+ */
+function buildAmmeterA(w, h, terms = []) {
+  const g = new THREE.Group()
+  const shell = []
+  const panel = []
+  const W = 1.46 // 整机宽
+  const H = 1.50 // 整机高
+  const bodyH = 1.09
+  const baseH = 0.055
+  const baseD = 0.72
+  const bodyD = 0.44
+  const dark = std('#1d2024', { roughness: 0.55, metalness: 0.12 })
+
+  // 黑底座（比表体宽一圈、往前伸）
+  const base = rbox(W, baseH, baseD, 0.02, dark, 0, baseH / 2, 0.02)
+  shell.push(base)
+  g.add(base)
+
+  // 表体（近黑方壳，前面略上仰）
+  const body = rbox(W - 0.16, bodyH, bodyD, 0.028, dark, 0, baseH + bodyH / 2, -0.04)
+  shell.push(body)
+  g.add(body)
+
+  // 白色面板（必须贴在表体前表面之外，否则会被壳挡住看不见）
+  const faceW = 1.19
+  const faceH = 0.97
+  const faceY = baseH + 0.06 + faceH / 2
+  const faceZ = -0.04 + bodyD / 2 + 0.012
+  const whiteFace = rbox(faceW, faceH, 0.02, 0.012, std('#f4f3ef', { roughness: 0.8 }), 0, faceY, faceZ)
+  shell.push(whiteFace)
+  g.add(whiteFace)
+
+  // 表盘（双刻度弧）
+  const faceTex = ammeterFaceA()
+  const dialMat = std('#f4f3ef', { roughness: 0.86 })
+  if (faceTex) {
+    dialMat.map = faceTex
+    dialMat.needsUpdate = true
+  }
+  const dial = new THREE.Mesh(new THREE.PlaneGeometry(faceW - 0.03, faceH - 0.03), dialMat)
+  dial.position.set(0, faceY, faceZ + 0.012)
+  dial.visible = !!faceTex
+  panel.push(dial)
+  g.add(dial)
+
+  // 指针：轴在面板内 79% 高处（与表盘圆心一致）
+  const pivotY = faceY + faceH * (0.5 - 0.79)
+  const pivot = new THREE.Group()
+  pivot.position.set(0, pivotY, faceZ + 0.026)
+  const needle = box(0.018, 0.60, 0.008, std('#d01f24', { roughness: 0.35 }), 0, 0.30, 0)
+  pivot.add(needle)
+  pivot.add(box(0.008, 0.15, 0.007, std('#b81a1f', { roughness: 0.35 }), 0, 0.55, 0))
+  g.add(pivot)
+
+  // 玻璃
+  const glass = new THREE.Mesh(
+    new THREE.PlaneGeometry(faceW - 0.02, faceH - 0.02),
+    std('#cfe0ef', { transparent: true, opacity: 0.08, roughness: 0.04, metalness: 0.25 })
+  )
+  glass.position.set(0, faceY, faceZ + 0.034)
+  panel.push(glass)
+  g.add(glass)
+
+  // 底座正面的 "−  0.6A  3A" 白字（图纸就是这么印的）
+  const labelCanvas = document.createElement('canvas')
+  labelCanvas.width = 512
+  labelCanvas.height = 96
+  const lg = labelCanvas.getContext && labelCanvas.getContext('2d')
+  if (lg) {
+    lg.fillStyle = '#1d2024'
+    lg.fillRect(0, 0, 512, 96)
+    lg.fillStyle = '#eef1f4'
+    lg.font = 'bold 48px sans-serif'
+    lg.textAlign = 'center'
+    lg.fillText('\u2212', 96, 68)
+    lg.fillText('0.6A', 256, 68)
+    lg.fillText('3A', 410, 68)
+    const tex = new THREE.CanvasTexture(labelCanvas)
+    tex.colorSpace = THREE.SRGBColorSpace
+    const lm = new THREE.Mesh(
+      new THREE.PlaneGeometry(W - 0.06, 0.1),
+      new THREE.MeshBasicMaterial({ map: tex })
+    )
+    lm.position.set(0, 0.016, baseD / 2 + 0.012)
+    g.add(lm)
+  }
+
+  // 三根柱：竖直向上立在底座上（左黑、中红、右红）
+  const posts = []
+  const px = [-0.52, 0, 0.52]
+  const ids = ['neg', 'mid', 'full']
+  for (let i = 0; i < 3; i++) {
+    const color = i === 0 ? '#1b1d20' : '#c8232c'
+    const p = makePost(ids[i], i === 0, { knobColor: color })
+    p.position.set(px[i], baseH, 0.24)
+    p.userData.terminal = ids[i]
+    g.add(p)
+    posts.push({ id: ids[i], x: px[i], z: 0.24, top: baseH + 0.146 })
+  }
+
+  return { group: g, shell, panel, pointer: pivot, posts, postTopY: baseH + 0.146, postZ: 0.24 }
 }
 
 /**
@@ -1519,6 +1700,23 @@ export function buildSolid(type, opt = {}) {
         panel: b.panel,
       }
     }
+    case 'ammeterA': {
+      // 安培表（1:1 复刻 iconsnewname/8电流表.png）：黑壳 + 双刻度 + 黑外伸底座 + 三根竖柱，
+      // 柱由 buildAmmeterA 就地摆好，不走 placePosts。
+      const b = buildAmmeterA(w, h, terms)
+      return {
+        group: b.group,
+        size,
+        thickness: 0.26,
+        stand: false,
+        pointer: b.pointer,
+        posts: b.posts,
+        postTopY: b.postTopY,
+        postZ: b.postZ,
+        shell: b.shell,
+        panel: b.panel,
+      }
+    }
     case 'rheostat': {
       // 四柱位置按参考图直接摆在滑杆两端 / 瓷管两端（buildRheostat 内部建）
       const b = buildRheostat(w, h, terms)
@@ -1539,7 +1737,7 @@ export function buildSolid(type, opt = {}) {
 }
 
 export const SOLID_TYPES = new Set([
-  'battery', 'bulb', 'switch', 'ammeter', 'voltmeter', 'rheostat',
+  'battery', 'bulb', 'switch', 'ammeter', 'ammeterA', 'voltmeter', 'rheostat',
   'switch2', 'motor', 'diode', 'fuse', 'testPencil', 'electroscope',
   'mains', 'energyMeter', 'jouleTube', 'resBox', 'multimeter', 'relay',
 ])

@@ -198,6 +198,7 @@ const PALETTE_ICONS = {
   bulb: `<img src="${FIG}/bulb_c.png" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
   switch: `<img src="${FIG}/switch_c.png" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
   ammeter: `<img src="${FIG}/ammeter_c.png" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
+  ammeterA: `<img src="${FIG}/ammeterA_c.png" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
   voltmeter: `<img src="${FIG}/voltmeter_c.png" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
   rheostat: `<img src="${FIG}/rheostat_c.png" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
   resistor5: miniResistor('#0f7a3d', '#1b1b1b'),
@@ -253,7 +254,7 @@ const PALETTE_ICONS = {
 
 /* 元件库分组（按教学批次展示） */
 const PALETTE_GROUPS = [
-  { title: '基础器材', keys: ['battery', 'bulb', 'switch', 'ammeter', 'voltmeter', 'rheostat'] },
+  { title: '基础器材', keys: ['battery', 'bulb', 'switch', 'ammeter', 'ammeterA', 'voltmeter', 'rheostat'] },
   { title: '初中必做实验', keys: ['resistor5', 'resistor10', 'resistor15', 'switch2', 'motor', 'diode', 'jouleTube'] },
   { title: '家庭电路', keys: ['mains', 'energyMeter', 'fuse', 'testPencil', 'electroscope'] },
   { title: '高中拓展', keys: ['resBox', 'multimeter', 'relay'] },
@@ -348,6 +349,7 @@ const keyOf = (cid, tid) => cid + ':' + tid
 /** 3D 读数浮层里的表名 */
 const METER_NAME = {
   ammeter: '电流表',
+  ammeterA: '安培表',
   voltmeter: '电压表',
   energyMeter: '电能表',
   multimeter: '多用电表',
@@ -949,7 +951,7 @@ export default function ElectricSvgLabScene() {
       // bright 按额定功率归一（钳到 1）；over 单独给，用于「刺眼白 + 闪烁」过载警示
       return { bright: p > 0 ? Math.min(1, p / CFG.BULB_RATED) : 0, over: p > CFG.BULB_RATED * 1.02 }
     }
-    if (c.type === 'ammeter') return { frac: Math.abs(o._I || 0) / (o._fs || CFG.AMM_FS) }
+    if (c.type === 'ammeter' || c.type === 'ammeterA') return { frac: Math.abs(o._I || 0) / (o._fs || CFG.AMM_FS) }
     if (c.type === 'voltmeter') return { frac: Math.abs(o._V || 0) / (o._fs || CFG.VOLT_FS) }
     if (c.type === 'rheostat') {
       // 有效电阻丝高亮：按实际接入的两个接线柱判定 mode
@@ -985,7 +987,7 @@ export default function ElectricSvgLabScene() {
   }
   const readoutOf = (c) => {
     const o = solved[c.id] || {}
-    if (c.type === 'ammeter') {
+    if (c.type === 'ammeter' || c.type === 'ammeterA') {
       const num = Math.abs(o._I || 0) < 0.0005 ? '0.000' : Math.abs(o._I || 0).toFixed(3)
       return { text: `I = ${num} A`, color: o._over ? '#fb7185' : o._rev ? '#fbbf24' : '#4ade80' }
     }

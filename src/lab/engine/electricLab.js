@@ -71,6 +71,7 @@ export const TERM_IDS = {
   bulb: ['a', 'b'],
   switch: ['a', 'b'],
   ammeter: ['neg', 'mid', 'full'],   // neg(黑) / mid(0.6A) / full(3A)：接哪个柱就是哪个量程
+  ammeterA: ['neg', 'mid', 'full'],  // 安培表（黑壳双刻度那台）：端子与电流表相同
   voltmeter: ['neg', 'mid', 'full'], // neg(黑) / mid(3V) / full(15V)
   rheostat: ['tl', 'tr', 'bl', 'br'],
   resistor5: ['a', 'b'],             // 定值电阻（色环电阻，长脚/短脚两柱）
@@ -238,7 +239,7 @@ export function solveCircuit(comps, wires, opts) {
       const R = c.closed ? 0.001 : 1e8
       stampR(A, a, bb, R)
       els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
-    } else if (c.type === 'ammeter') {
+    } else if ((c.type === 'ammeter' || c.type === 'ammeterA')) {
       const tap = meterRangeTap(c, wires)
       const a = netOf(c, tap) // 接入的量程柱（+ 端）
       const bb = netOf(c, 'neg')
@@ -424,7 +425,7 @@ export function solveCircuit(comps, wires, opts) {
     if (c.type === 'bulb') {
       o._I = Math.abs(I)
       o._P = I * I * CFG.BULB_R
-    } else if (c.type === 'ammeter') {
+    } else if ((c.type === 'ammeter' || c.type === 'ammeterA')) {
       o._I = I // 电流由接入的量程柱（+ 端）流入为正
       o._Vd = v[e.a] - v[e.b] // 电流表两端电压差
       o._rev = I < -1e-6
@@ -537,7 +538,7 @@ export const VOLTAMMETRY_R = { resistor5: 5, resistor10: 10, resistor15: 15 }
  */
 export function voltammetry(comps, wires, out) {
   const { netOf } = buildNets(comps, wires)
-  const am = comps.find((c) => c.type === 'ammeter')
+  const am = comps.find((c) => (c.type === 'ammeter' || c.type === 'ammeterA'))
   const vm = comps.find((c) => c.type === 'voltmeter')
   if (!am || !vm) return []
 
@@ -642,7 +643,7 @@ function detectMisuse(comps, wires, out) {
   for (const c of comps) {
     if (c.type === 'battery' && Math.abs(out[c.id]?._I || 0) > 1.2) diag.short = true
     if (c.type === 'mains' && Math.abs(out[c.id]?._I || 0) > 15) diag.short = true
-    if (c.type === 'ammeter') {
+    if ((c.type === 'ammeter' || c.type === 'ammeterA')) {
       // 未串在支路（与另一元件同节点对 = 被并联在元件两端）且两端电位差 > 0.5V
       const par = sharesPair(comps, wires, c)
       if (par) {
@@ -710,7 +711,7 @@ export function circuitStatus(comps, wires, out) {
   const bat = comps.filter((c) => c.type === 'battery' || c.type === 'mains')
   const switches = comps.filter((c) => c.type === 'switch')
   const bulbs = comps.filter((c) => c.type === 'bulb')
-  const amms = comps.filter((c) => c.type === 'ammeter')
+  const amms = comps.filter((c) => (c.type === 'ammeter' || c.type === 'ammeterA'))
   const vms = comps.filter((c) => c.type === 'voltmeter')
   const rh = comps.filter((c) => c.type === 'rheostat')
   const fuses = comps.filter((c) => c.type === 'fuse')

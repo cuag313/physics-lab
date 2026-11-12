@@ -530,7 +530,7 @@ export function createLabRenderer(container, opt = {}) {
           w: t.w,
           h: t.h,
           terminals: t.terminals,
-          fs: c.type === 'ammeter' ? 3 : c.type === 'voltmeter' ? 15 : 0,
+          fs: (c.type === 'ammeter' || c.type === 'ammeterA') ? 3 : c.type === 'voltmeter' ? 15 : 0,
         })
         if (!build) return entry
       } catch (e) {
@@ -805,7 +805,7 @@ export function createLabRenderer(container, opt = {}) {
       if (!entry || !entry.build) continue
       const o = solved[c.id] || {}
       if (entry.build.pointer) {
-        const isA = c.type === 'ammeter'
+        const isA = c.type === 'ammeter' || c.type === 'ammeterA'
         const fs = o._fs ?? (isA ? 0.6 : 3)
         const raw = isA ? (o._I || 0) : (o._V || 0)
         let frac = Math.max(0, Math.min(1, Math.abs(raw) / (fs || 1)))

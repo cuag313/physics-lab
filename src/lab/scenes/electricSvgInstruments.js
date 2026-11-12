@@ -565,6 +565,23 @@ export const TYPES = {
     </svg>` }
   },
 
+  /* ── 安培表（1:1 复刻 iconsnewname/8电流表.png：黑壳白盘双刻度 + 黑外伸底座三柱） ── */
+  ammeterA: {
+    label: '安培表', w: 150, h: 150, meter: 'I',
+    terminals: [
+      { id: 'neg', label: '−', name: '负接线柱', x: 33, y: 120 },
+      { id: 'mid', label: '0.6', name: '0.6A 接线柱', x: 75, y: 120 },
+      { id: 'full', label: '3', name: '3A 接线柱', x: 115, y: 120 },
+    ],
+    render(c, dyn) {
+      return `
+    <svg width="150" height="150" viewBox="0 0 150 150">
+      ${fitInner(150, 150, 150, 150, INNER.meter((dyn?.frac || 0) * 22))}
+      ${photo('ammeterA_c.png', 150, 150)}
+      ${needleSVG(75, 89, 66, dyn?.frac || 0)}
+    </svg>` }
+  },
+
   /* ── 电压表（真实 J0408 图 + 动画表针 + 三接线柱黑红红） ── */
   voltmeter: {
     label: '电压表', w: 130, h: 133, meter: 'U',
