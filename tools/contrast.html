@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>器材 2D(SVG 图纸) ↔ 3D 同机位对照</title>
+<style>
+  :root { --ink: #10151c; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 10px 12px 24px; background: #f2f5f9; color: var(--ink);
+    font: 12px/1.5 "Microsoft YaHei", system-ui, sans-serif;
+  }
+  h1 { font-size: 15px; margin: 0 0 2px; }
+  .hint { color: #5b6b80; margin-bottom: 10px; }
+  .hint b { color: #b3261e; }
+  .row {
+    display: flex; gap: 10px; align-items: stretch;
+    background: #fff; border: 1px solid #d6dde7; border-radius: 8px;
+    padding: 8px; margin-bottom: 10px;
+  }
+  .cell { position: relative; display: flex; flex-direction: column; gap: 4px; }
+  .cell .cap { font-size: 11px; color: #46536a; text-align: center; white-space: nowrap; }
+  .cell .cap b { color: #10151c; }
+  .pic {
+    position: relative; background: #fff; border: 1px solid #cbd4e0;
+    border-radius: 4px; overflow: hidden;
+  }
+  .pic svg { width: 100% !important; height: 100% !important; display: block; }
+  .pic img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  /* 柱位十字：核对 3D 的柱是否压在图纸的柱上 */
+  .dot { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px;
+         border-radius: 50%; border: 1px solid #0a84ff; background: rgba(10,132,255,.22); }
+  .dot::after { content: ""; position: absolute; inset: 4px 0 auto 0; height: 1px; background: #0a84ff; }
+  .legend { font-size: 11px; color: #0a84ff; }
+  .err { color: #b3261e; }
+</style>
+</head>
+<body>
+<h1>器材 2D（SVG 图纸原样） ↔ 3D 同机位</h1>
+<div class="hint">
+  左侧 = <b>TYPES[type].render()</b> 直接渲染（实拍图 <b>fig/*_c.png</b> + 可动叠层），这是唯一基准；
+  右侧 = <b>renderIcon(type)</b> 的 3D 实体。两者按 <b>w×h 像素 = 米</b> 同比例缩放，柱位用
+  <span class="legend">蓝圈</span> 标在图纸上，用来核对 3D 柱子有没有压在这几个点。
+</div>
+<div id="wrap"></div>
+
+<script type="module">
+import { TYPES } from '/src/lab/scenes/electricSvgInstruments.js'
+import { renderIcon } from '/src/lab/lab3d/solidEquipment.js'
+
+const qs = new URLSearchParams(location.search)
+const types = (qs.get('t') || 'battery,switch,ammeter,rheostat,bulb,voltmeter').split(',')
+const VIEWS = (qs.get('v') || 'front,top').split(',')
+const H = Number(qs.get('h') || 170)          // 图纸高（px），宽度按 w/h 自动
+const wrap = document.getElementById('wrap')
+
+function cell(width, capHtml) {
+  const c = document.createElement('div')
+  c.className = 'cell'
+  const pic = document.createElement('div')
+  pic.className = 'pic'
+  pic.style.width = width + 'px'
+  pic.style.height = H + 'px'
+  const cap = document.createElement('div')
+  cap.className = 'cap'
+  cap.innerHTML = capHtml
+  c.appendChild(pic)
+  c.appendChild(cap)
+  return { cell: c, pic }
+}
+
+for (const t of types) {
+  const def = TYPES[t]
+  if (!def) {
+    const d = document.createElement('div')
+    d.className = 'row err'
+    d.textContent = 'TYPES 里没有 ' + t
+    wrap.appendChild(d)
+    continue
+  }
+  const row = document.createElement('div')
+  row.className = 'row'
+
+  // ① 图纸：SVG render 原样
+  const pw = Math.round(H * def.w / def.h)
+  const L = cell(pw, `<b>${def.label}</b> SVG ${def.w}×${def.h}`)
+  L.pic.innerHTML = def.render({ id: 'cx_' + t, closed: false }, { bright: 0.8, frac: 0.42 })
+  // 柱位标注
+  for (const tm of (def.terminals || [])) {
+    const dot = document.createElement('div')
+    dot.className = 'dot'
+    dot.style.left = (tm.x / def.w * 100) + '%'
+    dot.style.top = (tm.y / def.h * 100) + '%'
+    dot.title = `${tm.id} ${tm.label || ''} (${tm.x},${tm.y})`
+    L.pic.appendChild(dot)
+  }
+  row.appendChild(L.cell)
+
+  // ② 3D 实体
+  for (const v of VIEWS) {
+    let url = ''
+    try {
+      url = renderIcon(t, { size: Math.round(H * 3), view: v, terminals: def.terminals })
+    } catch (e) {
+      url = ''
+    }
+    const R = cell(H, `3D <b>${v}</b>`)
+    if (url) {
+      const img = document.createElement('img')
+      img.src = url
+      R.pic.appendChild(img)
+    } else {
+      R.pic.innerHTML = '<div class="err" style="padding:6px">renderIcon 失败</div>'
+    }
+    row.appendChild(R.cell)
+  }
+
+  wrap.appendChild(row)
+  // 让下一件先渲染：renderIcon 是同步离屏渲染，逐件串行不影响
+  await new Promise((r) => setTimeout(r, 60))
+}
+document.body.dataset.contrast = 'done:' + types.length
+</script>
+</body>
+</html>
