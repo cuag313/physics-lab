@@ -431,7 +431,13 @@ export function createLabRenderer(container, opt = {}) {
       })
     }
 
-    for (const tm of t.terminals) {
+    // build 自己声明了柱清单（电表只有两根柱：黑 neg + 红 0.6A/3V 端）时，
+    // 热区必须跟着这套柱走，不能再按图纸那三根柱算 —— 否则会多出一个
+    // 看不见却能吸线的"幽灵接线点"。
+    const list = (entry.build && entry.build.posts && entry.build.posts.length)
+      ? entry.build.posts.map((p) => ({ id: p.id }))
+      : t.terminals
+    for (const tm of list) {
       // 命中球直径按"柱本身的粗细"给（不再用磁吸半径），
       // 否则电流表三柱间距只有 0.35 世界单位，0.26 半径的球会互相盖住，
       // 点中间柱命中左柱 —— 这是"连线不灵"的直接原因
@@ -808,8 +814,7 @@ export function createLabRenderer(container, opt = {}) {
         if (o._rev || raw < 0) deg = -deg // 接反：指针反向偏转
         // 针沿 +Y 起算。表盘朝 +Z（相机在 +Z 侧看），绕 Z 正向转是往 -X（左），
         // 所以 rotation.z = -deg：零位 deg=-52 → +52° → 针指左侧；满偏 → 指右侧。
-        if (entry.build.stand) entry.build.pointer.rotation.z = -(deg * Math.PI) / 180
-        else entry.build.pointer.rotation.y = -(deg * Math.PI) / 180
+        if (entry.build.pointer) entry.build.pointer.rotation.z = -(deg * Math.PI) / 180
       }
       if (c.type === 'bulb') {
         const bright = (o._P || 0) > 0 ? Math.min(1, o._P / BULB_RATED) : 0

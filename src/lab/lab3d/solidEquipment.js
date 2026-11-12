@@ -322,25 +322,28 @@ function makePost(id = '', forceNeg, opts = {}) {
 
 /** 表盘贴图：canvas 画刻度 + 文字，比光栅化 SVG 更清晰也更省 */
 function dialTexture(kind, fs, subTicks) {
-  const W = 256
-  const H = 256
+  const W = 512
+  const H = 512
   const cv = document.createElement('canvas')
   cv.width = W
   cv.height = H
   const g = cv.getContext && cv.getContext('2d')
   if (!g) return null // 同上：没有 2d context 就不画表盘，别让表整件崩掉
-  g.fillStyle = '#fbfaf6'
+  g.fillStyle = '#faf9f5'
   g.fillRect(0, 0, W, H)
 
   // 刻度弧：圆心在画布下缘外，半径取 0.625H，跨度 ±50°（与指针行程 -52°~+52° 对齐），
   // 保证 0 与满刻度都落在表盘里不被裁掉
   const cx = W / 2
-  const cy = H * 1.11
-  const R = H * 0.625
+  const cy = H * 1.10
+  // 弧半径必须与指针长度对齐：指针 pivot 在表盘平面下缘，针长 0.42H，
+  // 换算到表盘贴图（高 0.72H）后针尖落在画布 ~0.58H 处。
+  // R = cy - 0.58H 才能让刻度弧正好托在针尖下方。
+  const R = H * 0.52
   const a0 = Math.PI * 1.222 // 220°
   const a1 = Math.PI * 1.778 // 320°
   g.strokeStyle = '#1f2226'
-  g.lineWidth = 2.2
+  g.lineWidth = 3.6
   g.beginPath()
   g.arc(cx, cy, R, a0, a1)
   g.stroke()
@@ -349,10 +352,10 @@ function dialTexture(kind, fs, subTicks) {
   for (let i = 0; i <= n; i++) {
     const t = i / n
     const a = a0 + (a1 - a0) * t
-    const r0 = R - (i % 5 === 0 ? 15 : 7)
+    const r0 = R - (i % 5 === 0 ? 26 : 13)
     const r1 = R
-    g.strokeStyle = i % 5 === 0 ? '#1f2226' : '#6b7176'
-    g.lineWidth = i % 5 === 0 ? 2 : 1
+    g.strokeStyle = i % 5 === 0 ? '#1f2226' : '#7c8288'
+    g.lineWidth = i % 5 === 0 ? 3.2 : 1.6
     g.beginPath()
     g.moveTo(cx + Math.cos(a) * r0, cy + Math.sin(a) * r0)
     g.lineTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1)
@@ -361,22 +364,22 @@ function dialTexture(kind, fs, subTicks) {
 
   // 数字
   g.fillStyle = '#15181c'
-  g.font = 'bold 17px sans-serif'
+  g.font = 'bold 30px sans-serif'
   g.textAlign = 'center'
   const marks = 6
   for (let i = 0; i <= marks; i++) {
     const t = i / marks
     const a = a0 + (a1 - a0) * t
-    const rr = R - 26
-    g.fillText(String(Math.round(fs * t * 10) / 10), cx + Math.cos(a) * rr, cy + Math.sin(a) * rr + 6)
+    const rr = R - 46
+    g.fillText(String(Math.round(fs * t * 10) / 10), cx + Math.cos(a) * rr, cy + Math.sin(a) * rr + 10)
   }
 
-  // 单位/型号
-  g.font = 'bold 26px sans-serif'
-  g.fillText(kind, cx, H * 0.36)
-  g.font = '14px sans-serif'
-  g.fillStyle = '#6b7176'
-  g.fillText('J0407 · 0.5 级', cx, H * 0.44)
+  // 单位/型号（弧线下方中央，实物表盘的"A"/"V"就在这儿）
+  g.font = 'bold 54px sans-serif'
+  g.fillText(kind, cx, H * 0.84)
+  g.font = '20px sans-serif'
+  g.fillStyle = '#5d646b'
+  g.fillText('J0407 · 0.5 级', cx, H * 0.91)
 
   const tex = new THREE.CanvasTexture(cv)
   tex.anisotropy = 4
@@ -667,7 +670,7 @@ function buildSwitch(w, h) {
 }
 
 /** 立式方表（电流表 / 电压表）：浅灰紫底台 + 楔形后壳 + 白面板 + 表盘 + 玻璃 + 三柱 */
-function buildMeter(w, h, kind, fs, subTicks) {
+function buildMeter(w, h, kind, fs, subTicks, terms = []) {
   const g = new THREE.Group()
   const W = w * SCALE // 1.3
   const H = h * SCALE // 1.52 / 1.33
@@ -705,14 +708,16 @@ function buildMeter(w, h, kind, fs, subTicks) {
       if (!o.isMesh) return
       o.castShadow = true
       o.receiveShadow = true
-      if (/dial/i.test(o.name)) panel.push(o)
-      else shell.push(o)
+      if (/dial|frontphoto|face/i.test(o.name)) {
+        // 模型自带的表盘贴的是 fig/ammeter_c.png，上面印的是「mA 毫安表」。
+        // 这件器材在项目里是 0.6 A 的安培表，表盘必须写 A —— 所以把模型表盘
+        // （以及可能同在一个位置的实拍贴面）隐掉，改用下面统一画的那张表盘。
+        o.visible = false
+        panel.push(o)
+      } else shell.push(o)
     })
     g.add(model)
   } else {
-
-  // 底台：浅灰紫圆角板（实物表的底板比外壳大一圈，表放上去有"座"）
-  g.add(rbox(W + 0.07, 0.05, D + 0.2, 0.022, std('#cfc9d8', { roughness: 0.58, metalness: 0.04 }), 0, 0.025, 0.03))
 
   // 楔形后壳：侧视是梯形 —— 前面全高，往后斜降约三分之一。
   // 直角方箱是"积木感"最重的一处：真实教学表的背壳一定是斜背的，便于仰视读数。
@@ -744,38 +749,57 @@ function buildMeter(w, h, kind, fs, subTicks) {
   const panelMesh = rbox(W * 0.994, H * 0.985, 0.05, 0.012, std('#f1efea', { roughness: 0.72 }), 0, H / 2 + 0.02, front + 0.005)
   shell.push(panelMesh)
   g.add(panelMesh)
+  } // ← 代码几何兜底分支结束
 
-  // 表盘面：直接用实拍图（表盘刻度、量程字、底部旋钮印字全在图上）。
-  // 自绘的 dialTexture 只作兜底（离屏无 canvas / 图未载入时）。
-  const dialMat = std('#f2f0ea', { roughness: 0.85 })
+  // 黑色底座：实物表的底盘比表体四周各宽出一圈，且**向前伸出**一掌，
+  // 接线柱就立在这块伸出来的黑底座上（图纸上柱在表体下缘之外）。
+  const baseZ0 = -D / 2 - 0.06
+  const baseZ1 = front + 0.24
+  const baseD = baseZ1 - baseZ0
+  const baseMat = std('#161a1f', { roughness: 0.52, metalness: 0.06 })
+  const base = rbox(W + 0.20, 0.042, baseD, 0.018, baseMat, 0, 0.021, (baseZ0 + baseZ1) / 2)
+  base.castShadow = true
+  base.receiveShadow = true
+  shell.push(base)
+  g.add(base)
+  // 底座外沿压一圈更深的包边，读数时能看出一条明确的黑边
+  g.add(rbox(W + 0.22, 0.016, baseD + 0.02, 0.014,
+    std('#0c0e12', { roughness: 0.6 }), 0, 0.008, (baseZ0 + baseZ1) / 2))
+
+  // 表盘：整块自绘（0~fs，单位 A / V）。
+  // 实拍图 ammeter_c.png 印的是「mA 毫安表」，与这件 0.6 A 安培表对不上，
+  // 所以 3D 这面表盘统一自绘，GLB 自带的贴图面在上面的分支里已经隐掉了。
+  const dialMat = std('#f4f2ec', { roughness: 0.86 })
   const dialTex = dialTexture(kind, fs, subTicks)
   if (dialTex) {
     dialMat.map = dialTex
-    dialMat.needsUpdate = true // 赋值 map 后必须重编译，否则表格永远是一块灰板
+    dialMat.needsUpdate = true
   }
-  const dial = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.84, H * 0.7), dialMat)
-  dial.position.set(0, H * 0.585 + 0.02, front + 0.032)
+  const dial = new THREE.Mesh(new THREE.PlaneGeometry(W * 0.86, H * 0.72), dialMat)
+  dial.position.set(0, H * 0.585 + 0.02, 0.246)
+  dial.visible = !!dialTex
   g.add(dial)
   panel.push(dial)
 
-  // 实拍图贴面：整张正面（电压表/电流表几乎没有"顶面段"，所以取整幅）
-  // 注意 kind 传进来是 'A'/'V'（不是类型名），取错图会让电压表显示电流表盘
-  const meterFile = kind === 'V' ? 'voltmeter_c.png' : 'ammeter_c.png'
-  const photo = photoFace(meterFile, W * 0.995, H * 0.995, {
-    v0: 0,
-    frac: 1,
-    cut: false,
-  })
-  if (photo) {
-    photo.position.set(0, H / 2 + 0.02, front + 0.033)
-    g.add(photo)
-    panel.push(photo)
-    // 图载入后把自绘表盘藏起来，免得两张表盘打架
-    photoCanvasLoad(meterFile, () => {
-      dial.visible = false
-    })
+  // 接线柱：两根，**竖直向上**立在黑底座前部（图纸上是 −/量程两根），
+  // 不再是三根朝 -Z 平伸出去的柱。左黑（neg）、右红（0.6A / 3V 量程端）。
+  const postZ = front + 0.16
+  const posts = []
+  {
+    const xs = [-0.34, 0.34]
+    const rightId = (terms && terms.some && terms.some((t) => t.id === 'mid')) ? 'mid' : 'full'
+    for (let i = 0; i < 2; i++) {
+      const id = i === 0 ? 'neg' : rightId
+      const p = makePost(id, i === 0, { knobColor: i === 0 ? '#1c2026' : '#cf1f22' })
+      p.position.set(xs[i], 0.042, postZ)
+      const foot = cyl(0.062, 0.066, 0.014, MAT.steel(), 18)
+      foot.position.set(xs[i], 0.049, postZ)
+      g.add(foot)
+      p.userData.terminal = id
+      g.add(p)
+      posts.push({ id, x: xs[i], z: postZ, top: 0.188 })
+    }
   }
-  } // ← 代码几何兜底分支结束
 
   // 玻璃面板：只压四条细边当边框 —— 千万别用实心 box 当"框"，
   // 否则它会把前面的表盘整个盖住（表盘看着就是一块黑板）。
@@ -809,7 +833,7 @@ function buildMeter(w, h, kind, fs, subTicks) {
   g.add(pivot)
 
   // 剖视时要临时隐掉表盘、贴面和玻璃，否则它们挡在动圈前面，透出来还是白的
-  return { group: g, pointer: pivot, shell, inner, panel }
+  return { group: g, pointer: pivot, shell, inner, panel, posts }
 }
 
 /**
@@ -1477,17 +1501,19 @@ export function buildSolid(type, opt = {}) {
     case 'voltmeter': {
       const kind = type === 'ammeter' ? 'A' : 'V'
       const fs = opt.fs || (type === 'ammeter' ? 3 : 15)
-      const b = buildMeter(w, h, kind, fs, 30)
-      const thickness = 0.18 // 半深：表壳厚 0.36，柱在表面前缘外 0.03
-      // 电表三柱按图纸是**深蓝塑料帽**（负柱同色，不带红/黑），柱帽上才是白字
-      placePosts(b.group, terms, w, h, true, thickness, { knobColor: '#2b5aa8' })
+      const b = buildMeter(w, h, kind, fs, 30, terms)
+      const thickness = 0.18 // 半深：表壳厚 0.36
+      // 柱不再由 placePosts 摆：实物表是**两根竖直柱立在黑底座前缘**，
+      // 不是三根朝 -Z 平伸出去的柱。柱由 buildMeter 自己就地摆好。
       return {
         group: b.group,
         size,
         thickness,
-        stand: true,
+        stand: false,
         pointer: b.pointer,
-        postZ: thickness + 0.03, // 面板朝 +Z，热区/导线端点用同一个 z
+        posts: b.posts,
+        postTopY: 0.188,
+        postZ: 0.34, // 底座前缘附近的柱所在 z（热区/导线端点用同一处）
         shell: b.shell,
         inner: b.inner,
         panel: b.panel,
