@@ -1,4 +1,5 @@
 import { InstrumentBase } from '../InstrumentBase'
+import { CAP_RED, CAP_BLACK } from '../../theme/termColors.js'
 
 /**
  * 滑动变阻器（按真实初中器材建模）
@@ -57,11 +58,11 @@ export class Rheostat extends InstrumentBase {
       sliderPos: { value: 0.5, min: 0, max: 1, step: 0.01, label: '滑片位置', unit: '' }
     }
 
-    this.addPort({ id: 'left', type: 'electrical', dx: -0.9, dy: 0.2, label: 'A', color: '#aaa' })
-    this.addPort({ id: 'right', type: 'electrical', dx: 0.9, dy: 0.2, label: 'B', color: '#aaa' })
+    this.addPort({ id: 'left', type: 'electrical', dx: -0.9, dy: 0.2, label: 'A', color: CAP_BLACK })
+    this.addPort({ id: 'right', type: 'electrical', dx: 0.9, dy: 0.2, label: 'B', color: CAP_RED })
     this.addPort({ id: 'wiper', type: 'electrical', dx: 0, dy: -0.2, label: 'P', color: '#FFD700' })
-    this.addPort({ id: 'tl', type: 'electrical', dx: -0.55, dy: -0.2, label: 'C', color: '#aaa' })
-    this.addPort({ id: 'tr', type: 'electrical', dx: 0.55, dy: -0.2, label: 'D', color: '#aaa' })
+    this.addPort({ id: 'tl', type: 'electrical', dx: -0.55, dy: -0.2, label: 'C', color: CAP_BLACK })
+    this.addPort({ id: 'tr', type: 'electrical', dx: 0.55, dy: -0.2, label: 'D', color: CAP_RED })
   }
 
   /** 滑片左侧电阻 */

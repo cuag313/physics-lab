@@ -810,7 +810,10 @@ export function createLabRenderer(container, opt = {}) {
         const raw = isA ? (o._I || 0) : (o._V || 0)
         let frac = Math.max(0, Math.min(1, Math.abs(raw) / (fs || 1)))
         if (o._over) frac = 1.06 // 超量程：指针顶到限位（左右都顶）
-        let deg = NEEDLE_BASE_DEG + frac * NEEDLE_SPAN_DEG
+        // 每件表可以自带量程（例如安培表 ammeterA 的表盘零点 246.3°、满偏 307°）；
+        // 没声明就用默认 ±52°（J0407 表盘）。
+        const pr = entry.build.pointerRange || { base: NEEDLE_BASE_DEG, span: NEEDLE_SPAN_DEG }
+        let deg = pr.base + frac * pr.span
         if (o._rev || raw < 0) deg = -deg // 接反：指针反向偏转
         // 针沿 +Y 起算。表盘朝 +Z（相机在 +Z 侧看），绕 Z 正向转是往 -X（左），
         // 所以 rotation.z = -deg：零位 deg=-52 → +52° → 针指左侧；满偏 → 指右侧。
@@ -1020,8 +1023,15 @@ export function createLabRenderer(container, opt = {}) {
   function rayTable(e) {
     setRay(e)
     const hits = raycaster.intersectObject(table, false)
-    if (!hits.length) return null
-    return labTableGroup.worldToLocal(hits[0].point.clone())
+    if (hits.length) return labTableGroup.worldToLocal(hits[0].point.clone())
+    // 网格没打中（拖放到桌面网格边缘外/擦边）→ 与水平桌面平面求交兜底，
+    // 否则拖放会被静默丢弃
+    const o = raycaster.ray.origin
+    const dir = raycaster.ray.direction
+    if (Math.abs(dir.y) < 1e-6) return null
+    const t = -o.y / dir.y
+    if (t < 0) return null
+    return labTableGroup.worldToLocal(o.clone().addScaledVector(dir, t))
   }
 
   /** 拾取器材 / 接线柱 / 导线 */

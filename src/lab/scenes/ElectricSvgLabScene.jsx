@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { solveCircuit, circuitStatus, CFG, TERM_IDS } from '../engine/electricLab.js'
-import { TYPES, RHEO_TRACK, FIG, rheostatMode } from './electricSvgInstruments.js'
+import { TYPES, RHEO_TRACK, figURL, rheostatMode } from './electricSvgInstruments.js'
 import { createLabRenderer } from '../lab3d/three-render.js'
 import { renderIcon, SOLID_TYPES } from '../lab3d/solidEquipment.js'
 
@@ -194,13 +194,18 @@ const miniResistor = (b1, b2) => `
   <rect x="24" y="7" width="3.4" height="12" fill="#c9a227"/><rect x="28.5" y="7" width="3.4" height="12" fill="#c9a227"/>
 </svg>`
 const PALETTE_ICONS = {
-  battery: `<img src="${FIG}/battery_c.png" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
-  bulb: `<img src="${FIG}/bulb_c.png" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
-  switch: `<img src="${FIG}/switch_c.png" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
-  ammeter: `<img src="${FIG}/ammeter_c.png" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
-  ammeterA: `<img src="${FIG}/ammeterA_c.png" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
-  voltmeter: `<img src="${FIG}/voltmeter_c.png" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
-  rheostat: `<img src="${FIG}/rheostat_c.png" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
+  battery: `<img src="${figURL('battery_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
+  accumulator: `<img src="${figURL('accumulator_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
+  bulb: `<img src="${figURL('bulb_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
+  switch: (() => {
+    // 开关已改为矢量绘制（不再用被掏空的 switch_c.png 照片），器件栏缩略图也直接用矢量件
+    const s = TYPES.switch.render({ id: 'pal-switch', closed: false, showRead: false })
+    return s.replace('width="176" height="110"', 'width="42" height="26"')
+  })(),
+  ammeter: `<img src="${figURL('ammeter_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
+  ammeterA: `<img src="${figURL('ammeterA_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
+  voltmeter: `<img src="${figURL('voltmeter_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
+  rheostat: `<img src="${figURL('rheostat_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
   resistor5: miniResistor('#0f7a3d', '#1b1b1b'),
   resistor10: miniResistor('#7a4a12', '#1b1b1b'),
   resistor15: miniResistor('#7a4a12', '#0f7a3d'),
@@ -211,14 +216,14 @@ const PALETTE_ICONS = {
   <rect x="20" y="15" width="22" height="4" rx="2" fill="#cbd5e1" stroke="#8d96a1" transform="rotate(-38 21 17)"/>
   <circle cx="21" cy="18" r="2.6" fill="#8d96a1"/>
 </svg>`,
-  motor: `<img src="${FIG}/motor_c.png" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
+  motor: `<img src="${figURL('motor_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
   diode: `
 <svg viewBox="0 0 42 26" style="width:42px;height:26px">
   <path d="M4 20 H13 M29 20 H38" stroke="#d98a3d" stroke-width="2.2" stroke-linecap="round"/>
   <path d="M15 20 V12 A6 7 0 0 1 27 12 V20 Z" fill="#e8763a" stroke="#c25a12"/>
   <rect x="13" y="18" width="16" height="4" rx="1.5" fill="#9aa3ad"/>
 </svg>`,
-  fuse: `<img src="${FIG}/fuse_c.png" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
+  fuse: `<img src="${figURL('fuse_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
   testPencil: `
 <svg viewBox="0 0 42 26" style="width:42px;height:26px">
   <path d="M2 13 L8 9 V17 Z" fill="#cbd5e1" stroke="#8d96a1"/>
@@ -239,8 +244,8 @@ const PALETTE_ICONS = {
   <path d="M13 12 q3 -5 6 0 q3 5 6 0 q3 -5 6 0" fill="none" stroke="#c25a12" stroke-width="1.6"/>
   <rect x="12" y="20" width="6" height="4" rx="2" fill="#1c1f24"/><rect x="24" y="20" width="6" height="4" rx="2" fill="#c0392b"/>
 </svg>`,
-  resBox: `<img src="${FIG}/resbox_c.png" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
-  multimeter: `<img src="${FIG}/multimeter_c.png" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
+  resBox: `<img src="${figURL('resbox_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
+  multimeter: `<img src="${figURL('multimeter_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
   relay: `
 <svg viewBox="0 0 42 26" style="width:42px;height:26px">
   <rect x="22" y="10" width="8" height="10" rx="1.5" fill="#5b6570"/>
@@ -254,7 +259,7 @@ const PALETTE_ICONS = {
 
 /* 元件库分组（按教学批次展示） */
 const PALETTE_GROUPS = [
-  { title: '基础器材', keys: ['battery', 'bulb', 'switch', 'ammeter', 'ammeterA', 'voltmeter', 'rheostat'] },
+  { title: '基础器材', keys: ['battery', 'accumulator', 'bulb', 'switch', 'ammeter', 'ammeterA', 'voltmeter', 'rheostat'] },
   { title: '初中必做实验', keys: ['resistor5', 'resistor10', 'resistor15', 'switch2', 'motor', 'diode', 'jouleTube'] },
   { title: '家庭电路', keys: ['mains', 'energyMeter', 'fuse', 'testPencil', 'electroscope'] },
   { title: '高中拓展', keys: ['resBox', 'multimeter', 'relay'] },
@@ -1007,9 +1012,9 @@ export default function ElectricSvgLabScene() {
     if (c.type === 'resBox') {
       return { text: `R = ${(o._R ?? 0).toFixed(1)} Ω`, color: '#4ade80' }
     }
-    if (c.type === 'battery' || c.type === 'mains') {
+    if (c.type === 'battery' || c.type === 'accumulator' || c.type === 'mains') {
       // 端电压 = E − I·r；短路时端电压塌到 0，全部电动势都降在内阻上
-      const emf = o._emf ?? (c.type === 'mains' ? CFG.MAINS_V : CFG.VS.V)
+      const emf = o._emf ?? (c.type === 'mains' ? CFG.MAINS_V : c.type === 'accumulator' ? CFG.ACC_V : CFG.VS.V)
       const u = o._V ?? emf
       const drop = Math.max(0, emf - u)
       const danger = u < emf * 0.15 && Math.abs(o._I || 0) > 0.3
@@ -1333,7 +1338,7 @@ export default function ElectricSvgLabScene() {
               <li><b>数字读数（3D）</b>：点顶部「🔢 读数」，所有电表的实时数值直接列在画面右上。</li>
             </ul>
             <ul>
-              <li>电池组 3V（内阻 0.1Ω） · 小灯泡 5Ω（额定 3V / 1.8W） · 家庭电源 220V</li>
+              <li>电池组 3V（内阻 0.1Ω） · 蓄电池 12V · 小灯泡 5Ω（额定 3V / 1.8W） · 家庭电源 220V</li>
               <li>定值电阻 5Ω / 10Ω / 15Ω（色环标识） · 小电动机线圈 4Ω · 二极管导通压降 2V</li>
               <li>电流表内阻 0.01Ω（量程 0.6A） · 电压表内阻 10MΩ（量程 3V）</li>
               <li>滑动变阻器最大阻值 10Ω，接线采用「一上一下」原则。</li>

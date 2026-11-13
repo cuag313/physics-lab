@@ -1,4 +1,5 @@
 import { InstrumentBase } from '../InstrumentBase'
+import { CAP_RED, CAP_BLACK } from '../../theme/termColors.js'
 
 /**
  * 电池
@@ -20,8 +21,8 @@ export class Battery extends InstrumentBase {
       internalResistance: { value: 0.1, min: 0, max: 10, step: 0.1, label: '内阻', unit: 'Ω' }
     }
 
-    this.addPort({ id: 'pos', type: 'electrical', dx: 0.5, dy: 0, label: '+', color: '#f44' })
-    this.addPort({ id: 'neg', type: 'electrical', dx: -0.5, dy: 0, label: '−', color: '#44f' })
+    this.addPort({ id: 'pos', type: 'electrical', dx: 0.5, dy: 0, label: '+', color: CAP_RED })
+    this.addPort({ id: 'neg', type: 'electrical', dx: -0.5, dy: 0, label: '−', color: CAP_BLACK })
   }
 
   get emf() { return this.getParam('emf') }
@@ -51,7 +52,7 @@ export class Battery extends InstrumentBase {
     const plateH2 = sh * 0.45 // 短板（负极）
 
     // 正极（长板）
-    ctx.strokeStyle = '#f44'
+    ctx.strokeStyle = CAP_RED
     ctx.lineWidth = 3
     ctx.beginPath()
     ctx.moveTo(cx + sw * 0.08, cy - plateH1 / 2)
@@ -59,7 +60,7 @@ export class Battery extends InstrumentBase {
     ctx.stroke()
 
     // 负极（短板）
-    ctx.strokeStyle = '#44f'
+    ctx.strokeStyle = CAP_BLACK
     ctx.lineWidth = 3
     ctx.beginPath()
     ctx.moveTo(cx - sw * 0.08, cy - plateH2 / 2)
@@ -79,11 +80,11 @@ export class Battery extends InstrumentBase {
     ctx.stroke()
 
     // +/- 标记
-    ctx.fillStyle = '#f44'
+    ctx.fillStyle = CAP_RED
     ctx.font = 'bold 14px sans-serif'
     ctx.textAlign = 'center'
     ctx.fillText('+', sx + sw * 0.3, cy - sh * 0.2)
-    ctx.fillStyle = '#44f'
+    ctx.fillStyle = CAP_BLACK
     ctx.fillText('−', sx - sw * 0.3, cy - sh * 0.2)
 
     // 数值

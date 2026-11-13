@@ -14,7 +14,7 @@ describe('TERM_IDS 注册', () => {
   it('全部新类型都有接线柱定义', () => {
     for (const t of ['resistor5', 'resistor10', 'resistor15', 'switch2', 'motor', 'diode',
       'fuse', 'testPencil', 'electroscope', 'resBox', 'multimeter', 'relay', 'mains', 'energyMeter',
-      'jouleTube']) {
+      'jouleTube', 'accumulator']) {
       expect(TERM_IDS[t], t).toBeTruthy()
       expect(TERM_IDS[t].length).toBeGreaterThan(1)
     }
@@ -227,6 +227,19 @@ describe('电池端电压（内阻分压）', () => {
     expect(near(out[1]._I, 3 / CFG.VS.r, 1e-3)).toBe(true) // 30A
     expect(out[1]._V).toBeLessThan(0.01)
     expect(near(out[1]._Ir, 3, 1e-3)).toBe(true)
+  })
+  it('蓄电池按 12V 电动势求解，电池组按 3V', () => {
+    const outAcc = loop(
+      [{ id: 1, type: 'accumulator' }, { id: 2, type: 'resistor5' }],
+      [{ id: 1, a: '1:p', b: '2:a' }, { id: 2, a: '2:b', b: '1:n' }])
+    const Ia = CFG.ACC_V / (CFG.VS.r + 5)
+    expect(near(outAcc[1]._emf, CFG.ACC_V, 1e-6)).toBe(true)
+    expect(near(outAcc[2]._I, Ia, 1e-6)).toBe(true)
+
+    const outBat = loop(
+      [{ id: 1, type: 'battery' }, { id: 2, type: 'resistor5' }],
+      [{ id: 1, a: '1:p', b: '2:a' }, { id: 2, a: '2:b', b: '1:n' }])
+    expect(near(outBat[1]._emf, CFG.VS.V, 1e-6)).toBe(true)
   })
 })
 

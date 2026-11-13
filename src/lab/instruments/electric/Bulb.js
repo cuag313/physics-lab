@@ -1,4 +1,5 @@
 import { InstrumentBase } from '../InstrumentBase'
+import { CAP_RED, CAP_BLACK } from '../../theme/termColors.js'
 
 /**
  * 小灯泡（灯丝电阻随温度变化）
@@ -35,8 +36,8 @@ export class Bulb extends InstrumentBase {
       brightness: 0 // 0~1
     }
 
-    this.addPort({ id: 'left', type: 'electrical', dx: -0.4, dy: 0.15, label: '', color: '#aaa' })
-    this.addPort({ id: 'right', type: 'electrical', dx: 0.4, dy: 0.15, label: '', color: '#aaa' })
+    this.addPort({ id: 'left', type: 'electrical', dx: -0.4, dy: 0.15, label: '', color: CAP_BLACK })
+    this.addPort({ id: 'right', type: 'electrical', dx: 0.4, dy: 0.15, label: '', color: CAP_RED })
   }
 
   /** 上一帧功耗（W）：solve 后由引擎更新 v/i */

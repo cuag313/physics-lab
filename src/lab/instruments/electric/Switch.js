@@ -1,4 +1,5 @@
 import { InstrumentBase } from '../InstrumentBase'
+import { CAP_RED, CAP_BLACK } from '../../theme/termColors.js'
 
 /**
  * 开关
@@ -19,8 +20,8 @@ export class Switch extends InstrumentBase {
       closed: true
     }
 
-    this.addPort({ id: 'left', type: 'electrical', dx: -0.5, dy: 0, label: '', color: '#aaa' })
-    this.addPort({ id: 'right', type: 'electrical', dx: 0.5, dy: 0, label: '', color: '#aaa' })
+    this.addPort({ id: 'left', type: 'electrical', dx: -0.5, dy: 0, label: '', color: CAP_BLACK })
+    this.addPort({ id: 'right', type: 'electrical', dx: 0.5, dy: 0, label: '', color: CAP_RED })
   }
 
   /** 开关的等效电阻：闭合=0，断开=∞ */
@@ -60,7 +61,7 @@ export class Switch extends InstrumentBase {
     ctx.fill()
 
     // 闸刀
-    ctx.strokeStyle = closed ? '#4CAF50' : '#f44'
+    ctx.strokeStyle = closed ? '#4CAF50' : CAP_RED
     ctx.lineWidth = 3
     ctx.beginPath()
     ctx.moveTo(sx - sw * 0.15, sy)
@@ -72,7 +73,7 @@ export class Switch extends InstrumentBase {
     ctx.stroke()
 
     // 状态指示
-    ctx.fillStyle = closed ? '#4CAF50' : '#f44'
+    ctx.fillStyle = closed ? '#4CAF50' : CAP_RED
     ctx.font = 'bold 11px sans-serif'
     ctx.textAlign = 'center'
     ctx.fillText(closed ? 'ON' : 'OFF', sx, sy + sh * 0.5 + 14)

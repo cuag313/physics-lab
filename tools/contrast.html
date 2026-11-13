@@ -52,6 +52,7 @@ const qs = new URLSearchParams(location.search)
 const types = (qs.get('t') || 'battery,switch,ammeter,rheostat,bulb,voltmeter').split(',')
 const VIEWS = (qs.get('v') || 'front,top').split(',')
 const H = Number(qs.get('h') || 170)          // 图纸高（px），宽度按 w/h 自动
+const DOTS = qs.get('dots') !== '0'           // 柱位蓝标：调试用，dots=0 关掉看纯净图纸
 const wrap = document.getElementById('wrap')
 const rows3d = [] // 需要重画的 3D 行（GLB 异步就绪后要再渲一次）
 
@@ -86,9 +87,9 @@ for (const t of types) {
   // ① 图纸：SVG render 原样
   const pw = Math.round(H * def.w / def.h)
   const L = cell(pw, `<b>${def.label}</b> SVG ${def.w}×${def.h}`)
-  L.pic.innerHTML = def.render({ id: 'cx_' + t, closed: false }, { bright: 0.8, frac: 0.42 })
+  L.pic.innerHTML = def.render({ id: 'cx_' + t, closed: qs.get('closed') === '1' }, { bright: 0.8, frac: 0.42 })
   // 柱位标注
-  for (const tm of (def.terminals || [])) {
+  if (DOTS) for (const tm of (def.terminals || [])) {
     const dot = document.createElement('div')
     dot.className = 'dot'
     dot.style.left = (tm.x / def.w * 100) + '%'
@@ -102,7 +103,7 @@ for (const t of types) {
   for (const v of VIEWS) {
     let url = ''
     try {
-      url = renderIcon(t, { size: Math.round(H * 3), view: v, terminals: def.terminals })
+      url = renderIcon(t, { size: Math.round(H * 3), view: v, terminals: def.terminals, w: def.w, h: def.h })
     } catch (e) {
       url = ''
     }
@@ -132,7 +133,8 @@ function repaint3d() {
       const t = row.dataset.type
       let url = ''
       try {
-        url = renderIcon(t, { size: Math.round(H * 3), view: VIEWS[i - 1], terminals: (TYPES[t] || {}).terminals })
+        const d = TYPES[t] || {}
+        url = renderIcon(t, { size: Math.round(H * 3), view: VIEWS[i - 1], terminals: d.terminals, w: d.w, h: d.h })
       } catch (e) { url = '' }
       if (!url) continue
       const old = pics[i].querySelector('img')

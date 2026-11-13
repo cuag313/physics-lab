@@ -1,0 +1,605 @@
+/**
+ * BuilderSVG — 简单电路「自己动手」2D/SVG 搭建器
+ *
+ * 移植自 ⚡电学虚拟实验室（ElectricSvgLabScene）的 2D 成功经验：
+ *   - 电路求解复用 engine/electricLab.js（节点法 MNA + 高斯消元）
+ *   - 器材外形复用 scenes/electricSvgInstruments.js 的 1:1 SVG 定义（TYPES）
+ *   - Verlet 粒子链软导线、点接线柱连线、开关通断、滑变调阻、电表读数
+ *
+ * 与完整实验室的区别：面向入门「简单电路」，只保留基础器材；
+ * 不挂 3D 渲染器，纯 DOM + SVG，无 three 依赖。
+ *
+ * 对外命令式 API（对齐原 Builder3D 的 ref 接口）：
+ *   add(type)  按器材类型加入桌面（网格摆放）
+ *   reset()    清空桌面与导线
+ */
+
+import {
+  forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
+} from 'react'
+import { solveCircuit, CFG } from '../engine/electricLab.js'
+import { TYPES, RHEO_TRACK, rheostatMode } from '../scenes/electricSvgInstruments.js'
+
+/* 画布逻辑尺寸（与完整实验室一致的 1800×1100 比例，内部等比缩放适配容器） */
+const CW = 1800
+const CH = 1100
+
+/* Verlet 粒子链软导线（移植自 ElectricSvgLabScene，参数保持一致） */
+const WIRE_N = 18
+const WIRE_ITER = 12
+const WIRE_GRAV = 0.6
+const WIRE_DAMP = 0.985
+const TERM_DROP = 7
+
+const WIRE_COLORS = [
+  { key: 'red', hex: '#e53935' },
+  { key: 'green', hex: '#2e9e44' },
+  { key: 'black', hex: '#1c1f24' },
+]
+
+const keyOf = (cid, tid) => cid + ':' + tid
+
+/** 接线锚点：接线柱帽正下方（导线真正夹持处） */
+function termAnchor(c, tid) {
+  const t = (TYPES[c.type] && TYPES[c.type].terminals.find((x) => x.id === tid)) || null
+  return t ? { x: c.x + t.x, y: c.y + t.y + TERM_DROP } : null
+}
+
+function makeChain(ax, ay, bx, by) {
+  const dist = Math.hypot(bx - ax, by - ay)
+  const seg = (dist * 1.3) / (WIRE_N - 1)
+  const pts = []
+  const prev = []
+  for (let i = 0; i < WIRE_N; i++) {
+    const t = i / (WIRE_N - 1)
+    const x = ax + (bx - ax) * t
+    const y = ay + (by - ay) * t + Math.sin(Math.PI * t) * Math.min(70, dist * 0.14)
+    pts.push({ x, y })
+    prev.push({ x, y })
+  }
+  return { pts, prev, seg }
+}
+
+function stepChain(ch, ax, ay, bx, by) {
+  const n = ch.pts.length - 1
+  ch.pts[0].x = ax; ch.pts[0].y = ay
+  ch.prev[0].x = ax; ch.prev[0].y = ay
+  ch.pts[n].x = bx; ch.pts[n].y = by
+  ch.prev[n].x = bx; ch.prev[n].y = by
+  for (let i = 1; i < n; i++) {
+    const p = ch.pts[i]
+    const q = ch.prev[i]
+    const vx = (p.x - q.x) * WIRE_DAMP
+    const vy = (p.y - q.y) * WIRE_DAMP
+    q.x = p.x; q.y = p.y
+    p.x += vx
+    p.y += vy + WIRE_GRAV
+  }
+  for (let k = 0; k < WIRE_ITER; k++) {
+    for (let i = 0; i < n; i++) {
+      const a = ch.pts[i]
+      const b = ch.pts[i + 1]
+      const dx = b.x - a.x
+      const dy = b.y - a.y
+      const len = Math.hypot(dx, dy) || 1e-6
+      const diff = (len - ch.seg) / len
+      const ox = dx * diff
+      const oy = dy * diff
+      const wa = i === 0 ? 0 : 1
+      const wb = i + 1 === n ? 0 : 1
+      const wsum = wa + wb
+      if (!wsum) continue
+      if (wa) { a.x += ox * (wa / wsum); a.y += oy * (wa / wsum) }
+      if (wb) { b.x -= ox * (wb / wsum); b.y -= oy * (wb / wsum) }
+    }
+  }
+}
+
+function chainPath(ch) {
+  let d = `M${ch.pts[0].x.toFixed(1)} ${ch.pts[0].y.toFixed(1)}`
+  for (let i = 1; i < ch.pts.length; i++) d += ` L${ch.pts[i].x.toFixed(1)} ${ch.pts[i].y.toFixed(1)}`
+  return d
+}
+
+/* 简单电路入门器材（类型与引擎 TYPES / TERM_IDS 一一对应） */
+const PALETTE = [
+  { type: 'battery', name: '电池组' },
+  { type: 'accumulator', name: '蓄电池' },
+  { type: 'bulb', name: '灯泡' },
+  { type: 'switch', name: '开关' },
+  { type: 'resistor5', name: '定值电阻 5Ω' },
+  { type: 'rheostat', name: '滑动变阻器' },
+  { type: 'ammeter', name: '电流表' },
+  { type: 'voltmeter', name: '电压表' },
+]
+
+const METER_NAME = { ammeter: '电流表', voltmeter: '电压表' }
+
+const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
+  const [comps, setComps] = useState([])
+  const [wires, setWires] = useState([])
+  const [selected, setSelected] = useState(null)
+  const [pending, setPending] = useState(null)
+  const [, forceUpdate] = useState(0)
+
+  const uidRef = useRef(1)
+  const dragRef = useRef(null)
+  const lastUpRef = useRef(null)
+  const compsRef = useRef([])
+  const wiresRef = useRef([])
+  const chainsRef = useRef(new Map())
+  const pathRefs = useRef(new Map())
+  const solvedRef = useRef(null)
+  const previewChainRef = useRef(null)
+  const previewTipRef = useRef(null)
+  const canvasRef = useRef(null)
+  compsRef.current = comps
+  wiresRef.current = wires
+
+  /* ── 求解（comps/wires 变化即重算）── */
+  const solved = useMemo(() => solveCircuit(comps, wires), [comps, wires])
+  solvedRef.current = solved
+
+  const nextId = () => uidRef.current++
+  const T = (c) => TYPES[c.type]
+
+  /* ── 元件增删 ── */
+  const addComp = useCallback((type, x, y) => {
+    const t = TYPES[type]
+    if (!t) return null
+    const c = {
+      id: uidRef.current++, type,
+      x: Math.max(0, Math.min(CW - t.w, Math.round(x))),
+      y: Math.max(0, Math.min(CH - t.h, Math.round(y))),
+      closed: false, showRead: false, f: 0.4, rmax: CFG.RHEO_MAX,
+    }
+    setComps((cs) => cs.concat(c))
+    return c
+  }, [])
+
+  const addWire = useCallback((ta, tb, color) => {
+    if (ta.cid === tb.cid && ta.tid === tb.tid) return
+    const a = keyOf(ta.cid, ta.tid)
+    const b = keyOf(tb.cid, tb.tid)
+    setWires((ws) => {
+      if (ws.some((w) => (w.a === a && w.b === b) || (w.a === b && w.b === a))) return ws
+      return ws.concat({ id: uidRef.current++, a, b, color: color || wireColor })
+    })
+  }, [wireColor])
+
+  const removeComp = useCallback((id) => {
+    setComps((cs) => cs.filter((c) => c.id !== id))
+    setWires((ws) => ws.filter((w) => !w.a.startsWith(id + ':') && !w.b.startsWith(id + ':')))
+    setSelected((s) => (s && s.kind === 'comp' && s.id === id ? null : s))
+  }, [])
+
+  const removeWire = useCallback((id) => {
+    setWires((ws) => ws.filter((w) => w.id !== id))
+    setSelected((s) => (s && s.kind === 'wire' && s.id === id ? null : s))
+  }, [])
+
+  /* ── 对外命令式 API（对齐原 Builder3D：add / reset）── */
+  useImperativeHandle(ref, () => ({
+    add(type) {
+      // 网格摆放，多件不叠压（2 列，逐行下移）
+      const cs = compsRef.current
+      const col = cs.length % 2
+      const row = Math.floor(cs.length / 2)
+      const x = col === 0 ? 120 : 900
+      const y = 120 + row * 260
+      addComp(type, x, y)
+    },
+    reset() {
+      setComps([]); setWires([]); setSelected(null); setPending(null)
+      chainsRef.current.clear(); pathRefs.current.clear()
+      previewChainRef.current = null; previewTipRef.current = null
+    },
+  }), [addComp])
+
+  /* ── 坐标换算：容器像素 → 画布逻辑坐标（等比缩放）── */
+  const canvasPoint = (e) => {
+    const r = canvasRef.current.getBoundingClientRect()
+    const sx = CW / r.width
+    const sy = CH / r.height
+    return { x: (e.clientX - r.left) * sx, y: (e.clientY - r.top) * sy }
+  }
+
+  const stopPreview = () => {
+    previewChainRef.current = null
+    previewTipRef.current = null
+  }
+
+  /* ── 接线柱按下：点柱连线（pending → 再点另一柱连通）── */
+  const onTermDown = (e, c, tid) => {
+    e.preventDefault(); e.stopPropagation()
+    if (pending && !(pending.cid === c.id && pending.tid === tid)) {
+      addWire(pending, { cid: c.id, tid })
+      setPending(null); stopPreview()
+      return
+    }
+    if (pending && pending.cid === c.id && pending.tid === tid) {
+      setPending(null); stopPreview()
+      return
+    }
+    setPending({ cid: c.id, tid })
+    const p1 = termAnchor(c, tid)
+    if (p1) {
+      previewChainRef.current = makeChain(p1.x, p1.y, p1.x, p1.y - 20)
+      previewTipRef.current = { from: { cid: c.id, tid }, tip: { x: p1.x, y: p1.y - 20 } }
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
+  /* ── 元件本体按下：拖动 / 滑片 / 开关 ── */
+  const onCompDown = (e, c) => {
+    if (e.target.closest('.esb-term')) return
+    const slider = e.target.closest('.slider-handle')
+    if (c.type === 'rheostat' && slider) {
+      dragRef.current = { kind: 'slider', compId: c.id, startF: c.f ?? 0.4 }
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+      return
+    }
+    dragRef.current = {
+      kind: 'move', compId: c.id,
+      grab: (() => { const p = canvasPoint(e); return { dx: p.x - c.x, dy: p.y - c.y } })(),
+      sx: e.clientX, sy: e.clientY, moved: false,
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
+  const onMove = (e) => {
+    const d = dragRef.current
+    if (d && d.kind === 'move') {
+      const p = canvasPoint(e)
+      setComps((cs) => cs.map((c) => {
+        if (c.id !== d.compId) return c
+        const t = T(c)
+        return {
+          ...c,
+          x: Math.max(-10, Math.min(CW - t.w + 10, p.x - d.grab.dx)),
+          y: Math.max(-10, Math.min(CH - t.h + 10, p.y - d.grab.dy)),
+        }
+      }))
+      if (Math.hypot(e.clientX - d.sx, e.clientY - d.sy) > 5) d.moved = true
+      return
+    }
+    if (d && d.kind === 'slider') {
+      const p = canvasPoint(e)
+      setComps((cs) => cs.map((c) => {
+        if (c.id !== d.compId) return c
+        const f = (p.x - c.x - RHEO_TRACK.x0) / (RHEO_TRACK.x1 - RHEO_TRACK.x0)
+        return { ...c, f: Math.max(0, Math.min(1, f)) }
+      }))
+      return
+    }
+    if (pending && !d) {
+      const pt = canvasPoint(e)
+      if (previewTipRef.current) previewTipRef.current.tip = pt
+    }
+  }
+
+  const tapComp = useCallback((c, isDouble) => {
+    if (!c) return
+    if (c.type === 'switch') {
+      setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, closed: !x.closed } : x)))
+    } else if (T(c) && T(c).meter && isDouble) {
+      setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, showRead: !x.showRead } : x)))
+    } else {
+      setSelected((s) => (s && s.kind === 'comp' && s.id === c.id ? null : { kind: 'comp', id: c.id }))
+    }
+  }, [])
+
+  const onUp = (e) => {
+    window.removeEventListener('pointermove', onMove)
+    window.removeEventListener('pointerup', onUp)
+    const d = dragRef.current
+    dragRef.current = null
+    if (d && d.kind === 'move') {
+      if (!d.moved) {
+        const c = compsRef.current.find((x) => x.id === d.compId)
+        const now = performance.now()
+        const last = lastUpRef.current
+        const isDouble = !!(last && now - last.t < 350 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 28)
+        lastUpRef.current = { t: now, x: e.clientX, y: e.clientY }
+        tapComp(c, isDouble)
+      }
+      return
+    }
+    if (d && d.kind === 'slider') forceUpdate((n) => n + 1)
+  }
+
+  /* ── 键盘删除 ── */
+  useEffect(() => {
+    const kd = (e) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return
+      if (!selected) return
+      e.preventDefault()
+      if (selected.kind === 'comp') removeComp(selected.id)
+      else removeWire(selected.id)
+    }
+    window.addEventListener('keydown', kd)
+    return () => window.removeEventListener('keydown', kd)
+  }, [selected, removeComp, removeWire])
+
+  /* ── Verlet 导线逐帧松弛 + 电流动画 ── */
+  const wireFxRef = useRef(new Map())
+  useEffect(() => {
+    let raf
+    let last = performance.now()
+    const tick = () => {
+      const now = performance.now()
+      const dt = Math.min(0.05, (now - last) / 1000)
+      last = now
+      const cs = compsRef.current
+      const wireI = (solvedRef.current && solvedRef.current._wireI) || {}
+      const fx = wireFxRef.current
+
+      for (const w of wiresRef.current) {
+        const ch = chainsRef.current.get(w.id)
+        if (!ch) continue
+        const c1 = cs.find((x) => x.id === +w.a.split(':')[0])
+        const c2 = cs.find((x) => x.id === +w.b.split(':')[0])
+        if (!c1 || !c2) continue
+        const p1 = termAnchor(c1, w.a.split(':')[1])
+        const p2 = termAnchor(c2, w.b.split(':')[1])
+        if (!p1 || !p2) continue
+        stepChain(ch, p1.x, p1.y, p2.x, p2.y)
+        const rec = pathRefs.current.get(w.id)
+        if (rec) {
+          const d = chainPath(ch)
+          if (rec.main) {
+            rec.main.setAttribute('d', d)
+            const off = (fx.get(w.id) || 0) + (wireI[w.id] || 0) * 200 * dt
+            fx.set(w.id, off)
+            rec.main.setAttribute('stroke-dashoffset', off.toFixed(1))
+          }
+          if (rec.hit) rec.hit.setAttribute('d', d)
+        }
+      }
+      const pc = previewChainRef.current
+      if (pc && previewTipRef.current) {
+        const from = previewTipRef.current.from
+        const c = cs.find((x) => x.id === from.cid)
+        const tip = previewTipRef.current.tip
+        if (c && tip) {
+          const p1 = termAnchor(c, from.tid)
+          if (p1) {
+            stepChain(pc, p1.x, p1.y, tip.x, tip.y)
+            if (previewPathRef.current) previewPathRef.current.setAttribute('d', chainPath(pc))
+          }
+        }
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+
+  const previewPathRef = useRef(null)
+
+  /* ── 导线 DOM 引用管理 ── */
+  const attachPath = useCallback((id, kind, el) => {
+    if (!pathRefs.current.has(id)) pathRefs.current.set(id, {})
+    const rec = pathRefs.current.get(id)
+    rec[kind] = el
+    if (el && !chainsRef.current.has(id)) {
+      const w = wiresRef.current.find((x) => x.id === id)
+      if (w) {
+        const c1 = compsRef.current.find((x) => x.id === +w.a.split(':')[0])
+        const c2 = compsRef.current.find((x) => x.id === +w.b.split(':')[0])
+        if (c1 && c2) {
+          const p1 = termAnchor(c1, w.a.split(':')[1])
+          const p2 = termAnchor(c2, w.b.split(':')[1])
+          if (p1 && p2) chainsRef.current.set(id, makeChain(p1.x, p1.y, p2.x, p2.y))
+        }
+      }
+    }
+    if (!el) {
+      delete rec[kind]
+      if (!rec.main && !rec.hit) {
+        pathRefs.current.delete(id)
+        chainsRef.current.delete(id)
+      }
+    }
+  }, [])
+
+  /* ── 求解结果 → 器材动态状态 ── */
+  const dynOf = (c) => {
+    const o = solved[c.id] || {}
+    if (c.type === 'bulb') {
+      const p = o._P || 0
+      return { bright: p > 0 ? Math.min(1, p / CFG.BULB_RATED) : 0, over: p > CFG.BULB_RATED * 1.02 }
+    }
+    if (c.type === 'ammeter' || c.type === 'ammeterA') return { frac: Math.abs(o._I || 0) / (o._fs || CFG.AMM_FS) }
+    if (c.type === 'voltmeter') return { frac: Math.abs(o._V || 0) / (o._fs || CFG.VOLT_FS) }
+    if (c.type === 'rheostat') {
+      const wired = new Set()
+      for (const w of wires) {
+        if (w.a.startsWith(c.id + ':')) wired.add(w.a.split(':')[1])
+        if (w.b.startsWith(c.id + ':')) wired.add(w.b.split(':')[1])
+      }
+      return { mode: rheostatMode(wired) }
+    }
+    return {}
+  }
+
+  const readoutOf = (c) => {
+    const o = solved[c.id] || {}
+    if (c.type === 'ammeter' || c.type === 'ammeterA') {
+      const num = Math.abs(o._I || 0) < 0.0005 ? '0.000' : Math.abs(o._I || 0).toFixed(3)
+      return { text: `I = ${num} A`, color: o._over ? '#fb7185' : o._rev ? '#fbbf24' : '#4ade80' }
+    }
+    if (c.type === 'voltmeter') {
+      const num = Math.abs(o._V || 0) < 0.0005 ? '0.000' : Math.abs(o._V || 0).toFixed(3)
+      return { text: `U = ${num} V`, color: o._over ? '#fb7185' : o._rev ? '#fbbf24' : '#4ade80' }
+    }
+    return null
+  }
+
+  /* ── 电路状态摘要（通路 / 断路 / 短路 / 误接）── */
+  const status = useMemo(() => {
+    const bat = comps.find((c) => c.type === 'battery')
+    const bulbs = comps.filter((c) => c.type === 'bulb')
+    const d = solved.diagnostics || {}
+    if (!bat) return { tone: 'warn', text: '从右侧拖入电源和灯泡，开始搭电路' }
+    if (d.short) return { tone: 'bad', text: '⚠ 电源短路！请立即断开电源' }
+    if (d.ammeterParallel) return { tone: 'bad', text: '⚠ 电流表并联在元件两端，会烧坏电表！电流表应串联' }
+    if (d.voltmeterSeries) return { tone: 'warn', text: '电压表串在电路中了：电压表应并联在被测元件两端' }
+    const batI = Math.abs(solved[bat.id]?._I || 0)
+    if (batI > 1e-4) {
+      const lit = bulbs.filter((b) => (solved[b.id]?._P || 0) > 0.001)
+      return { tone: 'ok', text: lit.length ? `✅ 通路 · ${lit.length} 只灯泡发光` : '✅ 电路接通' }
+    }
+    const opened = comps.find((c) => c.type === 'switch' && !c.closed)
+    if (opened) return { tone: 'warn', text: '开关断开 · 电路不通' }
+    return { tone: 'warn', text: '电路未接通（回路不完整或断路）' }
+  }, [comps, solved])
+
+  const compById = (id) => comps.find((c) => c.id === id)
+
+  return (
+    <div className="esb-root">
+      <style>{`
+        .esb-root{position:relative;flex:1;min-height:0;overflow:auto;background:#eef2f7;
+          font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif}
+        .esb-canvas{position:relative;width:${CW}px;height:${CH}px;border-radius:14px;
+          background:linear-gradient(#fbfcfe,#fbfcfe),
+            repeating-linear-gradient(0deg,transparent 0 39px,#e7edf5 39px 40px),
+            repeating-linear-gradient(90deg,transparent 0 39px,#e7edf5 39px 40px);
+          box-shadow:inset 0 0 0 1px #dbe3ec,0 10px 30px rgba(15,23,42,.07);margin:12px}
+        .esb-wirelayer{position:absolute;inset:0;pointer-events:none;z-index:1}
+        .esb-partlayer{position:absolute;inset:0;z-index:2;pointer-events:none}
+        .esb-comp{position:absolute;cursor:grab;touch-action:none;pointer-events:auto}
+        .esb-comp:active{cursor:grabbing}
+        .esb-comp svg{display:block;overflow:visible}
+        /* 器件图纸里叠了一"内部结构"层（.inner/.plabel），简单电路没有剖视功能，
+           这一层会从照片下缘、缝隙里露出来（灯泡底板下那块灰色小条就是它），直接隐藏 */
+        .esb-root .inner,.esb-root .plabel{display:none}
+        .esb-comp.selected .esb-boxhl{opacity:1}
+        .esb-boxhl{position:absolute;inset:-6px;border:2px dashed #2563eb;border-radius:12px;
+          opacity:0;pointer-events:none;transition:opacity .15s}
+        .esb-comp:hover .esb-boxhl{opacity:.45}
+        .esb-term{position:absolute;width:20px;height:20px;border-radius:50%;
+          background:transparent;border:2px solid transparent;cursor:crosshair;z-index:5;
+          transition:transform .12s,box-shadow .12s,border-color .12s}
+        .esb-term:hover{transform:scale(1.35);box-shadow:0 0 0 5px rgba(37,99,235,.22);border-color:#2563eb}
+        .esb-term.active{border-color:#f59e0b;box-shadow:0 0 0 7px rgba(245,158,11,.25);transform:scale(1.3)}
+        .esb-wire{fill:none;stroke:#334155;stroke-width:5;stroke-dasharray:0.1 6.5;
+          stroke-linecap:round;pointer-events:none;transition:stroke .6s,filter .6s}
+        .esb-wire.flash{animation:esb-wire-flash 1s ease-in-out infinite}
+        @keyframes esb-wire-flash{0%,100%{opacity:1}50%{opacity:.4}}
+        .esb-wire-hit{fill:none;stroke:transparent;stroke-width:18;stroke-linecap:round;
+          cursor:pointer;pointer-events:stroke}
+        .esb-wire.sel{stroke:#e11d48}
+        .esb-wire-preview{fill:none;stroke:#f59e0b;stroke-width:5;stroke-dasharray:0.1 6.5;
+          stroke-linecap:round;opacity:.9}
+        .esb-delbtn{position:absolute;width:26px;height:26px;border-radius:50%;z-index:12;
+          background:#e11d48;color:#fff;border:2px solid #fff;font-size:14px;font-weight:700;
+          display:grid;place-items:center;cursor:pointer;line-height:1;font-family:inherit}
+        .esb-readout{position:absolute;left:50%;top:-36px;transform:translateX(-50%);
+          background:#0f172a;color:#4ade80;font-family:ui-monospace,Consolas,monospace;font-size:13px;
+          padding:4px 9px;border-radius:7px;white-space:nowrap;border:1px solid #334155;
+          transition:opacity .15s;pointer-events:none;z-index:9;font-weight:600}
+        .esb-status{position:absolute;left:12px;bottom:12px;z-index:20;padding:7px 14px;border-radius:10px;
+          font-size:13px;font-weight:600;pointer-events:none;box-shadow:0 4px 14px rgba(2,6,23,.25)}
+      `}</style>
+
+      <div className="esb-canvas" ref={canvasRef}>
+        {/* 导线层 */}
+        <svg className="esb-wirelayer" width={CW} height={CH}>
+          {wires.map((w) => {
+            const c1 = compById(+w.a.split(':')[0])
+            const c2 = compById(+w.b.split(':')[0])
+            if (!c1 || !c2) return null
+            const p1 = termAnchor(c1, w.a.split(':')[1])
+            const p2 = termAnchor(c2, w.b.split(':')[1])
+            if (!p1 || !p2) return null
+            const sel = selected && selected.kind === 'wire' && selected.id === w.id
+            const m = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }
+            const d0 = `M${p1.x} ${p1.y} L${p2.x} ${p2.y}`
+            const I = Math.abs((solved._wireI && solved._wireI[w.id]) || 0)
+            const stroke = I < 0.1 ? (w.color || '#475569') : I < 0.3 ? '#f59e0b' : '#ef4444'
+            return (
+              <g key={w.id}>
+                <path
+                  ref={(el) => attachPath(w.id, 'hit', el)}
+                  d={d0}
+                  className="esb-wire-hit"
+                  stroke={sel ? 'rgba(225,29,72,0.35)' : 'transparent'}
+                  strokeWidth={sel ? 16 : 18}
+                  onClick={() => setSelected({ kind: 'wire', id: w.id })}
+                />
+                <path
+                  ref={(el) => attachPath(w.id, 'main', el)}
+                  d={d0}
+                  className={`esb-wire${I > 1 ? ' flash' : ''}${sel ? ' sel' : ''}`}
+                  style={{ stroke }}
+                />
+                {sel && (
+                  <g>
+                    <circle cx={m.x} cy={m.y} r="9" fill="#e11d48" opacity="0.95" />
+                    <text x={m.x} y={m.y + 4} textAnchor="middle" fontSize="11" fill="#fff" fontWeight="700">✕</text>
+                    <circle cx={m.x} cy={m.y} r="14" fill="transparent"
+                      style={{ pointerEvents: 'fill', cursor: 'pointer' }}
+                      onClick={() => removeWire(w.id)} />
+                  </g>
+                )}
+              </g>
+            )
+          })}
+          {pending && <path ref={previewPathRef} className="esb-wire-preview" />}
+        </svg>
+
+        {/* 元件层 */}
+        <div className="esb-partlayer">
+          {comps.map((c) => {
+            const t = T(c)
+            if (!t) return null
+            const dyn = dynOf(c)
+            const ro = readoutOf(c)
+            const isSel = selected && selected.kind === 'comp' && selected.id === c.id
+            return (
+              <div
+                key={c.id}
+                className={`esb-comp${isSel ? ' selected' : ''}`}
+                style={{ left: c.x, top: c.y, width: t.w, height: t.h }}
+                onPointerDown={(e) => onCompDown(e, c)}
+              >
+                <div className="esb-boxhl" />
+                <div dangerouslySetInnerHTML={{ __html: t.render(c, dyn) }} />
+                {t.terminals.map((tm) => (
+                  <div
+                    key={tm.id}
+                    className={`esb-term${pending && pending.cid === c.id && pending.tid === tm.id ? ' active' : ''}`}
+                    title={tm.name}
+                    style={{ left: tm.x - 9, top: tm.y - 9 }}
+                    onPointerDown={(e) => onTermDown(e, c, tm.id)}
+                  />
+                ))}
+                {t.meter && ro && (
+                  <div className="esb-readout" style={{ opacity: c.showRead ? 1 : 0, color: ro.color }}>{ro.text}</div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* 状态浮层 */}
+        <div
+          className="esb-status"
+          style={{
+            background: status.tone === 'ok' ? 'rgba(46,125,50,.92)' : status.tone === 'bad' ? 'rgba(198,40,40,.9)' : 'rgba(15,23,42,.84)',
+            color: '#fff',
+          }}
+        >
+          {status.text}
+        </div>
+      </div>
+    </div>
+  )
+})
+
+export default BuilderSVG

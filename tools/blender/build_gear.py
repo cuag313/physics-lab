@@ -40,6 +40,9 @@ def reset():
 def mat_solid(name, rgb, rough=0.55, metal=0.0):
     m = bpy.data.materials.new(name)
     m.use_nodes = True
+    # 手工 from_pydata 的网格（螺旋管等）面朝向可能整体朝内，会被背面剔除吃掉；
+    # 统一关 backface culling（导出 glTF 的 doubleSided），保证可见
+    m.use_backface_culling = False
     bsdf = None
     for n in m.node_tree.nodes:
         if n.type == 'BSDF_PRINCIPLED':
@@ -302,6 +305,138 @@ def build_bulb():
     ], 40, glass)
 
 
+def cyl_x(name, r, h, x, y, z, mat, segs=24):
+    """沿 X 轴的圆柱（滑变瓷管、电枢这类横放的回转件）"""
+    ob = cyl(name, r, h, x, y, z, mat, segs=segs, axis='Z')
+    ob.rotation_euler = (0.0, 1.5708, 0.0)
+    bpy.context.view_layer.objects.active = ob
+    bpy.ops.object.transform_apply(rotation=True)
+    return ob
+
+
+def helix_tube(name, x0, x1, y, z, r_coil, r_wire, turns, mat, segs=10, ring=6):
+    """沿 X 轴的螺旋管（滑变密绕电阻丝）。
+    逐圈生成截面圆环再连四边形 —— Blender 曲线不进 glTF，必须落成真网格。"""
+    verts, faces = [], []
+    n = turns * segs
+    for i in range(n + 1):
+        t = i / float(n)
+        a = turns * 2.0 * math.pi * t
+        cx = x0 + (x1 - x0) * t
+        cy = y + r_coil * math.cos(a)
+        cz = z + r_coil * math.sin(a)
+        # 截面圆放在 Y-Z 平面（螺距很小时几乎垂直于路径，视觉足够）
+        for k in range(ring):
+            b = 2.0 * math.pi * k / ring
+            verts.append((cx, cy + r_wire * math.cos(b), cz + r_wire * math.sin(b)))
+    for i in range(n):
+        for k in range(ring):
+            k2 = (k + 1) % ring
+            a0 = i * ring + k
+            b0 = i * ring + k2
+            c0 = (i + 1) * ring + k2
+            d0 = (i + 1) * ring + k
+            faces.append((a0, b0, c0, d0))
+    return poly(name, verts, faces, mat)
+
+
+# ────────────────────────────────────────────────────────────
+# 滑动变阻器：卧式灰蓝瓷管 + 密绕暖金电阻丝 + 上方滑杆 + 两侧 U 形夹脚
+# 标定表：190×79px = 1.90×0.79，瓷管 φ≈0.52，深度 0.55。
+# 滑片/四柱/剖视内芯不进 GLB（动态件与热区接口留在 three 侧）。
+# ────────────────────────────────────────────────────────────
+def build_rheostat():
+    TUBE_LEN, TUBE_Y, TUBE_R = 1.32, 0.32, 0.26
+    RAIL_Y, RAIL_LEN = 0.68, 1.64
+    porcelain = mat_solid('rheostatporcelain', (0.32, 0.37, 0.44), 0.52, 0.08)
+    # 暖铜色：金属度不能高（高金属会反射白环境把颜色冲灰），照片是橙铜 #c87533 一路
+    wire = mat_solid('rheostatwire', (1.0, 0.32, 0.04), 0.35, 0.10)
+    steel = mat_solid('rheostatsteel', (0.66, 0.68, 0.71), 0.30, 0.85)
+
+    # 注意：Blender 里 z=高度、y=进深（-Y 为正面）。TUBE_Y/RAIL_Y 是高度，只能进 z。
+    # 卧式瓷管
+    cyl_x('tube', TUBE_R, TUBE_LEN, 0, 0, TUBE_Y, porcelain, segs=36)
+    # 密绕电阻丝：72 圈铺满管身（螺距 < 线径 → 挨着绕）
+    helix_tube('winding', -TUBE_LEN / 2 + 0.05, TUBE_LEN / 2 - 0.05,
+               0, TUBE_Y, TUBE_R + 0.013, 0.010, 72, wire, segs=10, ring=6)
+    # 两端金属端帽（挡丝）
+    for sx in (-1, 1):
+        cyl_x('endcap%s' % ('L' if sx < 0 else 'R'), TUBE_R + 0.025, 0.055,
+              sx * (TUBE_LEN / 2 + 0.028), 0, TUBE_Y, steel, segs=28)
+
+    # 两侧 U 形夹脚：竖脚 + 底部横脚 + 抱管环
+    for sx in (-1, 1):
+        xa = sx * 0.52
+        tag = 'L' if sx < 0 else 'R'
+        cube('leg%s' % tag, 0.065, 0.42, 0.34, xa, 0, 0.17, steel, bevel=0.010)
+        cube('foot%s' % tag, 0.11, 0.62, 0.036, xa, 0, 0.018, steel, bevel=0.008)
+        ring = cyl('clamp%s' % tag, TUBE_R + 0.030, 0.042, xa, 0, TUBE_Y, steel, segs=28, axis='-Y')
+        # 环是抱管的箍：沿管轴方向压扁（轴向 = X）
+        ring.rotation_euler = (0.0, 1.5708, 0.0)
+        bpy.context.view_layer.objects.active = ring
+        bpy.ops.object.transform_apply(rotation=True)
+
+    # 滑杆两端的支座（导轨架在管上方）
+    for sx in (-1, 1):
+        cube('railpost%s' % ('L' if sx < 0 else 'R'), 0.048, 0.055,
+             RAIL_Y - TUBE_Y + 0.10, sx * 0.80, 0, (RAIL_Y + TUBE_Y) / 2 + 0.05, steel, bevel=0.008)
+    # 横贯滑杆（固定导轨）
+    cyl_x('rail', 0.024, RAIL_LEN, 0, 0, RAIL_Y, steel, segs=16)
+
+
+# ────────────────────────────────────────────────────────────
+# 演示电动机：木底座 + 立式大皮带轮（5 通气孔、六角轴帽）+ 蹄形磁铁 N红/S蓝 + 铜电枢
+# 标定表：200×169px = 2.00×1.69，深度 1.00。纯静态件，整机进 GLB。
+# ────────────────────────────────────────────────────────────
+def build_motor():
+    W, H, D = 2.00, 1.69, 1.00
+    baseT = 0.13
+    wood = mat_solid('motorwood', (0.19, 0.115, 0.045), 0.55, 0.02)  # 照片深棕，别用亮木色
+    dark = mat_solid('motordark', (0.11, 0.12, 0.13), 0.48, 0.22)
+    steel = mat_solid('motorsteel', (0.62, 0.64, 0.67), 0.32, 0.85)
+    north = mat_solid('motorn', (0.62, 0.16, 0.13), 0.45)
+    south = mat_solid('motors', (0.15, 0.33, 0.58), 0.45)
+    copper = mat_solid('motorcopper', (0.72, 0.47, 0.18), 0.38, 0.70)
+
+    # 木底座
+    cube('base', W * 0.98, D, baseT, 0, 0, baseT / 2, wood, bevel=0.022)
+
+    # 立式皮带轮（盘面朝 -Y，导出后 = three 的 +Z 正面）
+    R = H * 0.36
+    cx, cz = -W * 0.22, baseT + R + 0.10
+    disc = cyl('pulley', R, 0.075, cx, 0.02, cz, dark, segs=48, axis='-Y')
+    # 5 个通气孔：真布尔孔（不是贴片）
+    cutters = []
+    for i in range(5):
+        a = (i / 5.0) * 2.0 * math.pi + 0.35
+        hx = cx + math.cos(a) * R * 0.55
+        hz = cz + math.sin(a) * R * 0.55
+        cutters.append(cyl('hole%d' % i, R * 0.19, 0.4, hx, 0.02, hz, dark, segs=20, axis='-Y'))
+    for cu in cutters:
+        bv = disc.modifiers.new('cut', 'BOOLEAN')
+        bv.operation = 'DIFFERENCE'
+        bv.object = cu
+        bpy.context.view_layer.objects.active = disc
+        bpy.ops.object.modifier_apply(modifier=bv.name)
+        bpy.data.objects.remove(cu, do_unlink=True)
+    # 中心六角轴帽（朝正面凸出）
+    cyl('hub', R * 0.145, 0.07, cx, -0.055, cz, steel, segs=6, axis='-Y')
+    # 盘背立柱（把轮子撑在底座上）
+    cube('pulleypost', 0.12, 0.14, R * 1.15, cx, 0.10, baseT + R * 0.58, dark, bevel=0.010)
+
+    # 蹄形磁铁：左 N（红）、右 S（蓝），竖直板夹住电枢
+    mY, mW = baseT + 0.50, 0.28
+    mx = W * 0.28
+    cube('magnetN', mW, 0.26, 0.86, mx, 0.06, mY, north, bevel=0.012)
+    cube('magnetS', mW, 0.26, 0.86, mx + mW + 0.06, 0.06, mY, south, bevel=0.012)
+    # 磁极间铜电枢（横圆柱）+ 两端黑色端环
+    acx = mx + mW / 2
+    cyl_x('armature', 0.105, mW * 2 + 0.12, acx, 0.06, mY, copper, segs=22)
+    for sx in (-1, 1):
+        cyl_x('armring%s' % ('L' if sx < 0 else 'R'), 0.112, 0.032,
+              acx + sx * (mW + 0.035), 0.06, mY, dark, segs=22)
+
+
 def main():
     reset()
     if G == 'ammeter' or G == 'voltmeter':
@@ -310,6 +445,10 @@ def main():
         build_battery()
     elif G == 'bulb':
         build_bulb()
+    elif G == 'rheostat':
+        build_rheostat()
+    elif G == 'motor':
+        build_motor()
     else:
         raise SystemExit('unknown type: ' + G)
     bpy.ops.export_scene.gltf(filepath=OUT, export_format='GLB', use_selection=False,
@@ -318,3 +457,6 @@ def main():
 
 
 main()
+
+
+

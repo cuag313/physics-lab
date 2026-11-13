@@ -1,4 +1,5 @@
 import { InstrumentBase } from '../InstrumentBase'
+import { CAP_RED, CAP_BLACK } from '../../theme/termColors.js'
 
 /**
  * 电压表（学生用 J0408 型）
@@ -36,9 +37,9 @@ export class Voltmeter extends InstrumentBase {
       reverse: false // 正负接线柱接反
     }
 
-    this.addPort({ id: 'neg', type: 'electrical', dx: -0.38, dy: 0.3, label: '−', color: '#1c1f24' })
-    this.addPort({ id: 'mid', type: 'electrical', dx: 0, dy: 0.32, label: '3', color: '#e53935' })
-    this.addPort({ id: 'full', type: 'electrical', dx: 0.38, dy: 0.3, label: '15', color: '#e53935' })
+    this.addPort({ id: 'neg', type: 'electrical', dx: -0.38, dy: 0.3, label: '−', color: CAP_BLACK })
+    this.addPort({ id: 'mid', type: 'electrical', dx: 0, dy: 0.32, label: '3', color: CAP_RED })
+    this.addPort({ id: 'full', type: 'electrical', dx: 0.38, dy: 0.3, label: '15', color: CAP_RED })
   }
 
   get resistance() { return this.getParam('internalResistance') }
@@ -147,13 +148,13 @@ export class Voltmeter extends InstrumentBase {
     }
 
     // 读数（带符号）
-    ctx.fillStyle = this.state.reverse ? '#e53935' : '#4CAF50'
+    ctx.fillStyle = this.state.reverse ? CAP_RED : '#4CAF50'
     ctx.font = 'bold 12px monospace'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
     ctx.fillText(`${this.state.reading.toFixed(2)} V`, sx, sy + r + 6)
     if (this.state.reverse) {
-      ctx.fillStyle = '#e53935'
+      ctx.fillStyle = CAP_RED
       ctx.font = 'bold 11px sans-serif'
       ctx.fillText('正负接线柱接反', sx, sy + r + 22)
     }

@@ -12,7 +12,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 
 const BASE = '/physics-lab/assets/models/'
 // 资源版本号：public 下的 .glb 走浏览器缓存，改了模型必须改这里才不会看到旧模型
-const VER = '20261112a'
+const VER = '20261112h'
 const loader = new GLTFLoader()
 const ready = new Map() // type -> THREE.Group（已载入）
 const pending = new Map() // type -> Promise
@@ -89,3 +89,7 @@ export function cloneGear(type) {
   })
   return c
 }
+
+
+
+

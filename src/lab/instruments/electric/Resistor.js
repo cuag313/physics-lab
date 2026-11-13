@@ -1,4 +1,5 @@
 import { InstrumentBase } from '../InstrumentBase'
+import { CAP_RED, CAP_BLACK } from '../../theme/termColors.js'
 
 /**
  * 定值电阻
@@ -19,8 +20,8 @@ export class Resistor extends InstrumentBase {
       resistance: { value: 10, min: 0.1, max: 10000, step: 1, label: '电阻', unit: 'Ω' }
     }
 
-    this.addPort({ id: 'left', type: 'electrical', dx: -0.6, dy: 0, label: '', color: '#aaa' })
-    this.addPort({ id: 'right', type: 'electrical', dx: 0.6, dy: 0, label: '', color: '#aaa' })
+    this.addPort({ id: 'left', type: 'electrical', dx: -0.6, dy: 0, label: '', color: CAP_BLACK })
+    this.addPort({ id: 'right', type: 'electrical', dx: 0.6, dy: 0, label: '', color: CAP_RED })
   }
 
   get resistance() { return this.getParam('resistance') }

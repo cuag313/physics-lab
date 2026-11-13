@@ -1,4 +1,5 @@
 import { InstrumentBase } from '../InstrumentBase'
+import { CAP_RED, CAP_BLACK } from '../../theme/termColors.js'
 
 /**
  * 电流表（学生用 J0407 型）
@@ -39,9 +40,9 @@ export class Ammeter extends InstrumentBase {
       reverse: false // 正负接线柱接反
     }
 
-    this.addPort({ id: 'neg', type: 'electrical', dx: -0.38, dy: 0.3, label: '−', color: '#1c1f24' })
-    this.addPort({ id: 'mid', type: 'electrical', dx: 0, dy: 0.32, label: '0.6', color: '#e53935' })
-    this.addPort({ id: 'full', type: 'electrical', dx: 0.38, dy: 0.3, label: '3', color: '#e53935' })
+    this.addPort({ id: 'neg', type: 'electrical', dx: -0.38, dy: 0.3, label: '−', color: CAP_BLACK })
+    this.addPort({ id: 'mid', type: 'electrical', dx: 0, dy: 0.32, label: '0.6', color: CAP_RED })
+    this.addPort({ id: 'full', type: 'electrical', dx: 0.38, dy: 0.3, label: '3', color: CAP_RED })
   }
 
   get resistance() { return this.getParam('internalResistance') }
@@ -120,7 +121,7 @@ export class Ammeter extends InstrumentBase {
 
     // 指针（角度直接来自 update 的带符号阻尼动画）
     const needleAngle = startAngle + this.state.angle
-    ctx.strokeStyle = '#f44'
+    ctx.strokeStyle = CAP_RED
     ctx.lineWidth = 2
     ctx.beginPath()
     ctx.moveTo(sx, sy)
@@ -128,7 +129,7 @@ export class Ammeter extends InstrumentBase {
     ctx.stroke()
 
     // 中心轴
-    ctx.fillStyle = '#f44'
+    ctx.fillStyle = CAP_RED
     ctx.beginPath()
     ctx.arc(sx, sy, 3, 0, Math.PI * 2)
     ctx.fill()
@@ -151,13 +152,13 @@ export class Ammeter extends InstrumentBase {
     }
 
     // 读数（带符号）
-    ctx.fillStyle = this.state.reverse ? '#e53935' : '#4CAF50'
+    ctx.fillStyle = this.state.reverse ? CAP_RED : '#4CAF50'
     ctx.font = 'bold 12px monospace'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
     ctx.fillText(`${this.state.reading.toFixed(3)} A`, sx, sy + r + 6)
     if (this.state.reverse) {
-      ctx.fillStyle = '#e53935'
+      ctx.fillStyle = CAP_RED
       ctx.font = 'bold 11px sans-serif'
       ctx.fillText('正负接线柱接反', sx, sy + r + 22)
     }

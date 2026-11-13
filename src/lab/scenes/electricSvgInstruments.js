@@ -7,7 +7,13 @@
  * 照片作为 .casing：点「内部结构」时整体变透明，露出内部构造。
  */
 
+import { capPaint } from '../theme/termColors.js'
+
 export const FIG = '/physics-lab/assets/equipment/fig'
+/* 实拍图版本号：同名图片被覆盖后浏览器会继续用旧缓存（元件库缩略图尤其明显），
+   所有 fig 图片 URL 统一带这串版本参数，改图时把它 +1 即可强制刷新。 */
+export const FIG_V = '20261113c'
+export const figURL = (file) => `${FIG}/${file}?v=${FIG_V}`
 
 /** 滑动变阻器滑片轨道（显示坐标） */
 export const RHEO_TRACK = { x0: 20, x1: 181 }
@@ -65,25 +71,37 @@ function fitInner(sw, sh, w, h, body) {
 }
 
 function photo(file, w, h, style = '') {
-  return `<image class="casing" href="${FIG}/${file}" x="0" y="0" width="${w}" height="${h}"
+  return `<image class="casing" href="${figURL(file)}" x="0" y="0" width="${w}" height="${h}"
     preserveAspectRatio="none" style="${style}"/>`
 }
 
 /* 内部结构图（移植自源实验的 .inner 层） */
 const INNER = {
   battery() {
+    // 电池组（干电池串联）剖视：两节锌筒(−) + 碳棒(+)，浸在电解糊中；不写文字标注。
     return `
-      <rect x="34" y="20" width="74" height="42" rx="4" fill="#efe7d3" stroke="#cdbc93"/>
-      <rect x="42" y="26" width="11" height="30" rx="2" fill="#41454c"/>
-      <rect x="46" y="21" width="4" height="7" fill="#9aa3ad"/>
-      <rect x="90" y="26" width="11" height="30" rx="2" fill="#41454c"/>
-      <rect x="94" y="21" width="4" height="7" fill="#9aa3ad"/>
-      <path d="M48 22 H72 V34" fill="none" stroke="#a9822f" stroke-width="2.6"/>
-      <path d="M96 22 H124 M118 34 H120" fill="none" stroke="#a9822f" stroke-width="2.6"/>
-      <rect x="34" y="20" width="74" height="42" rx="4" fill="none" stroke="#9aa3ad" stroke-width="1.6"/>
-      <text class="plabel" x="34" y="16">锌筒（负极）</text>
-      <text class="plabel" x="70" y="78">二氧化锰 · 电解糊</text>
-      <text class="plabel" x="108" y="16">碳棒（正极）</text>`
+      <rect x="34" y="20" width="82" height="42" rx="4" fill="#efe7d3" stroke="#cdbc93"/>
+      <rect x="43" y="26" width="18" height="30" rx="2.5" fill="#3d4148"/>
+      <rect x="47" y="21" width="5" height="36" rx="1.5" fill="#9aa3ad"/>
+      <rect x="84" y="26" width="18" height="30" rx="2.5" fill="#3d4148"/>
+      <rect x="88" y="21" width="5" height="36" rx="1.5" fill="#9aa3ad"/>
+      <rect x="34" y="20" width="82" height="42" rx="4" fill="none" stroke="#9aa3ad" stroke-width="1.6"/>`
+  },
+  accumulator() {
+    // 蓄电池剖视：透明槽体 + 电解液 + 交错的正(棕)负(灰)极板组；不写文字标注。
+    const plates = []
+    const n = 6
+    for (let i = 0; i < n; i++) {
+      const x = 44 + i * 12
+      plates.push(`<rect x="${x}" y="26" width="7" height="30" rx="1.5" fill="${i % 2 ? '#5b6470' : '#b87333'}" stroke="#3f4650" stroke-width="0.6"/>`)
+    }
+    return `
+      <rect x="34" y="20" width="82" height="44" rx="4" fill="#eaf6ff" stroke="#9db8cf"/>
+      <rect x="36" y="38" width="78" height="24" rx="2" fill="#bfe3f5" opacity=".85"/>
+      ${plates.join('')}
+      <line x1="44" y1="22" x2="44" y2="26" stroke="#8a6a3c" stroke-width="2.4"/>
+      <line x1="106" y1="22" x2="106" y2="26" stroke="#8a6a3c" stroke-width="2.4"/>
+      <rect x="34" y="20" width="82" height="44" rx="4" fill="none" stroke="#9db8cf" stroke-width="1.6"/>`
   },
   bulb() {
     // 坐标系与实拍图一致（256×121）：灯泡心 (129,105)、灯座 (129,155)
@@ -92,16 +110,12 @@ const INNER = {
       <line x1="112" y1="120" x2="112" y2="86" stroke="#94a3b8" stroke-width="3"/>
       <line x1="146" y1="120" x2="146" y2="86" stroke="#94a3b8" stroke-width="3"/>
       <polyline points="112,86 116,72 120,86 124,72 128,86 132,72 136,86 140,72 146,86"
-        fill="none" stroke="#6b7280" stroke-width="2.6" stroke-linejoin="round"/>
-      <text class="plabel" x="129" y="60">灯丝（钨丝）</text>
-      <text class="plabel" x="129" y="182">白瓷灯座</text>`
+        fill="none" stroke="#6b7280" stroke-width="2.6" stroke-linejoin="round"/>`
   },
   switch() {
-    return `
-      <text class="plabel" x="42" y="30">静触点</text>
-      <text class="plabel" x="116" y="30">闸刀</text>
-      <rect class="plabel" x="30" y="30" width="18" height="18" rx="3" fill="none" stroke="#e11d48" stroke-width="1.4"/>
-      <rect class="plabel" x="100" y="26" width="22" height="14" rx="3" fill="none" stroke="#e11d48" stroke-width="1.4"/>`
+    // 原来这里挂的是「静触点 / 闸刀」文字标注 + 两个红色虚线框，按要求全部去掉；
+    // 开关内部没有剖面内容，保留空层以维持 .inner 结构一致。
+    return ''
   },
   meter(deg = 0) {
     // 磁电式表头：线圈在 N/S 极磁场中随电流转动 → 游丝扭转 → 指针偏转。
@@ -378,48 +392,178 @@ function ammeterFaceSVG(x, y, w, h) {
 
 /** 接线柱圆点叠层：黑、红、红（金属座圈 + 彩色柱帽，照片缺中柱时补齐三个柱位） */
 function termDotsSVG(dots) {
-  return dots.map(({ x, y, label, dark }) => `
+  return dots.map(({ x, y, label, dark }) => {
+    const cp = capPaint(dark)
+    return `
     <circle cx="${x}" cy="${y}" r="7" fill="#0b0d10" stroke="#8d96a1" stroke-width="1.6"/>
-    <circle cx="${x}" cy="${y}" r="4.8" fill="${dark ? '#1c1f24' : '#c0392b'}" stroke="${dark ? '#000' : '#7f1d1d'}" stroke-width="1"/>
+    <circle cx="${x}" cy="${y}" r="4.8" fill="${cp.fill}" stroke="${cp.stroke}" stroke-width="1"/>
     <circle cx="${x - 1.4}" cy="${y - 1.4}" r="1.5" fill="rgba(255,255,255,0.45)"/>
-    <text x="${x}" y="${y + 16}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#24292f">${label}</text>`).join('')
+    <text x="${x}" y="${y + 16}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#24292f">${label}</text>`
+  }).join('')
 }
 
 /**
- * 可动闸刀叠层（正视角，比例按 _backup/switch.png 实测）：
- *   立片两片前后叠合 → 只显一片（13 宽 × 32 高）；铰链轴心 (39.5, 63)；
- *   杠杆宽 13、长 88（轴向），黑色绝缘柄 32×17 接在末端；
- *   杠杆在立片之后绘制 —— 与立片接触的区段被立片遮住，只见立片。
- *   开启角 -27°（与实拍一致），闭合水平。
+ * 单向开关：底座 + 接线柱 + 铰链柱 + 触口前后卡槽 + 闸刀，全部矢量。
+ * 结构照 12开关拆解.png，光位与配色照 2.单向开关.png。换算：参考图 3..228 → 0..150（×0.6667），
+ * 底座顶面后沿 y179 → y80（Y = 80 + (y-179)×0.6667）。
  */
-function bladeSVG(open) {
-  const px = 39.5, py = 63        // 铰链轴心（实测：图元 (61,150)）
-  const ang = open ? -27 : 0
-  const steel = 'url(#es-g-steel)'
-  return `
-    <!-- 杠杆（层在立片之后 → 接触段不可见） -->
-    <g transform="rotate(${ang} ${px} ${py})">
-      <rect x="${px - 12}" y="${py - 6.5}" width="100" height="13" rx="3" fill="${steel}" stroke="#7c8693" stroke-width="1"/>
-      <!-- 黑色绝缘柄（实测 32×17，接在杠杆末端） -->
-      <rect x="${px + 76}" y="${py - 8.5}" width="32" height="17" rx="8.5" fill="#232426" stroke="#101113" stroke-width="1.2"/>
-      <rect x="${px + 81}" y="${py - 5}" width="20" height="3.6" rx="1.8" fill="#3c3e42"/>
-    </g>
-    <!-- 右：触口立片（实测 14 宽 × 32 高） -->
-    <rect x="106.5" y="53.5" width="14" height="32" rx="2" fill="#7c8693" opacity=".55"/>
-    <rect x="105" y="52" width="14" height="32" rx="2" fill="${steel}" stroke="#5b6570" stroke-width="1"/>
-    <!-- 左：铰链立片（实测 13 宽 × 32 高） -->
-    <rect x="34.5" y="53.5" width="13" height="32" rx="2" fill="#7c8693" opacity=".55"/>
-    <rect x="33" y="52" width="13" height="32" rx="2" fill="${steel}" stroke="#5b6570" stroke-width="1"/>
-    <!-- 铰链轴头（螺栓：垫圈 + 六角头） -->
-    <circle cx="${px}" cy="${py}" r="6.2" fill="#8d96a1" stroke="#4d5560" stroke-width="1"/>
-    <circle cx="${px}" cy="${py}" r="3.4" fill="#c3ccd6" stroke="#4d5560" stroke-width="1"/>`
+/**
+ * 单向开关的渐变定义：灰阶按 `2.单向开关.png` 逐处取样（后暗前亮、上暗下亮），
+ * 柱帽照电池组/蓄电池已定的标杆做法：**凹陷帽顶（外圈亮、帽心暗）+ 镀铬底圈**。
+ * id 前缀 swi- ，避免和场景里其它器材的 defs 撞名。
+ */
+function switchSVGDefs() {
+  const lin = (id, x1, y1, x2, y2, stops) =>
+    `<linearGradient id="${id}" gradientUnits="userSpaceOnUse" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}">` +
+    stops.map(([o, c]) => `<stop offset="${o}" stop-color="${c}"/>`).join('') +
+    `</linearGradient>`
+  const rad = (id, stops, cx = '50%', cy = '46%', r = '56%') =>
+    `<radialGradient id="${id}" cx="${cx}" cy="${cy}" r="${r}">` +
+    stops.map(([o, c]) => `<stop offset="${o}" stop-color="${c}"/>`).join('') +
+    `</radialGradient>`
+  // 横向圆柱渐变（相对元素自身包围盒，左右两帽共用）：两侧压暗、偏左一道亮带 → 金属柱面感
+  const cyl = (id, stops) =>
+    `<linearGradient id="${id}" x1="0" y1="0" x2="1" y2="0">` +
+    stops.map(([o, c]) => `<stop offset="${o}" stop-color="${c}"/>`).join('') +
+    `</linearGradient>`
+  return `<defs>
+    ${lin('swi-bt', 0, 74.3, 0, 99.1, [[0, '#7d8288'], [0.27, '#868a90'], [0.365, '#9ba0a5'], [0.455, '#a7acb1'], [0.55, '#b8bdc2'], [0.65, '#c7cbcf'], [0.74, '#d0d4d8'], [0.84, '#d8dbde'], [0.93, '#dcdedf'], [1, '#dcdedf']])}
+    ${lin('swi-bx', 0, 0, 176, 0, [[0, 'rgba(20,24,30,.10)'], [0.55, 'rgba(20,24,30,.02)'], [1, 'rgba(255,255,255,.06)']])}
+    ${lin('swi-bf', 0, 99.1, 0, 107.7, [[0, '#a8acb1'], [0.2, '#a0a4a9'], [0.55, '#7e8287'], [0.9, '#63676c'], [1, '#5e6267']])}
+    ${lin('swi-pt', 0, 53.5, 0, 89.5, [[0, '#b0b5bb'], [0.04, '#a9afb5'], [0.11, '#a6acb3'], [0.24, '#a8aeb5'], [0.34, '#b2b8bf'], [0.42, '#c4cad0'], [0.5, '#d6dbe0'], [0.58, '#e8ecef'], [0.64, '#f2f4f6'], [0.71, '#f3f5f6'], [0.8, '#e8ebee'], [1, '#d8dcdf']])}
+    ${lin('swi-cb', 0, 53.5, 0, 89, [[0, '#c4c9cf'], [0.3, '#d9dde1'], [1, '#eff2f4']])}
+    ${lin('swi-cf', 0, 55.5, 0, 89, [[0, '#5a5f66'], [0.12, '#70767d'], [0.21, '#8f959c'], [0.33, '#aeB4bb'], [0.45, '#cacfd5'], [0.57, '#e4e8ec'], [0.69, '#f2f4f6'], [0.81, '#eaedef'], [1, '#e0e4e7']])}
+    ${lin('swi-bl', 0, 57.5, 0, 71.5, [[0, '#e2e7ec'], [0.08, '#b8bec5'], [0.16, '#a6acb3'], [0.26, '#91979e'], [0.45, '#999fa6'], [0.66, '#a7adb4'], [0.86, '#b5bbc2'], [0.95, '#c3c9cf'], [1, '#e8edf1']])}
+    ${lin('swi-hd', 0, 56.25, 0, 72.75, [[0, '#7b8187'], [0.05, '#3d4248'], [0.2, '#4f545a'], [0.4, '#454a50'], [0.62, '#3d4248'], [0.86, '#373b40'], [1, '#4d5258']])}
+    ${cyl('swi-kb', [[0, '#41454a'], [0.16, '#4e5257'], [0.36, '#5f6367'], [0.48, '#6b6f73'], [0.6, '#5b5f63'], [0.84, '#474b4f'], [1, '#3c4044']])}
+    ${cyl('swi-kr', [[0, '#8e2417'], [0.16, '#b23221'], [0.36, '#c9422d'], [0.48, '#d4533b'], [0.6, '#c6442c'], [0.84, '#a32c1c'], [1, '#872012']])}
+    ${cyl('swi-ch', [[0, '#64686d'], [0.16, '#979ca1'], [0.3, '#cdd1d5'], [0.42, '#e9ecee'], [0.56, '#c3c7cc'], [0.8, '#8e9297'], [1, '#666a6f']])}
+    ${rad('swi-sp', [[0, 'rgba(255,255,255,.9)'], [0.45, 'rgba(255,255,255,.32)'], [1, 'rgba(255,255,255,0)']], '50%', '50%', '50%')}
+    ${rad('swi-kbt', [[0, '#1f2124'], [0.42, '#26282b'], [0.62, '#313438'], [0.78, '#4a4f54'], [0.88, '#65696d'], [0.96, '#7d8185'], [1, '#8a8e92']])}
+    ${rad('swi-krt', [[0, '#7a1709'], [0.42, '#96210f'], [0.62, '#ad2b18'], [0.78, '#bf3a26'], [0.88, '#c74936'], [0.96, '#cf5541'], [1, '#d25c48']])}
+  </defs>`
 }
 
-/** 单个接线柱圆点（金属座圈 + 彩色柱帽） */
+/**
+ * 开关底座 + 接线柱：照 `12开关拆解.png` 底座与柱帽、`2.单向开关.png` 的光位重绘。
+ *   底座一块板：长 176 = 灯泡底板同长；进深 24.8 = 0.141×宽、前沿 8.6 = 0.054×宽（与灯泡同一透视）。
+ *   顶面（后暗 → 前亮）、横向再叠一层左暗右亮；前沿暗面、底沿亮线 + 近白倒角；左右亮棱。
+ *   柱帽：**以灯泡底座（`bulb_c.png`）的柱帽为基准**——凹心帽顶 + 滚花帽身 + 帽下镀铬柱体（横向圆柱渐变）。
+ *   柱心 x28（左黑）/ x151（右红）= 灯泡接线柱同一 x；帽径 23.4 = 底板的 13.3%（同灯泡）；
+ *   帽脚线 y89.5（进深 61%，比灯泡基准的 74% 略往里收）。
+ */
+function switchBodySVG() {
+  return `
+    ${switchSVGDefs()}
+    <!-- 底座顶面：长 176 / 进深 24.8（后暗前亮） -->
+    <path d="M3 74.3 H173 L176 99.1 H0 Z" fill="url(#swi-bt)"/>
+    <path d="M3 74.3 H173 L176 99.1 H0 Z" fill="url(#swi-bx)"/>
+    <line x1="3" y1="74.5" x2="173" y2="74.5" stroke="#ffffff" stroke-width=".9" opacity=".9"/>
+    <line x1="3" y1="76.3" x2="173" y2="76.3" stroke="#82878d" stroke-width="1.2" opacity=".45"/>
+    <path d="M3 74.3 L0 99.1" stroke="#eef2f4" stroke-width="1" opacity=".85"/>
+    <path d="M173 74.3 L176 99.1" stroke="#eef2f4" stroke-width="1" opacity=".85"/>
+    <!-- 底座：前沿暗面 + 底沿亮线 + 近白倒角 -->
+    <rect x="0" y="99.1" width="176" height="8.6" fill="url(#swi-bf)"/>
+    <rect x="0" y="107.7" width="176" height="1.1" fill="#a9aaaa"/>
+    <rect x="0" y="108.6" width="176" height="0.9" fill="#ececec"/>`
+}
+
+/**
+ * 两颗接线柱（画在闸刀之后：闭合时刀柄会掠过红帽顶，柱帽在前、压住刀柄下缘才自然）。
+ *   右柱心 x151 = 灯泡位置；左柱心 x26（比灯泡的 28 左让 2，让开铰链柱免得两件贴在一起）；
+ *   帽径 20.4 = 176 宽底板的 11.6%，帽高/帽宽 0.56（灯泡实测 0.57 → 偏扁）；
+ *   帽脚线 y89.5 = 进深 61%，与两块立片的柱脚（89.5 / 89）落在同一条水平线上。
+ */
+function switchKnobsSVG() {
+  const dark = capPaint(true), red = capPaint(false)
+  const D = 20.4, R = D / 2, FOOT = 89.5
+  const knob = (cx, cp, bodyId, topId) => {
+    // 竖纹：灯泡柱帽是滚花旋钮，横向 9 道细竖纹（间距≈0.1 帽径，低对比）
+    const ribs = [-4, -3, -2, -1, 0, 1, 2, 3, 4].map(i => {
+      const x0 = cx + i * 2.1, x1 = x0 - i * .3
+      const c = i % 2 === 0 ? 'rgba(255,255,255,.07)' : 'rgba(0,0,0,.11)'
+      return `<line x1="${x0}" y1="80.6" x2="${x1}" y2="85.5" stroke="${c}" stroke-width=".8"/>`
+    }).join('')
+    return `
+    <ellipse cx="${cx}" cy="91" rx="10.6" ry="1.9" fill="#7c8186" opacity=".3"/>
+    <!-- 帽下镀铬柱体（宽 ≈0.81 帽径；横向圆柱渐变 → 两侧压暗、偏左一道高光，金属光泽） -->
+    <path d="M${cx - R * .76} 85.6 L${cx - R * .81} ${FOOT} H${cx + R * .81} L${cx + R * .76} 85.6 Z" fill="url(#swi-ch)"/>
+    <ellipse cx="${cx}" cy="${FOOT}" rx="${R * .81}" ry="1.4" fill="#6b6f74" opacity=".95"/>
+    <ellipse cx="${cx}" cy="88.7" rx="4.6" ry=".65" fill="url(#swi-sp)"/>
+    <!-- 帽身（圆柱横向渐变）+ 凹心帽顶（帽心暗、帽沿一圈中灰）
+         灯泡实测：帽高/帽宽≈0.57、顶椭圆 ry/rx≈0.33、帽面可见高度≈0.275 帽宽；这里 12.2/20.4 = 0.60 -->
+    <rect x="${cx - R}" y="78.4" width="${D}" height="7.2" rx="1.7" fill="url(#${bodyId})" stroke="${cp.stroke}" stroke-width=".9"/>
+    <ellipse cx="${cx}" cy="85.6" rx="${R}" ry="1.7" fill="url(#${bodyId})"/>
+    ${ribs}
+    <ellipse cx="${cx}" cy="78.4" rx="${R}" ry="3.3" fill="url(#${topId})"/>`
+  }
+  return `
+    ${knob(26, dark, 'swi-kb', 'swi-kbt')}
+    ${knob(151, red, 'swi-kr', 'swi-krt')}`
+}
+
+/**
+ * 铰链柱 + 右触口前后卡槽 + 闸刀（正视角，比例按 2.单向开关.png 实测换算到 150×105）：
+ *   两块立片都站在底座顶面的**进深中间**（脚下 y≈87，顶面是 80~95.4，即约走一半），
+ *   脚下再压一道椭圆投影；绘制顺序 = 后卡槽片 → 闸刀（含黑柄）→ 铰链柱 → 前卡槽片 → 铰链螺栓。
+ *   **杠杆穿在铰链柱后面**（照参考图：柱头压在刀身上，刀尾圆头从柱左侧露出来，穿孔在柱面上）；
+ *   右触口前后两片错开 1 个单位，前片顶部那道暗带就是"卡槽"开口（参考 y138~152 的 #5c~#95 暗带），
+ *   闭合时闸刀穿在前片后面、后片前面，刀尖从前片右侧露出再接黑柄。
+ *   铰链穿孔 = 深环 4.6 + 亮垫圈 3.4 + 背景色通孔 2.2；开启角 -27°。
+ */
+function bladeSVG(open) {
+  const PX = 46.3, PY = 64.5       // 铰链轴心（刀与柱共用的穿孔中心）
+  const BUTT = 35                 // 刀尾圆头（探出铰链柱左侧 4.3）
+  const TIP = 140                 // 刀尖：穿过卡槽、从前片右侧露出（柄再往后接）
+  const BX0 = 121.7, BX1 = 133    // 后卡槽片（略高、向后错开）
+  const FX0 = 122.7, FX1 = 134    // 前卡槽片
+  const PTW = 14                  // 铰链柱宽
+  const ang = open ? -27 : 0
+  const BG = '#fbfcfe'
+  // 立片轮廓（圆头立板）：顶部半圆 + 直边到底
+  const tomb = (x, w, top, bot) => {
+    const r = w / 2
+    return `M${x} ${bot} V${top + r} A${r} ${r} 0 0 1 ${x + w} ${top + r} V${bot} Z`
+  }
+  const capArc = (x, w, top) => {
+    const r = w / 2
+    return `M${x} ${top + r} A${r} ${r} 0 0 1 ${x + w} ${top + r}`
+  }
+  return `
+    <!-- 两块立片脚下各一道投影（落在顶面进深正中） -->
+    <ellipse cx="${PX}" cy="92" rx="7.6" ry="2" fill="#8b8f94" opacity=".2"/>
+    <ellipse cx="${(BX0 + FX1) / 2}" cy="92" rx="7.6" ry="2" fill="#8b8f94" opacity=".2"/>
+    <!-- 右触口：后卡槽片（先画，刀从它前面穿过） -->
+    <path d="${tomb(BX0, BX1 - BX0, 53.5, 89)}" fill="url(#swi-cb)" stroke="#90969d" stroke-width=".9"/>
+    <!-- 闸刀（刀尾探出柱左侧 + 刀身穿进卡槽 + 末端黑柄）：画在铰链柱后面 -->
+    <g transform="rotate(${ang} ${PX} ${PY})">
+      <rect x="${BUTT}" y="${PY - 7}" width="${TIP - BUTT}" height="14" rx="3.5" fill="url(#swi-bl)" stroke="rgba(126,132,139,.45)" stroke-width=".7"/>
+      <!-- 黑色绝缘柄（照拆解图：罩在刀末端，圆角矩形、比刀略厚） -->
+      <rect x="${TIP - 1}" y="${PY - 8.25}" width="27" height="16.5" rx="5" fill="url(#swi-hd)" stroke="#24272b" stroke-width=".8"/>
+    </g>
+    <!-- 左：铰链柱（站在顶面进深中间，柱头压在刀身上；顶缘一道亮箍） -->
+    <path d="${tomb(PX - PTW / 2, PTW, 53.5, 89.5)}" fill="url(#swi-pt)" stroke="#7d838a" stroke-width=".9"/>
+    <path d="${capArc(PX - PTW / 2, PTW, 53.5)}" fill="none" stroke="#dfe3e7" stroke-width=".8" opacity=".75"/>
+    <!-- 右触口：前卡槽片（后画；圆头顶部那道暗带就是卡槽开口，刀夹在前后两片之间） -->
+    <path d="${tomb(FX0, FX1 - FX0, 55.5, 89)}" fill="url(#swi-cf)" stroke="#6a7077" stroke-width=".9"/>
+    <path d="${capArc(FX0, FX1 - FX0, 55.5)}" fill="none" stroke="#cfd4d9" stroke-width=".8" opacity=".85"/>
+    <!-- 铰链螺栓：深色环 + 亮垫圈 + 与背景同色的通孔（压在柱面上） -->
+    <circle cx="${PX}" cy="${PY}" r="4.6" fill="#6d737a" stroke="#4a5057" stroke-width=".8"/>
+    <circle cx="${PX}" cy="${PY}" r="3.4" fill="#e2e6ea"/>
+    <circle cx="${PX}" cy="${PY}" r="2.2" fill="${BG}"/>`
+}
+
+/**
+ * 单个接线柱圆点（金属座圈 + 彩色柱帽）。
+ * 全项目统一配色约定：**位于器材右侧（正极/后接端）的柱帽用红色 #c0392b，
+ * 左侧（负极/前端）用黑色 #1c1f24**；纵向排布、无左右之分的（验电器球/地、
+ * 继电器线圈圈1/圈2）不套用此约定。新增器材请照此传 dark。
+ */
 function termDotSVG(x, y, dark = false, label = '') {
+  const cp = capPaint(dark)
   return `
     <circle cx="${x}" cy="${y}" r="6.4" fill="#0b0d10" stroke="#8d96a1" stroke-width="1.5"/>
-    <circle cx="${x}" cy="${y}" r="4.4" fill="${dark ? '#1c1f24' : '#c0392b'}" stroke="${dark ? '#000' : '#7f1d1d'}" stroke-width="1"/>
+    <circle cx="${x}" cy="${y}" r="4.4" fill="${cp.fill}" stroke="${cp.stroke}" stroke-width="1"/>
     <circle cx="${x - 1.2}" cy="${y - 1.2}" r="1.3" fill="rgba(255,255,255,0.45)"/>
     ${label ? `<text x="${x}" y="${y + 15}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#24292f">${label}</text>` : ''}`
 }
@@ -534,18 +678,36 @@ function resistorType(ohm, bands) {
 }
 
 export const TYPES = {
-  /* ── 电池组（真实图 + 顶部两接线柱） ── */
+  /* ── 电池组（两节干电池串联 3V，平放电池槽实拍图；黑/红柱就是照片上的接线柱，不再另画帽子） ──
+   * 图 battery_c.png 已按实体紧裁（原图 y 92~164）并 4 倍放大锐化，1024×288；
+   * 按 150×42 等比贴，照片里的黑柱 (43,140)、红柱 (228,140) 换算后落在 (25,28)、(134,28)，
+   * 接线柱坐标即取此值。内部剖视层不再叠 ——旧的 150×80 剖视图跟新图对不上，会在背后留一块残影。 */
   battery: {
-    label: '电池组 3V', w: 150, h: 154,
+    label: '电池组', w: 150, h: 46,
     terminals: [
-      { id: 'n', label: '−', name: '负极接线柱', x: 34, y: 12 },
-      { id: 'p', label: '+', name: '正极接线柱', x: 111, y: 12 },
+      { id: 'n', label: '−', name: '负极接线柱（黑）', x: 25, y: 28 },
+      { id: 'p', label: '+', name: '正极接线柱（红）', x: 134, y: 28 },
+    ],
+    render() {
+      return `
+    <svg width="150" height="46" viewBox="0 0 150 46">
+      <image class="casing" href="${figURL('battery_c.png')}" x="0" y="0" width="150" height="42"/>
+    </svg>` }
+  },
+
+  /* ── 蓄电池（12V，蓝色壳体实拍图 accumulator_c.png；柱帽即照片上的金属柱，不再套红黑圆环） ──
+   * 照片 175×180，柱心 (48,22)、(124,22)；按 150×154 等比贴后落在 (41,19)、(106,19)。 */
+  accumulator: {
+    label: '蓄电池', w: 150, h: 154,
+    terminals: [
+      { id: 'n', label: '−', name: '负极接线柱', x: 41, y: 19 },
+      { id: 'p', label: '+', name: '正极接线柱', x: 106, y: 19 },
     ],
     render() {
       return `
     <svg width="150" height="154" viewBox="0 0 150 154">
-      ${fitInner(150, 80, 150, 154, INNER.battery())}
-      ${photo('battery_c.png', 150, 154)}
+      ${fitInner(150, 80, 150, 154, INNER.accumulator())}
+      ${photo('accumulator_c.png', 150, 154)}
     </svg>` }
   },
 
@@ -582,7 +744,7 @@ export const TYPES = {
       </defs>
       ${fitInner(256, 121, 176, 83, INNER.bulb())}
       <circle cx="89" cy="25" r="${rad}" fill="url(#es-g-glow)" opacity="${(bright * 0.55).toFixed(3)}"/>
-      ${photo('bulb_c.png', 176, 83, `filter:brightness(${(0.42 + 0.68 * bright).toFixed(2)}) saturate(${(0.6 + 0.4 * bright).toFixed(2)})`)}
+      ${photo('bulb_c.png', 176, 83, `filter:brightness(${(0.96 + 0.3 * bright).toFixed(2)}) saturate(${(0.92 + 0.2 * bright).toFixed(2)})`)}
       ${bright > 0.02
         ? `<circle class="es-bulb-halo" cx="89" cy="25" r="${rad}" fill="url(#${gid})" style="mix-blend-mode:screen">${animOver}</circle>`
         : ''}
@@ -591,18 +753,19 @@ export const TYPES = {
 
   /* ── 单刀开关（实拍底座 + 可动闸刀：黑色手柄、左侧铰链） ── */
   switch: {
-    label: '开关', w: 150, h: 105,
+    label: '开关', w: 176, h: 110,
     terminals: [
-      { id: 'a', label: '1', name: '接线柱 1', x: 23, y: 86 },
-      { id: 'b', label: '2', name: '接线柱 2', x: 131, y: 86 },
+      { id: 'a', label: '1', name: '接线柱 1', x: 26, y: 82 },
+      { id: 'b', label: '2', name: '接线柱 2', x: 151, y: 82 },
     ],
     render(c) {
       const open = !c.closed
       return `
-    <svg width="150" height="105" viewBox="0 0 150 105">
-      ${fitInner(150, 100, 150, 105, INNER.switch())}
-      ${photo('switch_c.png', 150, 105)}
+    <svg width="176" height="110" viewBox="0 0 176 110">
+      ${fitInner(176, 100, 176, 110, INNER.switch())}
+      ${switchBodySVG()}
       ${bladeSVG(open)}
+      ${switchKnobsSVG()}
     </svg>` }
   },
 
@@ -638,7 +801,9 @@ export const TYPES = {
     ],
     render(c, dyn) {
       const frac = Math.max(0, Math.min(1, dyn?.frac || 0))
-      const ang = (-52 + frac * 104).toFixed(2)
+      // 针角必须落在实测刻度带上：零点 246.3°、满偏 307°（canvas 角，270° 朝上），
+      // 换算成"相对竖直"即 -23.7° → +37°。用 ±52 是抄 J0407 的，针会悬在刻度外。
+      const ang = (-23.7 + frac * 60.7).toFixed(2)
       return `
     <svg width="150" height="150" viewBox="0 0 150 150">
       <defs>
@@ -738,9 +903,12 @@ export const TYPES = {
         : ''
 
       // 4 个接线柱：上黑（金属杆端）下红（电阻丝端）
-      const dot = (p, dark) => `
-        <circle cx="${p.x}" cy="${p.y}" r="5.2" fill="${dark ? '#1c1f24' : '#c0392b'}" stroke="${dark ? '#0b0d10' : '#7f1d1d'}" stroke-width="1.2"/>
+      const dot = (p, dark) => {
+        const cp = capPaint(dark)
+        return `
+        <circle cx="${p.x}" cy="${p.y}" r="5.2" fill="${cp.fill}" stroke="${cp.stroke}" stroke-width="1.2"/>
         <circle cx="${p.x - 1}" cy="${p.y - 1}" r="1.4" fill="rgba(255,255,255,0.4)"/>`
+      }
 
       // 等效电阻读数（按接入方式取有效段）
       const rEff = mode === 'right-wire' ? (1 - f) * rmax
@@ -818,7 +986,7 @@ export const TYPES = {
       </g>
       ${spdtBladeSVG(pos)}
       ${termDotSVG(34, 46, true, 'A')}
-      ${termDotSVG(146, 46, true, 'B')}
+      ${termDotSVG(146, 46, false, 'B')}
       ${termDotSVG(90, 102, true, 'C')}
       ${noteChipSVG(90, 76, pos === 0 ? '闸刀接通 A' : '闸刀接通 B', '#4ade80', 88)}
     </svg>` }
@@ -930,7 +1098,7 @@ export const TYPES = {
       <path d="M114 38 h24 M114 43 h24 M114 48 h24" stroke="#8a6a3c" stroke-width="1.2"/>
       <path d="M146 43 H184" stroke="#9aa3ad" stroke-width="3"/>
       ${termDotSVG(16, 43, true, '尖')}
-      ${termDotSVG(214, 43, true, '尾')}
+      ${termDotSVG(214, 43, false, '尾')}
       ${noteChipSVG(115, 74, glow ? '氖管发光（接触火线）' : '氖管不亮', glow ? '#fb923c' : '#94a3b8', 148)}
     </svg>` }
   },
@@ -1161,7 +1329,7 @@ export const TYPES = {
         ${dialKnob(109, 123, dials[3] | 0, 3)}
       </g>
       ${termDotSVG(31, 167, true, '1')}
-      ${termDotSVG(120, 167, true, '2')}
+      ${termDotSVG(120, 167, false, '2')}
     </svg>` }
   },
 
@@ -1258,7 +1426,7 @@ export const TYPES = {
       ${termDotSVG(48, 152, true, '圈1')}
       ${termDotSVG(84, 152, true, '圈2')}
       ${termDotSVG(130, 152, true, '触1')}
-      ${termDotSVG(172, 152, true, '触2')}
+      ${termDotSVG(172, 152, false, '触2')}
       ${noteChipSVG(118, 32, pulled ? '衔铁吸合 · 触点闭合' : '衔铁释放 · 触点断开',
         pulled ? '#4ade80' : '#94a3b8', 152)}
     </svg>` }

@@ -4,14 +4,29 @@ import SceneShell from '../ui/SceneShell'
 import InfoDock from '../ui/InfoDock'
 import BuilderPalette from '../ui/BuilderPalette'
 import { fitLayout, drawPanel } from '../ui/canvasLayout'
-import Builder3D from '../simple3d/Builder3D.jsx'
+import BuilderSVG from '../simple3d/BuilderSVG.jsx'
+import { TYPES } from './electricSvgInstruments.js'
 // ── 渲染层：Tab1 标准电路符号 ──
 import { symBattery, symSwitch, symBulb, symHalf, SYM_INK } from '../render/symbols.js'
 
 /**
+ * 器件栏缩略图：直接用器材图纸的 render() 输出，尺寸交给 .bp-ic（40×24）缩放。
+ * 好处是器件栏与桌面上的器材永远同源 —— 改图、改柱位、改柱帽颜色都不用再手动同步图标。
+ */
+function thumb(type) {
+  const t = TYPES[type]
+  if (!t) return null
+  const svg = t.render(
+    { id: `pal-${type}`, closed: true, showRead: false, f: 0.4 },
+    { bright: 0.55, frac: 0.35, I: 0, f: 0.4 }
+  )
+  return <span dangerouslySetInnerHTML={{ __html: svg }} />
+}
+
+/**
  * SimpleCircuitScene — 简单电路
  * Tab1: 电路演示 — 矩形回路 + 标准电路符号 + 开关通断
- * Tab2: 自己动手 — 3D 实物器材（simple3d/Builder3D）+ 接线柱连线
+ * Tab2: 自己动手 — 2D/SVG 实物器材（simple3d/BuilderSVG）+ 接线柱连线
  */
 
 export default function SimpleCircuitScene() {
@@ -301,7 +316,7 @@ export default function SimpleCircuitScene() {
         <>
           <b>简单电路</b>
           <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
-            {tab === 1 ? '电路演示：矩形回路 · 点击开关 · 标准符号 · 电子方向' : '自己动手（3D）：点右侧器材加入 · 拖拽移动 · 接线柱连线 · 双击删除'}
+            {tab === 1 ? '电路演示：矩形回路 · 点击开关 · 标准符号 · 电子方向' : '自己动手（2D/SVG）：点右侧器材加入 · 拖拽移动 · 接线柱连线 · 双击删除'}
           </span>
         </>
       )}
@@ -314,7 +329,7 @@ export default function SimpleCircuitScene() {
           onMouseDown={handleMouseDown}
         />
         {tab === 2 && (
-          <Builder3D ref={builderRef} wireColor={S.current.wireColor} />
+          <BuilderSVG ref={builderRef} wireColor={S.current.wireColor} />
         )}
         {tab === 1 ? (
           <InfoDock
@@ -328,20 +343,23 @@ export default function SimpleCircuitScene() {
           />
         ) : (
           <InfoDock
-            hint="点右侧器材加入 → 拖拽移动 → 点接线柱连线。轻点开关通断，双击删除器材。拖动空白处旋转视角。"
+            hint="点右侧器材加入 → 拖拽移动 → 点接线柱连线。轻点开关通断，双击电表看读数，双击器材或按 Delete 删除。"
             hintTitle="操作说明"
           />
         )}
         {tab === 2 && (
           <BuilderPalette side="right"
             items={[
-              { type: 'battery', name: '电源', icon: '🔋' },
-              { type: 'bulb', name: '灯泡', icon: '💡' },
-              { type: 'switch', name: '开关', icon: '🔌' },
-              { type: 'resistor', name: '电阻', icon: '⚡' },
-              { type: 'rheostat', name: '滑变', icon: '🎚️' },
-              { type: 'ammeter', name: '电流表', icon: 'Ⓐ' },
-              { type: 'voltmeter', name: '电压表', icon: 'Ⓥ' },
+              // 图标直接用器材图纸 TYPES.render() 画出来，跟桌面/完整实验室同源，
+              // 换图或改柱位后器件栏自动同步（不再是 🔋💡 这种与器材无关的表情符号）
+              { type: 'battery', name: '电池组', icon: thumb('battery') },
+              { type: 'accumulator', name: '蓄电池', icon: thumb('accumulator') },
+              { type: 'bulb', name: '灯泡', icon: thumb('bulb') },
+              { type: 'switch', name: '开关', icon: thumb('switch') },
+              { type: 'resistor5', name: '电阻', icon: thumb('resistor5') },
+              { type: 'rheostat', name: '滑变', icon: thumb('rheostat') },
+              { type: 'ammeter', name: '电流表', icon: thumb('ammeter') },
+              { type: 'voltmeter', name: '电压表', icon: thumb('voltmeter') },
             ]}
             wireColor={S.current.wireColor}
             onPickColor={handlePickColor}

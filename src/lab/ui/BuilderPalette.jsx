@@ -32,6 +32,10 @@ export default function BuilderPalette({
 
   return (
     <div style={isRight ? styles.wrapRight : styles.wrapBottom}>
+      {/* 器材缩略图：icon 可直接传器材图纸渲染出的 SVG / 图片，统一按 40×24 缩放 */}
+      <style>{`.bp-ic{display:flex;align-items:center;justify-content:center;height:24px}
+.bp-ic svg{width:40px;height:24px}
+.bp-ic img{width:40px;height:24px;object-fit:contain}`}</style>
       <div
         className="toolbox-list"
         style={isRight ? styles.scrollRight : styles.scrollBottom}
@@ -45,7 +49,7 @@ export default function BuilderPalette({
             onClick={() => onAdd && onAdd(it.type)}
             title={`添加${it.name}`}
           >
-            <span style={styles.icon}>{it.icon}</span>
+            <span className="bp-ic" style={styles.icon}>{it.icon}</span>
             <span style={isRight ? styles.nameRight : styles.name}>{it.name}</span>
           </button>
         ))}

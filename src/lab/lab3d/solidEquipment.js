@@ -711,6 +711,12 @@ function buildMeter(w, h, kind, fs, subTicks, terms = []) {
       if (/dial|frontphoto|face/i.test(o.name)) {
         // 模型自带的那张表盘贴的是 fig/ammeter_c.png（mA 毫安表）/
         // voltmeter_c.png（V 电压表）—— 这就是这两件器材的图纸基准，直接用。
+        // 但必须换无光照材质：GLB 的 PBR 会把盘面刻度渲灰（墨水密度掉到照片的 2/3 以下）。
+        const src = o.material && o.material.map
+        if (src) {
+          src.anisotropy = 8
+          o.material = new THREE.MeshBasicMaterial({ map: src, toneMapped: false })
+        }
         panel.push(o)
       } else shell.push(o)
     })
@@ -779,23 +785,25 @@ function buildMeter(w, h, kind, fs, subTicks, terms = []) {
   g.add(dial)
   panel.push(dial)
 
-  // 接线柱：两根，**竖直向上**立在黑底座前部（图纸上是 −/量程两根），
-  // 不再是三根朝 -Z 平伸出去的柱。左黑（neg）、右红（0.6A / 3V 量程端）。
+  // 接线柱：图纸（照片 + termDotsSVG 叠层）是 **三根**竖直柱 −/0.6/3（或 −/3V/15V）。
+  // ammeter 的照片缺中柱（termDotsSVG 注释"照片缺中柱时补齐三个柱位"），3D 必须补齐。
+  // 位置直接由 terminals 像素坐标换算：世界 x = (px - w/2) * SCALE，与 2D 柱位严格同源。
+  // 柱帽按图纸：− 深蓝、量程端红。
   const postZ = front + 0.16
   const posts = []
   {
-    const xs = [-0.34, 0.34]
-    const rightId = (terms && terms.some && terms.some((t) => t.id === 'mid')) ? 'mid' : 'full'
-    for (let i = 0; i < 2; i++) {
-      const id = i === 0 ? 'neg' : rightId
-      const p = makePost(id, i === 0, { knobColor: i === 0 ? '#1c2026' : '#cf1f22' })
-      p.position.set(xs[i], 0.042, postZ)
+    const list = (terms && terms.length)
+      ? terms.map((t) => ({ id: t.id, x: (t.x - w / 2) * SCALE, neg: t.id === 'neg' }))
+      : [{ id: 'neg', x: -0.34, neg: true }, { id: 'full', x: 0.34, neg: false }]
+    for (const tp of list) {
+      const p = makePost(tp.id, tp.neg, { knobColor: tp.neg ? '#2b3340' : '#cf1f22' })
+      p.position.set(tp.x, 0.042, postZ)
       const foot = cyl(0.062, 0.066, 0.014, MAT.steel(), 18)
-      foot.position.set(xs[i], 0.049, postZ)
+      foot.position.set(tp.x, 0.049, postZ)
       g.add(foot)
-      p.userData.terminal = id
+      p.userData.terminal = tp.id
       g.add(p)
-      posts.push({ id, x: xs[i], z: postZ, top: 0.188 })
+      posts.push({ id: tp.id, x: tp.x, z: postZ, top: 0.188 })
     }
   }
 
@@ -821,9 +829,12 @@ function buildMeter(w, h, kind, fs, subTicks, terms = []) {
   g.add(glass)
   panel.push(glass)
 
-  // 指针：pivot 在表盘下缘中心，针绕 Z 转
+  // 指针：pivot 在表盘下缘中心，针绕 Z 转。
+  // 零位 = 表盘 0 刻度在左（J0407 盘 −52°，与 needleSVG / NEEDLE_BASE_DEG 同一套量程）。
+  // 不设初始 rotation 的话渲染出来针停在正竖直 0°，跟盘面刻度对不上。
   const pivot = new THREE.Group()
   pivot.position.set(0, H * 0.24, 0.262)
+  pivot.rotation.z = (52 * Math.PI) / 180
   const needle = box(0.016, H * 0.42, 0.007, std('#c0392b', { roughness: 0.35 }), 0, H * 0.21, 0)
   pivot.add(needle)
   // 针尖一小段更细，视觉上才像"针"而不是一根红条
@@ -905,15 +916,17 @@ function ammeterFaceA() {
   // 负量程段：8 条短线（最左一条是端线，略粗）
   for (let i = 0; i <= 8; i++) {
     const a = AL + (AZ - AL) * (i / 8)
-    tick(a, Hc * 0.049, i === 0 ? 3.2 : 1.7, i === 0 ? '#14171b' : '#3a4046')
+    tick(a, Hc * 0.049, i === 0 ? 6.5 : 4.2, i === 0 ? '#14171b' : '#23272d')
   }
   // 正量程段：30 小格（0.02A 一格，0.1A 中刻度、0.2A 主刻度）
+  // 线宽按"512 贴图缩到 ~120px 显示"放大：细于 ~4px 的线一缩就被冲成灰雾，
+  // 页面上的表会像光板（对照照片的墨水密度 34.7%，9% 就是没刻度的观感）。
   for (let i = 0; i <= 30; i++) {
     const a = AZ + (AR - AZ) * (i / 30)
     const major = i % 10 === 0
     const mid = i % 5 === 0
     const len = major ? Hc * 0.068 : mid ? Hc * 0.058 : Hc * 0.049
-    tick(a, len, major ? 4 : mid ? 2.4 : 1.7, major ? '#14171b' : '#3a4046')
+    tick(a, len, major ? 8 : mid ? 6 : 4.2, major ? '#14171b' : '#23272d')
   }
 
   const mark = (a, str, rr, size, color) => {
@@ -928,13 +941,13 @@ function ammeterFaceA() {
     g.restore()
   }
   // 外圈 0/1/2/3（3A 量程）
-  for (let v = 0; v <= 3; v++) mark(AZ + (AR - AZ) * (v / 3), String(v), Hc * 0.869, Hc * 0.136, '#14171b')
+  for (let v = 0; v <= 3; v++) mark(AZ + (AR - AZ) * (v / 3), String(v), Hc * 0.869, Hc * 0.15, '#14171b')
   // 内圈 0.2/0.4/0.6（0.6A 量程）
-  mark(AZ + (AR - AZ) / 3, '0.2', Hc * 0.63, Hc * 0.09, '#1c2026')
-  mark(AZ + (AR - AZ) * 2 / 3, '0.4', Hc * 0.63, Hc * 0.09, '#1c2026')
-  mark(AR, '0.6', Hc * 0.63, Hc * 0.09, '#1c2026')
+  mark(AZ + (AR - AZ) / 3, '0.2', Hc * 0.63, Hc * 0.105, '#1c2026')
+  mark(AZ + (AR - AZ) * 2 / 3, '0.4', Hc * 0.63, Hc * 0.105, '#1c2026')
+  mark(AR, '0.6', Hc * 0.63, Hc * 0.105, '#1c2026')
   // 负量程端那个 0.2（前面配 −，读作 −0.2）
-  mark(Math.PI * (233 / 180), '0.2', Hc * 0.63, Hc * 0.09, '#1c2026')
+  mark(Math.PI * (233 / 180), '0.2', Hc * 0.63, Hc * 0.105, '#1c2026')
 
   const sym = (a, str, rr, size) => {
     g.save()
@@ -1087,7 +1100,9 @@ function buildAmmeterA(w, h, terms = []) {
   const pivotY = faceY - faceH * 0.47 // 轴心在白面板自顶 0.97H（实测）
   const pivot = new THREE.Group()
   pivot.position.set(0, pivotY, faceZ + 0.024)
-  pivot.rotation.z = 0.908 // 零位在左（deg −52 → rotation.z 取 +52°，与 three-render 一致）
+  // 零位针角 = 表盘实测零点 246.3°（canvas 角，270° 朝上）→ 相对竖直 -23.7°。
+  // 之前用 -52°（抄 J0407 的）针会垂到刻度带左侧外面，跟盘面刻度对不上。
+  pivot.rotation.z = (23.7 * Math.PI) / 180
   pivot.add(box(0.016, 0.78, 0.006, std('#d01f24', { roughness: 0.32 }), 0, 0.39, 0))
   pivot.add(box(0.007, 0.16, 0.006, std('#b81a1f', { roughness: 0.32 }), 0, 0.71, 0))
   tilt.add(pivot)
@@ -1102,10 +1117,15 @@ function buildAmmeterA(w, h, terms = []) {
   tilt.add(glass)
 
   // ── 三根粗柱：滚花帽 + 银柱身 + 两圈垫片 ──
+  // 位置直接由 terminals 像素坐标换算（世界 x = (px - w/2) * SCALE），与 2D 柱位同源。
   const posts = []
-  const px = [-0.45, 0, 0.45]
   const ids = ['neg', 'mid', 'full']
-  const knobColors = ['#1b1d20', '#bf2129', '#bf2129']
+  const FALLBACK_PX = [-0.45, 0, 0.45]
+  const px = ids.map((id, i) => {
+    const t = terms && terms.find && terms.find((tt) => tt.id === id)
+    return t ? (t.x - w / 2) * SCALE : FALLBACK_PX[i]
+  })
+  const knobColors = ['#26292e', '#e5423b', '#e5423b'] // 照片里中/右柱是亮红，不是暗枣红
   const knurl = knurlMap()
   const silver = MAT.steel()
   const capTopY = baseH + 0.130
@@ -1127,7 +1147,7 @@ function buildAmmeterA(w, h, terms = []) {
     grp.add(stem)
 
     // 滚花帽（开口圆柱侧面 + 贴图，竖向凸纹）
-    const capMat = std(knobColors[i], { roughness: 0.42, metalness: 0.18 })
+    const capMat = std(knobColors[i], { roughness: 0.36, metalness: 0.06 })
     if (knurl) {
       capMat.map = knurl
       capMat.needsUpdate = true
@@ -1138,7 +1158,7 @@ function buildAmmeterA(w, h, terms = []) {
 
     // 帽顶：平顶 + 中心小凹
     const topY = cap.position.y + 0.042
-    const topFace = new THREE.Mesh(new THREE.CircleGeometry(0.09, 32), std(knobColors[i], { roughness: 0.4, metalness: 0.2 }))
+    const topFace = new THREE.Mesh(new THREE.CircleGeometry(0.09, 32), std(knobColors[i], { roughness: 0.48, metalness: 0.05 }))
     topFace.rotation.x = -Math.PI / 2
     topFace.position.y = topY
     grp.add(topFace)
@@ -1162,6 +1182,9 @@ function buildAmmeterA(w, h, terms = []) {
     shell,
     panel,
     pointer: pivot,
+    // 指针量程：零点 -23.7°（表盘 246.3°）、满偏 +37°（表盘 307°）。
+    // three-render 的 sync 用它覆盖默认的 -52/104（那是 J0407 表盘的量程）。
+    pointerRange: { base: -23.7, span: 60.7 },
     posts,
     postTopY: capTopY,
     postZ: 0.22,
@@ -1176,12 +1199,26 @@ function buildRheostat(w, h, terms = []) {
   const g = new THREE.Group()
   const W = w * SCALE // 1.9
   const shell = []
-  const tubeLen = 1.30
-  const tubeY = 0.44
-  const tubeR = 0.21
-  const rodY = 0.86
+  // 尺寸按标定表（190×79px）：瓷管 φ0.52、管心高 0.32、滑杆高 0.68。
+  const tubeLen = 1.32
+  const tubeY = 0.32
+  const tubeR = 0.26
+  const rodY = 0.68
   const steelMat = std('#c8ced6', { roughness: 0.28, metalness: 0.8 })
 
+  // ── 静态壳：优先 Blender GLB（瓷管 + 密绕丝 + 夹脚 + 滑杆导轨）──
+  const gear = gearReady('rheostat')
+  if (!gear && typeof document !== 'undefined') preloadGear('rheostat')
+  if (gear) {
+    const model = gear.clone(true)
+    model.traverse((o) => {
+      if (!o.isMesh) return
+      o.castShadow = true
+      o.receiveShadow = true
+      shell.push(o)
+    })
+    g.add(model)
+  } else {
   // 瓷管（灰蓝，实物是这种冷灰，不是纯白瓷）
   const tube = cyl(tubeR, tubeR, tubeLen, std('#657080', { roughness: 0.6, metalness: 0.12 }), 30)
   tube.rotation.z = Math.PI / 2
@@ -1189,9 +1226,10 @@ function buildRheostat(w, h, terms = []) {
   shell.push(tube)
   g.add(tube)
 
-  // 密绕电阻丝：图纸上是明显的橙色镍铬丝（暖金），不是冷白灰 —— 冷白灰一眼就不是电阻丝
-  const coilMat = std('#d69a4c', { roughness: 0.33, metalness: 0.72 })
-  const winding = helixTube(tubeR + 0.012, -tubeLen / 2 + 0.06, tubeLen / 2 - 0.06, 78, 0.009, coilMat)
+  // 密绕电阻丝：图纸上是明显的橙色镍铬丝（暖金），不是冷白灰 —— 冷白灰一眼就不是电阻丝。
+  // 金属度压低：高金属反射白环境会把橙色冲成灰金。
+  const coilMat = std('#e07a28', { roughness: 0.35, metalness: 0.15 })
+  const winding = helixTube(tubeR + 0.013, -tubeLen / 2 + 0.05, tubeLen / 2 - 0.05, 72, 0.010, coilMat)
   winding.rotation.z = -Math.PI / 2
   winding.position.set(0, tubeY, 0)
   winding.castShadow = false
@@ -1201,28 +1239,29 @@ function buildRheostat(w, h, terms = []) {
   for (const sx of [-1, 1]) {
     const xa = sx * 0.52
     // 竖脚
-    g.add(box(0.06, 0.34, 0.44, steelMat, xa, 0.19, 0))
+    g.add(box(0.065, 0.34, 0.42, steelMat, xa, 0.17, 0))
     // 底部横脚（贴台面）
-    g.add(box(0.10, 0.035, 0.62, steelMat, xa, 0.018, 0))
+    g.add(box(0.11, 0.036, 0.62, steelMat, xa, 0.018, 0))
     // 夹住瓷管的环
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(tubeR + 0.014, 0.020, 8, 24), steelMat)
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(tubeR + 0.03, 0.020, 8, 24), steelMat)
     ring.rotation.y = Math.PI / 2
     ring.position.set(xa, tubeY, 0)
     g.add(ring)
     // 管两端金属端帽（挡丝）
-    const endCap = cyl(tubeR + 0.022, tubeR + 0.022, 0.045, steelMat, 24)
+    const endCap = cyl(tubeR + 0.025, tubeR + 0.025, 0.055, steelMat, 24)
     endCap.rotation.z = Math.PI / 2
-    endCap.position.set(sx * (tubeLen / 2 + 0.03), tubeY, 0)
+    endCap.position.set(sx * (tubeLen / 2 + 0.028), tubeY, 0)
     g.add(endCap)
     // 滑杆支座：从管端向上伸到滑杆
-    g.add(box(0.04, rodY - tubeY, 0.05, steelMat, sx * 0.80, (rodY + tubeY) / 2, 0))
+    g.add(box(0.048, rodY - tubeY + 0.10, 0.055, steelMat, sx * 0.80, (rodY + tubeY) / 2 + 0.05, 0))
   }
 
   // 横贯的滑杆（固定不动的导轨）
-  const rail = cyl(0.026, 0.026, 1.66, steelMat, 14)
+  const rail = cyl(0.024, 0.024, 1.64, steelMat, 14)
   rail.rotation.z = Math.PI / 2
   rail.position.set(0, rodY, 0)
   g.add(rail)
+  } // ← 静态壳兜底分支结束
 
   // 内部（剖视露出）：瓷芯 + 两端引线
   const inner = new THREE.Group()
@@ -1238,9 +1277,9 @@ function buildRheostat(w, h, terms = []) {
   // 滑片：夹块骑在管上 + 顶部滑块扣在滑杆上 + 竖直红手柄。外部只改 position.x。
   const slider = new THREE.Group()
   slider.position.set(0, tubeY, 0)
-  slider.add(rbox(0.11, 0.32, 0.46, 0.016, steelMat, 0, 0.0, 0))
+  slider.add(rbox(0.12, 0.38, 0.54, 0.016, steelMat, 0, 0.0, 0))
   for (const sz of [-1, 1]) {
-    slider.add(box(0.07, 0.42, 0.016, std('#a9b0b8', { roughness: 0.35, metalness: 0.6 }), 0, -0.10, sz * 0.15))
+    slider.add(box(0.075, 0.48, 0.016, std('#a9b0b8', { roughness: 0.35, metalness: 0.6 }), 0, -0.12, sz * 0.18))
   }
   // 连到滑杆的桥
   slider.add(box(0.07, rodY - tubeY + 0.02, 0.07, steelMat, 0, (rodY - tubeY) / 2 + 0.02, 0))
@@ -1516,8 +1555,21 @@ function buildMotor(w, h) {
   const H = h * SCALE // 1.69
   const baseT = 0.13
 
-  // 木底座
-  const base = box(W * 0.98, baseT, 1.6, std('#b07a41', { roughness: 0.55, metalness: 0.03 }), 0, baseT / 2, 0)
+  // ── 整机静态：优先 Blender GLB（木底座 + 皮带轮 + 磁极 + 电枢）──
+  const gear = gearReady('motor')
+  if (!gear && typeof document !== 'undefined') preloadGear('motor')
+  if (gear) {
+    const model = gear.clone(true)
+    model.traverse((o) => {
+      if (!o.isMesh) return
+      o.castShadow = true
+      o.receiveShadow = true
+      shell.push(o)
+    })
+    g.add(model)
+  } else {
+  // 木底座（照片是深棕，亮木色在场景光下会发浅黄）
+  const base = box(W * 0.98, baseT, 1.0, std('#6e4527', { roughness: 0.55, metalness: 0.03 }), 0, baseT / 2, 0)
   shell.push(base)
   g.add(base)
 
@@ -1563,6 +1615,7 @@ function buildMotor(w, h) {
     ring.position.set(W * 0.3 + mW / 2 + sx * (mW + 0.02), mY, 0.06)
     g.add(ring)
   }
+  } // ← 代码几何兜底分支结束
 
   return { group: g, thickness: baseT, stand: false, shell }
 }
@@ -1798,10 +1851,13 @@ export function buildSolid(type, opt = {}) {
   const terms = opt.terminals || []
 
   switch (type) {
-    case 'battery': {
-      // 竖立方箱（与图纸 battery_c.png 同形体）：柱由 buildBattery 按图纸像素摆在顶盖上，
+    case 'battery':
+    case 'accumulator': {
+      // 竖立方箱：柱由 buildBattery 按图纸像素摆在顶盖上，
       // 不走 placePosts 的像素换算（那套换算会把柱算到箱体前面，导线端点落在箱壁上）。
       // thickness 给的是"正面到中心"的深度，命中球兜底高度用 postTopY。
+      // 蓄电池与蓝色方箱实拍图 accumulator_c.png 同形体，先共用这套蓝箱；
+      // 电池组（横躺电池盒）的 3D 形体尚未做，切 3D 时暂按此兜底，别让它直接消失。
       const b = buildBattery(w, h, terms)
       const thickness = 0.53
       return {
@@ -1834,8 +1890,8 @@ export function buildSolid(type, opt = {}) {
       const fs = opt.fs || (type === 'ammeter' ? 3 : 15)
       const b = buildMeter(w, h, kind, fs, 30, terms)
       const thickness = 0.18 // 半深：表壳厚 0.36
-      // 柱不再由 placePosts 摆：实物表是**两根竖直柱立在黑底座前缘**，
-      // 不是三根朝 -Z 平伸出去的柱。柱由 buildMeter 自己就地摆好。
+      // 柱不再由 placePosts 摆：实物表的柱是**竖直立在黑底座前缘**（图纸三根 −/0.6/3），
+      // 不是朝 -Z 平伸出去的柱。柱由 buildMeter 按 terminals 像素坐标就地摆好。
       return {
         group: b.group,
         size,
@@ -1887,7 +1943,7 @@ export function buildSolid(type, opt = {}) {
 }
 
 export const SOLID_TYPES = new Set([
-  'battery', 'bulb', 'switch', 'ammeter', 'ammeterA', 'voltmeter', 'rheostat',
+  'battery', 'accumulator', 'bulb', 'switch', 'ammeter', 'ammeterA', 'voltmeter', 'rheostat',
   'switch2', 'motor', 'diode', 'fuse', 'testPencil', 'electroscope',
   'mains', 'energyMeter', 'jouleTube', 'resBox', 'multimeter', 'relay',
 ])
@@ -1938,6 +1994,14 @@ export function renderIcon(type, opt = {}) {
     const half = Math.max(Math.max(sz.x, 0.05) * 0.5, Math.max(sz.y, 0.05) * 0.5)
     cam = new THREE.OrthographicCamera(-half, half, half, -half, 0.05, 80)
     cam.position.set(c.x, c.y, c.z + 5)
+    cam.lookAt(c.x, c.y, c.z)
+  } else if (opt.view === 'top') {
+    // 正交顶视：供"图纸是纯俯视照片"的器材（如单刀开关）做同机位对照。
+    // 图面朝向：照片的"下"= 器材正面(+Z)，所以 up 取 -Z。
+    const half = Math.max(Math.max(sz.x, 0.05) * 0.5, Math.max(sz.z, 0.05) * 0.5)
+    cam = new THREE.OrthographicCamera(-half, half, half, -half, 0.05, 80)
+    cam.position.set(c.x, c.y + 5, c.z)
+    cam.up.set(0, 0, -1)
     cam.lookAt(c.x, c.y, c.z)
   } else {
     cam = new THREE.PerspectiveCamera(30, 1, 0.05, 80)

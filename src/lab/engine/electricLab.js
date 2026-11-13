@@ -22,6 +22,7 @@
 /** 电路参数（与源实验一致） */
 export const CFG = {
   VS: { V: 3.0, r: 0.1 },       // 电池组：电动势 3V，内阻 0.1Ω
+  ACC_V: 12,                     // 蓄电池电动势 12V
   BULB_R: 5.0,                  // 灯泡电阻
   BULB_RATED: 1.8,              // 灯泡额定功率（亮度 100%）
   AMM_R: 0.01,                  // 电流表内阻
@@ -68,6 +69,7 @@ export function resBoxOhms(dials) {
 /** 各类器材接线柱 id（求解拓扑与场景渲染共用） */
 export const TERM_IDS = {
   battery: ['n', 'p'],
+  accumulator: ['n', 'p'],
   bulb: ['a', 'b'],
   switch: ['a', 'b'],
   ammeter: ['neg', 'mid', 'full'],   // neg(黑) / mid(0.6A) / full(3A)：接哪个柱就是哪个量程
@@ -220,14 +222,15 @@ export function solveCircuit(comps, wires, opts) {
 
     els = []
     for (const c of comps) {
-    if (c.type === 'battery') {
+    if (c.type === 'battery' || c.type === 'accumulator') {
       const a = netOf(c, 'n')
       const bb = netOf(c, 'p')
+      const emf = c.type === 'accumulator' ? CFG.ACC_V : CFG.VS.V
       const g = 1 / CFG.VS.r
       A[a][a] += g; A[bb][bb] += g; A[a][bb] -= g; A[bb][a] -= g
-      b[a] -= CFG.VS.V / CFG.VS.r
-      b[bb] += CFG.VS.V / CFG.VS.r
-      els.push({ kind: 'V', a, b: bb, V: CFG.VS.V, r: CFG.VS.r, comp: c, tA: 'n', tB: 'p' })
+      b[a] -= emf / CFG.VS.r
+      b[bb] += emf / CFG.VS.r
+      els.push({ kind: 'V', a, b: bb, V: emf, r: CFG.VS.r, comp: c, tA: 'n', tB: 'p' })
     } else if (c.type === 'bulb') {
       const a = netOf(c, 'a')
       const bb = netOf(c, 'b')
@@ -437,10 +440,10 @@ export function solveCircuit(comps, wires, opts) {
       o._rev = o._V < -1e-6
       o._fs = e.fs ?? CFG.VOLT_FS
       o._over = Math.abs(o._V) > o._fs * 1.001
-    } else if (c.type === 'battery' || c.type === 'mains') {
+    } else if (c.type === 'battery' || c.type === 'accumulator' || c.type === 'mains') {
       o._I = I
       // 端电压 = 电动势 − 内阻分压；短路时 I 很大，端电压趋近 0（这是「短路为什么危险」的教学点）
-      const emf = c.type === 'mains' ? CFG.MAINS_V : CFG.VS.V
+      const emf = c.type === 'mains' ? CFG.MAINS_V : c.type === 'accumulator' ? CFG.ACC_V : CFG.VS.V
       const rIn = c.type === 'mains' ? CFG.MAINS_R : CFG.VS.r
       o._V = Math.abs(v[e.b] - v[e.a])
       o._Ir = Math.abs(I) * rIn
@@ -641,7 +644,7 @@ function computeWireCurrents(comps, wires, els) {
 function detectMisuse(comps, wires, out) {
   const diag = { short: false, ammeterParallel: false, voltmeterSeries: false }
   for (const c of comps) {
-    if (c.type === 'battery' && Math.abs(out[c.id]?._I || 0) > 1.2) diag.short = true
+    if ((c.type === 'battery' || c.type === 'accumulator') && Math.abs(out[c.id]?._I || 0) > 1.2) diag.short = true
     if (c.type === 'mains' && Math.abs(out[c.id]?._I || 0) > 15) diag.short = true
     if ((c.type === 'ammeter' || c.type === 'ammeterA')) {
       // 未串在支路（与另一元件同节点对 = 被并联在元件两端）且两端电位差 > 0.5V
@@ -708,7 +711,7 @@ function probeSolve(comps, wires, compId, probeR) {
 
 /** 状态栏摘要（纯文本片段，与源实验的状态条语义一致） */
 export function circuitStatus(comps, wires, out) {
-  const bat = comps.filter((c) => c.type === 'battery' || c.type === 'mains')
+  const bat = comps.filter((c) => c.type === 'battery' || c.type === 'accumulator' || c.type === 'mains')
   const switches = comps.filter((c) => c.type === 'switch')
   const bulbs = comps.filter((c) => c.type === 'bulb')
   const amms = comps.filter((c) => (c.type === 'ammeter' || c.type === 'ammeterA'))
