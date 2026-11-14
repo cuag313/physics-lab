@@ -376,10 +376,11 @@ export default function SeriesParallelScene() {
         { x: x0, y: y1 }, { x: battX - hBat, y: y1 },
       ]
       drawCurrentFlow(ctx, main, s.time, 0.5)
+      // R₂ 支路：与 R₁ 支路同向（下→上），因 I₂ 只有 I₁ 的一半，电子点密度减半
       drawCurrentFlow(ctx, [
-        { x: r2x, y: y0 }, { x: r2x, y: midY - hRes }, { x: r2x, y: midY + hRes },
-        { x: r2x, y: aY - hMeter }, { x: r2x, y: aY + hMeter }, { x: r2x, y: y1 },
-      ], s.time, 0.5)
+        { x: r2x, y: y1 }, { x: r2x, y: aY + hMeter }, { x: r2x, y: aY - hMeter },
+        { x: r2x, y: midY + hRes }, { x: r2x, y: midY - hRes }, { x: r2x, y: y0 },
+      ], s.time, 0.5, 90)
     }
 
     // 标注
@@ -589,7 +590,7 @@ function drawLine(ctx, x1, y1, x2, y2, color, w) {
   ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
 }
 
-function drawCurrentFlow(ctx, points, time, speed) {
+function drawCurrentFlow(ctx, points, time, speed, gap = 45) {
   let totalLen = 0; const segs = []
   for (let i = 0; i < points.length - 1; i++) {
     const dx = points[i + 1].x - points[i].x, dy = points[i + 1].y - points[i].y
@@ -598,7 +599,7 @@ function drawCurrentFlow(ctx, points, time, speed) {
   }
   if (totalLen < 8) return
   ctx.fillStyle = '#FFEB3B'
-  const n = Math.max(5, Math.floor(totalLen / 45))
+  const n = Math.max(2, Math.floor(totalLen / gap))
   for (let d = 0; d < n; d++) {
     let pos = ((time * speed * 100 + d * (totalLen / n)) % totalLen)
     for (const seg of segs) {
