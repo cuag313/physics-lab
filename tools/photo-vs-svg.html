@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>器材实拍图 ↔ SVG 图纸 1:1 对照</title>
+<style>
+  :root { --ink: #10151c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 10px 12px 24px; background: #f2f5f9; color: var(--ink);
+         font: 12px/1.5 "Microsoft YaHei", system-ui, sans-serif; }
+  h1 { font-size: 15px; margin: 0 0 2px; }
+  .hint { color: #5b6b80; margin-bottom: 10px; }
+  .row { display: flex; gap: 14px; align-items: flex-start; background: #fff;
+         border: 1px solid #d6dde7; border-radius: 8px; padding: 10px; margin-bottom: 12px; }
+  .cell { display: flex; flex-direction: column; gap: 4px; }
+  .cell .cap { font-size: 11px; color: #46536a; text-align: center; }
+  .pic { position: relative; background: #fff; border: 1px solid #cbd4e0; border-radius: 4px; overflow: hidden; }
+  .pic svg, .pic img { width: 100% !important; height: 100% !important; display: block; object-fit: contain; }
+</style>
+</head>
+<body>
+<h1>实拍图 ↔ SVG 图纸 1:1（同像素尺寸，等比放大）</h1>
+<div class="hint">左 = <b>public/assets/equipment/fig/*_c.png</b> 实拍图；右 = <b>TYPES[type].render()</b> 矢量图纸。两边都按 <b>def.w×def.h</b> 画，再等比放大，用来逐点核对柱位、帽色、进深、比例。</div>
+<div id="wrap"></div>
+<script type="module">
+import { TYPES } from '/src/lab/scenes/electricSvgInstruments.js'
+
+const qs = new URLSearchParams(location.search)
+const types = (qs.get('t') || 'switch').split(',')
+const S = Number(qs.get('scale') || 3)
+const wrap = document.getElementById('wrap')
+
+for (const t of types) {
+  const def = TYPES[t]
+  if (!def) { wrap.insertAdjacentHTML('beforeend', `<div class="row">TYPES 里没有 ${t}</div>`); continue }
+  const W = def.w * S, Hh = def.h * S
+  const img = qs.get('img') || `${t}_c.png`
+
+  const row = document.createElement('div')
+  row.className = 'row'
+  row.dataset.type = t
+
+  // ① 实拍图
+  const c1 = document.createElement('div'); c1.className = 'cell'
+  const p1 = document.createElement('div'); p1.className = 'pic'
+  p1.style.width = W + 'px'; p1.style.height = Hh + 'px'
+  const i1 = document.createElement('img'); i1.src = new URL(`../assets/equipment/fig/${img}`, location.href).href
+  p1.appendChild(i1)
+  c1.appendChild(p1)
+  c1.insertAdjacentHTML('beforeend', `<div class="cap">实拍 <b>${img}</b> ${def.w}×${def.h}</div>`)
+  row.appendChild(c1)
+
+  // ② SVG 图纸
+  const c2 = document.createElement('div'); c2.className = 'cell'
+  const p2 = document.createElement('div'); p2.className = 'pic'
+  p2.style.width = W + 'px'; p2.style.height = Hh + 'px'
+  p2.innerHTML = def.render({ id: 'pv_' + t, closed: qs.get('closed') === '1' }, { bright: 0.8, frac: 0.42 })
+  c2.appendChild(p2)
+  c2.insertAdjacentHTML('beforeend', `<div class="cap">SVG <b>${t}</b> ${def.w}×${def.h}</div>`)
+  row.appendChild(c2)
+
+  wrap.appendChild(row)
+}
+document.body.dataset.done = '1'
+</script>
+</body>
+</html>
