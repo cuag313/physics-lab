@@ -384,7 +384,7 @@ export default function SeriesParallelScene() {
         { x: r1x, y: y1 }, { x: r1x, y: y0 },
       ]
       const rightBranch = [
-        { x: r2x, y: y1 }, { x: r2x, y: y0 },
+        { x: r1x, y: y1 }, { x: r2x, y: y1 }, { x: r2x, y: y0 }, { x: r1x, y: y0 },
       ]
       const outTrunk = [
         { x: r1x, y: y0 }, { x: x0, y: y0 }, { x: x0, y: y1 }, { x: battX - hBat, y: y1 },
@@ -392,11 +392,12 @@ export default function SeriesParallelScene() {
       const step = polyLen(inTrunk) / 3                 // 验收钩子：干路步距
       canvasRef.current._dbg.step = step
       const nOut = Math.max(3, Math.round(polyLen(outTrunk) / step))
-      // 不按元件遮挡电子：个数要恒定可数（3 / 2 / 1），点穿过元件即为「电流通过元件」
+      // R₂ 支路是一个完整通道：下导轨引线 → 竖支路 → 上导轨引线，1 个电子全程走，
+      // 所以在上下两条横线段上也能看到电子通过。
       drawSegFlow(ctx, [
         { pts: inTrunk, n: 3 },        // 干路（分叉前）3 个
         { pts: leftBranch, n: 2 },     // R₁ 支路 2 个
-        { pts: rightBranch, n: 1 },    // R₂ 支路 1 个
+        { pts: rightBranch, n: 1 },    // R₂ 支路 1 个（含上下引线）
         { pts: outTrunk, n: nOut },    // 干路（汇合后），同一步距
       ], s.time, 50, [], (dots) => { canvasRef.current._dbg.dots = dots })
     }
