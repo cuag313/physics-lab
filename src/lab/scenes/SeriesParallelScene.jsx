@@ -183,7 +183,7 @@ export default function SeriesParallelScene() {
     })
     Object.assign(canvasRef.current._dbg, {
       swX, swY: y1, modeSeries: pxs.series + pw / 2, modeParallel: pxs.parallel + pw / 2, pillY: pY + ph / 2,
-      r1x, r2x, midY, scale, closed: on, y0, y1, areaH, top, bottom,
+      r1x, r2x, midY, scale, closed: on, y0, y1, areaH, top, bottom, x0,
     })
 
     // ── 知识卡 ──
@@ -292,7 +292,14 @@ export default function SeriesParallelScene() {
         { x: r1x + hRes, y: y0 }, { x: r1x - hRes, y: y0 },
         { x: x0, y: y0 }, { x: x0, y: y1 }, { x: battX - hBat, y: y1 },
       ]
-      drawCurrentFlow(ctx, path, s.time, 0.5)
+      drawCurrentFlow(ctx, path, s.time, 0.5, [
+        { x: r1x, y: y0, hw: hRes + 3, hh: 9 * scale },
+        { x: r2x, y: y0, hw: hRes + 3, hh: 9 * scale },
+        { x: x1, y: midY, r: hMeter + 3 },
+        { x: battX, y: y1, r: hBat + 3 }, { x: swX, y: y1, r: hSw + 3 },
+        { x: r1x, y: vTier, r: volR + 3 }, { x: r2x, y: vTier, r: volR + 3 },
+        { x: vTotX, y: vTotTier, r: volR + 3 },
+      ])
     }
 
     // 标注
@@ -366,21 +373,32 @@ export default function SeriesParallelScene() {
       onClick: () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) },
     })
 
-    // 电子流动：干路（电源→开关→支路接点）+ R₁ 支路 + R₂ 支路
+    // 电子流动：严格按电流比分配「个数」——干路 3 个，左支路 2 个（R₁，0.30 A），
+    // 右支路 1 个（R₂，0.15 A）；干路返回段按同一间距补齐，密度与干路电流一致。
     if (on) {
-      const main = [
+      const inTrunk = [
         { x: battX + hBat, y: y1 }, { x: swX - hSw, y: y1 }, { x: swX + hSw, y: y1 },
-        { x: r1x, y: y1 }, { x: r1x, y: aY + hMeter }, { x: r1x, y: aY - hMeter },
-        { x: r1x, y: midY + hRes }, { x: r1x, y: midY - hRes }, { x: r1x, y: y0 },
-        { x: x0, y: y0 }, { x: x0, y: midY - hMeter }, { x: x0, y: midY + hMeter },
-        { x: x0, y: y1 }, { x: battX - hBat, y: y1 },
+        { x: r1x, y: y1 },
       ]
-      drawCurrentFlow(ctx, main, s.time, 0.5)
-      // R₂ 支路：与 R₁ 支路同向（下→上），因 I₂ 只有 I₁ 的一半，电子点密度减半
-      drawCurrentFlow(ctx, [
-        { x: r2x, y: y1 }, { x: r2x, y: aY + hMeter }, { x: r2x, y: aY - hMeter },
-        { x: r2x, y: midY + hRes }, { x: r2x, y: midY - hRes }, { x: r2x, y: y0 },
-      ], s.time, 0.5, 90)
+      const leftBranch = [
+        { x: r1x, y: y1 }, { x: r1x, y: y0 },
+      ]
+      const rightBranch = [
+        { x: r2x, y: y1 }, { x: r2x, y: y0 },
+      ]
+      const outTrunk = [
+        { x: r1x, y: y0 }, { x: x0, y: y0 }, { x: x0, y: y1 }, { x: battX - hBat, y: y1 },
+      ]
+      const step = polyLen(inTrunk) / 3                 // 验收钩子：干路步距
+      canvasRef.current._dbg.step = step
+      const nOut = Math.max(3, Math.round(polyLen(outTrunk) / step))
+      // 不按元件遮挡电子：个数要恒定可数（3 / 2 / 1），点穿过元件即为「电流通过元件」
+      drawSegFlow(ctx, [
+        { pts: inTrunk, n: 3 },        // 干路（分叉前）3 个
+        { pts: leftBranch, n: 2 },     // R₁ 支路 2 个
+        { pts: rightBranch, n: 1 },    // R₂ 支路 1 个
+        { pts: outTrunk, n: nOut },    // 干路（汇合后），同一步距
+      ], s.time, 50, [], (dots) => { canvasRef.current._dbg.dots = dots })
     }
 
     // 标注
@@ -452,6 +470,7 @@ export default function SeriesParallelScene() {
           [['电流：'], ['I = I₁ + I₂', '#DC2626', 1], ['（干路电流等于各支路之和）。']],
           [['电阻：'], ['1/R = 1/R₁ + 1/R₂', '#DC2626', 1], ['（相当于导体变粗，总电阻比任一个都小）。']],
           [['分流：I₁ : I₂ = R₂ : R₁，'], ['小电阻分流多', '#C2410C', 1], ['。']],
+          [['画面上电子按电流份额分配：干路 '], ['3 个', '#DC2626', 1], ['，R₁ 支路 '], ['2 个', '#DC2626', 1], ['，R₂ 支路 '], ['1 个', '#DC2626', 1], ['（对应 0.45 : 0.30 : 0.15）。']],
         ],
       },
       {
@@ -590,25 +609,65 @@ function drawLine(ctx, x1, y1, x2, y2, color, w) {
   ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
 }
 
-function drawCurrentFlow(ctx, points, time, speed, gap = 45) {
-  let totalLen = 0; const segs = []
-  for (let i = 0; i < points.length - 1; i++) {
-    const dx = points[i + 1].x - points[i].x, dy = points[i + 1].y - points[i].y
-    const len = Math.sqrt(dx * dx + dy * dy)
-    segs.push({ ...points[i], ex: points[i + 1].x, ey: points[i + 1].y, len }); totalLen += len
-  }
+function drawCurrentFlow(ctx, points, time, speed, holes = []) {
+  const totalLen = polyLen(points)
   if (totalLen < 8) return
+  const n = Math.max(2, Math.floor(totalLen / 45))
   ctx.fillStyle = '#FFEB3B'
-  const n = Math.max(2, Math.floor(totalLen / gap))
-  for (let d = 0; d < n; d++) {
-    let pos = ((time * speed * 100 + d * (totalLen / n)) % totalLen)
-    for (const seg of segs) {
-      if (pos <= seg.len) {
-        const r = pos / seg.len
-        ctx.beginPath(); ctx.arc(seg.x + (seg.ex - seg.x) * r, seg.y + (seg.ey - seg.y) * r, 3, 0, Math.PI * 2); ctx.fill()
-        break
-      }
-      pos -= seg.len
+  for (let i = 0; i < n; i++) {
+    const pos = ((time * speed * 100 + i * (totalLen / n)) % totalLen)
+    const p = pointAt(points, pos)
+    if (inHole(p, holes)) continue          // 元件内部不画点，看起来是"穿过"元件
+    ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill()
+  }
+}
+
+/** 分段定数电子流：每段放固定个数的电子，沿路径以同一速度循环。
+ *  段内个数即该段"电流的份数"（干路 3、左支路 2、右支路 1），间距自动相等。 */
+function drawSegFlow(ctx, segs, time, v, holes = [], onDots) {
+  const dots = []
+  ctx.fillStyle = '#FFEB3B'
+  for (const seg of segs) {
+    const L = polyLen(seg.pts)
+    if (L < 4 || !seg.n) continue
+    for (let i = 0; i < seg.n; i++) {
+      const s = (((time * v + (i * L) / seg.n) % L) + L) % L
+      const p = pointAt(seg.pts, s)
+      const hidden = inHole(p, holes)
+      dots.push({ n: seg.n, s, x: p.x, y: p.y, hidden })
+      if (hidden) continue
+      ctx.beginPath(); ctx.arc(p.x, p.y, 3, 0, Math.PI * 2); ctx.fill()
     }
   }
+  if (onDots) onDots(dots)
+}
+
+/** 点位是否落在元件占位内：圆用 r，矩形用 hw/hh */
+function inHole(p, holes) {
+  for (const h of holes) {
+    if (h.r != null) {
+      if (Math.hypot(p.x - h.x, p.y - h.y) < h.r) return true
+    } else if (Math.abs(p.x - h.x) <= h.hw && Math.abs(p.y - h.y) <= h.hh) return true
+  }
+  return false
+}
+
+function polyLen(pts) {
+  let L = 0
+  for (let i = 0; i < pts.length - 1; i++) L += Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y)
+  return L
+}
+
+function pointAt(pts, s) {
+  let left = s
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1]
+    const len = Math.hypot(b.x - a.x, b.y - a.y)
+    if (left <= len) {
+      const r = len > 0 ? left / len : 0
+      return { x: a.x + (b.x - a.x) * r, y: a.y + (b.y - a.y) * r }
+    }
+    left -= len
+  }
+  return pts[pts.length - 1]
 }
