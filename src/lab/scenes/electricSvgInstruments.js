@@ -342,8 +342,8 @@ function needleSVG(px, py, len, frac, zero = -52, full = 52, clipId = '') {
  * 显示坐标按 s = w / 210 缩放（w 传白面宽，h 传白面高 = 142·s）。
  */
 const FACE = {
-  dialX: 23, dialY: 27, dialW: 210, dialH: 142, hubX: 128, hubY: 164,
-  rOut: 109, rIn: 92, rNum: 119, rInner: 80, rUnit: 42,
+  dialX: 24, dialY: 26, dialW: 207, dialH: 143, hubX: 128, hubY: 164,
+  rOut: 111, rIn: 94, rNum: 119, rInner: 80, rUnit: 42,
   aNeg: 213.5, aZero: 243.5, aFull: 322.2, aTail: 341.2,
 }
 
@@ -354,54 +354,42 @@ function meterFaceSVG(x, y, w, h, cfg) {
   const rad = (d) => (d * Math.PI) / 180
   const at = (a, r) => [cx + Math.cos(rad(a)) * r, cy + Math.sin(rad(a)) * r]
   const f = (v) => v.toFixed(2)
-  const R_OUT = FACE.rOut * s
-  const R_IN = FACE.rIn * s
-  const INK = '#63686d'
-  const TICK = '#55595f'
-  const TICK_M = '#33383d'
+  const IN_R = (x) => x * s
+  const INK = '#6c7176'
+  const TICK = '#74797e'
+  const TICK_M = '#4b5056'
 
+  // 原图实测：齿的内端齐平在 r94，短齿向外伸到 r102、长齿到 r111，齿身整体顺时针偏约 1°
   let ticks = ''
   const tick = (a, major) => {
-    const [x1, y1] = at(a, R_OUT)
-    const [x2, y2] = at(a, major ? R_IN : R_IN + 4.5 * s)
-    ticks += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${major ? TICK_M : TICK}" stroke-width="${f((major ? 2.4 : 1.5) * s)}"/>`
+    const [x1, y1] = at(a, IN_R(FACE.rIn))
+    const [x2, y2] = at(a + 1.1, IN_R(major ? 111 : 102))
+    ticks += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${major ? TICK_M : TICK}" stroke-width="${f((major ? 1.9 : 1.4) * s)}"/>`
   }
-  // 负量程尾段（0 之前的短齿）：齿更短，避免压到左侧的 −/0.2 标号
-  for (let i = 0; i < 10; i++) {
-    const a = FACE.aNeg + (FACE.aZero - FACE.aNeg) * (i / 10)
-    const [x1, y1] = at(a, R_OUT)
-    const [x2, y2] = at(a, R_OUT - 8 * s)
-    ticks += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${TICK}" stroke-width="${f(1.5 * s)}"/>`
-  }
+  // 负量程尾段（0 之前的短齿）
+  for (let i = 0; i < 10; i++) tick(FACE.aNeg + (FACE.aZero - FACE.aNeg) * (i / 10), i === 0)
   // 正量程段：0..满偏 30 小格，每 10 格一根长齿（0/1/2/3）
   for (let i = 0; i <= 30; i++) tick(FACE.aZero + (FACE.aFull - FACE.aZero) * (i / 30), i % 10 === 0)
-  // 满偏之后的 + 号尾段（同样短齿）
-  for (let i = 1; i <= 6; i++) {
-    const a = FACE.aFull + (FACE.aTail - FACE.aFull) * (i / 7)
-    const [x1, y1] = at(a, R_OUT)
-    const [x2, y2] = at(a, R_OUT - 8 * s)
-    ticks += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${TICK}" stroke-width="${f(1.5 * s)}"/>`
-  }
+  // 满偏之后的 + 号尾段
+  for (let i = 1; i <= 6; i++) tick(FACE.aFull + (FACE.aTail - FACE.aFull) * (i / 7), i === 7)
 
-  const mark = (a, str, r, size, color = INK, weight = '600') => {
+  const mark = (a, str, r, size, color = INK, weight = '500') => {
     const [tx, ty] = at(a, r)
     return `<text x="${f(tx)}" y="${f(ty)}" transform="rotate(${f(a + 90)} ${f(tx)} ${f(ty)})" text-anchor="middle" dominant-baseline="middle" font-size="${f(size)}" font-weight="${weight}" fill="${color}">${str}</text>`
   }
 
   const A0 = FACE.aZero
   const SPAN = FACE.aFull - FACE.aZero
-  const rOuter = (cfg.outerR || 124) * s
+  const rOuter = (cfg.outerR || 121) * s
   let marks = ''
   cfg.outer.forEach((str, i) => {
-    marks += mark(A0 + SPAN * (i / (cfg.outer.length - 1)), str, rOuter, 19 * s)
+    marks += mark(A0 + SPAN * (i / (cfg.outer.length - 1)), str, rOuter, 14.5 * s)
   })
   cfg.inner.forEach((str, i) => {
-    marks += mark(A0 + SPAN * ((i + 1) / cfg.inner.length), str, 85 * s, 16.5 * s)
+    marks += mark(A0 + SPAN * ((i + 1) / cfg.inner.length), str, 85 * s, 14 * s)
   })
-  marks += mark(FACE.aNeg + 7, cfg.leftOuter, 126 * s, 19 * s)
-  if (cfg.leftOuter2) marks += mark(FACE.aNeg + 2.5, cfg.leftOuter2, 112 * s, 17 * s)
-  marks += mark(FACE.aNeg + 19, cfg.leftInner, (FACE.rInner + 15) * s, 17 * s)
-  marks += mark(FACE.aNeg + 10.5, cfg.leftNum, 85 * s, 16.5 * s)
+  // 左侧记号：原图是手摆的，逐个给角度/半径（− 在 220.5°/r129；电压表的 − 压在弧最左端 213.5°/r105）
+  for (const m of cfg.leftMarks || []) marks += mark(m.a, m.s, m.r * s, (m.fs || 18) * s)
   marks += mark(FACE.aFull + 5, cfg.plus, 113 * s, 14 * s)
 
   return `
@@ -414,7 +402,7 @@ function meterFaceSVG(x, y, w, h, cfg) {
     <g clip-path="url(#es-cp-${cfg.clip || 'face'})">${ticks}</g>
     ${marks}
     <text x="${f(cx)}" y="${f(cy - FACE.rUnit * s)}" text-anchor="middle" dominant-baseline="middle"
-      font-size="${f(32 * s)}" font-weight="700" fill="#7c8085">${cfg.unit}</text>
+      font-size="${f(34 * s)}" font-weight="500" fill="#878c91">${cfg.unit}</text>
     <rect x="${f(cx - 13 * s)}" y="${f(cy - 24 * s)}" width="${f(26 * s)}" height="${f(1.7 * s)}" fill="#5e6368"/>`
 }
 
@@ -780,6 +768,11 @@ export const TYPES = {
           <stop offset="38%" stop-color="${rgb(halo)}" stop-opacity="${(0.62 * bright).toFixed(3)}"/>
           <stop offset="100%" stop-color="${rgb(halo)}" stop-opacity="0"/>
         </radialGradient>
+        <radialGradient id="es-g-hub" cx="42%" cy="34%" r="62%">
+          <stop offset="0%" stop-color="#f2f4f5"/>
+          <stop offset="62%" stop-color="#cfd4d8"/>
+          <stop offset="100%" stop-color="#a3a9af"/>
+        </radialGradient>
       </defs>
       <g clip-path="url(#${clipId})">${fitInner(256, 121, 176, 83, INNER.bulb())}</g>
       <circle cx="89" cy="25" r="${rad}" fill="url(#es-g-glow)" opacity="${(bright * 0.55).toFixed(3)}"/>
@@ -851,7 +844,7 @@ export const TYPES = {
       const HUB = { x: 128 * K, y: 164 * K }
       // 针角：0 位 243.5°、满偏 322.2°（canvas 角）→ 相对竖直 -26.5° → +52.2°
       const ang = (-26.5 + frac * 78.7).toFixed(2)
-      const LEN = 110 * K
+      const LEN = 104 * K
       return `
     <svg width="150" height="150" viewBox="0 0 150 150">
       <defs>
@@ -860,18 +853,27 @@ export const TYPES = {
           <stop offset="62%" stop-color="#fdfdfd"/>
           <stop offset="100%" stop-color="#f0f0ee"/>
         </radialGradient>
+        <radialGradient id="es-g-hub" cx="42%" cy="34%" r="62%">
+          <stop offset="0%" stop-color="#f2f4f5"/>
+          <stop offset="62%" stop-color="#cfd4d8"/>
+          <stop offset="100%" stop-color="#a3a9af"/>
+        </radialGradient>
       </defs>
       ${fitInner(150, 150, 150, 150, INNER.meter(frac * 22))}
       ${photo('ammeterA_c.png', 150, 150)}
       <rect x="${23 * K}" y="${27 * K}" width="${210 * K}" height="${142 * K}" rx="${2.5 * K}" fill="#101317"/>
-      ${meterFaceSVG(23 * K, 27 * K, 210 * K, 142 * K, {
+      ${meterFaceSVG(24 * K, 26 * K, 207 * K, 143 * K, {
         clip: 'mA', unit: 'A', outer: ['0', '1', '2', '3'], inner: ['0.2', '0.4', '0.6'],
-        leftOuter: '\u2212', leftInner: '\u2212', leftNum: '0.2', plus: '+',
+        leftMarks: [
+          { s: '\u2212', a: 220.5, r: 129, fs: 20 },
+          { s: '0.2', a: 216.9, r: 89, fs: 14 },
+        ],
+        plus: '+',
       })}
       <line x1="${HUB.x}" y1="${HUB.y}" x2="${HUB.x}" y2="${HUB.y - LEN}" stroke="#d01f24" stroke-width="1.7" stroke-linecap="round"
         transform="rotate(${ang} ${HUB.x} ${HUB.y})"/>
-      <circle cx="${HUB.x}" cy="${HUB.y}" r="${8 * K}" fill="#d7dadc" stroke="#9aa1a8" stroke-width="${1.1 * K}"/>
-      <circle cx="${HUB.x}" cy="${HUB.y}" r="${3 * K}" fill="#b9bec3"/>
+      <circle cx="${HUB.x}" cy="${HUB.y}" r="${9 * K}" fill="url(#es-g-hub)" stroke="#878d93" stroke-width="${1.1 * K}"/>
+      <circle cx="${HUB.x}" cy="${HUB.y}" r="${3.2 * K}" fill="#a9afb5"/>
     </svg>` }
   },
 
@@ -888,7 +890,7 @@ export const TYPES = {
       const K = 130 / 256
       const HUB = { x: 128 * K, y: 164 * K }
       const ang = (-26.5 + frac * 78.7).toFixed(2)
-      const LEN = 110 * K
+      const LEN = 104 * K
       return `
     <svg width="130" height="130" viewBox="0 0 130 130">
       <defs>
@@ -897,18 +899,28 @@ export const TYPES = {
           <stop offset="62%" stop-color="#fdfdfd"/>
           <stop offset="100%" stop-color="#f0f0ee"/>
         </radialGradient>
+        <radialGradient id="es-g-hub" cx="42%" cy="34%" r="62%">
+          <stop offset="0%" stop-color="#f2f4f5"/>
+          <stop offset="62%" stop-color="#cfd4d8"/>
+          <stop offset="100%" stop-color="#a3a9af"/>
+        </radialGradient>
       </defs>
       ${fitInner(130, 150, 130, 130, INNER.meter(frac * 22))}
       ${photo('voltmeter2_c.png', 130, 130)}
       <rect x="${23 * K}" y="${27 * K}" width="${210 * K}" height="${142 * K}" rx="${2.5 * K}" fill="#101317"/>
-      ${meterFaceSVG(23 * K, 27 * K, 210 * K, 142 * K, {
-        clip: 'mV', outerR: 116, leftOuter2: '5', unit: 'V', outer: ['0', '5', '10', '15'], inner: ['1', '2', '3'],
-        leftOuter: '\u2212', leftInner: '\u2212', leftNum: '1', plus: '+',
+      ${meterFaceSVG(24 * K, 26 * K, 207 * K, 143 * K, {
+        clip: 'mV', outerR: 118, unit: 'V', outer: ['0', '5', '10', '15'], inner: ['1', '2', '3'],
+        leftMarks: [
+          { s: '\u2212', a: 213.5, r: 105, fs: 18 },
+          { s: '5', a: 221, r: 128, fs: 15 },
+          { s: '1', a: 218, r: 86, fs: 14 },
+        ],
+        plus: '+',
       })}
       <line x1="${HUB.x}" y1="${HUB.y}" x2="${HUB.x}" y2="${HUB.y - LEN}" stroke="#d01f24" stroke-width="1.7" stroke-linecap="round"
         transform="rotate(${ang} ${HUB.x} ${HUB.y})"/>
-      <circle cx="${HUB.x}" cy="${HUB.y}" r="${8 * K}" fill="#d7dadc" stroke="#9aa1a8" stroke-width="${1.1 * K}"/>
-      <circle cx="${HUB.x}" cy="${HUB.y}" r="${3 * K}" fill="#b9bec3"/>
+      <circle cx="${HUB.x}" cy="${HUB.y}" r="${9 * K}" fill="url(#es-g-hub)" stroke="#878d93" stroke-width="${1.1 * K}"/>
+      <circle cx="${HUB.x}" cy="${HUB.y}" r="${3.2 * K}" fill="#a9afb5"/>
     </svg>` }
   },
 
