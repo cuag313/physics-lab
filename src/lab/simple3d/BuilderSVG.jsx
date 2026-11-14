@@ -188,6 +188,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   const [pending, setPending] = useState(null)
   const [, forceUpdate] = useState(0)
   const [records, setRecords] = useState([])
+  const [dissect, setDissect] = useState(false)   // 一键透视：外壳半透明、露出 .inner 内部结构
   const seqRef = useRef(0)
 
   const uidRef = useRef(1)
@@ -581,7 +582,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   )
 
   return (
-    <div className="esb-root">
+    <div className={`esb-root${dissect ? ' dissect' : ''}`}>
       <style>{`
         .esb-root{position:relative;flex:1;min-height:0;background:#eef2f7;
           font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif}
@@ -601,9 +602,23 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         .esb-comp{position:absolute;cursor:grab;touch-action:none;pointer-events:auto}
         .esb-comp:active{cursor:grabbing}
         .esb-comp svg{display:block;overflow:visible}
-        /* 器件图纸里叠了一"内部结构"层（.inner/.plabel），简单电路没有剖视功能，
-           这一层会从照片下缘、缝隙里露出来（灯泡底板下那块灰色小条就是它），直接隐藏 */
-        .esb-root .inner,.esb-root .plabel{display:none}
+        /* 器件图纸里叠了一"内部结构"层（.inner/.plabel）。默认隐藏（否则会从照片的透明区、
+           缝隙里露出来）；点右上「🔍 内部结构」后：外壳照片半透明 → 露出内部（X-ray 透视） */
+        .esb-root:not(.dissect) .inner,.esb-root:not(.dissect) .plabel{display:none}
+        /* 剖视标注：小字 + 蓝字白边（原来没设字号，浏览器默认 16px，字比表盘还大、全溢出壳外） */
+        .esb-root .plabel{font-size:9.5px;fill:#1d4ed8;font-weight:600;text-anchor:middle;
+          pointer-events:none;paint-order:stroke;stroke:rgba(255,255,255,.9);stroke-width:2.5px}
+        .esb-root .casing{transition:opacity .22s ease}
+        .esb-root.dissect .casing{opacity:.30}
+        /* 电表：黑壳 + 白盘合成的一层，透视时淡到几乎透明，才看得见后面的磁钢/线圈 */
+        .esb-root .esb-dial{transition:opacity .22s ease}
+        .esb-root.dissect .esb-dial{opacity:.18}
+        .esb-dissect{position:absolute;right:18px;top:16px;z-index:22;display:inline-flex;align-items:center;gap:6px;
+          padding:7px 13px;border-radius:10px;border:1px solid #dbe3ec;background:rgba(255,255,255,.96);
+          color:#1e293b;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;
+          box-shadow:0 6px 18px rgba(2,6,23,.14);transition:background .15s,border-color .15s,color .15s}
+        .esb-dissect:hover{background:#f8fafc;border-color:#c7d2e0}
+        .esb-dissect.on{background:#fff7ed;border-color:#f59e0b;color:#b45309}
         .esb-comp.selected .esb-boxhl{opacity:1}
         .esb-boxhl{position:absolute;inset:-6px;border:2px dashed #2563eb;border-radius:12px;
           opacity:0;pointer-events:none;transition:opacity .15s}
@@ -768,6 +783,15 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         </svg>
       </div>
       </div>
+
+      {/* 一键内部透视：外壳变半透明，电表/灯泡/电池/滑变的内部构造（.inner）显出来 */}
+      <button
+        className={`esb-dissect${dissect ? ' on' : ''}`}
+        title="外壳半透明，露出内部结构（碳棒、灯丝、线圈、表头机构…）"
+        onClick={() => setDissect((v) => !v)}
+      >
+        {dissect ? '🔍 内部结构（开）' : '🔍 内部结构（透视）'}
+      </button>
 
       {/* 状态浮层（贴在可视区左下，跟画布滚动无关） */}
         <div

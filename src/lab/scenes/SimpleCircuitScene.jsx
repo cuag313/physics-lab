@@ -82,12 +82,31 @@ export default function SimpleCircuitScene() {
     const on = s.switchClosed
     const lay = fitLayout(W, H)
 
+    /* ── 知识卡片：直接顶到场景上沿（原来是 y=40 留了一大截空白）。
+       短屏（H 小）时把卡片加宽、把回路让窄，宁可回路小一点，也不让卡片里的字挤成一团。 */
+    let panel = lay.readout
+    const RAIL = 46      // 右侧浮动按钮栏（实/操/提）的宽度，卡片别钻到它下面
+    if (!lay.compact) {
+      const pw = Math.max(360, Math.min(W * (H < 820 ? 0.52 : 0.40), 780))
+      panel = { x: W - 16 - RAIL - pw, y: 10, w: pw, h: H - 20 }
+      lay.circuit.R = Math.min(lay.circuit.R, panel.x - 20)
+    } else {
+      // 紧凑（手机/超宽扁）：卡片缩成"读数小卡"贴右上，别再撑一整块空白
+      const pw = Math.max(196, Math.min(W * 0.3, 330))
+      panel = { x: W - 14 - RAIL - pw, y: 12, w: pw, h: 108 }
+      lay.circuit.R = Math.min(lay.circuit.R, panel.x - 14)
+    }
+
     // ── 电路图坐标系：在 lay.circuit 内居中、适度缩小（教科书电路图观感）──
     const left = lay.circuit.L, right = lay.circuit.R
     const top = lay.circuit.T, bottom = lay.circuit.B - (lay.compact ? 0 : 36)
     const areaW = right - left, areaH = bottom - top
-    const loopW = Math.min(areaW * 0.74, 530)
-    const scale = Math.max(0.55, Math.min(1.1, loopW / 420))
+    // 回路高度也必须装得下（紧凑模式下旧版回路会比框还高、下半截被裁掉）
+    const scaleOf = (w) => Math.max(0.55, Math.min(1.1, w / 420))
+    let loopW = Math.min(areaW * 0.74, 530)
+    const room = areaH - (42 * scaleOf(loopW) + 88 * scaleOf(loopW) + 8)
+    if (room > 60) loopW = Math.min(loopW, room / 0.52)
+    const scale = scaleOf(loopW)
     const loopH = loopW * 0.52
     const chipUp = 42 * scale, chipDn = 88 * scale
     const x0 = left + (areaW - loopW) / 2
@@ -192,10 +211,9 @@ export default function SimpleCircuitScene() {
       }
     }
 
-    // ─── 说明/读数面板（fitLayout）───
-    const ro = lay.readout
+    // ─── 说明/读数面板 ───
     if (lay.compact) {
-      const inner = drawPanel(ctx, ro, null)
+      const inner = drawPanel(ctx, panel, null)
       ctx.textAlign = 'left'; ctx.textBaseline = 'top'
       let ky = inner.y
       const px = inner.x
@@ -216,7 +234,7 @@ export default function SimpleCircuitScene() {
       return
     }
 
-    drawKnowledge(ctx, ro, on, s)
+    drawKnowledge(ctx, panel, on, s)
 
     ctx.textBaseline = 'alphabetic'
   }
@@ -288,22 +306,31 @@ export default function SimpleCircuitScene() {
       },
     ]
 
-    // 量一遍总高，字号在 12.5 / 11.5 / 10.5 / 9.5 里挑一个装得下的
+    // 行距随字号收紧：小窗口用更紧凑的节奏，宁可密一点，也不能把字挤出卡片
+    const rhythm = (fs) => (fs >= 11
+      ? { line: 6, item: 3, sec: 7, head: 26 }
+      : fs >= 9.5
+        ? { line: 5, item: 2.5, sec: 5, head: 24 }
+        : { line: 4.5, item: 2, sec: 4, head: 22 })
     const measure = (fs) => {
+      const R = rhythm(fs)
       let total = 0
       for (const sec of SECTIONS) {
-        total += 26
+        total += R.head
         for (const it of sec.items) {
           ctx.font = `${fs}px "Microsoft YaHei", sans-serif`
-          total += layoutRuns(ctx, it, maxW - 16, fs).length * (fs + 6) + 3
+          total += layoutRuns(ctx, it, maxW - 16, fs).length * (fs + R.line) + R.item
         }
-        total += 7
+        total += R.sec
       }
       return total
     }
-    let fs = 12.5, contentH = 0
-    for (const cand of [12.5, 11.5, 10.5, 9.5]) { fs = cand; contentH = measure(cand); if (headH + contentH + tipH + 16 <= h) break }
-    const cardH = Math.min(h, headH + contentH + tipH + 16)
+    const FITS = [13, 12.5, 12, 11.5, 11, 10.5, 10, 9.5, 9, 8.5, 8]
+    let fs = FITS[FITS.length - 1], contentH = 0
+    for (const cand of FITS) { fs = cand; contentH = measure(cand); if (headH + contentH + tipH + 14 <= h) break }
+    const cardH = Math.min(h, headH + contentH + tipH + 14)
+    const overflow = headH + contentH + tipH + 14 > h
+    const R = rhythm(fs)
 
     ctx.save()
     // 卡片：暖白渐变 + 暖描边 + 柔和投影（高度=内容高，不留大片空白）
@@ -331,39 +358,46 @@ export default function SimpleCircuitScene() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     ctx.fillText('📖 简单电路知识', x + pad + tW / 2, y + 12 + tH / 2 + 1)
 
+    // 内容区裁剪：极端小窗口下也保证字只在框内、不压到底部读数行
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(left - 6, y + 2, maxW + 12, cardH - tipH - 2)
+    ctx.clip()
+
     let cy = y + headH
 
     for (const sec of SECTIONS) {
       // 小节标题：左侧色条 + 同色淡药丸
       ctx.fillStyle = sec.c
       ctx.beginPath(); ctx.roundRect(left - 2, cy + 5, 3.4, 13, 2); ctx.fill()
-      ctx.font = 'bold 12.5px "Microsoft YaHei", sans-serif'
+      ctx.font = `bold ${Math.min(12.5, fs + 1.5)}px "Microsoft YaHei", sans-serif`
       const tw = ctx.measureText(sec.t).width
       ctx.fillStyle = hexA(sec.c, 0.13)
       ctx.beginPath(); ctx.roundRect(left + 6, cy + 1, tw + 16, 21, 10); ctx.fill()
       ctx.fillStyle = sec.c
       ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
       ctx.fillText(sec.t, left + 14, cy + 12)
-      cy += 26
+      cy += R.head
 
       for (const it of sec.items) {
         ctx.fillStyle = sec.c
-        ctx.beginPath(); ctx.arc(left + 5, cy + (fs + 6) / 2 - 1, 2.6, 0, Math.PI * 2); ctx.fill()
+        ctx.beginPath(); ctx.arc(left + 5, cy + (fs + R.line) / 2 - 1, 2.6, 0, Math.PI * 2); ctx.fill()
         for (const ln of layoutRuns(ctx, it, maxW - 16, fs)) {
           let lx = left + 14
           for (const run of ln) {
             ctx.font = `${run.b ? 'bold ' : ''}${fs}px "Microsoft YaHei", sans-serif`
             ctx.fillStyle = run.c || '#5A4636'
             ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-            ctx.fillText(run.s, lx, cy + (fs + 6) / 2 - 1)
+            ctx.fillText(run.s, lx, cy + (fs + R.line) / 2 - 1)
             lx += ctx.measureText(run.s).width
           }
-          cy += fs + 6
+          cy += fs + R.line
         }
-        cy += 3
+        cy += R.item
       }
-      cy += 7
+      cy += R.sec
     }
+    ctx.restore()
 
     // 底部读数/提示行
     ctx.font = '11.5px "Microsoft YaHei", sans-serif'

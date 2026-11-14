@@ -77,6 +77,19 @@ function photo(file, w, h, style = '') {
 
 /* 内部结构图（移植自源实验的 .inner 层） */
 const INNER = {
+  batteryCells() {
+    // 电池组剖视，直接按机框 150×42 画：两节干电池 = 锌筒(−) 外套 + 中央碳棒(+) + 电解糊，
+    // 两节之间用金属片串起来。原来 render 里没挂内部层，透视时只剩半透明照片（用户看不明白）。
+    return `
+      <rect x="8" y="4" width="134" height="34" rx="8" fill="#f8f3e6" stroke="#c9b892"/>
+      <rect x="16" y="8" width="54" height="26" rx="7" fill="#d5dae0" stroke="#98a1ab"/>
+      <rect x="16" y="8" width="7" height="26" rx="3" fill="#b2bac4"/>
+      <rect x="40" y="6" width="7" height="30" rx="2.5" fill="#3f4650"/>
+      <rect x="80" y="8" width="54" height="26" rx="7" fill="#d5dae0" stroke="#98a1ab"/>
+      <rect x="104" y="6" width="7" height="30" rx="2.5" fill="#3f4650"/>
+      <line x1="70" y1="21" x2="80" y2="21" stroke="#8a6a3c" stroke-width="2.6"/>`
+  },
+
   battery() {
     // 电池组（干电池串联）剖视：两节锌筒(−) + 碳棒(+)，浸在电解糊中；不写文字标注。
     return `
@@ -838,6 +851,7 @@ export const TYPES = {
     render() {
       return `
     <svg width="150" height="46" viewBox="0 0 150 46">
+      ${fitInner(150, 42, 150, 42, INNER.batteryCells())}
       <image class="casing" href="${figURL('battery_c.png')}" x="0" y="0" width="150" height="42"/>
     </svg>` }
   },
@@ -1014,8 +1028,11 @@ export const TYPES = {
       </defs>
       ${fitInner(150, 150, 150, 150, INNER.meter(Math.abs(frac) * 22))}
       ${photo('ammeter6_c.png', 150, 150)}
-      <rect x="${25 * K}" y="${27 * K}" width="${206 * K}" height="${143 * K}" rx="${2.5 * K}" fill="#101317"/>
-      ${centerFaceSVG(25 * K, 27 * K, 206 * K, 143 * K, { clip: 'czA' })}
+      <!-- 表壳黑框 + 白盘归成「可淡出的一层」：一键透视时盘面半透明，露出后面的磁钢/线圈 -->
+      <g class="esb-dial">
+        <rect x="${25 * K}" y="${27 * K}" width="${206 * K}" height="${143 * K}" rx="${2.5 * K}" fill="#101317"/>
+        ${centerFaceSVG(25 * K, 27 * K, 206 * K, 143 * K, { clip: 'czA' })}
+      </g>
       <line x1="${HUB.x}" y1="${HUB.y}" x2="${HUB.x}" y2="${HUB.y - LEN}" stroke="#d01f24" stroke-width="1.45" stroke-linecap="round"
         transform="rotate(${ang} ${HUB.x} ${HUB.y})"/>
       <!-- 轴心：原图是一枚扁圆镀铬轴帽（y156..167），不是正圆 -->
@@ -1059,19 +1076,21 @@ export const TYPES = {
       </defs>
       ${fitInner(150, 150, 150, 150, INNER.meter(Math.abs(frac) * 22))}
       ${photo('ammeterA_c.png', 150, 150)}
-      <rect x="${23 * K}" y="${27 * K}" width="${210 * K}" height="${142 * K}" rx="${2.5 * K}" fill="#101317"/>
-      ${meterFaceSVG(24 * K, 26 * K, 207 * K, 143 * K, {
-        clip: 'mA', unit: 'A', outer: ['0', '1', '2', '3'], inner: ['0.2', '0.4', '0.6'],
-        /* 左端照 8电流表.png：外圈最左边那个字形是「1」（样本里 (29,82) 处，r129/220.5°），
-         * 「−」不是标签、而是压在弧线最左端的小记号（213.2° / r111.8）。
-         * 内圈左端的 0.2 样本在 (52,104.5) → 218° / r96.5。 */
-        leftMarks: [
-          { s: '1', a: 220.5, r: 129.5, fs: 18, w: '700' },
-          { s: '\u2212', a: 213.2, r: 111.8, fs: 13 },
-          { s: '0.2', a: 218, r: 96.5, fs: 14 },
-        ],
-        plus: '+',
-      })}
+      <g class="esb-dial">
+        <rect x="${23 * K}" y="${27 * K}" width="${210 * K}" height="${142 * K}" rx="${2.5 * K}" fill="#101317"/>
+        ${meterFaceSVG(24 * K, 26 * K, 207 * K, 143 * K, {
+          clip: 'mA', unit: 'A', outer: ['0', '1', '2', '3'], inner: ['0.2', '0.4', '0.6'],
+          /* 左端照 8电流表.png：外圈最左边那个字形是「1」（样本里 (29,82) 处，r129/220.5°），
+           * 「−」不是标签、而是压在弧线最左端的小记号（213.2° / r111.8）。
+           * 内圈左端的 0.2 样本在 (52,104.5) → 218° / r96.5。 */
+          leftMarks: [
+            { s: '1', a: 220.5, r: 129.5, fs: 18, w: '700' },
+            { s: '\u2212', a: 213.2, r: 111.8, fs: 13 },
+            { s: '0.2', a: 218, r: 96.5, fs: 14 },
+          ],
+          plus: '+',
+        })}
+      </g>
       <line x1="${HUB.x}" y1="${HUB.y}" x2="${HUB.x}" y2="${HUB.y - LEN}" stroke="#d01f24" stroke-width="1.7" stroke-linecap="round"
         transform="rotate(${ang} ${HUB.x} ${HUB.y})"/>
       <circle cx="${HUB.x}" cy="${HUB.y}" r="${9 * K}" fill="url(#es-g-hub)" stroke="#878d93" stroke-width="${1.1 * K}"/>
@@ -1110,16 +1129,18 @@ export const TYPES = {
       </defs>
       ${fitInner(130, 150, 130, 130, INNER.meter(Math.abs(frac) * 22))}
       ${photo('voltmeter2_c.png', 130, 130)}
-      <rect x="${23 * K}" y="${27 * K}" width="${210 * K}" height="${142 * K}" rx="${2.5 * K}" fill="#101317"/>
-      ${meterFaceSVG(24 * K, 26 * K, 207 * K, 143 * K, {
-        clip: 'mV', outerR: 118, unit: 'V', outer: ['0', '5', '10', '15'], inner: ['1', '2', '3'],
-        leftMarks: [
-          { s: '\u2212', a: 213.3, r: 111.6, fs: 15 },
-          { s: '5', a: 221, r: 128, fs: 15 },
-          { s: '1', a: 218, r: 86, fs: 14 },
-        ],
-        plus: '+',
-      })}
+      <g class="esb-dial">
+        <rect x="${23 * K}" y="${27 * K}" width="${210 * K}" height="${142 * K}" rx="${2.5 * K}" fill="#101317"/>
+        ${meterFaceSVG(24 * K, 26 * K, 207 * K, 143 * K, {
+          clip: 'mV', outerR: 118, unit: 'V', outer: ['0', '5', '10', '15'], inner: ['1', '2', '3'],
+          leftMarks: [
+            { s: '\u2212', a: 213.3, r: 111.6, fs: 15 },
+            { s: '5', a: 221, r: 128, fs: 15 },
+            { s: '1', a: 218, r: 86, fs: 14 },
+          ],
+          plus: '+',
+        })}
+      </g>
       <line x1="${HUB.x}" y1="${HUB.y}" x2="${HUB.x}" y2="${HUB.y - LEN}" stroke="#d01f24" stroke-width="1.7" stroke-linecap="round"
         transform="rotate(${ang} ${HUB.x} ${HUB.y})"/>
       <circle cx="${HUB.x}" cy="${HUB.y}" r="${9 * K}" fill="url(#es-g-hub)" stroke="#878d93" stroke-width="${1.1 * K}"/>
