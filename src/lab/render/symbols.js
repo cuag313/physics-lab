@@ -17,7 +17,7 @@ const SIZE = {
   battery: { longH: 19, shortH: 9, pairGap: 7, cellGap: 13 },
   switch: { half: 16, lift: 13 },
   resistor: { w: 42, h: 13 },
-  rheostat: { w: 46, h: 13 },
+  rheostat: { w: 58, h: 13 },
   meter: { r: 14 },
 }
 
@@ -128,24 +128,25 @@ export function symResistor(ctx, x, y, o = {}) {
  * 滑动变阻器：空心矩形（电阻体）+ 可移动的滑片箭头
  * 箭头横坐标随 ratio（滑片位置 0..1）沿电阻体滑动：0=左端、1=右端，
  * 与 render/parts.js 的 rheostatSliderX 取向一致（阻值越大越靠右）。
- * 画法：滑杆（横线）+ 竖直箭头向下压在电阻体上边，表示滑片接触点。
+ * 画法（教科书的四柱画法）：矩形电阻体 + 上方可移动箭头，箭头尾部（端点）向右引一条横线，
+ * 折下去接在电阻体右端的接线柱上 —— 表示滑片柱与右端柱相通。
+ * 返回几何量 { half, W, H, ax, topY, y } 供调用方顺着符号画电子流动（左端 → 箭头 → 横线 → 右端）。
  */
 export function symRheostat(ctx, x, y, o = {}) {
   const { scale = 1, ink = INK, ratio = 0.5 } = o
   const k = scale
   const W = SIZE.rheostat.w * k, H = SIZE.rheostat.h * k
-  const travel = W / 2 - 4 * k
+  const travel = W / 2 - 7 * k
   const ax = x + (Math.max(0, Math.min(1, ratio)) * 2 - 1) * travel
   const tipY = y - H / 2 + 1 * k   // 箭头尖压到电阻体上边
-  const topY = y - H / 2 - 12 * k  // 滑杆高度
+  const topY = y - H / 2 - 13 * k  // 箭头尾部（引线起点）高度
   ctx.save()
   ctx.strokeStyle = ink
   ctx.fillStyle = '#fff'
   ctx.lineWidth = 1.7 * k
   // 电阻体
   ctx.beginPath(); ctx.rect(x - W / 2, y - H / 2, W, H); ctx.fill(); ctx.stroke()
-  // 滑杆（横线）+ 滑片箭头
-  ctx.beginPath(); ctx.moveTo(ax - 5 * k, topY); ctx.lineTo(ax + 5 * k, topY); ctx.stroke()
+  // 滑片：竖直杆 + 向下箭头（杆顶就是箭头尾部，也是引线最左端）
   ctx.beginPath(); ctx.moveTo(ax, topY); ctx.lineTo(ax, tipY - 3.5 * k); ctx.stroke()
   const aw = 4.6 * k, ah = 5.6 * k
   ctx.fillStyle = ink
@@ -154,7 +155,7 @@ export function symRheostat(ctx, x, y, o = {}) {
   ctx.lineTo(ax - aw, tipY + 1.5 * k - ah)
   ctx.lineTo(ax + aw, tipY + 1.5 * k - ah)
   ctx.closePath(); ctx.fill()
-  // 滑片引线：从滑杆连到电阻体右端（教科书画法，滑片柱与右端接线柱相通）
+  // 滑片引线：从箭头尾部（ax, topY）向右拉横线，再折下接电阻体右端
   ctx.strokeStyle = ink
   ctx.beginPath()
   ctx.moveTo(ax, topY)
@@ -162,7 +163,7 @@ export function symRheostat(ctx, x, y, o = {}) {
   ctx.lineTo(x + W / 2, y - H / 2)
   ctx.stroke()
   ctx.restore()
-  return { half: W / 2 + 3 * k }
+  return { half: W / 2 + 3 * k, W, H, ax, topY, tipY, y }
 }
 
 /** 小灯泡：圆圈 + 叉丝（人教版灯泡符号 ⊗） */

@@ -168,16 +168,6 @@ export default function PracticeRheostatScene() {
     ctx.stroke()
     ctx.restore()
 
-    // 电流流动（电子从 − 极经外电路到 + 极）
-    if (on) {
-      const path = [
-        { x: battX + hBat, y: y1 }, { x: swX, y: y1 }, { x: x1, y: y1 },
-        { x: x1, y: y0 }, { x: rheoX, y: y0 }, { x: x0, y: y0 },
-        { x: x0, y: y1 }, { x: battX - hBat, y: y1 },
-      ]
-      drawCurrentFlow(ctx, path, s.time, 0.5)
-    }
-
     // ─── 符号 ───
     if (on && sol.bright > 0.02) {
       const gr = (26 + 16 * scale) * (0.6 + 0.5 * sol.bright)
@@ -188,11 +178,30 @@ export default function PracticeRheostatScene() {
       ctx.beginPath(); ctx.arc(x0, bulbY, gr, 0, Math.PI * 2); ctx.fill()
     }
     symBulb(ctx, x0, bulbY, { scale, ink: on ? '#B26A00' : ink })
-    symRheostat(ctx, rheoX, y0, { scale, ratio: s.ratio, ink })
+    const geo = symRheostat(ctx, rheoX, y0, { scale, ratio: s.ratio, ink })
     symMeter(ctx, x1, midY, { kind: 'A', scale, ink })
     symMeter(ctx, rheoX, volY, { kind: 'V', scale, ink: on ? '#558B2F' : ink })
     symBattery(ctx, battX, y1, { n: 2, scale, ink, flip: true })
     symSwitch(ctx, swX, y1, { closed: on, scale, ink })
+
+    // 电子流动（符号之后画：要能走滑变内部「左端 → 线圈 → 箭头 → 横线 → 右端」）
+    if (on) {
+      const path = [
+        { x: battX + hBat, y: y1 }, { x: swX + hSw, y: y1 }, { x: x1, y: y1 },
+        { x: x1, y: midY + hMeter }, { x: x1, y: midY - hMeter },   // 让开电流表
+        { x: x1, y: y0 },
+        { x: rheoX + geo.half, y: y0 },
+        { x: rheoX + geo.W / 2, y: y0 }, { x: rheoX + geo.W / 2, y: geo.topY },  // 进右端柱
+        { x: geo.ax, y: geo.topY },                                            // 沿横线到滑片
+        { x: geo.ax, y: y0 },                                                  // 顺箭头杆下到线圈
+        { x: rheoX - geo.W / 2, y: y0 },                                        // 沿线圈到左端
+        { x: rheoX - geo.half, y: y0 },
+        { x: x0, y: y0 },
+        { x: x0, y: bulbY - hBulb }, { x: x0, y: bulbY + hBulb },               // 让开灯泡
+        { x: x0, y: y1 }, { x: battX - hBat, y: y1 },
+      ]
+      drawCurrentFlow(ctx, path, s.time, 0.5)
+    }
 
     // 开关整块可点
     canvasRef.current._clickAreas.push({

@@ -167,22 +167,31 @@ export default function VoltAmpereResistorScene() {
     ctx.stroke()
     ctx.restore()
 
-    // 电流流动（沿外电路：+ 极出 → 左 → 上 → 右 → 下 → 回 − 极）
-    if (on) {
-      const path = [
-        { x: battX - hBat, y: y1 }, { x: x0, y: y1 }, { x: x0, y: y0 },
-        { x: x1, y: y0 }, { x: x1, y: y1 }, { x: battX + hBat, y: y1 },
-      ]
-      drawCurrentFlow(ctx, path, s.time, 0.5)
-    }
-
     // ─── 符号 ───
-    symRheostat(ctx, rheoX, y0, { scale, ratio: s.ratio, ink })
+    const geo = symRheostat(ctx, rheoX, y0, { scale, ratio: s.ratio, ink })
     symMeter(ctx, amX, y0, { kind: 'A', scale, ink })
     symResistor(ctx, rxX, y1, { scale, ink })
     symMeter(ctx, rxX, volY, { kind: 'V', scale, ink: on ? '#558B2F' : ink })
     symBattery(ctx, battX, y1, { n: 2, scale, ink, flip: true })
     symSwitch(ctx, swX, y1, { closed: on, scale, ink })
+
+    // 电子流动（符号之后画：滑变内部走「左端 → 线圈 → 箭头杆 → 横线 → 右端」）
+    if (on) {
+      const path = [
+        { x: battX + hBat, y: y1 }, { x: rxX - hRes, y: y1 },
+        { x: rxX + hRes, y: y1 }, { x: swX + hSw, y: y1 },                                 // 让开 R_x
+        { x: x1, y: y1 }, { x: x1, y: y0 },
+        { x: amX + hMeter, y: y0 }, { x: amX - hMeter, y: y0 },                            // 让开电流表
+        { x: rheoX + geo.half, y: y0 },
+        { x: rheoX + geo.W / 2, y: y0 }, { x: rheoX + geo.W / 2, y: geo.topY },            // 出右端柱
+        { x: geo.ax, y: geo.topY },                                                        // 横线到滑片
+        { x: geo.ax, y: y0 },                                                              // 箭头杆到线圈
+        { x: rheoX - geo.W / 2, y: y0 }, { x: rheoX - geo.half, y: y0 },                    // 沿线圈到左端
+        { x: x0, y: y0 }, { x: x0, y: y1 },
+        { x: battX - hBat, y: y1 },
+      ]
+      drawCurrentFlow(ctx, path, s.time, 0.5)
+    }
 
     // 开关可点
     canvasRef.current._clickAreas.push({
