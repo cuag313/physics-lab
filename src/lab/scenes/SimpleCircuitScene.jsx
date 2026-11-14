@@ -6,6 +6,7 @@ import BuilderPalette from '../ui/BuilderPalette'
 import { fitLayout, drawPanel } from '../ui/canvasLayout'
 import BuilderSVG from '../simple3d/BuilderSVG.jsx'
 import { TYPES } from './electricSvgInstruments.js'
+import { CFG } from '../engine/electricLab.js'
 // ── 渲染层：Tab1 标准电路符号 ──
 import { symBattery, symSwitch, symBulb, symHalf, SYM_INK } from '../render/symbols.js'
 
@@ -18,7 +19,7 @@ function thumb(type) {
   if (!t) return null
   const svg = t.render(
     { id: `pal-${type}`, closed: true, showRead: false, f: 0.4 },
-    { bright: 0.55, frac: 0.35, I: 0, f: 0.4 }
+    { bright: 0.55, frac: 0.35, I: 0, f: 0.4, rays: false }
   )
   return <span dangerouslySetInnerHTML={{ __html: svg }} />
 }
@@ -65,7 +66,10 @@ export default function SimpleCircuitScene() {
   function render(R) {
     const ctx = R.ctx, W = R.W, H = R.H
     ctx.clearRect(0, 0, W, H)
-    ctx.fillStyle = '#f0f4f8'; ctx.fillRect(0, 0, W, H)
+    // 暖色底：浅奶油 → 浅蜜桃（演示页整体偏暖，知识卡片才不突兀）
+    const bg = ctx.createLinearGradient(0, 0, W * 0.35, H)
+    bg.addColorStop(0, '#FFFCF5'); bg.addColorStop(0.55, '#FDF4E6'); bg.addColorStop(1, '#FBEDD9')
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H)
     canvasRef.current._clickAreas = []
     if (S.current.tab === 1) renderDemo(ctx, W, H)
   }
@@ -82,7 +86,7 @@ export default function SimpleCircuitScene() {
     const left = lay.circuit.L, right = lay.circuit.R
     const top = lay.circuit.T, bottom = lay.circuit.B - (lay.compact ? 0 : 36)
     const areaW = right - left, areaH = bottom - top
-    const loopW = Math.min(areaW * 0.72, 460)
+    const loopW = Math.min(areaW * 0.74, 530)
     const scale = Math.max(0.55, Math.min(1.1, loopW / 420))
     const loopH = loopW * 0.52
     const chipUp = 42 * scale, chipDn = 88 * scale
@@ -190,18 +194,18 @@ export default function SimpleCircuitScene() {
 
     // ─── 说明/读数面板（fitLayout）───
     const ro = lay.readout
-    const inner = drawPanel(ctx, ro, lay.compact ? null : '📖 简单电路知识')
-    ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    let ky = inner.y
-    const px = inner.x
-
     if (lay.compact) {
-      // 手机：紧凑读数
-      const Ub = on ? (s.U ?? 6) : 0
+      const inner = drawPanel(ctx, ro, null)
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+      let ky = inner.y
+      const px = inner.x
+      // 手机：紧凑读数（按电池组 3V / 灯泡 5Ω / 内阻 0.1Ω 算出来的真值）
+      const I0 = CFG.VS.V / (CFG.BULB_R + CFG.VS.r)
+      const Ub = on ? I0 * CFG.BULB_R : 0
       ctx.font = `bold ${lay.font.data}px monospace`
       ctx.fillStyle = '#333'
       ctx.fillText(`U = ${Ub.toFixed(2)} V`, px, ky); ky += 18
-      ctx.fillText(`I = ${on ? '通' : '0'} ${on ? '' : 'A'}`, px, ky); ky += 18
+      ctx.fillText(`I = ${on ? I0.toFixed(2) : '0.00'} A`, px, ky); ky += 18
       ctx.fillStyle = on ? '#2E7D32' : '#888'
       ctx.font = `bold ${lay.font.body}px sans-serif`
       ctx.fillText(on ? '● 通路' : '○ 断路 U=0', px, ky); ky += 16
@@ -212,40 +216,202 @@ export default function SimpleCircuitScene() {
       return
     }
 
-    ctx.font = '12px sans-serif'
-    const knowledge = [
-      { t: '电路组成', bold: true },
-      { t: '电源、导线、用电器、开关' },
-      { t: '' },
-      { t: '电路状态', bold: true },
-      { t: '通路：开关闭合，电路有电流' },
-      { t: '断路：开关断开，无电流 U=0' },
-      { t: '短路：导线直接连电源两极（危险！）' },
-      { t: '' },
-      { t: '电流方向', bold: true },
-      { t: '电子从−极出发，经外电路回到+极' },
-      { t: '电流方向与电子方向相反' },
-      { t: '' },
-      { t: '电路符号', bold: true },
-      { t: '电源：长线(+)短线(−)' },
-      { t: '灯泡：小圆圈内画×' },
-      { t: '开关：断开/闭合两状态' },
-      { t: '' },
-      { t: '灯泡亮度', bold: true },
-      { t: '闭合=亮，断开=灭（连续渐变）' },
-    ]
-    for (const item of knowledge) {
-      if (!item.t) { ky += 6; continue }
-      ctx.fillStyle = item.bold ? '#333' : '#555'
-      ctx.font = item.bold ? 'bold 12px sans-serif' : '12px sans-serif'
-      ctx.fillText(item.t, px, ky); ky += 20
-    }
-    if (on) {
-      ky += 8
-      ctx.fillStyle = '#1565C0'; ctx.font = 'bold 11px monospace'
-      ctx.fillText(`灯泡端电压 U = ${(s.U ?? 6).toFixed(2)} V`, px, ky)
-    }
+    drawKnowledge(ctx, ro, on, s)
+
     ctx.textBaseline = 'alphabetic'
+  }
+
+  /* ─── 知识面板：暖色卡片 + 彩色小节标题（目的 / 器材 / 步骤 / 状态 / 电流与电子 / 符号 / 注意事项）─── */
+  function drawKnowledge(ctx, ro, on, s) {
+    const { x, y, w, h } = ro
+    const pad = 16
+    const left = x + pad
+    const maxW = w - pad * 2
+    const headH = 12 + 34 + 18          // 标题药丸占高
+    const tipH = 34                     // 底部读数/提示行
+
+    const SECTIONS = [
+      {
+        t: '实验目的', c: '#E0761F',
+        items: [
+          [['认识简单电路的四个组成部分（电源、导线、用电器、开关），会自己接成一个回路。']],
+          [['观察'], ['通路', '#15803D', 1], ['、'], ['断路', '#6B7280', 1], ['、'], ['短路', '#DC2626', 1], ['三种状态：灯泡何时亮、为何不能短接电源。']],
+          [['明白：'], ['电流方向', '#DC2626', 1], ['与'], ['自由电子移动方向', '#B45309', 1], ['相反。']],
+        ],
+      },
+      {
+        t: '实验器材', c: '#C98A12',
+        items: [
+          [['电源、导线、'], ['小灯泡', '#EA8C1B', 1], ['、'], ['开关', '#EA8C1B', 1], ['；测量时再加'], ['电流表', '#C2410C', 1], ['与'], ['电压表', '#C2410C', 1], ['。']],
+        ],
+      },
+      {
+        t: '实验步骤', c: '#CA8A04',
+        items: [
+          [['① '], ['断开开关', '#DC2626', 1], ['，按电路图接好电源、开关、灯泡（线压接线柱下）。']],
+          [['② 检查：'], ['电流表串联', '#15803D', 1], ['、'], ['电压表并联', '#15803D', 1], ['，「'], ['+', '#DC2626', 1], ['」柱接高电位端。']],
+          [['③ '], ['闭合开关', '#15803D', 1], ['，看灯泡亮暗与两表读数（指针应正偏）。']],
+          [['④ 记下 I、U 进'], ['实验记录表', '#C2410C', 1], ['，算 P = UI。']],
+          [['⑤ '], ['断开开关', '#DC2626', 1], ['，拆线整理器材。']],
+        ],
+      },
+      {
+        t: '三种电路状态', c: '#C2410C',
+        items: [
+          [['通路', '#15803D', 1], ['：回路完整 → 有电流，灯泡发光。']],
+          [['断路', '#6B7280', 1], ['：回路断开 → 电流为零，灯泡熄灭。']],
+          [['短路', '#DC2626', 1], ['：导线直接连电源两极 → 电流过大，烧电源，'], ['禁止！', '#DC2626', 1]],
+        ],
+      },
+      {
+        t: '电流与电子', c: '#B45309',
+        items: [
+          [['电流方向', '#DC2626', 1], ['：'], ['正极 → 外电路 → 负极', '#DC2626', 1], ['（正电荷移动方向）。']],
+          [['自由电子', '#CA8A04', 1], ['：'], ['负极 → 正极', '#CA8A04', 1], ['，与电流方向相反（黄点即电子）。']],
+        ],
+      },
+      {
+        t: '电路符号与电表接法', c: '#A15C1C',
+        items: [
+          [['电源长线「'], ['+', '#DC2626', 1], ['」短线「'], ['−', '#1D4ED8', 1], ['」；灯泡圆圈内画「×」；开关落下=闭合。']],
+          [['电流表（A）'], ['串联', '#15803D', 1], ['、电压表（V）'], ['并联', '#15803D', 1], ['，不可互换。']],
+          [['电表「'], ['+', '#DC2626', 1], ['」柱接'], ['高电位端', '#DC2626', 1], ['，接反指针反偏、读数带负号。']],
+        ],
+      },
+      {
+        t: '注意事项', c: '#DC2626',
+        items: [
+          [['接线前'], ['开关必须断开', '#DC2626', 1], ['，接完复查再闭合；别碰裸露导线。']],
+          [['严禁把电源两极'], ['直接短接', '#DC2626', 1], ['，也不许用电流表"测"电源两端。']],
+          [['先'], ['大量程', '#C2410C', 1], ['后小量程；满偏、刺白、有焦味立即断开。']],
+        ],
+      },
+    ]
+
+    // 量一遍总高，字号在 12.5 / 11.5 / 10.5 / 9.5 里挑一个装得下的
+    const measure = (fs) => {
+      let total = 0
+      for (const sec of SECTIONS) {
+        total += 26
+        for (const it of sec.items) {
+          ctx.font = `${fs}px "Microsoft YaHei", sans-serif`
+          total += layoutRuns(ctx, it, maxW - 16, fs).length * (fs + 6) + 3
+        }
+        total += 7
+      }
+      return total
+    }
+    let fs = 12.5, contentH = 0
+    for (const cand of [12.5, 11.5, 10.5, 9.5]) { fs = cand; contentH = measure(cand); if (headH + contentH + tipH + 16 <= h) break }
+    const cardH = Math.min(h, headH + contentH + tipH + 16)
+
+    ctx.save()
+    // 卡片：暖白渐变 + 暖描边 + 柔和投影（高度=内容高，不留大片空白）
+    ctx.shadowColor = 'rgba(203,132,62,0.22)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6
+    ctx.fillStyle = '#FFFCF6'
+    ctx.beginPath(); ctx.roundRect(x, y, w, cardH, 14); ctx.fill()
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0
+    const cardBg = ctx.createLinearGradient(x, y, x, y + cardH)
+    cardBg.addColorStop(0, 'rgba(255,251,244,1)')
+    cardBg.addColorStop(1, 'rgba(255,243,227,1)')
+    ctx.fillStyle = cardBg
+    ctx.beginPath(); ctx.roundRect(x, y, w, cardH, 14); ctx.fill()
+    ctx.strokeStyle = '#F2DCC0'; ctx.lineWidth = 1.2
+    ctx.beginPath(); ctx.roundRect(x, y, w, cardH, 14); ctx.stroke()
+
+    // 标题药丸（暖橙渐变胶囊 + 高光）
+    const tW = 176, tH = 34
+    const gTitle = ctx.createLinearGradient(x + pad, y + 12, x + pad + tW, y + 12 + tH)
+    gTitle.addColorStop(0, '#F59E0B'); gTitle.addColorStop(1, '#EA580C')
+    ctx.fillStyle = gTitle
+    ctx.beginPath(); ctx.roundRect(x + pad, y + 12, tW, tH, 17); ctx.fill()
+    ctx.fillStyle = 'rgba(255,255,255,0.28)'
+    ctx.beginPath(); ctx.roundRect(x + pad + 5, y + 15, tW - 10, 9, 5); ctx.fill()
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 14px "Microsoft YaHei", sans-serif'
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText('📖 简单电路知识', x + pad + tW / 2, y + 12 + tH / 2 + 1)
+
+    let cy = y + headH
+
+    for (const sec of SECTIONS) {
+      // 小节标题：左侧色条 + 同色淡药丸
+      ctx.fillStyle = sec.c
+      ctx.beginPath(); ctx.roundRect(left - 2, cy + 5, 3.4, 13, 2); ctx.fill()
+      ctx.font = 'bold 12.5px "Microsoft YaHei", sans-serif'
+      const tw = ctx.measureText(sec.t).width
+      ctx.fillStyle = hexA(sec.c, 0.13)
+      ctx.beginPath(); ctx.roundRect(left + 6, cy + 1, tw + 16, 21, 10); ctx.fill()
+      ctx.fillStyle = sec.c
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      ctx.fillText(sec.t, left + 14, cy + 12)
+      cy += 26
+
+      for (const it of sec.items) {
+        ctx.fillStyle = sec.c
+        ctx.beginPath(); ctx.arc(left + 5, cy + (fs + 6) / 2 - 1, 2.6, 0, Math.PI * 2); ctx.fill()
+        for (const ln of layoutRuns(ctx, it, maxW - 16, fs)) {
+          let lx = left + 14
+          for (const run of ln) {
+            ctx.font = `${run.b ? 'bold ' : ''}${fs}px "Microsoft YaHei", sans-serif`
+            ctx.fillStyle = run.c || '#5A4636'
+            ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+            ctx.fillText(run.s, lx, cy + (fs + 6) / 2 - 1)
+            lx += ctx.measureText(run.s).width
+          }
+          cy += fs + 6
+        }
+        cy += 3
+      }
+      cy += 7
+    }
+
+    // 底部读数/提示行
+    ctx.font = '11.5px "Microsoft YaHei", sans-serif'
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    const tipY = y + cardH - 22
+    ctx.fillStyle = '#E8D3B6'
+    ctx.beginPath(); ctx.roundRect(left, tipY - 0.5, maxW, 1, 0.5); ctx.fill()
+    if (on) {
+      const I0 = CFG.VS.V / (CFG.BULB_R + CFG.VS.r)
+      const U0 = I0 * CFG.BULB_R
+      ctx.fillStyle = '#C2410C'
+      ctx.fillText(`● 通路：灯泡端电压 U = ${U0.toFixed(2)} V　电流 I = ${I0.toFixed(2)} A　（e⁻ 从 − 极经外电路流向 + 极）`, left, tipY + 10)
+    } else {
+      ctx.fillStyle = '#B08954'
+      ctx.fillText('○ 断路：开关断开，回路里没有电流　（点一下画面里的开关试试通 ↔ 断）', left, tipY + 10)
+    }
+    ctx.restore()
+  }
+
+  /** 富文本按宽度折行：返回 {s, c, b}[] 的行数组 */
+  function layoutRuns(ctx, runs, maxW, fs) {
+    const lines = []
+    let cur = [], curW = 0, buf = '', bufC = null, bufB = false
+    const flushBuf = () => {
+      if (buf) cur.push({ s: buf, c: bufC, b: bufB })
+      buf = ''
+    }
+    for (const r of runs) {
+      const txt = r[0], color = r[1], bold = !!r[2]
+      ctx.font = `${bold ? 'bold ' : ''}${fs}px "Microsoft YaHei", sans-serif`
+      bufC = color; bufB = bold
+      for (const ch of String(txt)) {
+        const chW = ctx.measureText(ch).width
+        if (curW + chW > maxW && (cur.length || buf)) {
+          flushBuf(); lines.push(cur); cur = []; curW = 0
+        }
+        buf += ch; curW += chW
+      }
+      flushBuf()
+    }
+    flushBuf()
+    if (cur.length) lines.push(cur)
+    return lines
+  }
+
+  function hexA(hex, a) {
+    const n = parseInt(hex.slice(1), 16)
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`
   }
 
   function drawLine(ctx, x1, y1, x2, y2, color, w) {

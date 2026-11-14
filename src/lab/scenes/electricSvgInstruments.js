@@ -876,25 +876,68 @@ export const TYPES = {
       const rgb = (a) => `rgb(${a[0]},${a[1]},${a[2]})`
 
       // 渐变 id 必须按器材 + 亮度唯一，否则同一文档里多只亮度不同的灯泡会串色
-      const gid = `es-bulbfil-${String(c.id || 'x').replace(/[^A-Za-z0-9_-]/g, '')}-${Math.round(bright * 100)}${over ? '-o' : ''}`
+      const uid = String(c.id || 'x').replace(/[^A-Za-z0-9_-]/g, '')
+      const gid = `es-bulbfil-${uid}-${Math.round(bright * 100)}${over ? '-o' : ''}`
+      const oid = `es-bulbout-${uid}-${Math.round(bright * 100)}`
+      const rid = `es-bulbray-${uid}-${Math.round(bright * 100)}`
       const animOver = over
         ? '<animate attributeName="opacity" values="1;0.55;1" dur="0.9s" repeatCount="indefinite"/>'
         : ''
-      const rad = (30 + bright * 14).toFixed(1)
+
+      /* 亮度分成两段：0~0.45 只给柔和光晕；0.45~1 才算「很亮」，逐级点亮放射光芒。
+         hot = 0 时完全没有光线，hot = 1（额定满亮）时 12 长 + 12 短光芒全部拉满。 */
+      const hot = Math.max(0, Math.min(1, (bright - 0.45) / 0.55))
+      const rMid = 30 + bright * 16
+      const rOut = 46 + bright * 16 + hot * 20
+      const cx = 89, cy = 25
+      const gold = [255, 178, 64]   // 光芒/外晕固定暖金色：白光芒在浅色底板上会「看不见」
+      const lid = `es-bulblit-${uid}-${Math.round(bright * 100)}`
+
+      // 放射光芒：以灯丝为中心向外拉出的细长锥形，越亮越长，末端渐隐（不在中心留死白）
+      const rays = (dyn.rays !== false) && hot > 0.03
+        ? (() => {
+          const R0 = 32 + bright * 3               // 起点在玻璃泡外沿
+          const longL = 14 + 25 * hot              // 长芒
+          const shortL = 8 + 14 * hot              // 短芒（错开 15°）
+          let out = ''
+          for (let i = 0; i < 12; i++) {
+            out += `<g transform="rotate(${i * 30})"><path d="M -2.9 ${-R0} L 0 ${-(R0 + longL)} L 2.9 ${-R0} Z" fill="url(#${rid})"/></g>`
+          }
+          for (let i = 0; i < 12; i++) {
+            out += `<g transform="rotate(${15 + i * 30})"><path d="M -1.8 ${-R0} L 0 ${-(R0 + shortL)} L 1.8 ${-R0} Z" fill="url(#${rid})"/></g>`
+          }
+          return out
+        })()
+        : ''
 
       // 内部结构层按 256×121 的坐标画，其中灯座一段落在机框之外（y>83），
       // 会从底板下缘露出一截灰条——裁到机框内即可（剖视时也只该看机框内的东西）
-      const clipId = `escl-bulb-${String(c.id || 'x').replace(/[^A-Za-z0-9_-]/g, '')}`
+      const clipId = `escl-bulb-${uid}`
 
       return `
     <svg width="176" height="83" viewBox="0 0 176 83">
       <defs>
         <clipPath id="${clipId}"><rect x="0" y="0" width="176" height="83"/></clipPath>
         <radialGradient id="${gid}" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stop-color="${rgb(core)}" stop-opacity="${(0.92 * bright).toFixed(3)}"/>
-          <stop offset="38%" stop-color="${rgb(halo)}" stop-opacity="${(0.62 * bright).toFixed(3)}"/>
+          <stop offset="0%" stop-color="${rgb(core)}" stop-opacity="${(0.95 * bright).toFixed(3)}"/>
+          <stop offset="38%" stop-color="${rgb(halo)}" stop-opacity="${(0.66 * bright).toFixed(3)}"/>
           <stop offset="100%" stop-color="${rgb(halo)}" stop-opacity="0"/>
         </radialGradient>
+        <radialGradient id="${oid}" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="${rgb(gold)}" stop-opacity="${(0.34 * bright).toFixed(3)}"/>
+          <stop offset="45%" stop-color="${rgb(gold)}" stop-opacity="${(0.14 * bright).toFixed(3)}"/>
+          <stop offset="100%" stop-color="${rgb(gold)}" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="${lid}" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#FFFDF0" stop-opacity="${(0.9 * bright).toFixed(3)}"/>
+          <stop offset="42%" stop-color="#FFD98A" stop-opacity="${(0.46 * bright).toFixed(3)}"/>
+          <stop offset="100%" stop-color="#FFB443" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="${rid}" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="${rgb(gold)}" stop-opacity="0.9"/>
+          <stop offset="45%" stop-color="${rgb(gold)}" stop-opacity="0.6"/>
+          <stop offset="100%" stop-color="${rgb(gold)}" stop-opacity="0"/>
+        </linearGradient>
         <radialGradient id="es-g-hub" cx="42%" cy="34%" r="62%">
           <stop offset="0%" stop-color="#f2f4f5"/>
           <stop offset="62%" stop-color="#cfd4d8"/>
@@ -902,10 +945,21 @@ export const TYPES = {
         </radialGradient>
       </defs>
       <g clip-path="url(#${clipId})">${fitInner(256, 121, 176, 83, INNER.bulb())}</g>
-      <circle cx="89" cy="25" r="${rad}" fill="url(#es-g-glow)" opacity="${(bright * 0.55).toFixed(3)}"/>
-      ${photo('bulb_c.png', 176, 83, `filter:brightness(${(0.96 + 0.3 * bright).toFixed(2)}) saturate(${(0.92 + 0.2 * bright).toFixed(2)})`)}
+      ${bright > 0.02 ? `<circle cx="${cx}" cy="${cy}" r="${rOut.toFixed(1)}" fill="url(#${oid})" style="mix-blend-mode:screen"/>` : ''}
+      ${hot > 0.03
+        ? `<g transform="translate(${cx} ${cy})" opacity="${(0.22 + 0.6 * hot).toFixed(3)}">
+        <g><animate attributeName="opacity" values="0.86;1;0.86" dur="2.4s" repeatCount="indefinite"/>${rays}</g>
+      </g>`
+        : ''}
+      ${photo('bulb_c.png', 176, 83, `filter:brightness(${(0.97 + 0.07 * bright).toFixed(3)}) saturate(${(0.94 + 0.14 * bright).toFixed(2)})`)}
       ${bright > 0.02
-        ? `<circle class="es-bulb-halo" cx="89" cy="25" r="${rad}" fill="url(#${gid})" style="mix-blend-mode:screen">${animOver}</circle>`
+        ? `<circle cx="${cx}" cy="${cy}" r="${(18 + 10 * bright).toFixed(1)}" fill="url(#${lid})" style="mix-blend-mode:screen"/>`
+        : ''}
+      ${bright > 0.02
+        ? `<circle class="es-bulb-halo" cx="${cx}" cy="${cy}" r="${rMid.toFixed(1)}" fill="url(#${gid})" style="mix-blend-mode:screen">${animOver}</circle>`
+        : ''}
+      ${bright > 0.02
+        ? `<circle cx="${cx}" cy="${cy}" r="${(2 + 6 * bright + 4 * hot).toFixed(1)}" fill="${rgb(core)}" opacity="${(0.5 * bright).toFixed(3)}" style="mix-blend-mode:screen"/>`
         : ''}
     </svg>` }
   },
