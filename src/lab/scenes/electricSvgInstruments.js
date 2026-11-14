@@ -357,7 +357,7 @@ function meterFaceSVG(x, y, w, h, cfg) {
   const IN_R = (x) => x * s
   const INK = '#6c7176'
   const TICK = '#74797e'
-  const TICK_M = '#4b5056'
+  const TICK_M = '#50555b'
 
   // 原图实测：齿的内端齐平在 r94，短齿向外伸到 r102、长齿到 r111，齿身整体顺时针偏约 1°
   let ticks = ''
@@ -415,12 +415,24 @@ function meterFaceSVG(x, y, w, h, cfg) {
  */
 const CZ = {
   dialX: 25, dialY: 27, dialW: 206, dialH: 143, hubX: 128, hubY: 164,
-  aL: 218, aMid: 270, aR: 323, rArc: 93, rBend: 9, tickShort: 5.2, tickLong: 8.5,
+  aMid: 270, aL: 215.8, aR: 324.6,
+  rArc: 93, rBend: 9, tickShort: 5.5, tickLong: 9.8,
 }
+/* 21 根齿的逐处实测角（沿弧外侧逐 0.2° 扫暗段得到，原图本身不是等分的：
+ * 左侧 10.3/10.9/10.7/11.0/10.8，右侧 11.0/11.2/10.6/10.8/10.6 —— 照抄比“等分”更准）。
+ * 偶数位是长齿（= 数字），奇数位一根短齿：**每两个大格之间只有一根短齿**。 */
+const CZ_TICKS = [
+  216.3, 221.0, 226.6, 231.7, 237.5, 242.6, 248.2, 253.6, 259.2, 264.6,
+  270.0,
+  275.6, 281.0, 286.8, 292.2, 297.8, 302.8, 308.5, 313.6, 319.3, 324.2,
+]
+/* 大格 = 数字所在的长齿（左右各 5 大格），**大格之间只有一根短齿**。原图沿弧外侧逐 0.2°
+ * 采样得 21 根齿：长齿在 216.3 / 226.7 / 237.5 / 248.2 / 259.2 / 270 / 281 / 292.2 /
+ * 302.8 / 313.6 / 324.2（间距 10.78°，即 step 5.39 的偶数格），短齿夹在中间。 */
+/* 11 个数字：角取长齿角（数字正对长齿），半径照原图逐处实测 119/116/113.5/112/111/111/111/113/114/117.5/121.5 */
 const CZ_NUMS = [
-  ['50', 217.5, 119], ['40', 228, 116], ['30', 237.6, 113.5], ['20', 248.4, 112], ['10', 260.4, 111],
-  ['0', 269.5, 111],
-  ['10', 279.3, 111], ['20', 291.8, 113], ['30', 302.6, 114], ['40', 313.6, 117.5], ['50', 323.4, 121.5],
+  ['50', 119], ['40', 116], ['30', 113.5], ['20', 112], ['10', 111], ['0', 111],
+  ['10', 111], ['20', 113], ['30', 114], ['40', 117.5], ['50', 121.5],
 ]
 
 function centerFaceSVG(x, y, w, h, cfg = {}) {
@@ -431,36 +443,50 @@ function centerFaceSVG(x, y, w, h, cfg = {}) {
   const f = (v) => v.toFixed(2)
   const INK = '#777c81'
   const ARC = '#5a5f64'
-  const TICK = '#757a7f'
+  const TICK = '#7d8287'
   const TICK_M = '#4b5056'
   const arcR = (a) => (CZ.rArc + CZ.rBend * Math.pow(Math.abs(a - CZ.aMid) / 53, 2)) * s
   const pt = (a, r) => [cx + Math.cos(rad(a)) * r, cy + Math.sin(rad(a)) * r]
 
-  // 刻度弧线（60 段折线，等效抛物线弧）
+  // 刻度弧线（80 段折线，等效抛物线弧）
   let d = ''
-  for (let i = 0; i <= 60; i++) {
-    const a = CZ.aL + (CZ.aR - CZ.aL) * (i / 60)
+  for (let i = 0; i <= 80; i++) {
+    const a = CZ.aL + (CZ.aR - CZ.aL) * (i / 80)
     const [px, py] = pt(a, arcR(a))
     d += `${i ? 'L' : 'M'}${f(px)} ${f(py)}`
   }
 
-  // 短齿：0 在 270°，左右各 25 小格（每 5 格一根长齿），齿身顺时针偏约 1°
-  let ticks = ''
-  for (let i = -25; i <= 25; i++) {
-    const a = CZ.aMid + i * ((CZ.aR - CZ.aMid) / 25)
-    const major = i % 5 === 0
-    const r0 = arcR(a)
-    const [x1, y1] = pt(a, r0)
-    const [x2, y2] = pt(a + 1.1, r0 + (major ? CZ.tickLong : CZ.tickShort) * s)
-    ticks += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${major ? TICK_M : TICK}" stroke-width="${f((major ? 1.8 : 1.3) * s)}"/>`
+  // 齿：垂直弧线在该点的切线（沿法线向外），不是指向轴心的径向
+  const arcPt = (a) => pt(a, arcR(a))
+  const tick = (a, len, w, color) => {
+    const [q1x, q1y] = arcPt(a - 1.2)
+    const [q2x, q2y] = arcPt(a + 1.2)
+    let nx = -(q2y - q1y)
+    let ny = q2x - q1x
+    const L = Math.hypot(nx, ny) || 1
+    nx /= L
+    ny /= L
+    const [px, py] = arcPt(a)
+    if (nx * (px - cx) + ny * (py - cy) < 0) { nx = -nx; ny = -ny }   // 只取朝弧外那一侧
+    return `<line x1="${f(px)}" y1="${f(py)}" x2="${f(px + nx * len * s)}" y2="${f(py + ny * len * s)}" stroke="${color}" stroke-width="${f(w * s)}"/>`
   }
+  // 21 根齿逐处落位；偶数位是长齿（= 数字），奇数位一根短齿
+  let ticks = ''
+  CZ_TICKS.forEach((a, k) => {
+    const major = k % 2 === 0
+    ticks += tick(a, major ? CZ.tickLong : CZ.tickShort, major ? 2.2 : 1.7, major ? TICK_M : TICK)
+  })
 
   const mark = (a, str, r, size, weight) => {
     const [tx, ty] = pt(a, r * s)
-    return `<text x="${f(tx)}" y="${f(ty)}" transform="rotate(${f(a + 90)} ${f(tx)} ${f(ty)})" text-anchor="middle" dominant-baseline="middle" font-size="${f(size * s)}" font-weight="${weight || 400}" fill="${INK}">${str}</text>`
+    return `<text x="${f(tx)}" y="${f(ty)}" transform="rotate(${f(a + 90)} ${f(tx)} ${f(ty)})" text-anchor="middle" dominant-baseline="middle" font-size="${f(size * s)}" font-weight="${weight || 500}" letter-spacing="${f(-1 * s)}" fill="${INK}">${str}</text>`
   }
   let marks = ''
-  for (const [str, a, r] of CZ_NUMS) marks += mark(a, str, r, 13)
+  // 数字：原图是“字基线压在长齿上”，墨迹质心比长齿朝中心偏约 1°、半径小 1.2px —— 照此落位
+  CZ_NUMS.forEach(([str, r], k) => {
+    const a = CZ_TICKS[k * 2]
+    marks += mark(a + (a <= CZ.aMid ? 0.7 : -1.1), str, r - 1.0, 12)
+  })
   marks += mark(213.4, '−', 94.6, 11, 600)   // 左端「−」：原图只是弧首外侧一小横
   marks += mark(325.3, '+', 93.6, 13, 600)        // 右端「+」
 
@@ -472,7 +498,7 @@ function centerFaceSVG(x, y, w, h, cfg = {}) {
     </defs>
     <rect x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" rx="${f(2.5 * s)}" fill="url(#es-g-meterface)"/>
     <g clip-path="url(#es-cp-${cfg.clip || 'czf'})">
-      <path d="${d}" fill="none" stroke="${ARC}" stroke-width="${f(2 * s)}" stroke-linejoin="round"/>
+      <path d="${d}" fill="none" stroke="${ARC}" stroke-width="${f(1.9 * s)}" stroke-linejoin="round"/>
       ${ticks}
     </g>
     ${marks}
