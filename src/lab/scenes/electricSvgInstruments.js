@@ -926,20 +926,20 @@ export const TYPES = {
          形状照拆解图左下角那块单独滑片零件：上端黑柄、两侧细触脚带触头、中间白色圆底隔板 */
       const slider = `
       <g class="slider-handle" data-role="slider" style="cursor:ew-resize">
-        <path d="M${(xw - 8).toFixed(1)} 6.8 H${(xw + 8).toFixed(1)} V19
-                 Q${(xw + 8).toFixed(1)} 27.4 ${xw.toFixed(1)} 27.4
-                 Q${(xw - 8).toFixed(1)} 27.4 ${(xw - 8).toFixed(1)} 19 Z"
+        <path d="M${(xw - 6.8).toFixed(1)} 6.8 H${(xw + 6.8).toFixed(1)} V21.4
+                 Q${(xw + 6.8).toFixed(1)} 28.4 ${xw.toFixed(1)} 28.4
+                 Q${(xw - 6.8).toFixed(1)} 28.4 ${(xw - 6.8).toFixed(1)} 21.4 Z"
               fill="url(#es-g-rheoPlate)" stroke="#8e9aa7" stroke-width="0.55" stroke-opacity="0.8"
               filter="url(#es-f-rheoPlate)"/>
-        <rect x="${(xw - 9.9).toFixed(1)}" y="5.9" width="1.5" height="9.6" rx="0.75"
+        <rect x="${(xw - 8.9).toFixed(1)}" y="5.9" width="1.5" height="8.9" rx="0.75"
               fill="url(#es-g-rheoArm)" stroke="#78838f" stroke-width="0.45"/>
-        <rect x="${(xw + 8.4).toFixed(1)}" y="5.9" width="1.5" height="9.6" rx="0.75"
+        <rect x="${(xw + 7.4).toFixed(1)}" y="5.9" width="1.5" height="8.9" rx="0.75"
               fill="url(#es-g-rheoArm)" stroke="#78838f" stroke-width="0.45"/>
-        <circle cx="${(xw - 9.15).toFixed(1)}" cy="14.8" r="1.45" fill="#3d444c"/>
-        <circle cx="${(xw + 9.15).toFixed(1)}" cy="14.8" r="1.45" fill="#3d444c"/>
-        <rect x="${(xw - 10.5).toFixed(1)}" y="${(ROD_Y - 5.3).toFixed(1)}" width="21" height="6.2" rx="2.6"
+        <circle cx="${(xw - 8.15).toFixed(1)}" cy="14.4" r="1.45" fill="#3d444c"/>
+        <circle cx="${(xw + 8.15).toFixed(1)}" cy="14.4" r="1.45" fill="#3d444c"/>
+        <rect x="${(xw - 8.4).toFixed(1)}" y="${(ROD_Y - 5.3).toFixed(1)}" width="16.8" height="6.2" rx="2.6"
               fill="url(#es-g-rheoHandle)" stroke="#0b0d10" stroke-width="0.9"/>
-        <rect x="${(xw - 6).toFixed(1)}" y="${(ROD_Y - 3.7).toFixed(1)}" width="12" height="1.3" rx="0.65"
+        <rect x="${(xw - 4.8).toFixed(1)}" y="${(ROD_Y - 3.7).toFixed(1)}" width="9.6" height="1.3" rx="0.65"
               fill="#5a606a" opacity="0.55"/>
       </g>`
 
