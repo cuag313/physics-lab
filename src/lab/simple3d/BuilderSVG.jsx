@@ -389,9 +389,6 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
           transition:transform .12s,box-shadow .12s,border-color .12s}
         .esb-term:hover{transform:scale(1.35);box-shadow:0 0 0 5px rgba(37,99,235,.22);border-color:#2563eb}
         .esb-term.active{border-color:#f59e0b;box-shadow:0 0 0 7px rgba(245,158,11,.25);transform:scale(1.3)}
-        /* 大电流时整根导线呼吸闪烁（导线本体是实心电缆，不再画成一串点） */
-        .esb-wire-hot{animation:esb-wire-flash 1s ease-in-out infinite}
-        @keyframes esb-wire-flash{0%,100%{opacity:1}50%{opacity:.45}}
         .esb-wire-preview{fill:none;stroke:#f59e0b;stroke-width:3.4;stroke-linecap:round;opacity:.9}
         .esb-delbtn{position:absolute;width:26px;height:26px;border-radius:50%;z-index:12;
           background:#e11d48;color:#fff;border:2px solid #fff;font-size:14px;font-weight:700;
@@ -414,8 +411,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13)
             if (!g) return null
             const sel = selected && selected.kind === 'wire' && selected.id === w.id
-            const I = Math.abs((solved._wireI && solved._wireI[w.id]) || 0)
-            const color = I < 0.1 ? (w.color || '#475569') : I < 0.3 ? '#f59e0b' : '#ef4444'
+            const color = w.color || '#475569'
             const L = wireLayers(g.cur, color, WIRE_W)
             const B = wrapLayers(color, WIRE_W)
             return (
@@ -427,7 +423,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
                 )}
                 <path d={L.d} fill="none" stroke={L.casing} strokeWidth={L.w + 1.9} strokeLinecap="round" />
                 <path d={L.d} fill="none" stroke={L.core} strokeWidth={L.w} strokeLinecap="round"
-                  className={I > 1 ? 'esb-wire-hot' : ''} />
+                  />
                 <path d={L.dSheen} fill="none" stroke={L.sheen} strokeWidth={Math.max(1, L.w * 0.32)}
                   strokeLinecap="round" opacity="0.6" />
                 {wrapAt(g.p1, B, 'b1')}
@@ -494,8 +490,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             if (!c1 || !c2) return null
             const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13)
             if (!g) return null
-            const I = Math.abs((solved._wireI && solved._wireI[w.id]) || 0)
-            const color = I < 0.1 ? (w.color || '#475569') : I < 0.3 ? '#f59e0b' : '#ef4444'
+            const color = w.color || '#475569'
             const B = wrapLayers(color, WIRE_W)
             return (
               <g key={w.id}>

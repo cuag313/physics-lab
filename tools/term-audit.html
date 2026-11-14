@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>接线柱热点核对</title>
+<style>
+  body{margin:0;background:#fff;font:12px/1.4 "Microsoft YaHei",system-ui,sans-serif;color:#111}
+  .row{display:flex;align-items:flex-start;gap:14px;padding:10px 14px;border-bottom:1px solid #e5e7eb}
+  .name{width:92px;font-weight:700;padding-top:6px;flex:0 0 92px}
+  .holder{position:relative;background:
+     repeating-linear-gradient(0deg,transparent 0 9px,#f2f6fb 9px 10px),
+     repeating-linear-gradient(90deg,transparent 0 9px,#f2f6fb 9px 10px),#fff}
+  .art{position:absolute;left:0;top:0}
+  .hit{position:absolute;border:1px solid #2563eb;border-radius:50%;box-sizing:border-box;pointer-events:none;
+       width:18px;height:18px;margin:-9px 0 0 -9px;opacity:.9}
+  .hit:before{content:"";position:absolute;left:50%;top:50%;width:3px;height:3px;margin:-1.5px 0 0 -1.5px;
+       background:#1d4ed8;border-radius:50%}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="module">
+import { TYPES } from '../src/lab/scenes/electricSvgInstruments.js'
+
+const list = ['battery', 'accumulator', 'bulb', 'switch', 'ammeter', 'voltmeter', 'rheostat', 'fuse']
+const root = document.getElementById('root')
+const out = []
+for (const key of list) {
+  const t = TYPES[key]
+  if (!t) continue
+  const row = document.createElement('div')
+  row.className = 'row'
+  row.dataset.type = key
+  row.innerHTML = `<div class="name">${t.label}<br><span style="font-weight:400;color:#6b7280">${t.w}×${t.h}</span></div>`
+  const holder = document.createElement('div')
+  holder.className = 'holder'
+  holder.style.width = `${t.w}px`
+  holder.style.height = `${t.h}px`
+  const art = document.createElement('div')
+  art.className = 'art'
+  art.style.width = `${t.w}px`
+  art.style.height = `${t.h}px`
+  art.innerHTML = t.render({ id: `audit-${key}`, type: key, f: 0.4 }, {})
+  holder.appendChild(art)
+  const showRings = !location.search.includes('rings=0')
+  for (const tm of t.terminals) {
+    if (!showRings) break
+    const h = document.createElement('div')
+    h.className = 'hit'
+    h.style.left = `${tm.x}px`
+    h.style.top = `${tm.y}px`
+    holder.appendChild(h)
+  }
+  row.appendChild(holder)
+  root.appendChild(row)
+  out.push({ key, w: t.w, h: t.h, terms: t.terminals.map((x) => ({ id: x.id, x: x.x, y: x.y })) })
+}
+window.__audit = out
+document.title = 'ready'
+</script>
+</body>
+</html>

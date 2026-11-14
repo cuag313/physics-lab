@@ -123,8 +123,6 @@ const CSS = `
 .esvg-term span{display:none}
 .esvg-term.active{border-color:#f59e0b;
   box-shadow:0 0 0 7px rgba(245,158,11,.25);transform:scale(1.3)}
-.esvg-wire-hot{animation:es-wire-flash 1s ease-in-out infinite}
-@keyframes es-wire-flash{0%,100%{opacity:1}50%{opacity:.45}}
 .esvg-wire-preview{fill:none;stroke:#f59e0b;stroke-width:3.6;stroke-linecap:round;opacity:0.9}
 .esvg-delbtn{position:absolute;width:26px;height:26px;border-radius:50%;z-index:12;
   background:#e11d48;color:#fff;border:2px solid #fff;font-size:14px;font-weight:700;
@@ -407,15 +405,10 @@ export default function ElectricSvgLabScene() {
     if (d.short) out.push({ tone: 'bad', text: '短路！请立即断开电源' })
     return out
   }, [comps, wires, solved])
-  const shorted = !!(solved.diagnostics && solved.diagnostics.short)
 
-  /* 导线颜色：|I| ≥ 0.1A 按电流档位（热效应可视化），静止时保留所选导线色 */
-  const wireStroke = (w) => {
-    const I = Math.abs((solved._wireI && solved._wireI[w.id]) || 0)
-    if (I < 0.1) return w.color || '#475569'
-    if (I < 0.3) return '#f59e0b'
-    return '#ef4444'
-  }
+  /* 导线颜色：永远是用户选的那一种。真实电线不会因为电流大小改颜色，
+     电流的大小由电流表读数 / 灯泡亮度 / 状态栏表达，别往线上去涂。 */
+  const wireStroke = (w) => w.color || '#475569'
 
   const nextId = () => uidRef.current++
   const T = (c) => TYPES[c.type]
@@ -1118,7 +1111,7 @@ export default function ElectricSvgLabScene() {
           ) : (
           <div className={`esvg-canvas${dissect ? ' dissect' : ''}`} ref={canvasRef}>
             {/* 导线层（连续电缆：落影/外皮/本色/上偏高光 + 两端护套） */}
-            <svg className={`esvg-wirelayer${shorted ? ' short' : ''}`} width={CW} height={CH}>
+            <svg className="esvg-wirelayer" width={CW} height={CH}>
               {wires.map((w) => {
                 const c1 = compById(+w.a.split(':')[0])
                 const c2 = compById(+w.b.split(':')[0])
@@ -1126,8 +1119,7 @@ export default function ElectricSvgLabScene() {
                 const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13)
                 if (!g) return null
                 const sel = selected && selected.kind === 'wire' && selected.id === w.id
-                const I = Math.abs((solved._wireI && solved._wireI[w.id]) || 0)
-                const color = shorted ? '#dc2626' : wireStroke(w)
+                const color = wireStroke(w)
                 const L = wireLayers(g.cur, color, WIRE_W)
                 const B = wrapLayers(color, WIRE_W)
                 return (
@@ -1137,8 +1129,7 @@ export default function ElectricSvgLabScene() {
                       <path d={L.d} fill="none" stroke="rgba(225,29,72,0.45)" strokeWidth={L.w + 4} strokeLinecap="round" />
                     )}
                     <path d={L.d} fill="none" stroke={L.casing} strokeWidth={L.w + 1.9} strokeLinecap="round" />
-                    <path d={L.d} fill="none" stroke={L.core} strokeWidth={L.w} strokeLinecap="round"
-                      className={I > 1 ? 'esvg-wire-hot' : ''} />
+                    <path d={L.d} fill="none" stroke={L.core} strokeWidth={L.w} strokeLinecap="round" />
                     <path d={L.dSheen} fill="none" stroke={L.sheen} strokeWidth={Math.max(1, L.w * 0.32)}
                       strokeLinecap="round" opacity="0.6" />
                     {wrapAt(g.p1, B, 'b1')}
@@ -1215,7 +1206,7 @@ export default function ElectricSvgLabScene() {
                 if (!c1 || !c2) return null
                 const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13)
                 if (!g) return null
-                const color = shorted ? '#dc2626' : wireStroke(w)
+                const color = wireStroke(w)
                 const B = wrapLayers(color, WIRE_W)
                 return (
                   <g key={w.id}>
