@@ -117,13 +117,17 @@ export default function SeriesParallelScene() {
 
     const scaleOf = (w) => Math.max(0.55, Math.min(1.1, w / 420))
     let loopW = Math.min(areaW * 0.76, 560)
-    const chipUp = 66 * scaleOf(loopW), chipDn = 150 * scaleOf(loopW)
+    // 串联要摆三只电压表（总 + 两只分压），上方要留更高；并联仪表都在回路内
+    const chipUp = (s.mode === 'series' ? 168 : 70) * scaleOf(loopW)
+    const chipDn = 150 * scaleOf(loopW)
     const room = areaH - (chipUp + chipDn + 8)
     if (room > 60) loopW = Math.min(loopW, room / 0.52)
     const scale = scaleOf(loopW)
     const loopH = loopW * 0.52
     const x0 = left + (areaW - loopW) / 2
-    const y0 = top + Math.max(chipUp + 4, (areaH - (loopH + chipUp + chipDn)) / 2) + chipUp
+    // 竖向：芯片区（上方三只电压表）→ 回路 → 下方标签 + 药丸，三者都要在 areaH 内
+    const padTop = Math.max(4, (areaH - (loopH + chipUp + chipDn)) / 2)
+    const y0 = top + padTop + chipUp
     const x1 = x0 + loopW, y1 = y0 + loopH
     const midX = x0 + loopW / 2, midY = y0 + loopH / 2
 
@@ -139,19 +143,21 @@ export default function SeriesParallelScene() {
     const series = s.mode === 'series'
 
     // ── 元件坐标（两套） ──
-    // 串联：R₁、R₂ 串在上边，电源/开关在下边，单个闭合回路，无旁路
-    // 并联：电源、开关都放在「分叉前」的干路上，两条支路之间不再另有导线闭合
-    const r1x = x0 + loopW * (series ? 0.32 : 0.62)
-    const r2x = x0 + loopW * (series ? 0.68 : 1.0)
-    const battX = x0 + loopW * (series ? 0.24 : 0.16)
-    const swX = x0 + loopW * (series ? 0.74 : 0.34)
+    // 串联：R₁、R₂ 串在上边，三只电压表（V₁、V₂ 分压 + V 总压）吊在上方导轨之上；
+    //       电流表在右竖边测干路（串联处处相等）。
+    // 并联：电源、开关放在「分叉前」的干路上；两条支路各串一只电流表（A₁、A₂），
+    //       总电流表 A 在左竖边；电压表 V 竖直跨接在两条导轨之间（并联段两端）。
+    const r1x = x0 + loopW * (series ? 0.28 : 0.56)
+    const r2x = x0 + loopW * (series ? 0.66 : 1.0)
+    const battX = x0 + loopW * (series ? 0.20 : 0.16)
+    const swX = x0 + loopW * (series ? 0.72 : 0.34)
 
     if (series) drawSeries(ctx, { x0, y0, x1, y1, midY, r1x, r2x, battX, swX, hRes, hMeter, hBat, hSw, scale, ink, wc, lw, on, sol, labelFont })
     else drawParallel(ctx, { x0, y0, x1, y1, midX, midY, r1x, r2x, battX, swX, hRes, hMeter, hBat, hSw, scale, ink, wc, lw, on, sol, labelFont })
 
-    // ── 接法切换（回路下方两颗药丸） ──
+    // ── 接法切换（回路下方两颗药丸，贴住可用高度底部，绝不出框） ──
     const pw = 76 * scale, ph = 32 * scale, gap = 14 * scale
-    const pY = y1 + 64 * scale
+    const pY = Math.min(y1 + 64 * scale, bottom - ph - 4)
     const pxs = { series: midX - pw - gap / 2, parallel: midX + gap / 2 }
     const pill = (px, txt, active) => {
       ctx.save()
@@ -177,7 +183,7 @@ export default function SeriesParallelScene() {
     })
     Object.assign(canvasRef.current._dbg, {
       swX, swY: y1, modeSeries: pxs.series + pw / 2, modeParallel: pxs.parallel + pw / 2, pillY: pY + ph / 2,
-      r1x, r2x, midY, scale, closed: on,
+      r1x, r2x, midY, scale, closed: on, y0, y1, areaH, top, bottom,
     })
 
     // ── 知识卡 ──
@@ -213,8 +219,8 @@ export default function SeriesParallelScene() {
         }
         c.fillStyle = '#C2410C'
         c.fillText(series
-          ? `● 串联：I = ${sol.I.toFixed(2)} A（处处相等）　U₁ = ${sol.U1.toFixed(2)} V　U₂ = ${sol.U2.toFixed(2)} V　U = ${sol.Utot.toFixed(2)} V　R = ${sol.Rtot.toFixed(0)} Ω`
-          : `● 并联：U = ${sol.U.toFixed(2)} V（各支路相等）　I₁ = ${sol.I1.toFixed(2)} A　I₂ = ${sol.I2.toFixed(2)} A　I = ${sol.I.toFixed(2)} A　R = ${sol.Rtot.toFixed(1)} Ω`,
+          ? `● 串联三表读数：A 表 I = ${sol.I.toFixed(2)} A｜V₁ 表 U₁ = ${sol.U1.toFixed(2)} V｜V₂ 表 U₂ = ${sol.U2.toFixed(2)} V｜V 表 U = ${sol.Utot.toFixed(2)} V（U₁+U₂ = U）`
+          : `● 并联三表读数：A 表 I = ${sol.I.toFixed(2)} A｜A₁ 表 I₁ = ${sol.I1.toFixed(2)} A｜A₂ 表 I₂ = ${sol.I2.toFixed(2)} A｜V 表 U = ${sol.U.toFixed(2)} V（I₁+I₂ = I）`,
           tx, ty + 10)
       },
     })
@@ -225,6 +231,8 @@ export default function SeriesParallelScene() {
   function drawSeries(ctx, g) {
     const { x0, y0, x1, y1, midY, r1x, r2x, battX, swX, hRes, hMeter, hBat, hSw, scale, ink, wc, lw, on, sol, labelFont } = g
     const s = S.current
+    const volR = 13 * scale
+    const voltInk = on ? '#558B2F' : ink
 
     // 导线（符号处留缺口）
     drawLine(ctx, x0, y0, r1x - hRes, y0, wc, lw)
@@ -237,15 +245,26 @@ export default function SeriesParallelScene() {
     drawLine(ctx, battX + hBat, y1, swX - hSw, y1, wc, lw)
     drawLine(ctx, swX + hSw, y1, x1, y1, wc, lw)
 
-    // 电压表：并在被选中的电阻上方（引线让开电阻两端）
-    const vX = s.vTarget === 0 ? r1x : r2x
-    const volY = y0 - 62 * scale, volR = 13 * scale, vTap = hRes + 16 * scale
+    // 三只电压表的并联引线：V₁ 并在 R₁、V₂ 并在 R₂，V 并在两只电阻串联后的整段
+    const vTier = y0 - 58 * scale          // V₁ / V₂ 高度
+    const vTotTier = y0 - 110 * scale       // 总电压表高度
+    const tap = hRes + 14 * scale
+    const tapTotL = r1x - hRes - 26 * scale
+    const tapTotR = r2x + hRes + 26 * scale
+    const vTotX = (r1x + r2x) / 2
     ctx.save()
     ctx.strokeStyle = on ? '#7CB342' : '#9aa7b1'
     ctx.lineWidth = 1.6 * scale + 0.4
     ctx.beginPath()
-    ctx.moveTo(vX - vTap, y0); ctx.lineTo(vX - vTap, volY); ctx.lineTo(vX - volR - 2, volY)
-    ctx.moveTo(vX + vTap, y0); ctx.lineTo(vX + vTap, volY); ctx.lineTo(vX + volR + 2, volY)
+    // V₁
+    ctx.moveTo(r1x - tap, y0); ctx.lineTo(r1x - tap, vTier); ctx.lineTo(r1x - volR - 2, vTier)
+    ctx.moveTo(r1x + tap, y0); ctx.lineTo(r1x + tap, vTier); ctx.lineTo(r1x + volR + 2, vTier)
+    // V₂
+    ctx.moveTo(r2x - tap, y0); ctx.lineTo(r2x - tap, vTier); ctx.lineTo(r2x - volR - 2, vTier)
+    ctx.moveTo(r2x + tap, y0); ctx.lineTo(r2x + tap, vTier); ctx.lineTo(r2x + volR + 2, vTier)
+    // V 总
+    ctx.moveTo(tapTotL, y0); ctx.lineTo(tapTotL, vTotTier); ctx.lineTo(vTotX - volR - 2, vTotTier)
+    ctx.moveTo(tapTotR, y0); ctx.lineTo(tapTotR, vTotTier); ctx.lineTo(vTotX + volR + 2, vTotTier)
     ctx.stroke()
     ctx.restore()
 
@@ -253,21 +272,16 @@ export default function SeriesParallelScene() {
     symResistor(ctx, r1x, y0, { scale, ink })
     symResistor(ctx, r2x, y0, { scale, ink })
     symMeter(ctx, x1, midY, { kind: 'A', scale, ink })
-    symMeter(ctx, vX, volY, { kind: 'V', scale, ink: on ? '#558B2F' : ink })
+    symMeter(ctx, r1x, vTier, { kind: 'V', scale, ink: voltInk })
+    symMeter(ctx, r2x, vTier, { kind: 'V', scale, ink: voltInk })
+    symMeter(ctx, vTotX, vTotTier, { kind: 'V', scale, ink: voltInk })
     symBattery(ctx, battX, y1, { n: 2, scale, ink, flip: true })
     symSwitch(ctx, swX, y1, { closed: on, scale, ink })
 
-    // 开关 / 电压表（点它改测另一只电阻）
     canvasRef.current._clickAreas.push({
       x: swX - hSw - 12, y: y1 - 22, w: (hSw + 12) * 2, h: 44,
       onClick: () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) },
     })
-    canvasRef.current._clickAreas.push({
-      x: vX - volR - 10, y: volY - volR - 10, w: volR * 2 + 20, h: volR * 2 + 20,
-      onClick: () => { S.current.vTarget = 1 - S.current.vTarget; forceUpdate(n => n + 1) },
-    })
-    // 验收钩子：电压表圈心（串联时点它可改测另一只电阻）
-    canvasRef.current._dbg.vX = vX; canvasRef.current._dbg.vY = volY
 
     // 电子流动：走外圈并在 R₁、R₂、电流表处留缺口
     if (on) {
@@ -287,15 +301,22 @@ export default function SeriesParallelScene() {
     ctx.fillText('电源', battX, y1 + 26 * scale)
     ctx.fillText(on ? '开关（闭合）' : '开关（断开）', swX, y1 + 26 * scale)
     ctx.fillText('R₁ = 10 Ω', r1x, y0 + 22 * scale)
-    ctx.fillText(`U₁ = ${sol.U1.toFixed(2)} V`, r1x, y0 + 38 * scale)
     ctx.fillText('R₂ = 20 Ω', r2x, y0 + 22 * scale)
-    ctx.fillText(`U₂ = ${sol.U2.toFixed(2)} V`, r2x, y0 + 38 * scale)
     ctx.textAlign = 'right'
-    ctx.fillText('电流表 A（测干路 I）', x1 - 20 * scale, midY - 16 * scale)
+    ctx.fillText('电流表 A（干路，处处相等）', x1 - 20 * scale, midY - 16 * scale)
     ctx.fillText(`I = ${sol.I.toFixed(2)} A`, x1 - 20 * scale, midY + 4 * scale)
-    const vReading = s.vTarget === 0 ? sol.U1 : sol.U2
-    ctx.fillText(`电压表 V（并在 ${s.vTarget === 0 ? 'R₁' : 'R₂'} 两端，点它改测另一只）`, vX, volY - 44 * scale)
-    ctx.fillText(`U${s.vTarget === 0 ? '₁' : '₂'} = ${vReading.toFixed(2)} V`, vX, volY - 22 * scale)
+
+    // 分压表读数（写在表圈下方的并联框内）
+    ctx.textAlign = 'center'
+    ctx.fillStyle = '#B45309'
+    ctx.fillText(`U₁ = ${sol.U1.toFixed(2)} V`, r1x, vTier + volR + 6 * scale)
+    ctx.fillText(`U₂ = ${sol.U2.toFixed(2)} V`, r2x, vTier + volR + 6 * scale)
+    ctx.fillStyle = '#C2410C'
+    ctx.fillText('总电压表 V（测整段）', vTotX, vTotTier - volR - 26 * scale)
+    ctx.fillText(`U = ${sol.Utot.toFixed(2)} V`, vTotX, vTotTier + volR + 6 * scale)
+    // 串联等式，让读数自己说话
+    ctx.fillStyle = '#15803D'
+    ctx.fillText(`U₁ + U₂ = ${(sol.U1 + sol.U2).toFixed(2)} V = U`, vTotX, vTotTier - volR - 12 * scale)
   }
 
   /* ── 并联接法 ── */
@@ -304,28 +325,27 @@ export default function SeriesParallelScene() {
     const s = S.current
 
     // 干路 + 两条支路：电源、开关在分叉之前，右边不再另画一条把两条支路短路的导线
+    const volR = 13 * scale
+    // 支路里的电流表位置（电阻下方）
+    const aY = midY + hRes + 14 * scale + hMeter
+    const loopW = x1 - x0
+    const vx = x0 + loopW * 0.42           // 电压表竖直跨接在两导轨之间（并联段两端）
+
     drawLine(ctx, x0, y0, r2x, y0, wc, lw)                    // 上边（两条支路的公共接点）
     drawLine(ctx, x0, y1, battX - hBat, y1, wc, lw)
     drawLine(ctx, battX + hBat, y1, swX - hSw, y1, wc, lw)
-    drawLine(ctx, swX + hSw, y1, r2x, y1, wc, lw)             // 下边（公共接点）
-    drawLine(ctx, x0, y0, x0, midY - hMeter, wc, lw)          // 左边干路（电流表）
+    drawLine(ctx, swX + hSw, y1, r2x, y1, wc, lw)             // 下边（公共接点，电压表引线在此接出）
+    drawLine(ctx, x0, y0, x0, midY - hMeter, wc, lw)          // 左边干路（总电流表）
     drawLine(ctx, x0, midY + hMeter, x0, y1, wc, lw)
+    // 电压表竖直引线（跨在并联段两端）
+    drawLine(ctx, vx, y0, vx, midY - volR - 2, on ? '#7CB342' : '#9aa7b1', 1.6 * scale + 0.4)
+    drawLine(ctx, vx, midY + volR + 2, vx, y1, on ? '#7CB342' : '#9aa7b1', 1.6 * scale + 0.4)
+    // 两条支路：R 在上、A 在下
     for (const bx of [r1x, r2x]) {
       drawLine(ctx, bx, y0, bx, midY - hRes, wc, lw)
-      drawLine(ctx, bx, midY + hRes, bx, y1, wc, lw)
+      drawLine(ctx, bx, midY + hRes, bx, aY - hMeter, wc, lw)
+      drawLine(ctx, bx, aY + hMeter, bx, y1, wc, lw)
     }
-
-    // 电压表：并在 R₁ 两端（画在 R₁ 左侧，竖表；引线贴着电阻，不外扩）
-    const vx = r1x - 50 * scale, volR = 13 * scale
-    const vTapUp = midY - (hRes + 30 * scale), vTapDn = midY + (hRes + 30 * scale)
-    ctx.save()
-    ctx.strokeStyle = on ? '#7CB342' : '#9aa7b1'
-    ctx.lineWidth = 1.6 * scale + 0.4
-    ctx.beginPath()
-    ctx.moveTo(r1x, vTapUp); ctx.lineTo(vx, vTapUp); ctx.lineTo(vx, midY - volR - 2)
-    ctx.moveTo(r1x, vTapDn); ctx.lineTo(vx, vTapDn); ctx.lineTo(vx, midY + volR + 2)
-    ctx.stroke()
-    ctx.restore()
 
     // 符号：两只电阻竖着放（旋转 90°）
     for (const bx of [r1x, r2x]) {
@@ -336,6 +356,8 @@ export default function SeriesParallelScene() {
     }
     symMeter(ctx, x0, midY, { kind: 'A', scale, ink })
     symMeter(ctx, vx, midY, { kind: 'V', scale, ink: on ? '#558B2F' : ink })
+    symMeter(ctx, r1x, aY, { kind: 'A', scale, ink })
+    symMeter(ctx, r2x, aY, { kind: 'A', scale, ink })
     symBattery(ctx, battX, y1, { n: 2, scale, ink, flip: true })
     symSwitch(ctx, swX, y1, { closed: on, scale, ink })
 
@@ -344,35 +366,43 @@ export default function SeriesParallelScene() {
       onClick: () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) },
     })
 
-    // 电子流动：干路（电源→开关→支路接点→上边→左边电流表）+ 两条支路
+    // 电子流动：干路（电源→开关→支路接点）+ R₁ 支路 + R₂ 支路
     if (on) {
       const main = [
         { x: battX + hBat, y: y1 }, { x: swX - hSw, y: y1 }, { x: swX + hSw, y: y1 },
-        { x: r1x, y: y1 }, { x: r1x, y: midY + hRes }, { x: r1x, y: midY - hRes }, { x: r1x, y: y0 },
+        { x: r1x, y: y1 }, { x: r1x, y: aY + hMeter }, { x: r1x, y: aY - hMeter },
+        { x: r1x, y: midY + hRes }, { x: r1x, y: midY - hRes }, { x: r1x, y: y0 },
         { x: x0, y: y0 }, { x: x0, y: midY - hMeter }, { x: x0, y: midY + hMeter },
         { x: x0, y: y1 }, { x: battX - hBat, y: y1 },
       ]
       drawCurrentFlow(ctx, main, s.time, 0.5)
       drawCurrentFlow(ctx, [
-        { x: r2x, y: y0 }, { x: r2x, y: midY - hRes }, { x: r2x, y: midY + hRes }, { x: r2x, y: y1 },
+        { x: r2x, y: y0 }, { x: r2x, y: midY - hRes }, { x: r2x, y: midY + hRes },
+        { x: r2x, y: aY - hMeter }, { x: r2x, y: aY + hMeter }, { x: r2x, y: y1 },
       ], s.time, 0.5)
     }
 
-    // 标注（两只电阻的标签放到上边导线之外，宽度不够时靠右对齐）
+    // 标注
     ctx.fillStyle = '#667'; ctx.font = `${labelFont}px sans-serif`
     ctx.textAlign = 'center'; ctx.textBaseline = 'top'
     ctx.fillText('电源', battX, y1 + 26 * scale)
     ctx.fillText(on ? '开关（闭合）' : '开关（断开）', swX, y1 + 26 * scale)
+    // 电阻 / 支路电流表读数：各贴各自元件写，避免两个读数连成一行难以对应
+    ctx.textAlign = 'left'
+    ctx.fillText('R₁ = 10 Ω', r1x + hRes + 10, midY - 8 * scale)
+    ctx.fillText(`A₁：${sol.I1.toFixed(2)} A`, r1x + hMeter + 10, aY - 4 * scale)
     ctx.textAlign = 'right'
-    ctx.fillText('R₁ = 10 Ω', r1x + 30, y0 - 40 * scale)
-    ctx.fillText(`I₁ = ${sol.I1.toFixed(2)} A`, r1x + 30, y0 - 22 * scale)
-    ctx.fillText('R₂ = 20 Ω', r2x, y0 - 40 * scale)
-    ctx.fillText(`I₂ = ${sol.I2.toFixed(2)} A`, r2x, y0 - 22 * scale)
-    // 电流表标注放到回路外左侧，避免与电压表引线打架
-    ctx.fillText('电流表 A（测干路 I）', x0 - 12 * scale, midY - 8 * scale)
+    ctx.fillText('R₂ = 20 Ω', r2x - hRes - 10, midY - 8 * scale)
+    ctx.fillText(`A₂：${sol.I2.toFixed(2)} A`, r2x - hMeter - 10, aY - 4 * scale)
+    // 总表
+    ctx.fillText('总电流表 A（干路）', x0 - 12 * scale, midY - 8 * scale)
     ctx.fillText(`I = ${sol.I.toFixed(2)} A`, x0 - 12 * scale, midY + 12 * scale)
     ctx.textAlign = 'center'
-    ctx.fillText(`U = ${sol.U.toFixed(2)} V`, vx, vTapUp - 14 * scale)
+    ctx.fillStyle = '#B45309'
+    ctx.fillText(`U = ${sol.U.toFixed(2)} V`, vx, midY + volR + 10 * scale)
+    ctx.textAlign = 'center'
+    ctx.fillStyle = '#15803D'
+    ctx.fillText(`I₁ + I₂ = ${(sol.I1 + sol.I2).toFixed(2)} A = I`, (r1x + r2x) / 2, y1 + 26 * scale)
   }
 
   /* ── 卡片内容 ── */
@@ -400,7 +430,9 @@ export default function SeriesParallelScene() {
       {
         t: '实验器材', c: '#C98A12',
         items: [
-          [['电源、开关、定值电阻 '], ['R₁ = 10 Ω', '#C2410C', 1], ['、'], ['R₂ = 20 Ω', '#C2410C', 1], ['、'], ['电流表', '#C2410C', 1], ['、'], ['电压表', '#C2410C', 1], ['、导线。']],
+          [['电源、开关、定值电阻 '], ['R₁ = 10 Ω', '#C2410C', 1], ['、'], ['R₂ = 20 Ω', '#C2410C', 1], ['、']],
+          [['电压表 '], ['3 只', '#C2410C', 1], ['（串联：V₁ 测 R₁、V₂ 测 R₂、V 测整段）']],
+          [['电流表 '], ['3 只', '#C2410C', 1], ['（并联：A₁ 测 R₁ 支路、A₂ 测 R₂ 支路、A 测干路）'], ['、导线。']],
         ],
       },
       {
@@ -513,10 +545,10 @@ export default function SeriesParallelScene() {
             purpose="探究串联、并联电路中电流、电压、电阻的规律：I 处处相等 / U 相加 / R 相加；U 相等 / I 相加 / R 变小。"
             steps={[
               '点画面下方药丸切换「串联 / 并联」',
-              '闭合开关，看电流、电压表读数',
-              '串联时点电压表，可改测 R₁ 或 R₂',
+              '闭合开关，读三只表：串联读 U₁、U₂、U；并联读 I₁、I₂、I',
+              '串联看 U₁ + U₂ = U；并联看 I₁ + I₂ = I',
             ]}
-            hint="串联：I 相等、U 相加、R 变大；并联：U 相等、I 相加、R 变小。"
+            hint="总表、分表都在电路里：串联用 3 只电压表（分压相加等于总压），并联用 3 只电流表（分流相加等于总流）。"
           />
         ) : (
           <InfoDock
