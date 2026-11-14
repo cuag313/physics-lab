@@ -318,13 +318,17 @@ const INNER = {
   },
 }
 
-/** 动画表针叠层：pivot/len 为显示坐标，frac∈[0,1] */
-function needleSVG(px, py, len, frac) {
-  const ang = -52 + Math.max(0, Math.min(1, frac)) * 104
+/**
+ * 动画表针叠层：pivot/len 为显示坐标，frac∈[0,1]。
+ * zero/full 为零位与满偏角（相对竖直，向右为正），按实拍图刻度弧实测；
+ * 必要时传 clipId，把针的尾部裁进表盘内，看起来像从框后穿出。
+ */
+function needleSVG(px, py, len, frac, zero = -52, full = 52, clipId = '') {
+  const a = zero + Math.max(0, Math.min(1, frac)) * (full - zero)
+  const c = clipId ? ` clip-path="url(#${clipId})"` : ''
   return `
-    <line class="needle" x1="${px}" y1="${py}" x2="${px}" y2="${py - len}" stroke="#e11d48" stroke-width="2.2"
-      stroke-linecap="round" transform="rotate(${ang.toFixed(2)} ${px} ${py})"/>
-    <circle cx="${px}" cy="${py}" r="3.6" fill="#2b3038"/>`
+    <line class="needle" x1="${px}" y1="${py}" x2="${px}" y2="${py - len}" stroke="#e11d48" stroke-width="1.7"
+      stroke-linecap="round" transform="rotate(${a.toFixed(2)} ${px} ${py})"${c}/>`
 }
 
 /**
@@ -780,8 +784,12 @@ export const TYPES = {
       { id: 'full', label: '3', name: '3A 接线柱', x: 100, y: 110 },
     ],
     render(c, dyn) {
+      // 刻度弧实测（ammeter_c.png 118×138 → 130×152）：圆心(59,98) R59.5，
+      // 即显示坐标 pivot(65,107.9) 臂长 64.5；零位在正上（0 刻度），满偏 +41°。
+      // 轴心落在黑底座上，用 clip 让针从表盘下沿穿出。
       return `
     <svg width="130" height="152" viewBox="0 0 130 152">
+      <defs><clipPath id="es-clip-ammDial"><rect x="11" y="11" width="112.4" height="87"/></clipPath></defs>
       ${fitInner(130, 150, 130, 152, INNER.meter((dyn?.frac || 0) * 22))}
       ${photo('ammeter_c.png', 130, 152)}
       ${termDotsSVG([
@@ -789,7 +797,7 @@ export const TYPES = {
         { x: 65, y: 110, label: '0.6', dark: false },
         { x: 100, y: 110, label: '3', dark: false },
       ])}
-      ${needleSVG(64, 88, 54, dyn?.frac || 0)}
+      ${needleSVG(65, 107.9, 64.5, dyn?.frac || 0, 0, 41, 'es-clip-ammDial')}
     </svg>` }
   },
 
@@ -839,7 +847,7 @@ export const TYPES = {
     <svg width="130" height="133" viewBox="0 0 130 133">
       ${fitInner(130, 150, 130, 133, INNER.meter((dyn?.frac || 0) * 22))}
       ${photo('voltmeter_c.png', 130, 133)}
-      ${needleSVG(65, 83, 62, dyn?.frac || 0)}
+      ${needleSVG(61.9, 81.5, 53, dyn?.frac || 0, -26.3, 41.8)}
     </svg>` }
   },
 
