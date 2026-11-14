@@ -4,10 +4,11 @@
  */
 import { useState } from 'react'
 
-function Chip({ id, icon, title, open, onToggle, children }) {
+function Chip({ id, icon, title, open, onToggle, align = 'right', children }) {
   const [peek, setPeek] = useState(false)
   return (
-    <div className={`info-bubble${open ? ' is-open' : ''}`} style={styles.wrap}>
+    <div className={`info-bubble${open ? ' is-open' : ''}`}
+      style={{ ...styles.wrap, ...(align === 'left' ? styles.wrapLeft : null) }}>
       <button
         type="button"
         className="info-bubble-chip"
@@ -45,6 +46,7 @@ export default function InfoDock({
   stepsTitle = '操作手册',
   hint,
   hintTitle = '提示',
+  align = 'right',
   children,
   defaultOpen = null,
 }) {
@@ -79,9 +81,10 @@ export default function InfoDock({
   if (!items.length) return null
 
   return (
-    <div className="info-bubbles" style={styles.rail}>
+    <div className="info-bubbles" style={{ ...styles.rail, ...(align === 'left' ? styles.railLeft : null) }}>
       {items.map((it) => (
-        <Chip key={it.id} id={it.id} icon={it.icon} title={it.title} open={openId === it.id} onToggle={toggle}>
+        <Chip key={it.id} id={it.id} icon={it.icon} title={it.title} open={openId === it.id} onToggle={toggle}
+          align={align}>
           {it.body}
         </Chip>
       ))}
@@ -101,12 +104,14 @@ const styles = {
     gap: 8,
     pointerEvents: 'none',
   },
+  railLeft: { right: 'auto', left: 6, alignItems: 'flex-start' },
   wrap: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'flex-end',
     pointerEvents: 'auto',
   },
+  wrapLeft: { alignItems: 'flex-start' },
   chip: (open) => ({
     display: 'inline-flex',
     alignItems: 'center',

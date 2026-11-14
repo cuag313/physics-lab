@@ -17,14 +17,15 @@ describe('rheostatMode：按实际接线柱判定接入方式', () => {
   })
 })
 
-describe('rheostat 渲染：通电线圈整段浅黄，随 mode / 通电状态变化', () => {
+describe('rheostat 渲染：通电线圈变金黄（只染绕线，不染瓷筒），随 mode / 通电状态变化', () => {
   const c = { f: 0.3, rmax: 10 }
   const xw = RHEO_TRACK.x0 + 0.3 * (RHEO_TRACK.x1 - RHEO_TRACK.x0)
 
-  it('合上开关（live）+ left-wire：左段整圈绕线着浅黄；读数 = f*rmax', () => {
+  it('合上开关（live）+ left-wire：左段整圈绕线着金黄；读数 = f*rmax', () => {
     const svg = rheo.render(c, { mode: 'left-wire', live: true })
-    expect(svg).toContain('fill="url(#es-g-rheoLive)"')          // 通电着色（整面，不是一条线）
-    expect(svg).toContain(`width="${(xw - 34).toFixed(1)}"`)     // 从绕线左端到滑片
+    expect(svg).toContain('fill="url(#es-g-rheoGold)"')          // 通电着色（整面，不是一条线）
+    expect(svg).toContain('mask="url(#es-m-rheoCoil)"')          // 只染绕线像素，瓷筒保持原色
+    expect(svg).toContain(`width="${(xw - 34).toFixed(1)}"`)      // 从绕线左端到滑片
     expect(svg).toContain(`R = ${(0.3 * 10).toFixed(1)} Ω`)
     expect(svg).not.toContain('es-rheo-flow')                    // 旧的流动粒子已删
     expect(svg).not.toContain('stroke="#f59e0b"')                // 旧的橙色指示线已删
@@ -32,7 +33,7 @@ describe('rheostat 渲染：通电线圈整段浅黄，随 mode / 通电状态�
 
   it('开关断开（live=false）：绕线不着色', () => {
     const svg = rheo.render(c, { mode: 'left-wire', live: false })
-    expect(svg).not.toContain('fill="url(#es-g-rheoLive)"')
+    expect(svg).not.toContain('fill="url(#es-g-rheoGold)"')
   })
 
   it('right-wire：从滑片到绕线右端 x158；读数 = (1-f)*rmax', () => {
@@ -46,7 +47,7 @@ describe('rheostat 渲染：通电线圈整段浅黄，随 mode / 通电状态�
     const s = rheo.render(c, { mode: 'short', live: true })
     expect(s).toContain('短路')
     expect(s).toContain('stroke="#ef4444"')
-    expect(s).not.toContain('fill="url(#es-g-rheoLive)"')
+    expect(s).not.toContain('fill="url(#es-g-rheoGold)"')
   })
 
   it('full-wire：整段绕线着色 + 旁注', () => {

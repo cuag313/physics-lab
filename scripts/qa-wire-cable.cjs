@@ -89,7 +89,7 @@ async function main() {
   await sleep(500)
   const live = await page.evaluate(() => {
     const r = document.querySelector('.esvg-comp[data-type="rheostat"]')
-    return r ? !!r.querySelector('rect[fill*="rheoLive"]') : null
+    return r ? !!r.querySelector('rect[fill*="rheoGold"]') : null
   })
   console.log('switch closed → rheostat tinted?', live)
   await page.screenshot({ path: path.join(OUT, 'wire-cable-closed.png'), clip })
@@ -110,7 +110,7 @@ async function main() {
   }
   const tint = await page.evaluate(() => {
     const r = document.querySelector('.esvg-comp[data-type="rheostat"]')
-    const rect = r && r.querySelector('rect[fill*="rheoLive"]')
+    const rect = r && r.querySelector('rect[fill*="rheoGold"]')
     return rect ? { x: rect.getAttribute('x'), w: rect.getAttribute('width') } : null
   })
   console.log('slider moved → tint rect:', JSON.stringify(tint))

@@ -35,6 +35,11 @@ const CSS = `
   background:linear-gradient(145deg,#38bdf8,#2563eb);box-shadow:0 0 12px rgba(56,189,248,.55)}
 .esvg-brand h1{font-size:15px;font-weight:600;letter-spacing:.5px}
 .esvg-tools{display:flex;gap:8px;flex-wrap:wrap}
+/* 操作说明挪到左上、紧贴标题（用户要求：不要挤在右上角一排按钮尾巴上） */
+.esvg-help{margin-left:14px;padding:6px 11px;font-size:12.5px;border-radius:8px;cursor:pointer;
+  border:1px solid rgba(148,163,184,.45);background:rgba(148,163,184,.14);color:#e2e8f0;
+  font-family:inherit;transition:.18s;white-space:nowrap}
+.esvg-help:hover{background:rgba(56,189,248,.22);border-color:#38bdf8;color:#e0f2fe}
 .esvg-root .btn{border:1px solid rgba(148,163,184,.35);background:rgba(148,163,184,.12);color:#e2e8f0;
   padding:6px 12px;font-size:12.5px;border-radius:8px;cursor:pointer;transition:.18s;font-family:inherit}
 .esvg-root .btn:hover{background:rgba(148,163,184,.28);border-color:rgba(148,163,184,.6)}
@@ -97,9 +102,11 @@ const CSS = `
   background:rgba(15,23,42,.86);color:#e2e8f0;font-size:12.5px;cursor:pointer;
   box-shadow:0 6px 16px rgba(2,6,23,.35)}
 .esvg-3d-actions button:hover{background:rgba(30,41,59,.95);border-color:#64748b}
-.esvg-wirelayer{position:absolute;inset:0;pointer-events:none;z-index:1}
-/* 端头护套层：压在器材之上。导线本体走器材后面（真导线也不会浮在仪表脸上），
-   但两端必须看得见"夹在柱帽下方"，否则会像悬在器材边上。 */
+/* 导线层压在器材底板之上：这些器材都是平放的板/台，真导线是摆在板面上、绕到柱脚的，
+   若把线画在器材后面，线就会被板子"切断"，看着像从底座里穿过去。
+   （仪表这类立起来的件会压住经过的线，但本场景里它们都摆在导线之外，不影响） */
+.esvg-wirelayer{position:absolute;inset:0;pointer-events:none;z-index:3}
+/* 端头护套层：再压在导线之上、器材之上，保证"夹在柱帽下方"这件事永远看得见。 */
 .esvg-wiretop{position:absolute;inset:0;pointer-events:none;z-index:6}
 .esvg-partlayer{position:absolute;inset:0;z-index:2;pointer-events:none}
 .esvg-comp{position:absolute;cursor:grab;touch-action:none;pointer-events:auto}
@@ -140,8 +147,12 @@ const CSS = `
 .esvg-statusbar .bad{color:#fb7185;font-weight:600}
 .esvg-statusbar .sep{color:#334155}
 .esvg-canvas .casing{transition:opacity .25s}
-/* 内部结构层里的虚线/色块只是剖视标注：底图带透明区（滑变下方的投影、灯泡底板下缘），
-   不剖视时它们会从透明区透出来，看着像器材边上多了一条淡色圆角条 */
+/* 内部结构层里的虚线/色块只是剖视标注（统一用 #2563eb/#1d4ed8 描边或填充）。
+   底图都有透明区（器材下方的柔和投影、板下缘之外），不剖视时这些标注会从那片透明区透出来，
+   看着像器材边上多出一条淡色圆角条/蓝虚线。这里按颜色把它们关掉，真正的内部零件（暗色实体）不受影响。 */
+.esvg-canvas:not(.dissect) .inner [stroke="#2563eb"],
+.esvg-canvas:not(.dissect) .inner [stroke="#1d4ed8"],
+.esvg-canvas:not(.dissect) .inner [fill="#2563eb"],
 .esvg-canvas:not(.dissect) .ann{display:none}
 .esvg-canvas .plabel{opacity:0;transition:opacity .25s;font-size:9.5px;fill:#1d4ed8;
   font-weight:600;text-anchor:middle;pointer-events:none}
@@ -965,6 +976,7 @@ export default function ElectricSvgLabScene() {
         <div className="esvg-brand">
           <div className="logo">⚡</div>
           <h1>初中物理 · 电学虚拟实验室</h1>
+          <button type="button" className="esvg-help" onClick={() => setHelpOpen(true)}>❓ 操作说明</button>
         </div>
         <div className="esvg-tools">
           {/* 导线颜色：红 / 绿 / 黑（选中导线时同步改色） */}
@@ -1008,7 +1020,6 @@ export default function ElectricSvgLabScene() {
           </button>
           <button type="button" className="btn" onClick={loadDemo}>🧪 示例电路</button>
           <button type="button" className="btn" onClick={clearAll}>🗑 清空桌面</button>
-          <button type="button" className="btn" onClick={() => setHelpOpen(true)}>❓ 操作说明</button>
         </div>
       </header>
 

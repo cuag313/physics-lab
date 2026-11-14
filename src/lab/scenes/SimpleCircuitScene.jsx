@@ -312,14 +312,14 @@ export default function SimpleCircuitScene() {
       tab1Label="📖 电路演示"
       tab2Label="🔧 自己动手"
       onReset={handleReset}
-      desc={(
+      desc={tab === 1 ? (
         <>
           <b>简单电路</b>
           <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
-            {tab === 1 ? '电路演示：矩形回路 · 点击开关 · 标准符号 · 电子方向' : '自己动手（2D/SVG）：点右侧器材加入 · 拖拽移动 · 接线柱连线 · 双击删除'}
+            电路演示：矩形回路 · 点击开关 · 标准符号 · 电子方向
           </span>
         </>
-      )}
+      ) : null}
     >
       <div style={{ display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0, width: '100%' }}>
         <canvas
@@ -343,6 +343,7 @@ export default function SimpleCircuitScene() {
           />
         ) : (
           <InfoDock
+            align="left"
             hint="点右侧器材加入 → 拖拽移动 → 点接线柱连线。轻点开关通断，双击电表看读数，双击器材或按 Delete 删除。"
             hintTitle="操作说明"
           />

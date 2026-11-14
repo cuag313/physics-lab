@@ -12,7 +12,7 @@ import { capPaint } from '../theme/termColors.js'
 export const FIG = '/physics-lab/assets/equipment/fig'
 /* 实拍图版本号：同名图片被覆盖后浏览器会继续用旧缓存（元件库缩略图尤其明显），
    所有 fig 图片 URL 统一带这串版本参数，改图时把它 +1 即可强制刷新。 */
-export const FIG_V = '20261114a'
+export const FIG_V = '20261114b'
 export const figURL = (file) => `${FIG}/${file}?v=${FIG_V}`
 
 /** 滑动变阻器滑片轨道（显示坐标）：与实拍图里瓷筒绕线的左右端对齐（33..159） */
@@ -879,18 +879,19 @@ export const TYPES = {
       const BL = { x: 16, y: 38.5 }, BR = { x: 174, y: 38 }
       const TL = { x: 5, y: 5 }, TR = { x: 184, y: 5 }
 
-      // 通电段：整段绕线着浅黄（一面覆盖瓷筒上的整圈绕线，不是一条指示线）；
-      // 只有开关合上、确实有电流流过线圈时才出现（live 由场景按 solved._I 判定）
+      // 通电段：只有绕在瓷筒上的线圈着金黄，瓷筒本体/金属环/金属杆保持原色。
+      // 用 rheostat_coilmask.png 当 mask —— 它按"暗且饱和"从底图里挑出绕线像素（band 外为 0），
+      // 所以每匝线里的明暗和匝与匝之间的缝都还在，不像刷了一层色块。
       const live = !!dyn?.live
       const xwClamped = Math.max(CO.x0, Math.min(CO.x1, xw))
       const segX = mode === 'left-wire' ? [CO.x0, xwClamped]
         : mode === 'right-wire' ? [xwClamped, CO.x1]
           : mode === 'full-wire' ? [CO.x0, CO.x1]
             : null
-      const WY = 12.6, WH = 30.8 // 绕线可见带：瓷筒顶棱 12.7 → 瓷筒底 43.4
+      const WY = 12.6, WH = 42.0 // 绕线可见带：瓷筒顶棱 12.7 → 绕线下缘 54.5（再往下是瓷筒底和脚）
       const highlight = (live && segX)
-        ? `<rect x="${segX[0].toFixed(1)}" y="${WY}" width="${Math.max(0, segX[1] - segX[0]).toFixed(1)}" height="${WH}"
-             fill="url(#es-g-rheoLive)" rx="6"/>`
+        ? `<rect class="rheo-live" x="${segX[0].toFixed(1)}" y="${WY}" width="${Math.max(0, segX[1] - segX[0]).toFixed(1)}" height="${WH}"
+             fill="url(#es-g-rheoGold)" mask="url(#es-m-rheoCoil)"/>`
         : ''
 
       // 金属杆红色高亮（短路）：压在照片里的金属杆上
@@ -927,17 +928,23 @@ export const TYPES = {
          形状照拆解图左下角那块单独滑片零件：上端黑柄、两侧细触脚带触头、中间白色圆底隔板 */
       const slider = `
       <g class="slider-handle" data-role="slider" style="cursor:ew-resize">
-        <path d="M${(xw - 6.8).toFixed(1)} 6.8 H${(xw + 6.8).toFixed(1)} V21.4
-                 Q${(xw + 6.8).toFixed(1)} 28.4 ${xw.toFixed(1)} 28.4
-                 Q${(xw - 6.8).toFixed(1)} 28.4 ${(xw - 6.8).toFixed(1)} 21.4 Z"
-              fill="url(#es-g-rheoPlate)" stroke="#8e9aa7" stroke-width="0.55" stroke-opacity="0.8"
+        <!-- 滑片压板在绕线上的落影：让"压着绕线"这件事看得出来 -->
+        <ellipse cx="${xw.toFixed(1)}" cy="19.6" rx="7.6" ry="8.2" fill="#0b1118" opacity="0.16"/>
+        <path d="M${(xw - 6.4).toFixed(1)} 6.6 H${(xw + 6.4).toFixed(1)} V20.6
+                 Q${(xw + 6.4).toFixed(1)} 27.6 ${xw.toFixed(1)} 27.6
+                 Q${(xw - 6.4).toFixed(1)} 27.6 ${(xw - 6.4).toFixed(1)} 20.6 Z"
+              fill="url(#es-g-rheoPlate)" stroke="#7d8894" stroke-width="0.55" stroke-opacity="0.85"
               filter="url(#es-f-rheoPlate)"/>
-        <rect x="${(xw - 8.9).toFixed(1)}" y="5.9" width="1.5" height="8.9" rx="0.75"
-              fill="url(#es-g-rheoArm)" stroke="#78838f" stroke-width="0.45"/>
-        <rect x="${(xw + 7.4).toFixed(1)}" y="5.9" width="1.5" height="8.9" rx="0.75"
-              fill="url(#es-g-rheoArm)" stroke="#78838f" stroke-width="0.45"/>
-        <circle cx="${(xw - 8.15).toFixed(1)}" cy="14.4" r="1.45" fill="#3d444c"/>
-        <circle cx="${(xw + 8.15).toFixed(1)}" cy="14.4" r="1.45" fill="#3d444c"/>
+        <!-- 压板左侧的镜面高光：金属件不亮就是一张纸 -->
+        <path d="M${(xw - 5.2).toFixed(1)} 8.2 V20.0 Q${(xw - 5.2).toFixed(1)} 24.4 ${(xw - 2.9).toFixed(1)} 25.4"
+              fill="none" stroke="#ffffff" stroke-width="1.1" stroke-opacity="0.75"/>
+        <!-- 两根钢触臂：从黑柄两侧贴着压板边缘下来，触头压在绕线上（不再悬空） -->
+        <rect x="${(xw - 8.0).toFixed(1)}" y="5.4" width="1.9" height="10.4" rx="0.9"
+              fill="url(#es-g-rheoArm)" stroke="#6f7a86" stroke-width="0.45"/>
+        <rect x="${(xw + 6.1).toFixed(1)}" y="5.4" width="1.9" height="10.4" rx="0.9"
+              fill="url(#es-g-rheoArm)" stroke="#6f7a86" stroke-width="0.45"/>
+        <circle cx="${(xw - 7.05).toFixed(1)}" cy="15.4" r="1.35" fill="#2f363e"/>
+        <circle cx="${(xw + 7.05).toFixed(1)}" cy="15.4" r="1.35" fill="#2f363e"/>
         <rect x="${(xw - 8.4).toFixed(1)}" y="${(ROD_Y - 5.3).toFixed(1)}" width="16.8" height="6.2" rx="2.6"
               fill="url(#es-g-rheoHandle)" stroke="#0b0d10" stroke-width="0.9"/>
         <rect x="${(xw - 4.8).toFixed(1)}" y="${(ROD_Y - 3.7).toFixed(1)}" width="9.6" height="1.3" rx="0.65"
@@ -947,15 +954,20 @@ export const TYPES = {
       return `
     <svg width="190" height="79" viewBox="0 0 190 79">
       <defs>
-        <!-- 通电绕线的浅黄着色：上淡下浓，照片的圆柱明暗还从里面透出来 -->
-        <linearGradient id="es-g-rheoLive" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#fffbe2" stop-opacity="0.90"/>
-          <stop offset="0.34" stop-color="#ffe987" stop-opacity="0.74"/>
-          <stop offset="0.72" stop-color="#ffd945" stop-opacity="0.60"/>
-          <stop offset="1" stop-color="#f7c62c" stop-opacity="0.46"/>
+        <!-- 通电绕线的金黄色：竖向明暗照圆柱受光走，透明度靠下面的 mask 逐像素开合 -->
+        <linearGradient id="es-g-rheoGold" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#ffe08a" stop-opacity="0.88"/>
+          <stop offset="0.26" stop-color="#ffc63a" stop-opacity="0.86"/>
+          <stop offset="0.66" stop-color="#f0a010" stop-opacity="0.82"/>
+          <stop offset="1" stop-color="#c07c08" stop-opacity="0.74"/>
         </linearGradient>
+        <!-- 线圈蒙版：只有绕线的像素是白的（见 scripts/make-rheostat-asset.py） -->
+        <mask id="es-m-rheoCoil" maskUnits="userSpaceOnUse" x="0" y="0" width="190" height="79">
+          <image href="${figURL('rheostat_coilmask.png')}" x="0" y="0" width="190" height="79"
+                 preserveAspectRatio="none"/>
+        </mask>
         <linearGradient id="es-g-rheoPlate" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#b9c4d0"/><stop offset="0.42" stop-color="#dde4ec"/><stop offset="1" stop-color="#f8fbfd"/>
+          <stop offset="0" stop-color="#a7b5c3"/><stop offset="0.48" stop-color="#e3ebf3"/><stop offset="1" stop-color="#fbfdff"/>
         </linearGradient>
         <linearGradient id="es-g-rheoHandle" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stop-color="#4b515a"/><stop offset="0.55" stop-color="#2a2e34"/><stop offset="1" stop-color="#121417"/>
