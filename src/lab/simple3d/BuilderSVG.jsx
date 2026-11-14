@@ -20,7 +20,7 @@ import {
 import { solveCircuit, CFG } from '../engine/electricLab.js'
 import { TYPES, RHEO_TRACK, rheostatMode } from '../scenes/electricSvgInstruments.js'
 import {
-  wireCurve, curveD, curveMid, wireLayers, bootLayers,
+  wireCurve, curveD, curveMid, wireLayers, wrapLayers,
 } from '../render/wireSvg.js'
 
 /* 画布逻辑尺寸（与完整实验室一致的 1800×1100 比例，内部等比缩放适配容器） */
@@ -342,13 +342,20 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
 
   const compById = (id) => comps.find((c) => c.id === id)
 
-  /* 端头护套：扣在柱帽正下方的柱脚上（导线就是从这儿"夹"出去的）。
-     单独一层画在器材之上，否则整颗会被器材照片盖掉，看着像线悬在器材旁边。 */
-  const bootAt = (p, B, k) => (
+  /* 端头：裸铜丝绕在柱脚的接线柱上（外皮到柱子前就结束，铜丝扣在柱脚上） */
+  const wrapAt = (p, W, k) => (
     <g key={k} transform={`translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`}>
-      <circle r={B.r} fill={B.ring} />
-      <circle r={B.r * 0.64} fill={B.body} />
-      <circle cx={-B.r * 0.26} cy={-B.r * 0.32} r={B.r * 0.22} fill={B.light} opacity="0.62" />
+      {/* 柱脚上的落影：只铺在绕线下面一点点，别整块涂黑 */}
+      <ellipse cy={(W.ry * 0.9).toFixed(2)} rx={(W.rx + 0.7).toFixed(2)} ry={(W.ry * 0.55).toFixed(2)}
+        fill="rgba(15,23,42,0.24)" />
+      {/* 裸铜丝盘在柱脚上（螺旋，能看出往上绕的方向） */}
+      <path d={W.d} fill="none" stroke={W.metalDark} strokeWidth={(W.sw + 0.8).toFixed(2)}
+        strokeLinecap="round" opacity="0.9" />
+      <path d={W.d} fill="none" stroke={W.metal} strokeWidth={W.sw.toFixed(2)} strokeLinecap="round" />
+      <path d={W.dHi} fill="none" stroke={W.metalHi} strokeWidth={Math.max(0.5, W.sw * 0.42).toFixed(2)}
+        strokeLinecap="round" opacity="0.8" />
+      {/* 柱脚外侧拧出来的线头 */}
+      <path d={W.tail} fill="none" stroke={W.metal} strokeWidth={(W.sw * 0.9).toFixed(2)} strokeLinecap="round" />
     </g>
   )
 
@@ -362,9 +369,9 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             repeating-linear-gradient(0deg,transparent 0 39px,#e7edf5 39px 40px),
             repeating-linear-gradient(90deg,transparent 0 39px,#e7edf5 39px 40px);
           box-shadow:inset 0 0 0 1px #dbe3ec,0 10px 30px rgba(15,23,42,.07);margin:12px}
-        .esb-wirelayer{position:absolute;inset:0;pointer-events:none;z-index:1}
-        /* 端头护套层：压在器材之上。导线本体走器材后面（真导线也不会浮在仪表脸上），
-           但两端必须看得见"夹在柱帽下方"，否则会像悬在器材边上。 */
+        .esb-wirelayer{position:absolute;inset:0;pointer-events:none;z-index:3}
+        /* 端头层：导线本体整根压在器材之上（真导线是摆在板面上、绕到柱脚的）；
+           这一层只负责让"裸铜丝绕在柱脚上"永远画在所有导线最上面。 */
         .esb-wiretop{position:absolute;inset:0;pointer-events:none;z-index:6}
         .esb-partlayer{position:absolute;inset:0;z-index:2;pointer-events:none}
         .esb-comp{position:absolute;cursor:grab;touch-action:none;pointer-events:auto}
@@ -410,7 +417,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             const I = Math.abs((solved._wireI && solved._wireI[w.id]) || 0)
             const color = I < 0.1 ? (w.color || '#475569') : I < 0.3 ? '#f59e0b' : '#ef4444'
             const L = wireLayers(g.cur, color, WIRE_W)
-            const B = bootLayers(color, WIRE_W)
+            const B = wrapLayers(color, WIRE_W)
             return (
               <g key={w.id}>
                 {/* 连续电缆：落影 → 外皮 → 本色 → 上偏高光 */}
@@ -423,8 +430,8 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
                   className={I > 1 ? 'esb-wire-hot' : ''} />
                 <path d={L.dSheen} fill="none" stroke={L.sheen} strokeWidth={Math.max(1, L.w * 0.32)}
                   strokeLinecap="round" opacity="0.6" />
-                {bootAt(g.p1, B, 'b1')}
-                {bootAt(g.p2, B, 'b2')}
+                {wrapAt(g.p1, B, 'b1')}
+                {wrapAt(g.p2, B, 'b2')}
                 {/* 命中区压在最上层 */}
                 <path d={L.d} fill="none" stroke="transparent" strokeWidth={18} strokeLinecap="round"
                   style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
@@ -481,25 +488,6 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         {/* 端头护套层：压在器材之上（导线本体在器材后面，护套必须在前面，
             否则"接到接线柱上"这件事看不出来） */}
         <svg className="esb-wiretop" width={CW} height={CH}>
-          <defs>
-            {wires.map((w) => {
-              const c1 = compById(+w.a.split(':')[0])
-              const c2 = compById(+w.b.split(':')[0])
-              if (!c1 || !c2) return null
-              const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13)
-              if (!g) return null
-              return (
-                <g key={w.id}>
-                  <clipPath id={`esbt-${w.id}-a`}>
-                    <circle cx={g.p1.x.toFixed(1)} cy={g.p1.y.toFixed(1)} r="18" />
-                  </clipPath>
-                  <clipPath id={`esbt-${w.id}-b`}>
-                    <circle cx={g.p2.x.toFixed(1)} cy={g.p2.y.toFixed(1)} r="18" />
-                  </clipPath>
-                </g>
-              )
-            })}
-          </defs>
           {wires.map((w) => {
             const c1 = compById(+w.a.split(':')[0])
             const c2 = compById(+w.b.split(':')[0])
@@ -508,22 +496,11 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             if (!g) return null
             const I = Math.abs((solved._wireI && solved._wireI[w.id]) || 0)
             const color = I < 0.1 ? (w.color || '#475569') : I < 0.3 ? '#f59e0b' : '#ef4444'
-            const L = wireLayers(g.cur, color, WIRE_W)
-            const B = bootLayers(color, WIRE_W)
-            const tail = (k) => (
-              <g key={k} clipPath={`url(#esbt-${w.id}-${k})`}>
-                <path d={L.d} fill="none" stroke={L.casing} strokeWidth={L.w + 1.9} strokeLinecap="round" />
-                <path d={L.d} fill="none" stroke={L.core} strokeWidth={L.w} strokeLinecap="round" />
-                <path d={L.dSheen} fill="none" stroke={L.sheen} strokeWidth={Math.max(1, L.w * 0.32)}
-                  strokeLinecap="round" opacity="0.6" />
-              </g>
-            )
+            const B = wrapLayers(color, WIRE_W)
             return (
               <g key={w.id}>
-                {tail('a')}
-                {tail('b')}
-                {bootAt(g.p1, B, 'b1')}
-                {bootAt(g.p2, B, 'b2')}
+                {wrapAt(g.p1, B, 'b1')}
+                {wrapAt(g.p2, B, 'b2')}
               </g>
             )
           })}

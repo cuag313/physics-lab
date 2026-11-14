@@ -106,3 +106,49 @@ export function bootLayers(color, w = 4.2) {
     light: shade(color, 0.55),
   }
 }
+
+/**
+ * 导线端头"裸铜丝绕在接线柱上"
+ *
+ * 真接法：导线外皮在离柱子几毫米处被剥掉，露出里面的铜丝，铜丝在柱脚的
+ * 螺栓上绕一两匝、拧紧，再把柱帽拧下来压住。所以端头不该是一颗彩色圆球，
+ * 而应是「外皮到柱子前就没了 + 一小圈铜色线圈扣在柱脚上」。
+ * 这里给两匝椭圆环的几何，下面各场景自己按顺序描（暗底 → 铜色 → 高光）。
+ */
+/**
+ * 导线端头"裸铜丝绕在接线柱上"
+ *
+ * 真接法：外皮在离柱子几毫米处剥掉，露出铜丝，铜丝在柱脚的接线柱上绕一两匝拧紧，
+ * 再把柱帽压下来。端头因此不该是一颗彩色圆球，而应是「外皮到柱子前就没了 +
+ * 一小段裸铜丝盘在柱脚上」。这里给的是**螺旋路径**：几圈同心的椭圆环叠一起会糊成
+ * 一个铜垫圈，螺旋线才能看出"往上绕"的方向。
+ */
+export function wrapLayers(color, w = 4.2) {
+  const rx = w * 1.16          // 绕在柱脚上的横向半径
+  const ry = w * 0.46          // 立面看是扁的（视线略高）
+  const turns = 2.15
+  const y0 = w * 0.10          // 最下面一匝在柱脚略下方
+  const rise = -w * 1.34       // 一共往上爬这么高（匝与匝要留缝，糊一起就成了铜疙瘩）
+  const N = 34
+  const pts = []
+  for (let i = 0; i <= N; i++) {
+    const t = (i / N) * turns * Math.PI * 2
+    const k = i / N
+    const rr = 1 - 0.16 * k                      // 越往上略收
+    const a = 2.05 + t                            // 起点在左下前方
+    pts.push({ x: rx * rr * Math.cos(a), y: y0 + rise * k + ry * rr * Math.sin(a) })
+  }
+  const d = 'M' + pts.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L')
+  const dHi = 'M' + pts.map((p) => `${p.x.toFixed(1)} ${(p.y - w * 0.16).toFixed(1)}`).join(' L')
+  return {
+    rx, ry,
+    d,
+    dHi,
+    sw: Math.max(0.85, w * 0.21),                  // 裸铜丝比整根电缆细得多
+    metal: '#c07a30',
+    metalHi: '#f0c897',
+    metalDark: '#4a2e12',
+    // 柱脚外侧留一小截拧出来的线头，不修边幅才像手工绕的
+    tail: `M${(rx * 0.82).toFixed(1)} ${(y0 + ry * 0.45).toFixed(1)} q${(w * 0.5).toFixed(1)} ${(w * 0.3).toFixed(1)} ${(w * 0.9).toFixed(1)} ${(-w * 0.25).toFixed(1)}`,
+  }
+}

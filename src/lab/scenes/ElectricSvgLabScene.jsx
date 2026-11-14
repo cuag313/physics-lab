@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { solveCircuit, circuitStatus, CFG, TERM_IDS } from '../engine/electricLab.js'
 import { TYPES, RHEO_TRACK, figURL, rheostatMode } from './electricSvgInstruments.js'
-import { wireCurve, curveD, curveMid, wireLayers, bootLayers } from '../render/wireSvg.js'
+import { wireCurve, curveD, curveMid, wireLayers, wrapLayers } from '../render/wireSvg.js'
 import { createLabRenderer } from '../lab3d/three-render.js'
 import { renderIcon, SOLID_TYPES } from '../lab3d/solidEquipment.js'
 
@@ -106,7 +106,7 @@ const CSS = `
    若把线画在器材后面，线就会被板子"切断"，看着像从底座里穿过去。
    （仪表这类立起来的件会压住经过的线，但本场景里它们都摆在导线之外，不影响） */
 .esvg-wirelayer{position:absolute;inset:0;pointer-events:none;z-index:3}
-/* 端头护套层：再压在导线之上、器材之上，保证"夹在柱帽下方"这件事永远看得见。 */
+/* 端头层：裸铜丝绕柱这件事要压在导线之上，否则导线把铜丝盖一半，就看不出"绕在柱子上"。 */
 .esvg-wiretop{position:absolute;inset:0;pointer-events:none;z-index:6}
 .esvg-partlayer{position:absolute;inset:0;z-index:2;pointer-events:none}
 .esvg-comp{position:absolute;cursor:grab;touch-action:none;pointer-events:auto}
@@ -957,13 +957,21 @@ export default function ElectricSvgLabScene() {
 
   const compById = (id) => comps.find((c) => c.id === id)
 
-  /* 端头护套：一个橡皮护套扣在柱帽正下方的柱脚上（导线就是从这儿"夹"出去的）。
-     单独一层画在器材之上，否则会整颗被器材照片盖掉，看着像线悬在器材旁边。 */
-  const bootAt = (p, B, k) => (
+  /* 端头：裸铜丝绕在柱脚的接线柱上（外皮到柱子前就结束，铜丝扣在柱脚上）。
+     单独一层画在器材之上，否则整圈会被器材照片盖掉，看着像线悬在器材旁边。 */
+  const wrapAt = (p, W, k) => (
     <g key={k} transform={`translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`}>
-      <circle r={B.r} fill={B.ring} />
-      <circle r={B.r * 0.64} fill={B.body} />
-      <circle cx={-B.r * 0.26} cy={-B.r * 0.32} r={B.r * 0.22} fill={B.light} opacity="0.62" />
+      {/* 柱脚上的落影：只铺在绕线下面一点点，别整块涂黑 */}
+      <ellipse cy={(W.ry * 0.9).toFixed(2)} rx={(W.rx + 0.7).toFixed(2)} ry={(W.ry * 0.55).toFixed(2)}
+        fill="rgba(15,23,42,0.24)" />
+      {/* 裸铜丝盘在柱脚上（螺旋，能看出往上绕的方向） */}
+      <path d={W.d} fill="none" stroke={W.metalDark} strokeWidth={(W.sw + 0.8).toFixed(2)}
+        strokeLinecap="round" opacity="0.9" />
+      <path d={W.d} fill="none" stroke={W.metal} strokeWidth={W.sw.toFixed(2)} strokeLinecap="round" />
+      <path d={W.dHi} fill="none" stroke={W.metalHi} strokeWidth={Math.max(0.5, W.sw * 0.42).toFixed(2)}
+        strokeLinecap="round" opacity="0.8" />
+      {/* 柱脚外侧拧出来的线头 */}
+      <path d={W.tail} fill="none" stroke={W.metal} strokeWidth={(W.sw * 0.9).toFixed(2)} strokeLinecap="round" />
     </g>
   )
 
@@ -1121,7 +1129,7 @@ export default function ElectricSvgLabScene() {
                 const I = Math.abs((solved._wireI && solved._wireI[w.id]) || 0)
                 const color = shorted ? '#dc2626' : wireStroke(w)
                 const L = wireLayers(g.cur, color, WIRE_W)
-                const B = bootLayers(color, WIRE_W)
+                const B = wrapLayers(color, WIRE_W)
                 return (
                   <g key={w.id}>
                     <path d={L.dShadow} fill="none" stroke="rgba(15,23,42,0.20)" strokeWidth={L.w + 1.5} strokeLinecap="round" />
@@ -1133,8 +1141,8 @@ export default function ElectricSvgLabScene() {
                       className={I > 1 ? 'esvg-wire-hot' : ''} />
                     <path d={L.dSheen} fill="none" stroke={L.sheen} strokeWidth={Math.max(1, L.w * 0.32)}
                       strokeLinecap="round" opacity="0.6" />
-                    {bootAt(g.p1, B, 'b1')}
-                    {bootAt(g.p2, B, 'b2')}
+                    {wrapAt(g.p1, B, 'b1')}
+                    {wrapAt(g.p2, B, 'b2')}
                     {/* 命中区压在最上层 */}
                     <path d={L.d} fill="none" stroke="transparent" strokeWidth={18} strokeLinecap="round"
                       style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
@@ -1198,30 +1206,9 @@ export default function ElectricSvgLabScene() {
               })}
             </div>
 
-            {/* 端头护套层：压在器材之上。
-                导线本体走器材后面（真导线不会浮在仪表脸上），但柱脚附近要有"最后一段"
-                露在底板上面 + 一颗护套扣在柱帽下方，才看得出线是插在接线柱上的；
-                否则整根线会在底板边缘消失、端头看不见，像悬空。 */}
+            {/* 端头层：导线本体已经整体压在器材之上（见 .esvg-wirelayer），这一层只剩一件事——
+                让"裸铜丝绕在柱脚上"始终画在所有导线的最上面，不被相邻那根线的外皮盖掉。 */}
             <svg className="esvg-wiretop" width={CW} height={CH}>
-              <defs>
-                {wires.map((w) => {
-                  const c1 = compById(+w.a.split(':')[0])
-                  const c2 = compById(+w.b.split(':')[0])
-                  if (!c1 || !c2) return null
-                  const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13)
-                  if (!g) return null
-                  return (
-                    <g key={w.id}>
-                      <clipPath id={`esvt-${w.id}-a`}>
-                        <circle cx={g.p1.x.toFixed(1)} cy={g.p1.y.toFixed(1)} r="18" />
-                      </clipPath>
-                      <clipPath id={`esvt-${w.id}-b`}>
-                        <circle cx={g.p2.x.toFixed(1)} cy={g.p2.y.toFixed(1)} r="18" />
-                      </clipPath>
-                    </g>
-                  )
-                })}
-              </defs>
               {wires.map((w) => {
                 const c1 = compById(+w.a.split(':')[0])
                 const c2 = compById(+w.b.split(':')[0])
@@ -1229,22 +1216,11 @@ export default function ElectricSvgLabScene() {
                 const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13)
                 if (!g) return null
                 const color = shorted ? '#dc2626' : wireStroke(w)
-                const L = wireLayers(g.cur, color, WIRE_W)
-                const B = bootLayers(color, WIRE_W)
-                const tail = (k) => (
-                  <g key={k} clipPath={`url(#esvt-${w.id}-${k})`}>
-                    <path d={L.d} fill="none" stroke={L.casing} strokeWidth={L.w + 1.9} strokeLinecap="round" />
-                    <path d={L.d} fill="none" stroke={L.core} strokeWidth={L.w} strokeLinecap="round" />
-                    <path d={L.dSheen} fill="none" stroke={L.sheen} strokeWidth={Math.max(1, L.w * 0.32)}
-                      strokeLinecap="round" opacity="0.6" />
-                  </g>
-                )
+                const B = wrapLayers(color, WIRE_W)
                 return (
                   <g key={w.id}>
-                    {tail('a')}
-                    {tail('b')}
-                    {bootAt(g.p1, B, 'b1')}
-                    {bootAt(g.p2, B, 'b2')}
+                    {wrapAt(g.p1, B, 'b1')}
+                    {wrapAt(g.p2, B, 'b2')}
                   </g>
                 )
               })}
