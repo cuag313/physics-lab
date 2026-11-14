@@ -1022,6 +1022,8 @@ export const EXPERIMENT_CATALOG = [
     grade: '高三',
     tags: ['霍尔效应', '霍尔电压', '载流子', '磁传感器'],
     examLevel: '★★',
+    beyondCurriculum: true,
+    beyondReason: '教材仅在「传感器」一节以霍尔元件举例提及，无独立课题与学生实验、不在高考实验清单；UH=IB/nqd 的定量关系属大学内容，仅供拓展/竞赛参考',
   },
 
 
@@ -1203,8 +1205,8 @@ export const EXPERIMENT_CATALOG = [
   },
   {
     key: 'electricLab3D',
-    name: '电学虚拟实验室',
-    description: 'SVG 写实器材自由搭建电路：拖入元件、接线柱连线、开关通断、滑变调亮度，可剖视内部结构',
+    name: '电学自由搭建（SVG）',
+    description: '写实 SVG 器材自由搭建电路：拖入元件、接线柱连线、开关通断、滑变调亮度，可剖视内部结构（与「简单电路·自己动手」同源）',
     category: 'electric',
     subCategory: '虚拟实验室',
     difficulty: 1,
