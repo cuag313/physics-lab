@@ -76,6 +76,112 @@ const PALETTE = [
 
 const METER_NAME = { ammeter: '电流表', ammeterA: '安培表', voltmeter: '电压表' }
 
+/* ══════════════════════════════════════════════════════════════════════
+ *  电子流动层 —— 合上开关、导线里真有电流时才出现
+ *
+ *  真实现象：合上开关，导线里立刻建立电场，自由电子在电场力作用下**整体**朝
+ *  高电位（+极）方向漂移（漂移速度很慢，但"在场的作用下发生相对移动"是可观察的）。
+ *  引擎给的 _wireI[wid] 是「a→b 为正」的电流；电流方向与电子漂移方向相反，
+ *  所以电子沿导线的行进方向 = -sign(_wireI)。
+ *  · 黄点（里面一道小横 = 电子 e⁻）沿导线弧长均匀撒开，随相位推进；
+ *  · 红箭头标电流 I 的方向（与黄点反向），压白描边，红导线上也认得出来。
+ * ══════════════════════════════════════════════════════════════════════ */
+const ELEC_V = 130      // 逻辑 px/s，肉眼能看清又不晃眼
+const ELEC_GAP = 64     // 相邻电子的弧长间距
+
+/** 三次贝塞尔取点 */
+function bezPoint(cur, t) {
+  const u = 1 - t
+  const A = u * u * u, B = 3 * u * u * t, C = 3 * u * t * t, D = t * t * t
+  return {
+    x: A * cur.p0.x + B * cur.c1.x + C * cur.c2.x + D * cur.p1.x,
+    y: A * cur.p0.y + B * cur.c1.y + C * cur.c2.y + D * cur.p1.y,
+  }
+}
+
+/** 弧长表（t 均匀取样 → 累积弧长），用于"沿导线等间距"落点 */
+function arcTable(cur, n = 96) {
+  const pts = []
+  let s = 0
+  for (let i = 0; i <= n; i++) {
+    const p = bezPoint(cur, i / n)
+    if (i > 0) s += Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y)
+    pts.push({ x: p.x, y: p.y, s, t: i / n })
+  }
+  return { pts, len: s || 1 }
+}
+
+/** 弧长 s → 点 + 切线角（s 会自动取模） */
+function atArc(tab, s) {
+  const pts = tab.pts
+  const len = tab.len
+  const ss = ((s % len) + len) % len
+  let lo = 0, hi = pts.length - 1
+  while (lo < hi - 1) {
+    const mid = (lo + hi) >> 1
+    if (pts[mid].s <= ss) lo = mid
+    else hi = mid
+  }
+  const a = pts[lo], b = pts[hi]
+  const k = b.s > a.s ? (ss - a.s) / (b.s - a.s) : 0
+  return {
+    x: a.x + (b.x - a.x) * k,
+    y: a.y + (b.y - a.y) * k,
+    ang: Math.atan2(b.y - a.y, b.x - a.x),
+  }
+}
+
+/** 电子 + 电流箭头（自带 rAF，只重渲染自己这一层） */
+function ElectronFlow({ items }) {
+  const [phase, setPhase] = useState(0)
+  const live = items.length > 0
+  useEffect(() => {
+    if (!live) return undefined
+    let raf = 0
+    const t0 = performance.now()
+    const loop = (t) => { setPhase((t - t0) / 1000); raf = requestAnimationFrame(loop) }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [live])
+
+  return (
+    <svg className="esb-flowlayer" width={CW} height={CH}>
+      {items.map((it) => {
+        const tab = arcTable(it.cur)
+        const n = Math.max(1, Math.round(tab.len / ELEC_GAP))
+        const step = tab.len / n
+        const dots = []
+        for (let k = 0; k < n; k++) {
+          const p = atArc(tab, phase * ELEC_V * it.dir + k * step)
+          dots.push(
+            <g key={'d' + k} transform={`translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`}>
+              <circle r="4.5" fill="rgba(255,213,74,0.34)" />
+              <circle r="3.0" fill="#ffd54a" stroke="#8a6a00" strokeWidth="0.9" />
+              <rect x="-1.6" y="-0.65" width="3.2" height="1.3" rx="0.65" fill="#5f4700" />
+            </g>
+          )
+        }
+        // 电流方向箭头：与电子反向；抬到导线上方 15px，别压在电缆上，
+        // 白描边保证在任何导线颜色上都认得出来
+        const arrows = []
+        if (tab.len > 70) {
+          const spots = tab.len > 260 ? [0.34, 0.66] : [0.5]
+          for (const f of spots) {
+            const p = atArc(tab, f * tab.len)
+            const rot = (p.ang * 180) / Math.PI + (-it.dir > 0 ? 0 : 180)
+            arrows.push(
+              <g key={'a' + f} transform={`translate(${p.x.toFixed(1)},${(p.y - 15).toFixed(1)}) rotate(${rot.toFixed(1)})`}>
+                <path d="M-6.4 -3.6 L6.4 0 L-6.4 3.6 Z" fill="#e11d48" stroke="#fff" strokeWidth="1.3" strokeLinejoin="round" />
+              </g>
+            )
+          }
+        }
+        return <g key={it.id}>{dots}{arrows}</g>
+      })}
+    </svg>
+  )
+}
+
 const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   const [comps, setComps] = useState([])
   const [wires, setWires] = useState([])
@@ -374,6 +480,24 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
 
   const compById = (id) => comps.find((c) => c.id === id)
 
+  /* 有电流的导线 → 电子流动层的数据。
+     电子行进方向 = -sign(_wireI)（_wireI 以 a→b 为正 = 电流方向，电子反向） */
+  const flowItems = (() => {
+    const wI = solved._wireI || {}
+    const out = []
+    for (const w of wires) {
+      const I = wI[w.id]
+      if (!I || Math.abs(I) < 5e-4) continue
+      const c1 = compById(+w.a.split(':')[0])
+      const c2 = compById(+w.b.split(':')[0])
+      if (!c1 || !c2) continue
+      const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13)
+      if (!g) continue
+      out.push({ id: w.id, cur: g.cur, dir: I > 0 ? -1 : 1 })
+    }
+    return out
+  })()
+
   /* 端头：裸铜丝绕在柱脚的接线柱上（外皮到柱子前就结束，铜丝扣在柱脚上） */
   const wrapAt = (p, W, k) => (
     <g key={k} transform={`translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`}>
@@ -431,6 +555,18 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
           transition:opacity .15s;pointer-events:none;z-index:9;font-weight:600}
         .esb-status{position:absolute;left:12px;bottom:12px;z-index:20;padding:7px 14px;border-radius:10px;
           font-size:13px;font-weight:600;pointer-events:none;box-shadow:0 4px 14px rgba(2,6,23,.25)}
+        .esb-flowlayer{position:absolute;inset:0;pointer-events:none;z-index:4}
+        .esb-flow-legend{position:absolute;right:14px;bottom:14px;z-index:20;display:flex;align-items:center;gap:9px;
+          padding:6px 12px;border-radius:10px;background:rgba(255,255,255,.94);border:1px solid #dbe3ec;
+          font-size:12px;color:#334155;pointer-events:none;box-shadow:0 4px 14px rgba(2,6,23,.18);white-space:nowrap}
+        .esb-lg-item{display:inline-flex;align-items:center}
+        .esb-lg-dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:5px;
+          background:#ffd54a;border:1px solid #8a6a00;position:relative}
+        .esb-lg-dot::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:1.6px;
+          background:#5f4700;transform:translate(-50%,-50%)}
+        .esb-lg-arrow{display:inline-block;width:0;height:0;margin:0 2px;
+          border-left:13px solid #e11d48;border-top:5px solid transparent;border-bottom:5px solid transparent;
+          filter:drop-shadow(0 0 0 #fff)}
       `}</style>
 
       <div className="esb-canvas" ref={canvasRef}>
@@ -478,6 +614,9 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
           })}
           {pending && <path ref={previewPathRef} className="esb-wire-preview" />}
         </svg>
+
+        {/* 电子流动层：压在导线之上、护套之下 */}
+        <ElectronFlow items={flowItems} />
 
         {/* 元件层 */}
         <div className="esb-partlayer">
@@ -543,6 +682,20 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         >
           {status.text}
         </div>
+
+        {/* 图例：只在有电流时出现，免得平时白占地方 */}
+        {flowItems.length > 0 && (
+          <div className="esb-flow-legend">
+            <span className="esb-lg-item">
+              <span className="esb-lg-dot" />
+              电子 e<sup>−</sup>：− 极 → + 极
+            </span>
+            <span className="esb-lg-arrow" />
+            <span className="esb-lg-item">
+              电流 I：+ 极 → − 极（与电子反向）
+            </span>
+          </div>
+        )}
       </div>
     </div>
   )

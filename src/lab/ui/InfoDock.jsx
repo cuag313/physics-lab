@@ -47,6 +47,7 @@ export default function InfoDock({
   hint,
   hintTitle = '提示',
   align = 'right',
+  offset = null,
   children,
   defaultOpen = null,
 }) {
@@ -81,7 +82,7 @@ export default function InfoDock({
   if (!items.length) return null
 
   return (
-    <div className="info-bubbles" style={{ ...styles.rail, ...(align === 'left' ? styles.railLeft : null) }}>
+    <div className="info-bubbles" style={{ ...styles.rail, ...(align === 'left' ? styles.railLeft : null), ...(offset || null) }}>
       {items.map((it) => (
         <Chip key={it.id} id={it.id} icon={it.icon} title={it.title} open={openId === it.id} onToggle={toggle}
           align={align}>

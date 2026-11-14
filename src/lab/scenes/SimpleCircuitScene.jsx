@@ -348,6 +348,9 @@ export default function SimpleCircuitScene() {
         ) : (
           <InfoDock
             align="left"
+            /* 气泡落在画板内的左上角（画板在 scene-main 里 margin 12，所以 26 ≈ 板内 14px），
+               不再骑在灰色边条上、也不越出板面 */
+            offset={{ left: 26, top: 26 }}
             hint="点右侧器材加入 → 拖拽移动 → 点接线柱连线。轻点开关通断，双击电表看读数，双击器材或按 Delete 删除。"
             hintTitle="操作说明"
           />
