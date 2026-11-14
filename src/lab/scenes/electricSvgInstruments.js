@@ -415,8 +415,8 @@ function meterFaceSVG(x, y, w, h, cfg) {
   cfg.inner.forEach((str, i) => {
     marks += mark(A0 + SPAN * ((i + 1) / cfg.inner.length), str, 85 * s, 14 * s)
   })
-  // 左侧记号：原图是手摆的，逐个给角度/半径（− 在 220.5°/r129；电压表的 − 压在弧最左端 213.5°/r105）
-  for (const m of cfg.leftMarks || []) marks += mark(m.a, m.s, m.r * s, (m.fs || 18) * s)
+  // 左侧记号：原图是手摆的，逐个给角度/半径（安培表「1」在 220.5°/r129.5、电压表「5」在 221°/r128；两表的「−」都压在弧最左端 213.3°/r111.7）
+  for (const m of cfg.leftMarks || []) marks += mark(m.a, m.s, m.r * s, (m.fs || 18) * s, INK, m.w || '500')
   marks += mark(FACE.aFull + 5, cfg.plus, 113 * s, 14 * s)
 
   return `
@@ -1006,9 +1006,13 @@ export const TYPES = {
       <rect x="${23 * K}" y="${27 * K}" width="${210 * K}" height="${142 * K}" rx="${2.5 * K}" fill="#101317"/>
       ${meterFaceSVG(24 * K, 26 * K, 207 * K, 143 * K, {
         clip: 'mA', unit: 'A', outer: ['0', '1', '2', '3'], inner: ['0.2', '0.4', '0.6'],
+        /* 左端照 8电流表.png：外圈最左边那个字形是「1」（样本里 (29,82) 处，r129/220.5°），
+         * 「−」不是标签、而是压在弧线最左端的小记号（213.2° / r111.8）。
+         * 内圈左端的 0.2 样本在 (52,104.5) → 218° / r96.5。 */
         leftMarks: [
-          { s: '\u2212', a: 220.5, r: 129, fs: 20 },
-          { s: '0.2', a: 216.9, r: 89, fs: 14 },
+          { s: '1', a: 220.5, r: 129.5, fs: 18, w: '700' },
+          { s: '\u2212', a: 213.2, r: 111.8, fs: 13 },
+          { s: '0.2', a: 218, r: 96.5, fs: 14 },
         ],
         plus: '+',
       })}
@@ -1053,7 +1057,7 @@ export const TYPES = {
       ${meterFaceSVG(24 * K, 26 * K, 207 * K, 143 * K, {
         clip: 'mV', outerR: 118, unit: 'V', outer: ['0', '5', '10', '15'], inner: ['1', '2', '3'],
         leftMarks: [
-          { s: '\u2212', a: 213.5, r: 105, fs: 18 },
+          { s: '\u2212', a: 213.3, r: 111.6, fs: 15 },
           { s: '5', a: 221, r: 128, fs: 15 },
           { s: '1', a: 218, r: 86, fs: 14 },
         ],
