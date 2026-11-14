@@ -299,6 +299,10 @@ export default function SimpleCircuitScene() {
     builderRef.current?.add(type)
   }, [])
 
+  const handleDropFromPalette = useCallback((type, clientX, clientY) => {
+    builderRef.current?.addAt(type, clientX, clientY)
+  }, [])
+
   const handlePickColor = useCallback((color) => {
     S.current.wireColor = color
     forceUpdate(v => v + 1)
@@ -365,7 +369,8 @@ export default function SimpleCircuitScene() {
             wireColor={S.current.wireColor}
             onPickColor={handlePickColor}
             onAdd={handleAddFromPalette}
-            hint="点击器材加入"
+            onDropAt={handleDropFromPalette}
+            hint="点选或拖到桌面加入"
           />
         )}
       </div>

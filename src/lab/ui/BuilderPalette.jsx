@@ -1,3 +1,5 @@
+import { useRef } from 'react'
+
 /**
  * 自己动手模式的器材栏（DOM）
  * 横屏优先：放在右侧竖向滑动，把高度留给画布。
@@ -25,10 +27,42 @@ export default function BuilderPalette({
   wireColor,
   onPickColor,
   onAdd,
+  onDropAt,       // (type, clientX, clientY) 拖到桌面上松手时按落点放置
   hint,
   side = 'right', // right | bottom
 }) {
   const isRight = side === 'right'
+  const dragRef = useRef(null)
+  const suppressUntilRef = useRef(0)
+
+  /* 拖拽加入：在器材上按下 → 拖进桌面 → 松手，按落点放置（onDropAt）。
+   * 原地点击仍然走 onAdd；位移超过 6px 才算拖，拖完抑制一次 click，免得加两个。 */
+  const handlePointerDown = (it) => (e) => {
+    if (e.button !== undefined && e.button !== 0) return
+    const d = { type: it.type, x0: e.clientX, y0: e.clientY, moved: false }
+    dragRef.current = d
+    const move = (ev) => {
+      if (Math.abs(ev.clientX - d.x0) > 6 || Math.abs(ev.clientY - d.y0) > 6) d.moved = true
+    }
+    const up = (ev) => {
+      dragRef.current = null
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      window.removeEventListener('pointercancel', up)
+      if (!d.moved) return
+      suppressUntilRef.current = performance.now() + 400   // 拖完 400ms 内的 click 不算点击
+      if (onDropAt) onDropAt(d.type, ev.clientX, ev.clientY)
+      else if (onAdd) onAdd(d.type)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+    window.addEventListener('pointercancel', up)
+  }
+
+  const handleChipClick = (type) => {
+    if (performance.now() < suppressUntilRef.current) return
+    if (onAdd) onAdd(type)
+  }
 
   return (
     <div style={isRight ? styles.wrapRight : styles.wrapBottom}>
@@ -46,8 +80,9 @@ export default function BuilderPalette({
             key={it.type}
             type="button"
             style={isRight ? styles.chipRight : styles.chip}
-            onClick={() => onAdd && onAdd(it.type)}
-            title={`添加${it.name}`}
+            onPointerDown={handlePointerDown(it)}
+            onClick={() => handleChipClick(it.type)}
+            title={`添加${it.name}（也可直接拖到桌面）`}
           >
             <span className="bp-ic" style={styles.icon}>{it.icon}</span>
             <span style={isRight ? styles.nameRight : styles.name}>{it.name}</span>

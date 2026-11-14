@@ -139,13 +139,43 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   /* ── 对外命令式 API（对齐原 Builder3D：add / reset）── */
   useImperativeHandle(ref, () => ({
     add(type) {
-      // 网格摆放，多件不叠压（2 列，逐行下移）
+      /* 网格摆放，多件不叠压。摆位按「画布与视口的交集」算，保证新器材一定落在看得见的地方
+       * （原来 2 列 × 260 递推，第 4 行 y=900 已经掉到折叠线以下，滑变/电流表/电压表
+       *  正好是最后三件，点进来就像"没加上"）。 */
+      const t = TYPES[type]
       const cs = compsRef.current
-      const col = cs.length % 2
-      const row = Math.floor(cs.length / 2)
-      const x = col === 0 ? 120 : 900
-      const y = 120 + row * 260
+      const cv = canvasRef.current
+      const n = cs.length
+      let visW = CW, visH = CH, sx = 1, sy = 1
+      if (cv) {
+        const r = cv.getBoundingClientRect()
+        sx = r.width > 0 ? CW / r.width : 1
+        sy = r.height > 0 ? CH / r.height : 1
+        visW = Math.min(r.width, Math.max(240, window.innerWidth - r.left)) * sx
+        visH = Math.min(r.height, Math.max(200, window.innerHeight - r.top)) * sy
+      }
+      const cols = Math.max(1, Math.min(3, Math.floor(visW / Math.max(1, t ? t.w + 60 : 300))))
+      const rows = Math.max(1, Math.floor(visH / Math.max(1, t ? t.h + 70 : 300)))
+      const cw = visW / cols
+      const chh = visH / rows
+      const slot = n % Math.max(1, cols * rows)
+      const x = (slot % cols) * cw + (cw - (t ? t.w : 0)) / 2
+      const y = Math.floor(slot / cols) * chh + (chh - (t ? t.h : 0)) / 2
       addComp(type, x, y)
+    },
+    /* 从器材栏拖到桌面：按落点居中摆放；落点在桌面外就退回网格位 */
+    addAt(type, clientX, clientY) {
+      const t = TYPES[type]
+      const cv = canvasRef.current
+      if (!t || !cv) return null
+      const r = cv.getBoundingClientRect()
+      if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {
+        const x = (clientX - r.left) * (CW / r.width) - t.w / 2
+        const y = (clientY - r.top) * (CH / r.height) - t.h / 2
+        return addComp(type, x, y)
+      }
+      const cs = compsRef.current
+      return addComp(type, cs.length % 2 === 0 ? 120 : 900, 120 + Math.floor(cs.length / 2) * 260)
     },
     reset() {
       setComps([]); setWires([]); setSelected(null); setPending(null)
