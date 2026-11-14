@@ -70,10 +70,11 @@ const PALETTE = [
   { type: 'resistor5', name: '定值电阻 5Ω' },
   { type: 'rheostat', name: '滑动变阻器' },
   { type: 'ammeter', name: '电流表' },
+  { type: 'ammeterA', name: '安培表' },
   { type: 'voltmeter', name: '电压表' },
 ]
 
-const METER_NAME = { ammeter: '电流表', voltmeter: '电压表' }
+const METER_NAME = { ammeter: '电流表', ammeterA: '安培表', voltmeter: '电压表' }
 
 const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   const [comps, setComps] = useState([])

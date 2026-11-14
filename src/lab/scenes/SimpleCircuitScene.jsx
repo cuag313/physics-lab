@@ -364,6 +364,7 @@ export default function SimpleCircuitScene() {
               { type: 'resistor5', name: '电阻', icon: thumb('resistor5') },
               { type: 'rheostat', name: '滑变', icon: thumb('rheostat') },
               { type: 'ammeter', name: '电流表', icon: thumb('ammeter') },
+              { type: 'ammeterA', name: '安培表', icon: thumb('ammeterA') },
               { type: 'voltmeter', name: '电压表', icon: thumb('voltmeter') },
             ]}
             wireColor={S.current.wireColor}

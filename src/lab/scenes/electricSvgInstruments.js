@@ -359,19 +359,46 @@ function meterFaceSVG(x, y, w, h, cfg) {
   const TICK = '#74797e'
   const TICK_M = '#50555b'
 
-  // 原图实测：齿的内端齐平在 r94，短齿向外伸到 r102、长齿到 r111，齿身整体顺时针偏约 1°
+  /* 刻度带实测（256 原图逐齿重算，A/V 同一副 CAD）：
+   * 齿中心**不在一个圆上** —— 整条刻度带向外拱成抛物线 r = 99.6 + 8.0·t²
+   * （t = (θ−270)/48.6，270° 是正上方）。齿长：短齿 5.6、长齿 14.4，中心压在带上
+   * （内端 band−3.0、外端 band+2.6 / band+11.4）。
+   * 每根齿沿该点弧线的**法线**站住 —— 与切线垂直。原来是从轴心径向甩出去（+1.1° 斜偏），
+   * 弧带既然是拱形、不共心，径向齿就会歪 2~4°，看着"不垂直"。 */
+  const BAND = { mid: 270, half: 48.6, r0: 99.6, bend: 8.0 }
+  const bandR = (a) => {
+    const t = Math.abs(a - BAND.mid) / BAND.half
+    return BAND.r0 + BAND.bend * t * t
+  }
+  // 弧带在 a 处的单位法线（朝外）：取 a±1.3° 两点的连线作切线，转 90°
+  const bandNormal = (a) => {
+    const p1 = at(a - 1.3, IN_R(bandR(a - 1.3)))
+    const p2 = at(a + 1.3, IN_R(bandR(a + 1.3)))
+    const tx = p2[0] - p1[0]
+    const ty = p2[1] - p1[1]
+    const l = Math.hypot(tx, ty) || 1
+    let nx = -ty / l
+    let ny = tx / l
+    const p = at(a, IN_R(bandR(a)))
+    if (nx * (p[0] - cx) + ny * (p[1] - cy) < 0) { nx = -nx; ny = -ny }
+    return [nx, ny]
+  }
   let ticks = ''
   const tick = (a, major) => {
-    const [x1, y1] = at(a, IN_R(FACE.rIn))
-    const [x2, y2] = at(a + 1.1, IN_R(major ? 111 : 102))
-    ticks += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${major ? TICK_M : TICK}" stroke-width="${f((major ? 1.9 : 1.4) * s)}"/>`
+    const [nx, ny] = bandNormal(a)
+    const [px, py] = at(a, IN_R(bandR(a)))
+    const inR = IN_R(3.0)
+    const outR = IN_R(major ? 11.4 : 3.6)
+    const x1 = px - nx * inR
+    const y1 = py - ny * inR
+    const x2 = px + nx * outR
+    const y2 = py + ny * outR
+    ticks += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${major ? TICK_M : TICK}" stroke-width="${f((major ? 2.4 : 2.2) * s)}"/>`
   }
-  // 负量程尾段（0 之前的短齿）
-  for (let i = 0; i < 10; i++) tick(FACE.aNeg + (FACE.aZero - FACE.aNeg) * (i / 10), i === 0)
+  // 0 往左 9 根短齿（实测 2.56°/格，最左到 220.5°；左端那个「−」是记号，不是齿）
+  for (let i = 9; i >= 1; i--) tick(FACE.aZero - 2.56 * i, false)
   // 正量程段：0..满偏 30 小格，每 10 格一根长齿（0/1/2/3）
   for (let i = 0; i <= 30; i++) tick(FACE.aZero + (FACE.aFull - FACE.aZero) * (i / 30), i % 10 === 0)
-  // 满偏之后的 + 号尾段
-  for (let i = 1; i <= 6; i++) tick(FACE.aFull + (FACE.aTail - FACE.aFull) * (i / 7), i === 7)
 
   const mark = (a, str, r, size, color = INK, weight = '500') => {
     const [tx, ty] = at(a, r)
