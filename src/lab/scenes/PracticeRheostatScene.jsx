@@ -157,14 +157,14 @@ export default function PracticeRheostatScene() {
     drawLine(ctx, battX + hBat, y1, swX - hSw, y1, wc, lw)
     drawLine(ctx, swX + hSw, y1, x1, y1, wc, lw)
 
-    // 电压表：并在滑动变阻器两端（画在回路外上方，引线不要太长）
-    const volY = y0 - 66 * scale, volR = 13 * scale
+    // 电压表：并在滑动变阻器两端（画在回路外上方；引线从滑变两端各让开一段）
+    const volY = y0 - 66 * scale, volR = 13 * scale, vTap = hRheo + 16 * scale
     ctx.save()
     ctx.strokeStyle = on ? '#7CB342' : '#9aa7b1'
     ctx.lineWidth = 1.6 * scale + 0.4
     ctx.beginPath()
-    ctx.moveTo(rheoX - hRheo, y0); ctx.lineTo(rheoX - hRheo, volY); ctx.lineTo(rheoX - volR - 2, volY)
-    ctx.moveTo(rheoX + hRheo, y0); ctx.lineTo(rheoX + hRheo, volY); ctx.lineTo(rheoX + volR + 2, volY)
+    ctx.moveTo(rheoX - vTap, y0); ctx.lineTo(rheoX - vTap, volY); ctx.lineTo(rheoX - volR - 2, volY)
+    ctx.moveTo(rheoX + vTap, y0); ctx.lineTo(rheoX + vTap, volY); ctx.lineTo(rheoX + volR + 2, volY)
     ctx.stroke()
     ctx.restore()
 

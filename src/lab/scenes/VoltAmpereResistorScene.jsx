@@ -156,14 +156,14 @@ export default function VoltAmpereResistorScene() {
     drawLine(ctx, rxX + hRes, y1, swX - hSw, y1, wc, lw)
     drawLine(ctx, swX + hSw, y1, x1, y1, wc, lw)
 
-    // 电压表：并联在待测电阻两端（回路内、R_x 上方，引线短）
-    const volY = y1 - 62 * scale, volR = 13 * scale
+    // 电压表：并联在待测电阻两端（回路内、R_x 上方；引线从 R_x 两端各让开一段，看着不挤）
+    const volY = y1 - 62 * scale, volR = 13 * scale, vTap = hRes + 16 * scale
     ctx.save()
     ctx.strokeStyle = on ? '#7CB342' : '#9aa7b1'
     ctx.lineWidth = 1.6 * scale + 0.4
     ctx.beginPath()
-    ctx.moveTo(rxX - hRes, y1); ctx.lineTo(rxX - hRes, volY); ctx.lineTo(rxX - volR - 2, volY)
-    ctx.moveTo(rxX + hRes, y1); ctx.lineTo(rxX + hRes, volY); ctx.lineTo(rxX + volR + 2, volY)
+    ctx.moveTo(rxX - vTap, y1); ctx.lineTo(rxX - vTap, volY); ctx.lineTo(rxX - volR - 2, volY)
+    ctx.moveTo(rxX + vTap, y1); ctx.lineTo(rxX + vTap, volY); ctx.lineTo(rxX + volR + 2, volY)
     ctx.stroke()
     ctx.restore()
 

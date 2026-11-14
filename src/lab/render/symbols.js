@@ -154,6 +154,13 @@ export function symRheostat(ctx, x, y, o = {}) {
   ctx.lineTo(ax - aw, tipY + 1.5 * k - ah)
   ctx.lineTo(ax + aw, tipY + 1.5 * k - ah)
   ctx.closePath(); ctx.fill()
+  // 滑片引线：从滑杆连到电阻体右端（教科书画法，滑片柱与右端接线柱相通）
+  ctx.strokeStyle = ink
+  ctx.beginPath()
+  ctx.moveTo(ax, topY)
+  ctx.lineTo(x + W / 2, topY)
+  ctx.lineTo(x + W / 2, y - H / 2)
+  ctx.stroke()
   ctx.restore()
   return { half: W / 2 + 3 * k }
 }
