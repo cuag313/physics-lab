@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { solveCircuit, circuitStatus, CFG, TERM_IDS } from '../engine/electricLab.js'
 import { TYPES, RHEO_TRACK, figURL, rheostatMode } from './electricSvgInstruments.js'
+import { wireCurve, curveD, curveMid, wireLayers, bootLayers } from '../render/wireSvg.js'
 import { createLabRenderer } from '../lab3d/three-render.js'
 import { renderIcon, SOLID_TYPES } from '../lab3d/solidEquipment.js'
 
@@ -97,6 +98,9 @@ const CSS = `
   box-shadow:0 6px 16px rgba(2,6,23,.35)}
 .esvg-3d-actions button:hover{background:rgba(30,41,59,.95);border-color:#64748b}
 .esvg-wirelayer{position:absolute;inset:0;pointer-events:none;z-index:1}
+/* 端头护套层：压在器材之上。导线本体走器材后面（真导线也不会浮在仪表脸上），
+   但两端必须看得见"夹在柱帽下方"，否则会像悬在器材边上。 */
+.esvg-wiretop{position:absolute;inset:0;pointer-events:none;z-index:6}
 .esvg-partlayer{position:absolute;inset:0;z-index:2;pointer-events:none}
 .esvg-comp{position:absolute;cursor:grab;touch-action:none;pointer-events:auto}
 .esvg-comp:active{cursor:grabbing}
@@ -112,15 +116,9 @@ const CSS = `
 .esvg-term span{display:none}
 .esvg-term.active{border-color:#f59e0b;
   box-shadow:0 0 0 7px rgba(245,158,11,.25);transform:scale(1.3)}
-.esvg-wire{fill:none;stroke:#334155;stroke-width:5;stroke-dasharray:0.1 6.5;stroke-linecap:round;
-  pointer-events:none;transition:stroke .6s,filter .6s}
-.esvg-wirelayer.short .esvg-wire{filter:drop-shadow(0 0 2px #dc2626)}
-.esvg-wire.flash{animation:es-wire-flash 1s ease-in-out infinite}
-@keyframes es-wire-flash{0%,100%{opacity:1}50%{opacity:.4}}
-.esvg-wire-shadow{fill:none;stroke:transparent;stroke-width:18;stroke-linecap:round;
-  cursor:pointer;pointer-events:stroke}
-.esvg-wire.sel{stroke:#e11d48}
-.esvg-wire-preview{fill:none;stroke:#f59e0b;stroke-width:5;stroke-dasharray:0.1 6.5;stroke-linecap:round;opacity:0.9}
+.esvg-wire-hot{animation:es-wire-flash 1s ease-in-out infinite}
+@keyframes es-wire-flash{0%,100%{opacity:1}50%{opacity:.45}}
+.esvg-wire-preview{fill:none;stroke:#f59e0b;stroke-width:3.6;stroke-linecap:round;opacity:0.9}
 .esvg-delbtn{position:absolute;width:26px;height:26px;border-radius:50%;z-index:12;
   background:#e11d48;color:#fff;border:2px solid #fff;font-size:14px;font-weight:700;
   display:grid;place-items:center;cursor:pointer;box-shadow:0 3px 10px rgba(225,29,72,.45);
@@ -142,6 +140,9 @@ const CSS = `
 .esvg-statusbar .bad{color:#fb7185;font-weight:600}
 .esvg-statusbar .sep{color:#334155}
 .esvg-canvas .casing{transition:opacity .25s}
+/* 内部结构层里的虚线/色块只是剖视标注：底图带透明区（滑变下方的投影、灯泡底板下缘），
+   不剖视时它们会从透明区透出来，看着像器材边上多了一条淡色圆角条 */
+.esvg-canvas:not(.dissect) .ann{display:none}
 .esvg-canvas .plabel{opacity:0;transition:opacity .25s;font-size:9.5px;fill:#1d4ed8;
   font-weight:600;text-anchor:middle;pointer-events:none}
 .esvg-canvas.dissect .casing{opacity:.13}
@@ -265,15 +266,14 @@ const PALETTE_GROUPS = [
   { title: '高中拓展', keys: ['resBox', 'multimeter', 'relay'] },
 ]
 
-/* =======================  Verlet 粒子链软导线（非贝塞尔）  =======================
- * 粒子链 + 距离约束 + 重力下垂（移植自 初中电学实验沙盒.html 的 VerletChain 思路）：
- * 两端钉死在接线柱上，中间粒子自由下垂，逐帧松弛，形态由物理决定而非贝塞尔控制点。
+/* =======================  连续软电线（贝塞尔电缆）  =======================
+ * 曾经的 Verlet 粒子链靠重力松弛定形：会坠成圆底袋，还得画成点状才看得出松紧——不像真导线。
+ * 现在一根三次贝塞尔：从接线柱先横向出线（像导线从柱脚拔出那样先离开器材），再横过去落到另一柱；
+ * 控制点只有水平伸展 + 纵向小幅抖动（由 wire id 稳定决定），所以不下垂、每根又都不一样。
+ * 外观沿用 render/wire.js：落影 → 外皮 → 本色 → 上偏高光 → 两端护套。
  */
-const WIRE_N = 18          // 每根导线的粒子数
-const WIRE_ITER = 12       // 每帧约束松弛次数
-const WIRE_GRAV = 0.6      // 重力（px/步²）
-const WIRE_DAMP = 0.985    // 阻尼
 const TERM_DROP = 7        // 锚点下移：接在柱帽正下方的柱身处
+const WIRE_W = 4.6
 
 /** 接线锚点：接线柱帽正下方（导线真正夹持处） */
 function termAnchor(c, tid) {
@@ -281,65 +281,20 @@ function termAnchor(c, tid) {
   return t ? { x: c.x + t.x, y: c.y + t.y + TERM_DROP } : null
 }
 
-function makeChain(ax, ay, bx, by) {
-  const dist = Math.hypot(bx - ax, by - ay)
-  // 留 30% 余量，容许下垂
-  const seg = (dist * 1.3) / (WIRE_N - 1)
-  const pts = []
-  const prev = []
-  for (let i = 0; i < WIRE_N; i++) {
-    const t = i / (WIRE_N - 1)
-    const x = ax + (bx - ax) * t
-    const y = ay + (by - ay) * t + Math.sin(Math.PI * t) * Math.min(70, dist * 0.14)
-    pts.push({ x, y })
-    prev.push({ x, y })
-  }
-  return { pts, prev, seg }
+/** 出线方向：接线柱在器材左半 → 向左拔出，右半 → 向右 */
+function wireOut(c, tid) {
+  const t = (TYPES[c.type] && TYPES[c.type].terminals.find((x) => x.id === tid)) || null
+  if (!t) return 1
+  return t.x < (TYPES[c.type].w || 0) / 2 ? -1 : 1
 }
 
-function stepChain(ch, ax, ay, bx, by) {
-  const n = ch.pts.length - 1
-  // 两端钉在接线柱锚点
-  ch.pts[0].x = ax; ch.pts[0].y = ay
-  ch.prev[0].x = ax; ch.prev[0].y = ay
-  ch.pts[n].x = bx; ch.pts[n].y = by
-  ch.prev[n].x = bx; ch.prev[n].y = by
-  // Verlet 积分（自由粒子）
-  for (let i = 1; i < n; i++) {
-    const p = ch.pts[i]
-    const q = ch.prev[i]
-    const vx = (p.x - q.x) * WIRE_DAMP
-    const vy = (p.y - q.y) * WIRE_DAMP
-    q.x = p.x
-    q.y = p.y
-    p.x += vx
-    p.y += vy + WIRE_GRAV
-  }
-  // 距离约束松弛（两端固定）
-  for (let k = 0; k < WIRE_ITER; k++) {
-    for (let i = 0; i < n; i++) {
-      const a = ch.pts[i]
-      const b = ch.pts[i + 1]
-      const dx = b.x - a.x
-      const dy = b.y - a.y
-      const len = Math.hypot(dx, dy) || 1e-6
-      const diff = (len - ch.seg) / len
-      const ox = dx * diff
-      const oy = dy * diff
-      const wa = i === 0 ? 0 : 1
-      const wb = i + 1 === n ? 0 : 1
-      const wsum = wa + wb
-      if (!wsum) continue
-      if (wa) { a.x += ox * (wa / wsum); a.y += oy * (wa / wsum) }
-      if (wb) { b.x -= ox * (wb / wsum); b.y -= oy * (wb / wsum) }
-    }
-  }
-}
-
-function chainPath(ch) {
-  let d = `M${ch.pts[0].x.toFixed(1)} ${ch.pts[0].y.toFixed(1)}`
-  for (let i = 1; i < ch.pts.length; i++) d += ` L${ch.pts[i].x.toFixed(1)} ${ch.pts[i].y.toFixed(1)}`
-  return d
+/** 一根导线的曲线（p1/p2 为柱脚锚点） */
+function wireGeom(c1, tid1, c2, tid2, seed) {
+  const p1 = termAnchor(c1, tid1)
+  const p2 = termAnchor(c2, tid2)
+  if (!p1 || !p2) return null
+  const cur = wireCurve(p1, p2, wireOut(c1, tid1), wireOut(c2, tid2), seed)
+  return { p1, p2, cur, mid: curveMid(cur) }
 }
 
 /** 导线可选色 */
@@ -378,10 +333,7 @@ export default function ElectricSvgLabScene() {
   const lastUpRef = useRef(null)
   const compsRef = useRef([])
   const wiresRef = useRef([])
-  const chainsRef = useRef(new Map())   // wireId → verlet chain
-  const pathRefs = useRef(new Map())    // wireId → SVGPathElement
-  const solvedRef = useRef(null)        // 最新求解结果（rAF 读取导线电流）
-  const wireFxRef = useRef(new Map())   // wireId → dashoffset 累计值（电流动画）
+  const solvedRef = useRef(null)        // 最新求解结果（rAF 读电流/功率）
   const meterKwhRef = useRef({})        // 电能表 id → 累计电量（kW·h）
   const meterAccRef = useRef(0)         // 计数器刷新节流（秒）
   const [meterTick, setMeterTick] = useState(0) // 每秒触发一次重渲染，刷新计数器读数
@@ -390,7 +342,6 @@ export default function ElectricSvgLabScene() {
   const jouleAccRef = useRef(0)         // 液柱刷新节流（秒）
   const [jouleTick, setJouleTick] = useState(0) // 0.25s 触发一次重渲染，刷新液柱高度
   void jouleTick
-  const previewChainRef = useRef(null)
   const previewPathRef = useRef(null)
   const previewTipRef = useRef(null)    // 拉线时的鼠标点
   const canvasRef = useRef(null)
@@ -553,8 +504,8 @@ export default function ElectricSvgLabScene() {
 
   // 接线柱：点击连线（pending → 点另一柱连通，再点同柱取消）
   const stopPreview = () => {
-    previewChainRef.current = null
     previewTipRef.current = null
+    if (previewPathRef.current) previewPathRef.current.setAttribute('d', '')
   }
   const onTermDown = (e, c, tid) => {
     e.preventDefault()
@@ -570,10 +521,7 @@ export default function ElectricSvgLabScene() {
     }
     setPending({ cid: c.id, tid })
     const p1 = termAnchor(c, tid)
-    if (p1) {
-      previewChainRef.current = makeChain(p1.x, p1.y, p1.x, p1.y - 20)
-      previewTipRef.current = { from: { cid: c.id, tid }, tip: { x: p1.x, y: p1.y - 20 } }
-    }
+    if (p1) previewTipRef.current = { from: { cid: c.id, tid }, tip: { x: p1.x + wireOut(c, tid) * 20, y: p1.y - 60 } }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
   }
@@ -643,7 +591,15 @@ export default function ElectricSvgLabScene() {
     }
     if (pending && !d) {
       const pt = canvasPoint(e)
-      if (previewTipRef.current) previewTipRef.current.tip = pt
+      const st = previewTipRef.current
+      if (st) {
+        st.tip = pt
+        const c = compsRef.current.find((x) => x.id === st.from.cid)
+        const p1 = c ? termAnchor(c, st.from.tid) : null
+        if (p1 && previewPathRef.current) {
+          previewPathRef.current.setAttribute('d', curveD(wireCurve(p1, pt, wireOut(c, st.from.tid), p1.x < pt.x ? -1 : 1, 7)))
+        }
+      }
     }
   }
 
@@ -842,7 +798,7 @@ export default function ElectricSvgLabScene() {
     labApiRef.current?.setSelection(selected)
   }, [selected, view3d])
 
-  /* ── Verlet 粒子链逐帧松弛：导线随元件移动实时下垂；dashoffset 电流动画 ── */
+  /* ── 逐帧计量（电能表 / 焦耳管）：导线几何已是静态贝塞尔，不再逐帧松弛 ── */
   useEffect(() => {
     let raf
     let last = performance.now()
@@ -851,8 +807,6 @@ export default function ElectricSvgLabScene() {
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
       const cs = compsRef.current
-      const wireI = (solvedRef.current && solvedRef.current._wireI) || {}
-      const fx = wireFxRef.current
 
       // ── 电能表计量：按负载总功率积分；转盘由 SVG 自转，计数器每秒刷一次 ──
       const sv = solvedRef.current
@@ -905,43 +859,6 @@ export default function ElectricSvgLabScene() {
           }
         }
       }
-      for (const w of wiresRef.current) {
-        const ch = chainsRef.current.get(w.id)
-        if (!ch) continue
-        const c1 = cs.find((x) => x.id === +w.a.split(':')[0])
-        const c2 = cs.find((x) => x.id === +w.b.split(':')[0])
-        if (!c1 || !c2) continue
-        const p1 = termAnchor(c1, w.a.split(':')[1])
-        const p2 = termAnchor(c2, w.b.split(':')[1])
-        if (!p1 || !p2) continue
-        stepChain(ch, p1.x, p1.y, p2.x, p2.y)
-        const rec = pathRefs.current.get(w.id)
-        if (rec) {
-          const d = chainPath(ch)
-          if (rec.main) {
-            rec.main.setAttribute('d', d)
-            // 导线电流动画：speed = current * 200（px/s），I=0 静止，反向倒流
-            const off = (fx.get(w.id) || 0) + (wireI[w.id] || 0) * 200 * dt
-            fx.set(w.id, off)
-            rec.main.setAttribute('stroke-dashoffset', off.toFixed(1))
-          }
-          if (rec.hit) rec.hit.setAttribute('d', d)
-        }
-      }
-      // 拉线预览（钉住起点、尾随鼠标）
-      const pc = previewChainRef.current
-      if (pc && previewTipRef.current) {
-        const from = previewTipRef.current.from
-        const c = cs.find((x) => x.id === from.cid)
-        const tip = previewTipRef.current.tip
-        if (c && tip) {
-          const p1 = termAnchor(c, from.tid)
-          if (p1) {
-            stepChain(pc, p1.x, p1.y, tip.x, tip.y)
-            if (previewPathRef.current) previewPathRef.current.setAttribute('d', chainPath(pc))
-          }
-        }
-      }
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
@@ -965,7 +882,8 @@ export default function ElectricSvgLabScene() {
         if (w.a.startsWith(c.id + ':')) wired.add(w.a.split(':')[1])
         if (w.b.startsWith(c.id + ':')) wired.add(w.b.split(':')[1])
       }
-      return { mode: rheostatMode(wired) }
+      // live：开关合上、线圈里真流过电流时才着色（未接线 / 断路时 _I≈0）
+      return { mode: rheostatMode(wired), live: Math.abs(o._I || 0) > 1e-3 }
     }
     if (c.type === 'motor') return { I: o._I || 0 }
     if (c.type === 'diode') return { on: !!o._on, rev: !o._on && (o._Vd || 0) < -0.3 }
@@ -1028,32 +946,15 @@ export default function ElectricSvgLabScene() {
 
   const compById = (id) => comps.find((c) => c.id === id)
 
-  /* ── 导线粒子链的 DOM 引用管理 ── */
-  const attachPath = useCallback((id, kind, el) => {
-    if (!pathRefs.current.has(id)) pathRefs.current.set(id, {})
-    const rec = pathRefs.current.get(id)
-    if (el) {
-      rec[kind] = el
-      if (!chainsRef.current.has(id)) {
-        const w = wiresRef.current.find((x) => x.id === id)
-        if (w) {
-          const c1 = compsRef.current.find((x) => x.id === +w.a.split(':')[0])
-          const c2 = compsRef.current.find((x) => x.id === +w.b.split(':')[0])
-          if (c1 && c2) {
-            const p1 = termAnchor(c1, w.a.split(':')[1])
-            const p2 = termAnchor(c2, w.b.split(':')[1])
-            if (p1 && p2) chainsRef.current.set(id, makeChain(p1.x, p1.y, p2.x, p2.y))
-          }
-        }
-      }
-    } else {
-      delete rec[kind]
-      if (!rec.main && !rec.hit) {
-        pathRefs.current.delete(id)
-        chainsRef.current.delete(id)
-      }
-    }
-  }, [])
+  /* 端头护套：一个橡皮护套扣在柱帽正下方的柱脚上（导线就是从这儿"夹"出去的）。
+     单独一层画在器材之上，否则会整颗被器材照片盖掉，看着像线悬在器材旁边。 */
+  const bootAt = (p, B, k) => (
+    <g key={k} transform={`translate(${p.x.toFixed(1)},${p.y.toFixed(1)})`}>
+      <circle r={B.r} fill={B.ring} />
+      <circle r={B.r * 0.64} fill={B.body} />
+      <circle cx={-B.r * 0.26} cy={-B.r * 0.32} r={B.r * 0.22} fill={B.light} opacity="0.62" />
+    </g>
+  )
 
   return (
     <div className="esvg-root">
@@ -1197,41 +1098,42 @@ export default function ElectricSvgLabScene() {
             </>
           ) : (
           <div className={`esvg-canvas${dissect ? ' dissect' : ''}`} ref={canvasRef}>
-            {/* 导线层（Verlet 粒子链 + 电流动画） */}
+            {/* 导线层（连续电缆：落影/外皮/本色/上偏高光 + 两端护套） */}
             <svg className={`esvg-wirelayer${shorted ? ' short' : ''}`} width={CW} height={CH}>
               {wires.map((w) => {
                 const c1 = compById(+w.a.split(':')[0])
                 const c2 = compById(+w.b.split(':')[0])
                 if (!c1 || !c2) return null
-                const p1 = termAnchor(c1, w.a.split(':')[1])
-                const p2 = termAnchor(c2, w.b.split(':')[1])
-                if (!p1 || !p2) return null
+                const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13)
+                if (!g) return null
                 const sel = selected && selected.kind === 'wire' && selected.id === w.id
-                const m = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }
-                const d0 = `M${p1.x} ${p1.y} L${p2.x} ${p2.y}`
+                const I = Math.abs((solved._wireI && solved._wireI[w.id]) || 0)
+                const color = shorted ? '#dc2626' : wireStroke(w)
+                const L = wireLayers(g.cur, color, WIRE_W)
+                const B = bootLayers(color, WIRE_W)
                 return (
                   <g key={w.id}>
-                    {/* 命中区（粗描边，便于点选；选中时作为光晕） */}
-                    <path
-                      ref={(el) => attachPath(w.id, 'hit', el)}
-                      d={d0}
-                      fill="none" stroke={sel ? 'rgba(225,29,72,0.35)' : 'transparent'} strokeWidth={sel ? 16 : 18} strokeLinecap="round"
+                    <path d={L.dShadow} fill="none" stroke="rgba(15,23,42,0.20)" strokeWidth={L.w + 1.5} strokeLinecap="round" />
+                    {sel && (
+                      <path d={L.d} fill="none" stroke="rgba(225,29,72,0.45)" strokeWidth={L.w + 4} strokeLinecap="round" />
+                    )}
+                    <path d={L.d} fill="none" stroke={L.casing} strokeWidth={L.w + 1.9} strokeLinecap="round" />
+                    <path d={L.d} fill="none" stroke={L.core} strokeWidth={L.w} strokeLinecap="round"
+                      className={I > 1 ? 'esvg-wire-hot' : ''} />
+                    <path d={L.dSheen} fill="none" stroke={L.sheen} strokeWidth={Math.max(1, L.w * 0.32)}
+                      strokeLinecap="round" opacity="0.6" />
+                    {bootAt(g.p1, B, 'b1')}
+                    {bootAt(g.p2, B, 'b2')}
+                    {/* 命中区压在最上层 */}
+                    <path d={L.d} fill="none" stroke="transparent" strokeWidth={18} strokeLinecap="round"
                       style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
-                      onClick={() => setSelected({ kind: 'wire', id: w.id })}
-                    />
-                    {/* 可见导线（Verlet 粒子链，电流动画/热色） */}
-                    <path
-                      ref={(el) => attachPath(w.id, 'main', el)}
-                      d={d0}
-                      className={`esvg-wire${Math.abs((solved._wireI && solved._wireI[w.id]) || 0) > 1 ? ' flash' : ''}`}
-                      style={{ stroke: shorted ? '#dc2626' : wireStroke(w) }}
-                    />
+                      onClick={() => setSelected({ kind: 'wire', id: w.id })} />
                     {sel && (
                       <g>
-                        <circle cx={m.x} cy={m.y} r="9" fill="#e11d48" opacity="0.95" />
-                        <text x={m.x} y={m.y + 4} textAnchor="middle" fontSize="11" fill="#fff" fontWeight="700">✕</text>
+                        <circle cx={g.mid.x} cy={g.mid.y} r="9" fill="#e11d48" opacity="0.95" />
+                        <text x={g.mid.x} y={g.mid.y + 4} textAnchor="middle" fontSize="11" fill="#fff" fontWeight="700">✕</text>
                         <circle
-                          cx={m.x} cy={m.y} r="14" fill="transparent"
+                          cx={g.mid.x} cy={g.mid.y} r="14" fill="transparent"
                           style={{ pointerEvents: 'fill', cursor: 'pointer' }}
                           onClick={() => { setWires((ws) => ws.filter((x) => x.id !== w.id)); setSelected(null) }}
                         />
@@ -1284,6 +1186,58 @@ export default function ElectricSvgLabScene() {
                 )
               })}
             </div>
+
+            {/* 端头护套层：压在器材之上。
+                导线本体走器材后面（真导线不会浮在仪表脸上），但柱脚附近要有"最后一段"
+                露在底板上面 + 一颗护套扣在柱帽下方，才看得出线是插在接线柱上的；
+                否则整根线会在底板边缘消失、端头看不见，像悬空。 */}
+            <svg className="esvg-wiretop" width={CW} height={CH}>
+              <defs>
+                {wires.map((w) => {
+                  const c1 = compById(+w.a.split(':')[0])
+                  const c2 = compById(+w.b.split(':')[0])
+                  if (!c1 || !c2) return null
+                  const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13)
+                  if (!g) return null
+                  return (
+                    <g key={w.id}>
+                      <clipPath id={`esvt-${w.id}-a`}>
+                        <circle cx={g.p1.x.toFixed(1)} cy={g.p1.y.toFixed(1)} r="18" />
+                      </clipPath>
+                      <clipPath id={`esvt-${w.id}-b`}>
+                        <circle cx={g.p2.x.toFixed(1)} cy={g.p2.y.toFixed(1)} r="18" />
+                      </clipPath>
+                    </g>
+                  )
+                })}
+              </defs>
+              {wires.map((w) => {
+                const c1 = compById(+w.a.split(':')[0])
+                const c2 = compById(+w.b.split(':')[0])
+                if (!c1 || !c2) return null
+                const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13)
+                if (!g) return null
+                const color = shorted ? '#dc2626' : wireStroke(w)
+                const L = wireLayers(g.cur, color, WIRE_W)
+                const B = bootLayers(color, WIRE_W)
+                const tail = (k) => (
+                  <g key={k} clipPath={`url(#esvt-${w.id}-${k})`}>
+                    <path d={L.d} fill="none" stroke={L.casing} strokeWidth={L.w + 1.9} strokeLinecap="round" />
+                    <path d={L.d} fill="none" stroke={L.core} strokeWidth={L.w} strokeLinecap="round" />
+                    <path d={L.dSheen} fill="none" stroke={L.sheen} strokeWidth={Math.max(1, L.w * 0.32)}
+                      strokeLinecap="round" opacity="0.6" />
+                  </g>
+                )
+                return (
+                  <g key={w.id}>
+                    {tail('a')}
+                    {tail('b')}
+                    {bootAt(g.p1, B, 'b1')}
+                    {bootAt(g.p2, B, 'b2')}
+                  </g>
+                )
+              })}
+            </svg>
           </div>
           )}
         </main>

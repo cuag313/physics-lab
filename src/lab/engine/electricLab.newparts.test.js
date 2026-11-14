@@ -358,3 +358,33 @@ describe('单相电能表', () => {
     expect(out[2]._I).toBeLessThan(1e-6)
   })
 })
+
+describe('滑动变阻器「一上一下」接法', () => {
+  // 滑变内部被拆成 R1(bl→杆) / R2(杆→br) 两个电阻，逐段往 out._I 写回；
+  // 取较大值：滑块停在左端时 R2 段电流≈0，直接覆盖会把"线圈在通电"抹成 0，
+  // 场景里通电线圈的浅黄着色（dyn.live）就会整段消失。
+  it('f=0.15 接 bl+tr：_I 是左段真实电流，不是右段那 0', () => {
+    const R1 = 0.15 * CFG.RHEO_MAX
+    const I = 3 / (R1 + CFG.BULB_R + CFG.VS.r)
+    const out = loop(
+      [{ id: 1, type: 'battery' }, { id: 2, type: 'rheostat', f: 0.15 }, { id: 3, type: 'bulb' }],
+      [
+        { id: 1, a: '1:p', b: '2:bl' },
+        { id: 2, a: '2:tr', b: '3:b' },
+        { id: 3, a: '3:a', b: '1:n' },
+      ])
+    expect(out[2]._I).toBeGreaterThan(1e-3)
+    expect(near(out[2]._I, I, 1e-6)).toBe(true)
+  })
+
+  it('断开开关后 _I 归零（浅黄着色随之消失）', () => {
+    const out = loop(
+      [{ id: 1, type: 'battery' }, { id: 2, type: 'switch', closed: false }, { id: 3, type: 'rheostat', f: 0.15 }],
+      [
+        { id: 1, a: '1:p', b: '2:a' },
+        { id: 2, a: '2:b', b: '3:bl' },
+        { id: 3, a: '3:tr', b: '1:n' },
+      ])
+    expect(Math.abs(out[3]._I)).toBeLessThan(1e-6)
+  })
+})

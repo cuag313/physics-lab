@@ -449,7 +449,9 @@ export function solveCircuit(comps, wires, opts) {
       o._Ir = Math.abs(I) * rIn
       o._emf = emf
     } else if (c.type === 'rheostat') {
-      o._I = Math.abs(I)
+      // 滑变被拆成 R1(bl→杆) / R2(杆→br) 两个串联电阻，逐段写回；
+      // 取两者较大值：滑块停在某端时另一段的电流≈0，若直接覆盖会把「线圈有电流」抹成 0
+      o._I = Math.max(o._I || 0, Math.abs(I))
     } else if (c.type === 'resistor5' || c.type === 'resistor10' || c.type === 'resistor15') {
       o._I = Math.abs(I)
       o._R = e.R

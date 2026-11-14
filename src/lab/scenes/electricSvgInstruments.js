@@ -141,8 +141,8 @@ const INNER = {
       <text class="plabel" x="96" y="18">金属杆（与滑片相连）</text>
       <text class="plabel" x="96" y="100">电阻丝（绕在瓷筒上）</text>
       <text class="plabel" x="96" y="86">瓷筒</text>
-      <rect x="32" y="44" width="126" height="32" rx="12" fill="none" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="4 3"/>
-      <rect x="32" y="20" width="126" height="7" rx="3.5" fill="none" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="4 3"/>`
+      <rect class="ann" x="32" y="44" width="126" height="32" rx="12" fill="none" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <rect class="ann" x="32" y="20" width="126" height="7" rx="3.5" fill="none" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="4 3"/>`
   },
   resistor() {
     return `
@@ -739,16 +739,21 @@ export const TYPES = {
         : ''
       const rad = (30 + bright * 14).toFixed(1)
 
+      // 内部结构层按 256×121 的坐标画，其中灯座一段落在机框之外（y>83），
+      // 会从底板下缘露出一截灰条——裁到机框内即可（剖视时也只该看机框内的东西）
+      const clipId = `escl-bulb-${String(c.id || 'x').replace(/[^A-Za-z0-9_-]/g, '')}`
+
       return `
     <svg width="176" height="83" viewBox="0 0 176 83">
       <defs>
+        <clipPath id="${clipId}"><rect x="0" y="0" width="176" height="83"/></clipPath>
         <radialGradient id="${gid}" cx="50%" cy="50%" r="50%">
           <stop offset="0%" stop-color="${rgb(core)}" stop-opacity="${(0.92 * bright).toFixed(3)}"/>
           <stop offset="38%" stop-color="${rgb(halo)}" stop-opacity="${(0.62 * bright).toFixed(3)}"/>
           <stop offset="100%" stop-color="${rgb(halo)}" stop-opacity="0"/>
         </radialGradient>
       </defs>
-      ${fitInner(256, 121, 176, 83, INNER.bulb())}
+      <g clip-path="url(#${clipId})">${fitInner(256, 121, 176, 83, INNER.bulb())}</g>
       <circle cx="89" cy="25" r="${rad}" fill="url(#es-g-glow)" opacity="${(bright * 0.55).toFixed(3)}"/>
       ${photo('bulb_c.png', 176, 83, `filter:brightness(${(0.96 + 0.3 * bright).toFixed(2)}) saturate(${(0.92 + 0.2 * bright).toFixed(2)})`)}
       ${bright > 0.02
@@ -874,23 +879,19 @@ export const TYPES = {
       const BL = { x: 16, y: 38.5 }, BR = { x: 174, y: 38 }
       const TL = { x: 5, y: 5 }, TR = { x: 184, y: 5 }
 
-      // 有效段路径：沿绕线上沿（34..158），照片两端的引线已存在，不重画
+      // 通电段：整段绕线着浅黄（一面覆盖瓷筒上的整圈绕线，不是一条指示线）；
+      // 只有开关合上、确实有电流流过线圈时才出现（live 由场景按 solved._I 判定）
+      const live = !!dyn?.live
       const xwClamped = Math.max(CO.x0, Math.min(CO.x1, xw))
-      const segLeft = `M${CO.x0} ${CO.y}L${xwClamped.toFixed(1)} ${CO.y}`
-      const segRight = `M${xwClamped.toFixed(1)} ${CO.y}L${CO.x1} ${CO.y}`
-      const segFull = `M${CO.x0} ${CO.y}L${CO.x1} ${CO.y}`
-
-      // 有效段高亮（亮橙加粗 + 外发光 + 流动粒子）
-      const HL = '#f59e0b'
-      const hlPath = mode === 'left-wire' ? segLeft : segRight
-      const highlight = mode === 'left-wire' || mode === 'right-wire'
-        ? `<path d="${hlPath}" fill="none" stroke="${HL}" stroke-width="6" stroke-linecap="round" opacity="0.18"/>
-           <path d="${hlPath}" fill="none" stroke="${HL}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
-           <path class="es-rheo-flow" d="${hlPath}" fill="none" stroke="#fde68a" stroke-width="3.4"
-             stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2.2 11"/>`
-        : mode === 'full-wire'
-          ? `<path d="${segFull}" fill="none" stroke="#8b95a5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>`
-          : ''
+      const segX = mode === 'left-wire' ? [CO.x0, xwClamped]
+        : mode === 'right-wire' ? [xwClamped, CO.x1]
+          : mode === 'full-wire' ? [CO.x0, CO.x1]
+            : null
+      const WY = 12.6, WH = 30.8 // 绕线可见带：瓷筒顶棱 12.7 → 瓷筒底 43.4
+      const highlight = (live && segX)
+        ? `<rect x="${segX[0].toFixed(1)}" y="${WY}" width="${Math.max(0, segX[1] - segX[0]).toFixed(1)}" height="${WH}"
+             fill="url(#es-g-rheoLive)" rx="6"/>`
+        : ''
 
       // 金属杆红色高亮（短路）：压在照片里的金属杆上
       const rodHi = mode === 'short'
@@ -945,8 +946,14 @@ export const TYPES = {
 
       return `
     <svg width="190" height="79" viewBox="0 0 190 79">
-      <style>.es-rheo-flow{animation:es-rheo-flow 1.1s linear infinite}@keyframes es-rheo-flow{to{stroke-dashoffset:-30}}</style>
       <defs>
+        <!-- 通电绕线的浅黄着色：上淡下浓，照片的圆柱明暗还从里面透出来 -->
+        <linearGradient id="es-g-rheoLive" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#fffbe2" stop-opacity="0.90"/>
+          <stop offset="0.34" stop-color="#ffe987" stop-opacity="0.74"/>
+          <stop offset="0.72" stop-color="#ffd945" stop-opacity="0.60"/>
+          <stop offset="1" stop-color="#f7c62c" stop-opacity="0.46"/>
+        </linearGradient>
         <linearGradient id="es-g-rheoPlate" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stop-color="#b9c4d0"/><stop offset="0.42" stop-color="#dde4ec"/><stop offset="1" stop-color="#f8fbfd"/>
         </linearGradient>

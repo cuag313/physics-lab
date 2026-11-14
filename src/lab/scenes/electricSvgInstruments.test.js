@@ -17,40 +17,49 @@ describe('rheostatMode：按实际接线柱判定接入方式', () => {
   })
 })
 
-describe('rheostat 渲染：有效段高亮随 mode 变化', () => {
+describe('rheostat 渲染：通电线圈整段浅黄，随 mode / 通电状态变化', () => {
   const c = { f: 0.3, rmax: 10 }
   const xw = RHEO_TRACK.x0 + 0.3 * (RHEO_TRACK.x1 - RHEO_TRACK.x0)
 
-  it('left-wire：左段亮橙高亮 + 流动粒子；读数 = f*rmax', () => {
-    const svg = rheo.render(c, { mode: 'left-wire' })
-    expect(svg).toContain('es-rheo-flow')                 // 流动粒子
-    expect(svg).toContain('stroke="#f59e0b"')             // 亮橙
+  it('合上开关（live）+ left-wire：左段整圈绕线着浅黄；读数 = f*rmax', () => {
+    const svg = rheo.render(c, { mode: 'left-wire', live: true })
+    expect(svg).toContain('fill="url(#es-g-rheoLive)"')          // 通电着色（整面，不是一条线）
+    expect(svg).toContain(`width="${(xw - 34).toFixed(1)}"`)     // 从绕线左端到滑片
     expect(svg).toContain(`R = ${(0.3 * 10).toFixed(1)} Ω`)
+    expect(svg).not.toContain('es-rheo-flow')                    // 旧的流动粒子已删
+    expect(svg).not.toContain('stroke="#f59e0b"')                // 旧的橙色指示线已删
   })
 
-  it('right-wire：高亮从滑片到右柱；读数 = (1-f)*rmax', () => {
-    const svg = rheo.render(c, { mode: 'right-wire' })
-    expect(svg).toContain('es-rheo-flow')
-    // 高亮沿瓷筒冠顶走（y12.7），右段到绕线右端 x158
-    expect(svg).toMatch(/L158 14.2/)
+  it('开关断开（live=false）：绕线不着色', () => {
+    const svg = rheo.render(c, { mode: 'left-wire', live: false })
+    expect(svg).not.toContain('fill="url(#es-g-rheoLive)"')
+  })
+
+  it('right-wire：从滑片到绕线右端 x158；读数 = (1-f)*rmax', () => {
+    const svg = rheo.render(c, { mode: 'right-wire', live: true })
+    expect(svg).toContain(`x="${xw.toFixed(1)}"`)
+    expect(svg).toContain(`width="${(158 - xw).toFixed(1)}"`)
     expect(svg).toContain(`R = ${(0.7 * 10).toFixed(1)} Ω`)
   })
 
-  it('short：金属杆红色高亮 + 旁注短路；full-wire：整段灰色 + 旁注', () => {
-    const s = rheo.render(c, { mode: 'short' })
+  it('short：金属杆红色高亮 + 旁注短路，线圈不着色（电流不过绕线）', () => {
+    const s = rheo.render(c, { mode: 'short', live: true })
     expect(s).toContain('短路')
     expect(s).toContain('stroke="#ef4444"')
+    expect(s).not.toContain('fill="url(#es-g-rheoLive)"')
+  })
 
-    const f = rheo.render(c, { mode: 'full-wire' })
+  it('full-wire：整段绕线着色 + 旁注', () => {
+    const f = rheo.render(c, { mode: 'full-wire', live: true })
     expect(f).toContain('最大阻值，不可调')
-    expect(f).toContain('stroke="#8b95a5"')
+    expect(f).toContain(`width="${(158 - 34).toFixed(1)}"`)
     expect(f).toContain('R = 10.0 Ω')
   })
 
-  it('滑片 xw 变化时高亮段实时跟随', () => {
-    const svg = rheo.render({ f: 0.8, rmax: 10 }, { mode: 'left-wire' })
+  it('滑片 xw 变化时通电段实时跟随', () => {
+    const svg = rheo.render({ f: 0.8, rmax: 10 }, { mode: 'left-wire', live: true })
     const xw2 = RHEO_TRACK.x0 + 0.8 * (RHEO_TRACK.x1 - RHEO_TRACK.x0)
-    expect(svg).toContain(`L${xw2.toFixed(1)} 14.2`)       // 左段高亮终点跟到新滑片位置（沿冠顶）
+    expect(svg).toContain(`width="${(xw2 - 34).toFixed(1)}"`)    // 通电段右端跟到新滑片位置
   })
 })
 
