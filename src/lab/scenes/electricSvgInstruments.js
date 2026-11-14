@@ -12,7 +12,7 @@ import { capPaint } from '../theme/termColors.js'
 export const FIG = '/physics-lab/assets/equipment/fig'
 /* 实拍图版本号：同名图片被覆盖后浏览器会继续用旧缓存（元件库缩略图尤其明显），
    所有 fig 图片 URL 统一带这串版本参数，改图时把它 +1 即可强制刷新。 */
-export const FIG_V = '20261113c'
+export const FIG_V = '20261114a'
 export const figURL = (file) => `${FIG}/${file}?v=${FIG_V}`
 
 /** 滑动变阻器滑片轨道（显示坐标）：与实拍图里瓷筒绕线的左右端对齐（33..159） */
@@ -855,10 +855,10 @@ export const TYPES = {
   rheostat: {
     label: '滑动变阻器', w: 190, h: 79,
     terminals: [
-      { id: 'tl', label: '1', name: '上左接线柱', x: 7, y: 12 },
-      { id: 'tr', label: '2', name: '上右接线柱', x: 185, y: 12 },
-      { id: 'bl', label: '3', name: '下左接线柱', x: 18, y: 42 },
-      { id: 'br', label: '4', name: '下右接线柱', x: 175, y: 45 },
+      { id: 'tl', label: '1', name: '上左接线柱', x: 5, y: 5 },
+      { id: 'tr', label: '2', name: '上右接线柱', x: 184, y: 5 },
+      { id: 'bl', label: '3', name: '下左接线柱', x: 16, y: 38.5 },
+      { id: 'br', label: '4', name: '下右接线柱', x: 174, y: 38 },
     ],
     render(c, dyn) {
       const f = c.f ?? 0.4
@@ -866,14 +866,15 @@ export const TYPES = {
       const rmax = c.rmax ?? 10
       const mode = dyn?.mode || 'open'
 
-      // ── 实测几何（rheostat_c.png 224×93 → 190×79，sx 0.848 / sy 0.849）──
-      // 金属杆 y13.6；绕线瓷筒 x 34..159、冠顶 y23.5（照片里的密绕线本身就是电阻丝，不再重画）
-      const ROD_Y = 13.6
-      const CO = { x0: 33, x1: 159, y: 23.5 }
-      const BL = { x: 18, y: 42 }, BR = { x: 175, y: 45 }
-      const TL = { x: 7, y: 12 }, TR = { x: 185, y: 12 }
+      // ── 实测几何（rheostat_c2.png 224×93 → 190×79，sx 0.848 / sy 0.849）──
+      // 底图取自拆解图里"没有滑片"的整机：金属杆 y5.9；绕线 x34..158、瓷筒顶棱 y12.7，
+      // 亮条走 y14.2（压在绕线上沿，不外溢到瓷筒顶棱外的空白）
+      const ROD_Y = 5.9
+      const CO = { x0: 34, x1: 158, y: 14.2 }
+      const BL = { x: 16, y: 38.5 }, BR = { x: 174, y: 38 }
+      const TL = { x: 5, y: 5 }, TR = { x: 184, y: 5 }
 
-      // 有效段路径：沿瓷筒冠顶（33..159），照片两端的引线已存在，不重画
+      // 有效段路径：沿绕线上沿（34..158），照片两端的引线已存在，不重画
       const xwClamped = Math.max(CO.x0, Math.min(CO.x1, xw))
       const segLeft = `M${CO.x0} ${CO.y}L${xwClamped.toFixed(1)} ${CO.y}`
       const segRight = `M${xwClamped.toFixed(1)} ${CO.y}L${CO.x1} ${CO.y}`
@@ -883,12 +884,12 @@ export const TYPES = {
       const HL = '#f59e0b'
       const hlPath = mode === 'left-wire' ? segLeft : segRight
       const highlight = mode === 'left-wire' || mode === 'right-wire'
-        ? `<path d="${hlPath}" fill="none" stroke="${HL}" stroke-width="7" stroke-linecap="round" opacity="0.22"/>
-           <path d="${hlPath}" fill="none" stroke="${HL}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
-           <path class="es-rheo-flow" d="${hlPath}" fill="none" stroke="#fde68a" stroke-width="4.2"
-             stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2.5 12.5"/>`
+        ? `<path d="${hlPath}" fill="none" stroke="${HL}" stroke-width="6" stroke-linecap="round" opacity="0.18"/>
+           <path d="${hlPath}" fill="none" stroke="${HL}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
+           <path class="es-rheo-flow" d="${hlPath}" fill="none" stroke="#fde68a" stroke-width="3.4"
+             stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2.2 11"/>`
         : mode === 'full-wire'
-          ? `<path d="${segFull}" fill="none" stroke="#8b95a5" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>`
+          ? `<path d="${segFull}" fill="none" stroke="#8b95a5" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>`
           : ''
 
       // 金属杆红色高亮（短路）：压在照片里的金属杆上
@@ -907,12 +908,12 @@ export const TYPES = {
         : mode === 'full-wire' ? chip(95, 45, '最大阻值，不可调', '#fbbf24', 104)
         : ''
 
-      // 4 个接线柱：上黑（金属杆端）下红（电阻丝端）
+      // 4 个接线柱：只做半透明标记，不盖住照片柱帽的立体感（上黑 / 下红）
       const dot = (p, dark) => {
         const cp = capPaint(dark)
         return `
-        <circle cx="${p.x}" cy="${p.y}" r="5.2" fill="${cp.fill}" stroke="${cp.stroke}" stroke-width="1.2"/>
-        <circle cx="${p.x - 1}" cy="${p.y - 1}" r="1.4" fill="rgba(255,255,255,0.4)"/>`
+        <circle cx="${p.x}" cy="${p.y}" r="4.6" fill="${cp.fill}" fill-opacity="0.5" stroke="${cp.stroke}" stroke-width="1" stroke-opacity="0.8"/>
+        <circle cx="${p.x - 1.2}" cy="${p.y - 1.3}" r="1.3" fill="rgba(255,255,255,0.45)"/>`
       }
 
       // 等效电阻读数（按接入方式取有效段）
@@ -921,11 +922,46 @@ export const TYPES = {
         : mode === 'short' ? 0
         : f * rmax
 
+      /* 滑片：一件式结构（黑绝缘柄横跨金属杆 → 两根钢触臂 → 白绝缘隔板挂着压住绕线），
+         形状照拆解图左下角那块单独滑片零件：上端黑柄、两侧细触脚带触头、中间白色圆底隔板 */
+      const slider = `
+      <g class="slider-handle" data-role="slider" style="cursor:ew-resize">
+        <path d="M${(xw - 8).toFixed(1)} 6.8 H${(xw + 8).toFixed(1)} V19
+                 Q${(xw + 8).toFixed(1)} 27.4 ${xw.toFixed(1)} 27.4
+                 Q${(xw - 8).toFixed(1)} 27.4 ${(xw - 8).toFixed(1)} 19 Z"
+              fill="url(#es-g-rheoPlate)" stroke="#8e9aa7" stroke-width="0.55" stroke-opacity="0.8"
+              filter="url(#es-f-rheoPlate)"/>
+        <rect x="${(xw - 9.9).toFixed(1)}" y="5.9" width="1.5" height="9.6" rx="0.75"
+              fill="url(#es-g-rheoArm)" stroke="#78838f" stroke-width="0.45"/>
+        <rect x="${(xw + 8.4).toFixed(1)}" y="5.9" width="1.5" height="9.6" rx="0.75"
+              fill="url(#es-g-rheoArm)" stroke="#78838f" stroke-width="0.45"/>
+        <circle cx="${(xw - 9.15).toFixed(1)}" cy="14.8" r="1.45" fill="#3d444c"/>
+        <circle cx="${(xw + 9.15).toFixed(1)}" cy="14.8" r="1.45" fill="#3d444c"/>
+        <rect x="${(xw - 10.5).toFixed(1)}" y="${(ROD_Y - 5.3).toFixed(1)}" width="21" height="6.2" rx="2.6"
+              fill="url(#es-g-rheoHandle)" stroke="#0b0d10" stroke-width="0.9"/>
+        <rect x="${(xw - 6).toFixed(1)}" y="${(ROD_Y - 3.7).toFixed(1)}" width="12" height="1.3" rx="0.65"
+              fill="#5a606a" opacity="0.55"/>
+      </g>`
+
       return `
     <svg width="190" height="79" viewBox="0 0 190 79">
       <style>.es-rheo-flow{animation:es-rheo-flow 1.1s linear infinite}@keyframes es-rheo-flow{to{stroke-dashoffset:-30}}</style>
+      <defs>
+        <linearGradient id="es-g-rheoPlate" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#b9c4d0"/><stop offset="0.42" stop-color="#dde4ec"/><stop offset="1" stop-color="#f8fbfd"/>
+        </linearGradient>
+        <linearGradient id="es-g-rheoHandle" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#4b515a"/><stop offset="0.55" stop-color="#2a2e34"/><stop offset="1" stop-color="#121417"/>
+        </linearGradient>
+        <linearGradient id="es-g-rheoArm" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#9aa5b1"/><stop offset="0.5" stop-color="#e4eaf0"/><stop offset="1" stop-color="#8d98a4"/>
+        </linearGradient>
+        <filter id="es-f-rheoPlate" x="-30%" y="-15%" width="160%" height="140%">
+          <feDropShadow dx="1.2" dy="1.4" stdDeviation="1.4" flood-color="#0b1220" flood-opacity="0.30"/>
+        </filter>
+      </defs>
       ${fitInner(190, 110, 190, 79, INNER.rheostat())}
-      ${photo('rheostat_c.png', 190, 79)}
+      ${photo('rheostat_c2.png', 190, 79)}
       <g class="casing">
         <!-- 有效段高亮（随滑片实时变化，压在照片的绕线上） -->
         ${highlight}
@@ -934,13 +970,7 @@ export const TYPES = {
         <!-- 柱帽：位置与颜色照照片（上左黑 / 上右红 / 下左黑 / 下右红） -->
         ${dot(TL, true)}${dot(TR, false)}${dot(BL, true)}${dot(BR, false)}
       </g>
-      <!-- 滑片：黑色绝缘柄压在金属杆上，指针落到瓷筒冠顶 -->
-      <g class="slider-handle" data-role="slider" style="cursor:ew-resize">
-        <line x1="${xw.toFixed(1)}" y1="${(ROD_Y + 3).toFixed(1)}" x2="${xw.toFixed(1)}" y2="${(CO.y + 4).toFixed(1)}" stroke="#4b5563" stroke-width="1.6" opacity="0.9"/>
-        <rect x="${(xw - 4).toFixed(1)}" y="${(ROD_Y - 4.5).toFixed(1)}" width="8" height="9" rx="2.5" fill="url(#es-g-steel)" stroke="#5b6570" stroke-width="0.8"/>
-        <rect x="${(xw - 7.5).toFixed(1)}" y="${(ROD_Y - 13.5).toFixed(1)}" width="15" height="9" rx="4.5" fill="#1c1f24" stroke="#0b0d10" stroke-width="1"/>
-        <line x1="${(xw - 4.5).toFixed(1)}" y1="${(ROD_Y - 9).toFixed(1)}" x2="${(xw + 4.5).toFixed(1)}" y2="${(ROD_Y - 9).toFixed(1)}" stroke="#3c3e42" stroke-width="1"/>
-      </g>
+      ${slider}
       <g transform="translate(95,67)">
         <rect x="-36" y="-8" width="72" height="16" rx="5" fill="#0f172a" opacity="0.88"/>
         <text x="0" y="4" text-anchor="middle" font-size="10" font-weight="600" fill="#4ade80"

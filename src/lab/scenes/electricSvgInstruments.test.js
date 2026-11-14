@@ -31,8 +31,8 @@ describe('rheostat 渲染：有效段高亮随 mode 变化', () => {
   it('right-wire：高亮从滑片到右柱；读数 = (1-f)*rmax', () => {
     const svg = rheo.render(c, { mode: 'right-wire' })
     expect(svg).toContain('es-rheo-flow')
-    // 高亮沿瓷筒冠顶走（y23.5），右段到绕线右端 x159
-    expect(svg).toMatch(/L159 23.5/)
+    // 高亮沿瓷筒冠顶走（y12.7），右段到绕线右端 x158
+    expect(svg).toMatch(/L158 14.2/)
     expect(svg).toContain(`R = ${(0.7 * 10).toFixed(1)} Ω`)
   })
 
@@ -50,6 +50,7 @@ describe('rheostat 渲染：有效段高亮随 mode 变化', () => {
   it('滑片 xw 变化时高亮段实时跟随', () => {
     const svg = rheo.render({ f: 0.8, rmax: 10 }, { mode: 'left-wire' })
     const xw2 = RHEO_TRACK.x0 + 0.8 * (RHEO_TRACK.x1 - RHEO_TRACK.x0)
-    expect(svg).toContain(`L${xw2.toFixed(1)} 23.5`)       // 左段高亮终点跟到新滑片位置（沿冠顶）
+    expect(svg).toContain(`L${xw2.toFixed(1)} 14.2`)       // 左段高亮终点跟到新滑片位置（沿冠顶）
   })
 })
+
