@@ -27,7 +27,8 @@ export const CFG = {
   BULB_RATED: 1.8,              // 灯泡额定功率（亮度 100%）
   AMM_R: 0.01,                  // 电流表内阻
   VOLT_R: 1e7,                  // 电压表内阻
-  AMM_FS: 0.6,                  // 电流量程
+  AMM_FS: 0.6,                  // 电流量程（0.6A 柱）
+  AMM_FS_2: 0.5,                // 中心零位电流表（−500~500 那台，两柱）：满偏 0.5A，指针左右各半
   VOLT_FS: 3.0,                 // 电压量程
   RHEO_MAX: 10,                 // 滑动变阻器最大阻值
   // ── 补充器材（初中必做 / 家庭电路 / 高中拓展）──
@@ -72,7 +73,7 @@ export const TERM_IDS = {
   accumulator: ['n', 'p'],
   bulb: ['a', 'b'],
   switch: ['a', 'b'],
-  ammeter: ['neg', 'mid', 'full'],   // neg(黑) / mid(0.6A) / full(3A)：接哪个柱就是哪个量程
+  ammeter: ['neg', 'pos'],            // 中心零位 mA 表（−500~500 那台）：只有黑(−)/红(+)两柱，正反都能偏
   ammeterA: ['neg', 'mid', 'full'],  // 安培表（黑壳双刻度那台）：端子与电流表相同
   voltmeter: ['neg', 'mid', 'full'], // neg(黑) / mid(3V) / full(15V)
   rheostat: ['tl', 'tr', 'bl', 'br'],
@@ -95,15 +96,16 @@ export const TERM_IDS = {
 
 const keyOf = (cid, tid) => cid + ':' + tid
 
-/** 电表量程柱：full 优先（宽量程防误报过载），其次 mid */
+/** 电表量程柱：full 优先（宽量程防误报过载），其次 mid；两柱表（只有 pos）返回 pos */
 function meterRangeTap(c, wires) {
-  for (const w of wires) {
-    if (w.a === keyOf(c.id, 'full') || w.b === keyOf(c.id, 'full')) return 'full'
+  const ids = TERM_IDS[c.type] || []
+  for (const t of ['full', 'mid', 'pos']) {
+    if (!ids.includes(t)) continue
+    for (const w of wires) {
+      if (w.a === keyOf(c.id, t) || w.b === keyOf(c.id, t)) return t
+    }
   }
-  for (const w of wires) {
-    if (w.a === keyOf(c.id, 'mid') || w.b === keyOf(c.id, 'mid')) return 'mid'
-  }
-  return 'mid'
+  return ids.includes('pos') ? 'pos' : 'mid'
 }
 
 function stampR(A, i, j, R) {
@@ -248,7 +250,7 @@ export function solveCircuit(comps, wires, opts) {
       const bb = netOf(c, 'neg')
       const R = c._probeR ?? CFG.AMM_R // 探针求解开路电压/短路电流时覆盖内阻
       stampR(A, a, bb, R)
-      els.push({ kind: 'R', a, b: bb, R, comp: c, tA: tap, tB: 'neg', fs: tap === 'full' ? 3 : CFG.AMM_FS })
+      els.push({ kind: 'R', a, b: bb, R, comp: c, tA: tap, tB: 'neg', fs: tap === 'full' ? 3 : tap === 'pos' ? CFG.AMM_FS_2 : CFG.AMM_FS })
     } else if (c.type === 'voltmeter') {
       const tap = meterRangeTap(c, wires)
       const a = netOf(c, tap) // 接入的量程柱（+ 端）

@@ -212,7 +212,7 @@ const PALETTE_ICONS = {
     const s = TYPES.switch.render({ id: 'pal-switch', closed: false, showRead: false })
     return s.replace('width="176" height="110"', 'width="42" height="26"')
   })(),
-  ammeter: `<img src="${figURL('ammeter_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
+  ammeter: `<img src="${figURL('ammeter6_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
   ammeterA: `<img src="${figURL('ammeterA_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
   voltmeter: `<img src="${figURL('voltmeter2_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
   rheostat: `<img src="${figURL('rheostat_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
@@ -480,7 +480,7 @@ export default function ElectricSvgLabScene() {
     setWires([
       w(ids.battery, 'p', ids.rheostat, 'bl'),
       w(ids.rheostat, 'tr', ids.bulb, 'b'),
-      w(ids.bulb, 'a', ids.ammeter, 'mid'),
+      w(ids.bulb, 'a', ids.ammeter, 'pos'),
       w(ids.ammeter, 'neg', ids.switch, 'b'),
       w(ids.switch, 'a', ids.battery, 'n'),
     ])
@@ -877,7 +877,8 @@ export default function ElectricSvgLabScene() {
       // bright 按额定功率归一（钳到 1）；over 单独给，用于「刺眼白 + 闪烁」过载警示
       return { bright: p > 0 ? Math.min(1, p / CFG.BULB_RATED) : 0, over: p > CFG.BULB_RATED * 1.02 }
     }
-    if (c.type === 'ammeter' || c.type === 'ammeterA') return { frac: Math.abs(o._I || 0) / (o._fs || CFG.AMM_FS) }
+    if (c.type === 'ammeter') return { frac: (o._I || 0) / (o._fs || CFG.AMM_FS_2) } // 中心零位：带符号，正反都能偏
+    if (c.type === 'ammeterA') return { frac: Math.abs(o._I || 0) / (o._fs || CFG.AMM_FS) }
     if (c.type === 'voltmeter') return { frac: Math.abs(o._V || 0) / (o._fs || CFG.VOLT_FS) }
     if (c.type === 'rheostat') {
       // 有效电阻丝高亮：按实际接入的两个接线柱判定 mode

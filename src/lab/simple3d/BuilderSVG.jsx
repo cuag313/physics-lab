@@ -294,7 +294,8 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       const p = o._P || 0
       return { bright: p > 0 ? Math.min(1, p / CFG.BULB_RATED) : 0, over: p > CFG.BULB_RATED * 1.02 }
     }
-    if (c.type === 'ammeter' || c.type === 'ammeterA') return { frac: Math.abs(o._I || 0) / (o._fs || CFG.AMM_FS) }
+    if (c.type === 'ammeter') return { frac: (o._I || 0) / (o._fs || CFG.AMM_FS_2) } // 中心零位：带符号
+    if (c.type === 'ammeterA') return { frac: Math.abs(o._I || 0) / (o._fs || CFG.AMM_FS) }
     if (c.type === 'voltmeter') return { frac: Math.abs(o._V || 0) / (o._fs || CFG.VOLT_FS) }
     if (c.type === 'rheostat') {
       const wired = new Set()

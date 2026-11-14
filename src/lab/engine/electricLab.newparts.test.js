@@ -259,10 +259,10 @@ describe('小电动机 / 家庭电源', () => {
 })
 
 describe('伏安法测电阻的系统误差（内接 / 外接）', () => {
-  // 共同部分：battery → 电流表 → R → battery
+  // 共同部分：battery → 电流表（两柱表，红柱 pos）→ R → battery
   const base = [
     { id: 1, a: '1:p', b: '3:neg' },
-    { id: 2, a: '3:full', b: '2:a' },
+    { id: 2, a: '3:pos', b: '2:a' },
     { id: 3, a: '2:b', b: '1:n' },
   ]
   const comps = [
@@ -302,7 +302,7 @@ describe('伏安法测电阻的系统误差（内接 / 外接）', () => {
       [{ id: 1, type: 'battery' }, { id: 3, type: 'ammeter' }, { id: 4, type: 'voltmeter' }],
       [
         { id: 1, a: '1:p', b: '3:neg' },
-        { id: 2, a: '3:full', b: '1:n' },
+        { id: 2, a: '3:pos', b: '1:n' },
         { id: 3, a: '4:full', b: '1:p' },
         { id: 4, a: '4:neg', b: '1:n' },
       ])

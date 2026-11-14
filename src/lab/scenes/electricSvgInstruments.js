@@ -12,7 +12,7 @@ import { capPaint } from '../theme/termColors.js'
 export const FIG = '/physics-lab/assets/equipment/fig'
 /* 实拍图版本号：同名图片被覆盖后浏览器会继续用旧缓存（元件库缩略图尤其明显），
    所有 fig 图片 URL 统一带这串版本参数，改图时把它 +1 即可强制刷新。 */
-export const FIG_V = '20261114c'
+export const FIG_V = '20261114d'
 export const figURL = (file) => `${FIG}/${file}?v=${FIG_V}`
 
 /** 滑动变阻器滑片轨道（显示坐标）：与实拍图里瓷筒绕线的左右端对齐（33..159） */
@@ -406,6 +406,80 @@ function meterFaceSVG(x, y, w, h, cfg) {
     <rect x="${f(cx - 13 * s)}" y="${f(cy - 24 * s)}" width="${f(26 * s)}" height="${f(1.7 * s)}" fill="#5e6368"/>`
 }
 
+/* ── 中心零位表盘（照 iconsnewname/电流表_6.png：−50..0..50 双极性刻度，0 在正上） ──
+ * 与 A/V 表同一副 CAD：白面 (25,27)-(230,169)、轴心 (128,164)、两柱 x59.5 / 196.5 @ y194。
+ * 刻度由「连续弧线 + 站在弧上的短齿」组成（不是一整排长刺）：
+ *   弧线内沿实测 r93(正上) → r105(弧两端)，拍照透视下呈抛物线 r = 93 + 12·t²（t = |θ−270|/53）；
+ *   短齿从弧线向外 5.2、长齿 8.5，齿宽 1.3 / 1.8。
+ * 数字按 256 原图连通块逐个定位（r 110..122）；左右两端只有 5~7px 的「−」「+」小记号。
+ */
+const CZ = {
+  dialX: 25, dialY: 27, dialW: 206, dialH: 143, hubX: 128, hubY: 164,
+  aL: 218, aMid: 270, aR: 323, rArc: 93, rBend: 9, tickShort: 5.2, tickLong: 8.5,
+}
+const CZ_NUMS = [
+  ['50', 217.5, 119], ['40', 228, 116], ['30', 237.6, 113.5], ['20', 248.4, 112], ['10', 260.4, 111],
+  ['0', 269.5, 111],
+  ['10', 279.3, 111], ['20', 291.8, 113], ['30', 302.6, 114], ['40', 313.6, 117.5], ['50', 323.4, 121.5],
+]
+
+function centerFaceSVG(x, y, w, h, cfg = {}) {
+  const s = w / CZ.dialW
+  const cx = x + (CZ.hubX - CZ.dialX) * s
+  const cy = y + (CZ.hubY - CZ.dialY) * s
+  const rad = (d) => (d * Math.PI) / 180
+  const f = (v) => v.toFixed(2)
+  const INK = '#777c81'
+  const ARC = '#5a5f64'
+  const TICK = '#757a7f'
+  const TICK_M = '#4b5056'
+  const arcR = (a) => (CZ.rArc + CZ.rBend * Math.pow(Math.abs(a - CZ.aMid) / 53, 2)) * s
+  const pt = (a, r) => [cx + Math.cos(rad(a)) * r, cy + Math.sin(rad(a)) * r]
+
+  // 刻度弧线（60 段折线，等效抛物线弧）
+  let d = ''
+  for (let i = 0; i <= 60; i++) {
+    const a = CZ.aL + (CZ.aR - CZ.aL) * (i / 60)
+    const [px, py] = pt(a, arcR(a))
+    d += `${i ? 'L' : 'M'}${f(px)} ${f(py)}`
+  }
+
+  // 短齿：0 在 270°，左右各 25 小格（每 5 格一根长齿），齿身顺时针偏约 1°
+  let ticks = ''
+  for (let i = -25; i <= 25; i++) {
+    const a = CZ.aMid + i * ((CZ.aR - CZ.aMid) / 25)
+    const major = i % 5 === 0
+    const r0 = arcR(a)
+    const [x1, y1] = pt(a, r0)
+    const [x2, y2] = pt(a + 1.1, r0 + (major ? CZ.tickLong : CZ.tickShort) * s)
+    ticks += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${major ? TICK_M : TICK}" stroke-width="${f((major ? 1.8 : 1.3) * s)}"/>`
+  }
+
+  const mark = (a, str, r, size, weight) => {
+    const [tx, ty] = pt(a, r * s)
+    return `<text x="${f(tx)}" y="${f(ty)}" transform="rotate(${f(a + 90)} ${f(tx)} ${f(ty)})" text-anchor="middle" dominant-baseline="middle" font-size="${f(size * s)}" font-weight="${weight || 400}" fill="${INK}">${str}</text>`
+  }
+  let marks = ''
+  for (const [str, a, r] of CZ_NUMS) marks += mark(a, str, r, 13)
+  marks += mark(213.4, '−', 94.6, 11, 600)   // 左端「−」：原图只是弧首外侧一小横
+  marks += mark(325.3, '+', 93.6, 13, 600)        // 右端「+」
+
+  return `
+    <defs>
+      <clipPath id="es-cp-${cfg.clip || 'czf'}">
+        <rect x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}"/>
+      </clipPath>
+    </defs>
+    <rect x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" rx="${f(2.5 * s)}" fill="url(#es-g-meterface)"/>
+    <g clip-path="url(#es-cp-${cfg.clip || 'czf'})">
+      <path d="${d}" fill="none" stroke="${ARC}" stroke-width="${f(2 * s)}" stroke-linejoin="round"/>
+      ${ticks}
+    </g>
+    ${marks}
+    <text x="${f(cx)}" y="${f(cy - 38 * s)}" text-anchor="middle" dominant-baseline="middle"
+      font-size="${f(28 * s)}" font-weight="400" fill="#969ba0">mA</text>
+    <rect x="${f(cx - 14 * s)}" y="${f(cy - 25 * s)}" width="${f(28 * s)}" height="${f(2.2 * s)}" fill="#5e6368"/>`
+}
 /** 接线柱圆点叠层：黑、红、红（金属座圈 + 彩色柱帽，照片缺中柱时补齐三个柱位） */
 function termDotsSVG(dots) {
   return dots.map(({ x, y, label, dark }) => {
@@ -803,29 +877,44 @@ export const TYPES = {
     </svg>` }
   },
 
-  /* ── 电流表（真实 J0407 图 + 动画表针 + 三接线柱黑红红） ── */
+  /* ── 电流表（1:1 复刻 iconsnewname/电流表_6.png：中心零位 −50..0..50，黑/红两柱） ── */
   ammeter: {
-    label: '电流表', w: 130, h: 152, meter: 'I',
+    label: '电流表', w: 150, h: 150, meter: 'I', centerZero: true,
     terminals: [
-      { id: 'neg', label: '−', name: '负接线柱', x: 31, y: 110 },
-      { id: 'mid', label: '0.6', name: '0.6A 接线柱', x: 65, y: 110 },
-      { id: 'full', label: '3', name: '3A 接线柱', x: 100, y: 110 },
+      { id: 'neg', label: '−', name: '负接线柱', x: 35, y: 114 },
+      { id: 'pos', label: '+', name: '正接线柱', x: 115, y: 114 },
     ],
     render(c, dyn) {
-      // 刻度弧实测（ammeter_c.png 118×138 → 130×152）：圆心(59,98) R59.5，
-      // 即显示坐标 pivot(65,107.9) 臂长 64.5；零位在正上（0 刻度），满偏 +41°。
-      // 轴心落在黑底座上，用 clip 让针从表盘下沿穿出。
+      const K = 150 / 256
+      const HUB = { x: 128 * K, y: 164 * K }
+      const frac = Math.max(-1, Math.min(1, dyn?.frac || 0))
+      // 中心零位：静止指正上（270°），左右各 52.5° 满偏；正电流向右偏
+      const ang = (frac * 52.5).toFixed(2)
+      const LEN = 101 * K
       return `
-    <svg width="130" height="152" viewBox="0 0 130 152">
-      <defs><clipPath id="es-clip-ammDial"><rect x="11" y="11" width="112.4" height="87"/></clipPath></defs>
-      ${fitInner(130, 150, 130, 152, INNER.meter((dyn?.frac || 0) * 22))}
-      ${photo('ammeter_c.png', 130, 152)}
-      ${termDotsSVG([
-        { x: 31, y: 110, label: '−', dark: true },
-        { x: 65, y: 110, label: '0.6', dark: false },
-        { x: 100, y: 110, label: '3', dark: false },
-      ])}
-      ${needleSVG(65, 107.9, 64.5, dyn?.frac || 0, 0, 41, 'es-clip-ammDial')}
+    <svg width="150" height="150" viewBox="0 0 150 150">
+      <defs>
+        <radialGradient id="es-g-meterface" cx="50%" cy="40%" r="66%">
+          <stop offset="0%" stop-color="#ffffff"/>
+          <stop offset="62%" stop-color="#fdfdfd"/>
+          <stop offset="100%" stop-color="#f0f0ee"/>
+        </radialGradient>
+        <radialGradient id="es-g-hub" cx="42%" cy="34%" r="62%">
+          <stop offset="0%" stop-color="#f2f4f5"/>
+          <stop offset="62%" stop-color="#cfd4d8"/>
+          <stop offset="100%" stop-color="#a3a9af"/>
+        </radialGradient>
+      </defs>
+      ${fitInner(150, 150, 150, 150, INNER.meter(Math.abs(frac) * 22))}
+      ${photo('ammeter6_c.png', 150, 150)}
+      <rect x="${25 * K}" y="${27 * K}" width="${206 * K}" height="${143 * K}" rx="${2.5 * K}" fill="#101317"/>
+      ${centerFaceSVG(25 * K, 27 * K, 206 * K, 143 * K, { clip: 'czA' })}
+      <line x1="${HUB.x}" y1="${HUB.y}" x2="${HUB.x}" y2="${HUB.y - LEN}" stroke="#d01f24" stroke-width="1.45" stroke-linecap="round"
+        transform="rotate(${ang} ${HUB.x} ${HUB.y})"/>
+      <!-- 轴心：原图是一枚扁圆镀铬轴帽（y156..167），不是正圆 -->
+      <ellipse cx="${HUB.x}" cy="${161.5 * K}" rx="${9.6 * K}" ry="${6.6 * K}" fill="url(#es-g-hub)" stroke="#7b8288" stroke-width="${1.0 * K}"/>
+      <ellipse cx="${HUB.x}" cy="${161.5 * K}" rx="${4.6 * K}" ry="${3.0 * K}" fill="#c9ced3" stroke="#9aa1a7" stroke-width="${0.8 * K}"/>
+      <ellipse cx="${(HUB.x - 1.2 * K)}" cy="${160.8 * K}" rx="${2.6 * K}" ry="${1.6 * K}" fill="#eef1f3" opacity="0.85"/>
     </svg>` }
   },
 

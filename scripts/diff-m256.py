@@ -1,5 +1,5 @@
 """逐像素比对：原图 vs 2D 渲染（都把墨迹拆成连通块，按最近的配对报偏差）。
-用法：python scripts/diff-m256.py [ammeterA|voltmeter]
+用法：python scripts/diff-m256.py [ammeter|ammeterA|voltmeter]
 只读 audit/fidelity/m256-*.png 与 fig/*.png。
 """
 import sys
@@ -9,7 +9,7 @@ from PIL import Image
 
 FIG = r"D:\PythonProject\physics-lab\public\assets\equipment\fig"
 OUT = r"D:\PythonProject\physics-lab\audit\fidelity"
-PAIRS = {"ammeterA": "ammeterA_c.png", "voltmeter": "voltmeter2_c.png"}
+PAIRS = {"ammeterA": "ammeterA_c.png", "voltmeter": "voltmeter2_c.png", "ammeter": "ammeter6_c.png"}
 HUB = (128.0, 164.0)
 
 
