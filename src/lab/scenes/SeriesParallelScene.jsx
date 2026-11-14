@@ -139,10 +139,12 @@ export default function SeriesParallelScene() {
     const series = s.mode === 'series'
 
     // ── 元件坐标（两套） ──
-    const r1x = x0 + loopW * (series ? 0.32 : 0.34)
-    const r2x = x0 + loopW * (series ? 0.68 : 0.66)
-    const battX = x0 + loopW * (series ? 0.24 : 0.14)
-    const swX = x0 + loopW * (series ? 0.74 : 0.86)
+    // 串联：R₁、R₂ 串在上边，电源/开关在下边，单个闭合回路，无旁路
+    // 并联：电源、开关都放在「分叉前」的干路上，两条支路之间不再另有导线闭合
+    const r1x = x0 + loopW * (series ? 0.32 : 0.62)
+    const r2x = x0 + loopW * (series ? 0.68 : 1.0)
+    const battX = x0 + loopW * (series ? 0.24 : 0.16)
+    const swX = x0 + loopW * (series ? 0.74 : 0.34)
 
     if (series) drawSeries(ctx, { x0, y0, x1, y1, midY, r1x, r2x, battX, swX, hRes, hMeter, hBat, hSw, scale, ink, wc, lw, on, sol, labelFont })
     else drawParallel(ctx, { x0, y0, x1, y1, midX, midY, r1x, r2x, battX, swX, hRes, hMeter, hBat, hSw, scale, ink, wc, lw, on, sol, labelFont })
@@ -301,13 +303,12 @@ export default function SeriesParallelScene() {
     const { x0, y0, x1, y1, midX, midY, r1x, r2x, battX, swX, hRes, hMeter, hBat, hSw, scale, ink, wc, lw, on, sol, labelFont } = g
     const s = S.current
 
-    // 外圈 + 两条支路（支路上留 R 的缺口）
-    drawLine(ctx, x0, y0, x1, y0, wc, lw)
+    // 干路 + 两条支路：电源、开关在分叉之前，右边不再另画一条把两条支路短路的导线
+    drawLine(ctx, x0, y0, r2x, y0, wc, lw)                    // 上边（两条支路的公共接点）
     drawLine(ctx, x0, y1, battX - hBat, y1, wc, lw)
     drawLine(ctx, battX + hBat, y1, swX - hSw, y1, wc, lw)
-    drawLine(ctx, swX + hSw, y1, x1, y1, wc, lw)
-    drawLine(ctx, x1, y0, x1, y1, wc, lw)
-    drawLine(ctx, x0, y0, x0, midY - hMeter, wc, lw)
+    drawLine(ctx, swX + hSw, y1, r2x, y1, wc, lw)             // 下边（公共接点）
+    drawLine(ctx, x0, y0, x0, midY - hMeter, wc, lw)          // 左边干路（电流表）
     drawLine(ctx, x0, midY + hMeter, x0, y1, wc, lw)
     for (const bx of [r1x, r2x]) {
       drawLine(ctx, bx, y0, bx, midY - hRes, wc, lw)
@@ -343,33 +344,31 @@ export default function SeriesParallelScene() {
       onClick: () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) },
     })
 
-    // 电子流动：外圈 + 两条支路
+    // 电子流动：干路（电源→开关→支路接点→上边→左边电流表）+ 两条支路
     if (on) {
-      const outer = [
-        { x: battX + hBat, y: y1 }, { x: swX + hSw, y: y1 }, { x: x1, y: y1 }, { x: x1, y: y0 },
+      const main = [
+        { x: battX + hBat, y: y1 }, { x: swX - hSw, y: y1 }, { x: swX + hSw, y: y1 },
+        { x: r1x, y: y1 }, { x: r1x, y: midY + hRes }, { x: r1x, y: midY - hRes }, { x: r1x, y: y0 },
         { x: x0, y: y0 }, { x: x0, y: midY - hMeter }, { x: x0, y: midY + hMeter },
         { x: x0, y: y1 }, { x: battX - hBat, y: y1 },
       ]
-      drawCurrentFlow(ctx, outer, s.time, 0.5)
-      for (const bx of [r1x, r2x]) {
-        drawCurrentFlow(ctx, [
-          { x: bx, y: y0 }, { x: bx, y: midY - hRes }, { x: bx, y: midY + hRes }, { x: bx, y: y1 },
-        ], s.time, 0.5)
-      }
+      drawCurrentFlow(ctx, main, s.time, 0.5)
+      drawCurrentFlow(ctx, [
+        { x: r2x, y: y0 }, { x: r2x, y: midY - hRes }, { x: r2x, y: midY + hRes }, { x: r2x, y: y1 },
+      ], s.time, 0.5)
     }
 
-    // 标注
+    // 标注（两只电阻的标签放到上边导线之外，宽度不够时靠右对齐）
     ctx.fillStyle = '#667'; ctx.font = `${labelFont}px sans-serif`
     ctx.textAlign = 'center'; ctx.textBaseline = 'top'
     ctx.fillText('电源', battX, y1 + 26 * scale)
     ctx.fillText(on ? '开关（闭合）' : '开关（断开）', swX, y1 + 26 * scale)
-    ctx.textAlign = 'left'
-    ctx.fillText('R₁ = 10 Ω', r1x + hRes + 10, midY - 20 * scale)
-    ctx.fillText(`I₁ = ${sol.I1.toFixed(2)} A`, r1x + hRes + 10, midY + 2 * scale)
-    ctx.fillText('R₂ = 20 Ω', r2x + hRes + 10, midY - 20 * scale)
-    ctx.fillText(`I₂ = ${sol.I2.toFixed(2)} A`, r2x + hRes + 10, midY + 2 * scale)
-    // 电流表标注放到回路外左侧，避免与电压表引线打架
     ctx.textAlign = 'right'
+    ctx.fillText('R₁ = 10 Ω', r1x + 30, y0 - 40 * scale)
+    ctx.fillText(`I₁ = ${sol.I1.toFixed(2)} A`, r1x + 30, y0 - 22 * scale)
+    ctx.fillText('R₂ = 20 Ω', r2x, y0 - 40 * scale)
+    ctx.fillText(`I₂ = ${sol.I2.toFixed(2)} A`, r2x, y0 - 22 * scale)
+    // 电流表标注放到回路外左侧，避免与电压表引线打架
     ctx.fillText('电流表 A（测干路 I）', x0 - 12 * scale, midY - 8 * scale)
     ctx.fillText(`I = ${sol.I.toFixed(2)} A`, x0 - 12 * scale, midY + 12 * scale)
     ctx.textAlign = 'center'
