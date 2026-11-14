@@ -15,8 +15,8 @@ export const FIG = '/physics-lab/assets/equipment/fig'
 export const FIG_V = '20261113c'
 export const figURL = (file) => `${FIG}/${file}?v=${FIG_V}`
 
-/** 滑动变阻器滑片轨道（显示坐标） */
-export const RHEO_TRACK = { x0: 20, x1: 181 }
+/** 滑动变阻器滑片轨道（显示坐标）：与实拍图里瓷筒绕线的左右端对齐（33..159） */
+export const RHEO_TRACK = { x0: 34, x1: 158 }
 
 /**
  * 滑动变阻器接入方式（Prompt 1 的 mode 表，映射到 tl/tr/bl/br 四柱）：
@@ -847,10 +847,10 @@ export const TYPES = {
   rheostat: {
     label: '滑动变阻器', w: 190, h: 79,
     terminals: [
-      { id: 'tl', label: '1', name: '上左接线柱', x: 18, y: 11 },
-      { id: 'tr', label: '2', name: '上右接线柱', x: 182, y: 13 },
-      { id: 'bl', label: '3', name: '下左接线柱', x: 26, y: 48 },
-      { id: 'br', label: '4', name: '下右接线柱', x: 174, y: 46 },
+      { id: 'tl', label: '1', name: '上左接线柱', x: 7, y: 12 },
+      { id: 'tr', label: '2', name: '上右接线柱', x: 185, y: 12 },
+      { id: 'bl', label: '3', name: '下左接线柱', x: 18, y: 42 },
+      { id: 'br', label: '4', name: '下右接线柱', x: 175, y: 45 },
     ],
     render(c, dyn) {
       const f = c.f ?? 0.4
@@ -858,39 +858,34 @@ export const TYPES = {
       const rmax = c.rmax ?? 10
       const mode = dyn?.mode || 'open'
 
-      // ── 瓷筒绕线几何（与照片柱位对齐）──
-      const CO = { x0: 28, x1: 168, y: 29, h: 7 }
-      const BL = { x: 26, y: 48 }, BR = { x: 174, y: 46 }
-      const TL = { x: 18, y: 11 }, TR = { x: 182, y: 13 }
+      // ── 实测几何（rheostat_c.png 224×93 → 190×79，sx 0.848 / sy 0.849）──
+      // 金属杆 y13.6；绕线瓷筒 x 34..159、冠顶 y23.5（照片里的密绕线本身就是电阻丝，不再重画）
+      const ROD_Y = 13.6
+      const CO = { x0: 33, x1: 159, y: 23.5 }
+      const BL = { x: 18, y: 42 }, BR = { x: 175, y: 45 }
+      const TL = { x: 7, y: 12 }, TR = { x: 185, y: 12 }
 
-      // 20~30 圈铜色螺旋线（26 圈），取代照片里模糊的绕线
-      const TURNS = 26
-      const step = (CO.x1 - CO.x0) / TURNS
-      let wind = ''
-      for (let i = 0; i < TURNS; i++) {
-        const x = CO.x0 + i * step
-        wind += `M${x.toFixed(1)} ${CO.y - CO.h}Q${(x + step * 0.78).toFixed(1)} ${CO.y} ${x.toFixed(1)} ${CO.y + CO.h}`
-      }
-
-      // 有效段路径：柱 → 绕线端 → 滑片
+      // 有效段路径：沿瓷筒冠顶（33..159），照片两端的引线已存在，不重画
       const xwClamped = Math.max(CO.x0, Math.min(CO.x1, xw))
-      const segLeft = `M${BL.x} ${BL.y}L${CO.x0} ${CO.y}L${xwClamped.toFixed(1)} ${CO.y}`
-      const segRight = `M${xwClamped.toFixed(1)} ${CO.y}L${CO.x1} ${CO.y}L${BR.x} ${BR.y}`
-      const segFull = `M${BL.x} ${BL.y}L${CO.x0} ${CO.y}L${CO.x1} ${CO.y}L${BR.x} ${BR.y}`
+      const segLeft = `M${CO.x0} ${CO.y}L${xwClamped.toFixed(1)} ${CO.y}`
+      const segRight = `M${xwClamped.toFixed(1)} ${CO.y}L${CO.x1} ${CO.y}`
+      const segFull = `M${CO.x0} ${CO.y}L${CO.x1} ${CO.y}`
 
-      // 有效段高亮（亮橙加粗 + 流动粒子）
+      // 有效段高亮（亮橙加粗 + 外发光 + 流动粒子）
       const HL = '#f59e0b'
+      const hlPath = mode === 'left-wire' ? segLeft : segRight
       const highlight = mode === 'left-wire' || mode === 'right-wire'
-        ? `<path d="${mode === 'left-wire' ? segLeft : segRight}" fill="none" stroke="${HL}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
-           <path class="es-rheo-flow" d="${mode === 'left-wire' ? segLeft : segRight}" fill="none" stroke="#fde68a" stroke-width="4.2"
+        ? `<path d="${hlPath}" fill="none" stroke="${HL}" stroke-width="7" stroke-linecap="round" opacity="0.22"/>
+           <path d="${hlPath}" fill="none" stroke="${HL}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
+           <path class="es-rheo-flow" d="${hlPath}" fill="none" stroke="#fde68a" stroke-width="4.2"
              stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2.5 12.5"/>`
         : mode === 'full-wire'
           ? `<path d="${segFull}" fill="none" stroke="#8b95a5" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>`
           : ''
 
-      // 金属杆红色高亮（短路）
+      // 金属杆红色高亮（短路）：压在照片里的金属杆上
       const rodHi = mode === 'short'
-        ? `<line x1="${TL.x}" y1="12" x2="${TR.x}" y2="12" stroke="#ef4444" stroke-width="3.6" stroke-linecap="round" opacity="0.95"/>`
+        ? `<line x1="${TL.x}" y1="${ROD_Y}" x2="${TR.x}" y2="${ROD_Y}" stroke="#ef4444" stroke-width="3.6" stroke-linecap="round" opacity="0.95"/>`
         : ''
 
       // 旁注
@@ -924,29 +919,23 @@ export const TYPES = {
       ${fitInner(190, 110, 190, 79, INNER.rheostat())}
       ${photo('rheostat_c.png', 190, 79)}
       <g class="casing">
-        <!-- 电阻丝绕线覆盖层 -->
-        <rect x="25" y="20" width="146" height="18" rx="5" fill="url(#es-g-ceramic)" opacity="0.5"/>
-        <path d="${wind}" fill="none" stroke="#c87533" stroke-width="1.5" stroke-linecap="round"/>
-        <path d="M${BL.x} ${BL.y}L${CO.x0} ${CO.y}" fill="none" stroke="#c87533" stroke-width="1.8" stroke-linecap="round"/>
-        <path d="M${CO.x1} ${CO.y}L${BR.x} ${BR.y}" fill="none" stroke="#c87533" stroke-width="1.8" stroke-linecap="round"/>
-        <!-- 有效段高亮（随滑片实时变化） -->
+        <!-- 有效段高亮（随滑片实时变化，压在照片的绕线上） -->
         ${highlight}
-        <!-- 金属杆 -->
-        <rect x="${TL.x}" y="9.5" width="${TR.x - TL.x}" height="5" rx="2.5" fill="url(#es-g-steel)" stroke="#64748b" stroke-width="0.8"/>
         ${rodHi}
         ${notes}
-        ${dot(TL, true)}${dot(TR, true)}${dot(BL, false)}${dot(BR, false)}
+        <!-- 柱帽：位置与颜色照照片（上左黑 / 上右红 / 下左黑 / 下右红） -->
+        ${dot(TL, true)}${dot(TR, false)}${dot(BL, true)}${dot(BR, false)}
       </g>
-      <!-- 滑片（卡在金属杆上，黑色绝缘柄） -->
+      <!-- 滑片：黑色绝缘柄压在金属杆上，指针落到瓷筒冠顶 -->
       <g class="slider-handle" data-role="slider" style="cursor:ew-resize">
-        <rect x="${(xw - 2).toFixed(1)}" y="15" width="4" height="9" fill="url(#es-g-steel)" stroke="#5b6570" stroke-width="0.8"/>
-        <rect x="${(xw - 4.5).toFixed(1)}" y="7" width="9" height="10" rx="2" fill="url(#es-g-steel)" stroke="#5b6570" stroke-width="0.8"/>
-        <rect x="${(xw - 9).toFixed(1)}" y="0" width="18" height="10" rx="4" fill="#1c1f24" stroke="#0b0d10" stroke-width="1"/>
-        <line x1="${(xw - 5).toFixed(1)}" y1="5" x2="${(xw + 5).toFixed(1)}" y2="5" stroke="#3c3e42" stroke-width="1"/>
+        <line x1="${xw.toFixed(1)}" y1="${(ROD_Y + 3).toFixed(1)}" x2="${xw.toFixed(1)}" y2="${(CO.y + 4).toFixed(1)}" stroke="#4b5563" stroke-width="1.6" opacity="0.9"/>
+        <rect x="${(xw - 4).toFixed(1)}" y="${(ROD_Y - 4.5).toFixed(1)}" width="8" height="9" rx="2.5" fill="url(#es-g-steel)" stroke="#5b6570" stroke-width="0.8"/>
+        <rect x="${(xw - 7.5).toFixed(1)}" y="${(ROD_Y - 13.5).toFixed(1)}" width="15" height="9" rx="4.5" fill="#1c1f24" stroke="#0b0d10" stroke-width="1"/>
+        <line x1="${(xw - 4.5).toFixed(1)}" y1="${(ROD_Y - 9).toFixed(1)}" x2="${(xw + 4.5).toFixed(1)}" y2="${(ROD_Y - 9).toFixed(1)}" stroke="#3c3e42" stroke-width="1"/>
       </g>
-      <g transform="translate(95,66)">
-        <rect x="-42" y="-10" width="84" height="19" rx="6" fill="#0f172a" opacity="0.88"/>
-        <text x="0" y="4" text-anchor="middle" font-size="10.5" font-weight="600" fill="#4ade80"
+      <g transform="translate(95,67)">
+        <rect x="-36" y="-8" width="72" height="16" rx="5" fill="#0f172a" opacity="0.88"/>
+        <text x="0" y="4" text-anchor="middle" font-size="10" font-weight="600" fill="#4ade80"
               font-family="ui-monospace,Consolas,monospace">R = ${rEff.toFixed(1)} Ω</text>
       </g>
     </svg>` }

@@ -16,6 +16,13 @@
   .cell .cap { font-size: 11px; color: #46536a; text-align: center; }
   .pic { position: relative; background: #fff; border: 1px solid #cbd4e0; border-radius: 4px; overflow: hidden; }
   .pic svg, .pic img { width: 100% !important; height: 100% !important; display: block; object-fit: contain; }
+  .grid { position: absolute; inset: 0; pointer-events: none; }
+  .grid b { position: absolute; inset: 0; display: block; }
+  .grid i { position: absolute; background: rgba(10, 132, 255, .28); }
+  .grid b:first-child i { top: 0; bottom: 0; width: 1px; }
+  .grid b:last-child i { left: 0; right: 0; height: 1px; }
+  /* 剖视内部结构层：场景里默认隐藏，对照页同样隐藏，只看桌面上的真实外观 */
+  .inner, .plabel { display: none; }
 </style>
 </head>
 <body>
@@ -54,10 +61,23 @@ for (const t of types) {
   const c2 = document.createElement('div'); c2.className = 'cell'
   const p2 = document.createElement('div'); p2.className = 'pic'
   p2.style.width = W + 'px'; p2.style.height = Hh + 'px'
-  p2.innerHTML = def.render({ id: 'pv_' + t, closed: qs.get('closed') === '1' }, { bright: 0.8, frac: 0.42 })
+  p2.innerHTML = def.render({ id: 'pv_' + t, closed: qs.get('closed') === '1' }, { bright: 0.8, frac: 0.42, mode: qs.get('mode') || undefined })
   c2.appendChild(p2)
   c2.insertAdjacentHTML('beforeend', `<div class="cap">SVG <b>${t}</b> ${def.w}×${def.h}</div>`)
   row.appendChild(c2)
+
+  // ③ 坐标网格（?grid=1）：每 10 个画布像素一道线，便于读位置
+  if (qs.get('grid') === '1') {
+    for (const pic of [p1, p2]) {
+      const grid = document.createElement('div')
+      grid.className = 'grid'
+      const v = [], h = []
+      for (let x = 10; x < def.w; x += 10) v.push(`<i style="left:${x * S}px"></i>`)
+      for (let y = 10; y < def.h; y += 10) h.push(`<i style="top:${y * S}px"></i>`)
+      grid.innerHTML = `<b>${v.join('')}</b><b>${h.join('')}</b>`
+      pic.appendChild(grid)
+    }
+  }
 
   wrap.appendChild(row)
 }
