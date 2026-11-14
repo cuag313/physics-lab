@@ -161,22 +161,21 @@ function ElectronFlow({ items }) {
             </g>
           )
         }
-        // 电流方向箭头：与电子反向；抬到导线上方 15px，别压在电缆上，
-        // 白描边保证在任何导线颜色上都认得出来
-        const arrows = []
-        if (tab.len > 70) {
-          const spots = tab.len > 260 ? [0.34, 0.66] : [0.5]
-          for (const f of spots) {
-            const p = atArc(tab, f * tab.len)
-            const rot = (p.ang * 180) / Math.PI + (-it.dir > 0 ? 0 : 180)
-            arrows.push(
-              <g key={'a' + f} transform={`translate(${p.x.toFixed(1)},${(p.y - 15).toFixed(1)}) rotate(${rot.toFixed(1)})`}>
-                <path d="M-6.4 -3.6 L6.4 0 L-6.4 3.6 Z" fill="#e11d48" stroke="#fff" strokeWidth="1.3" strokeLinejoin="round" />
-              </g>
-            )
-          }
+        // 电流方向箭头：**全场景只标一个**（挑电流最大的那根导线 = 主回路），
+        // 与电子反向；抬到导线上方 15px，别压在电缆上，白描边保证任何线色都认得出来
+        let arrow = null
+        if (it.arrowOn && tab.len > 50) {
+          const p = atArc(tab, 0.55 * tab.len)
+          const rot = (p.ang * 180) / Math.PI + (-it.dir > 0 ? 0 : 180)
+          arrow = (
+            <g transform={`translate(${p.x.toFixed(1)},${(p.y - 15).toFixed(1)}) rotate(${rot.toFixed(1)})`}>
+              <path d="M-6.4 -3.6 L6.4 0 L-6.4 3.6 Z" fill="#e11d48" stroke="#fff" strokeWidth="1.3" strokeLinejoin="round" />
+              <text x="0" y="-9" textAnchor="middle" fontSize="10.5" fontWeight="700" fill="#e11d48"
+                stroke="#fff" strokeWidth="2.2" paintOrder="stroke" fontFamily="ui-monospace,Consolas,monospace">I</text>
+            </g>
+          )
         }
-        return <g key={it.id}>{dots}{arrows}</g>
+        return <g key={it.id}>{dots}{arrow}</g>
       })}
     </svg>
   )
@@ -188,6 +187,8 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   const [selected, setSelected] = useState(null)
   const [pending, setPending] = useState(null)
   const [, forceUpdate] = useState(0)
+  const [records, setRecords] = useState([])
+  const seqRef = useRef(0)
 
   const uidRef = useRef(1)
   const dragRef = useRef(null)
@@ -432,8 +433,10 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       return { bright: p > 0 ? Math.min(1, p / CFG.BULB_RATED) : 0, over: p > CFG.BULB_RATED * 1.02 }
     }
     if (c.type === 'ammeter') return { frac: (o._I || 0) / (o._fs || CFG.AMM_FS_2) } // 中心零位：带符号
-    if (c.type === 'ammeterA') return { frac: Math.abs(o._I || 0) / (o._fs || CFG.AMM_FS) }
-    if (c.type === 'voltmeter') return { frac: Math.abs(o._V || 0) / (o._fs || CFG.VOLT_FS) }
+    // 安培表 / 电压表：零位在左，接反时指针必须往 0 的左边甩（负 frac），
+    // 不能像以前那样取绝对值照样"正常"右偏
+    if (c.type === 'ammeterA') return { frac: (o._I || 0) / (o._fs || CFG.AMM_FS) }
+    if (c.type === 'voltmeter') return { frac: (o._V || 0) / (o._fs || CFG.VOLT_FS) }
     if (c.type === 'rheostat') {
       const wired = new Set()
       for (const w of wires) {
@@ -448,13 +451,26 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
 
   const readoutOf = (c) => {
     const o = solved[c.id] || {}
+    const d = solved.diagnostics || {}
+    // 带符号（接反就是负值）+ 一句短标注，别让"接反了读数还跟正常一样"
+    const fmt = (v) => (Math.abs(v) < 0.0005 ? '0.000' : (v < 0 ? '\u2212' : '') + Math.abs(v).toFixed(3))
     if (c.type === 'ammeter' || c.type === 'ammeterA') {
-      const num = Math.abs(o._I || 0) < 0.0005 ? '0.000' : Math.abs(o._I || 0).toFixed(3)
-      return { text: `I = ${num} A`, color: o._over ? '#fb7185' : o._rev ? '#fbbf24' : '#4ade80' }
+      const bad = !!o._rev
+      const par = !!d.ammeterParallel
+      const tag = par ? ' 并联' : bad ? ' 接反' : ''
+      return {
+        text: `I = ${fmt(o._I || 0)} A${tag}`,
+        color: bad || par || o._over ? '#fb7185' : '#4ade80',
+      }
     }
     if (c.type === 'voltmeter') {
-      const num = Math.abs(o._V || 0) < 0.0005 ? '0.000' : Math.abs(o._V || 0).toFixed(3)
-      return { text: `U = ${num} V`, color: o._over ? '#fb7185' : o._rev ? '#fbbf24' : '#4ade80' }
+      const bad = !!o._rev
+      const ser = !!d.voltmeterSeries
+      const tag = ser ? ' 串联' : bad ? ' 接反' : ''
+      return {
+        text: `U = ${fmt(o._V || 0)} V${tag}`,
+        color: bad || ser || o._over ? '#fb7185' : '#4ade80',
+      }
     }
     return null
   }
@@ -465,9 +481,17 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     const bulbs = comps.filter((c) => c.type === 'bulb')
     const d = solved.diagnostics || {}
     if (!bat) return { tone: 'warn', text: '从右侧拖入电源和灯泡，开始搭电路' }
+    // 先报"接法错误"这个根因，再报它造成的后果（短路）
+    if (d.ammeterParallel) return { tone: 'bad', text: '⚠ 电流表并联在元件两端，会烧坏电表！电流表应串联在电路中' }
     if (d.short) return { tone: 'bad', text: '⚠ 电源短路！请立即断开电源' }
-    if (d.ammeterParallel) return { tone: 'bad', text: '⚠ 电流表并联在元件两端，会烧坏电表！电流表应串联' }
     if (d.voltmeterSeries) return { tone: 'warn', text: '电压表串在电路中了：电压表应并联在被测元件两端' }
+    // 电表接反：电流必须从「+」（量程柱）流进、「−」柱流出
+    const revs = comps.filter((c) => (c.type === 'ammeter' || c.type === 'ammeterA' || c.type === 'voltmeter')
+      && solved[c.id]?._rev)
+    if (revs.length) {
+      const nm = revs.map((c) => (c.type === 'voltmeter' ? '电压表' : '电流表')).join('、')
+      return { tone: 'bad', text: `⚠ ${nm}接反了：指针反偏（读数前的负号）。应让电流从「+」量程柱流入、「−」柱流出` }
+    }
     const batI = Math.abs(solved[bat.id]?._I || 0)
     if (batI > 1e-4) {
       const lit = bulbs.filter((b) => (solved[b.id]?._P || 0) > 0.001)
@@ -493,10 +517,51 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       if (!c1 || !c2) continue
       const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13)
       if (!g) continue
-      out.push({ id: w.id, cur: g.cur, dir: I > 0 ? -1 : 1 })
+      out.push({ id: w.id, cur: g.cur, dir: I > 0 ? -1 : 1, mag: Math.abs(I) })
     }
+    // 只在这根（电流最大的）导线上标电流方向箭头
+    let bestId = -1
+    let bestMag = 0
+    for (const it of out) if (it.mag > bestMag) { bestMag = it.mag; bestId = it.id }
+    for (const it of out) it.arrowOn = it.id === bestId
     return out
   })()
+
+  /* ── 实验记录：合闸 / 断闸（电流有无翻转、或开关被拨动）时追加一行 ── */
+  const liveRef = useRef(null)
+  const swList = comps.filter((c) => c.type === 'switch')
+  const swSig = swList.length + ':' + swList.map((c) => (c.closed ? 1 : 0)).join('')
+  useEffect(() => {
+    const on = flowItems.length > 0
+    const prev = liveRef.current
+    liveRef.current = { on, swSig }
+    if (!prev) return
+    if (prev.on === on && prev.swSig === swSig) return
+    // 只是"把开关拖进场景 / 删掉"（开关个数变了），不算一次实验
+    if (prev.on === on && prev.swSig.split(':')[0] !== swSig.split(':')[0]) return
+    const am = comps.find((c) => c.type === 'ammeter' || c.type === 'ammeterA')
+    const vm = comps.find((c) => c.type === 'voltmeter')
+    const i = am ? solved[am.id]?._I : null
+    const u = vm ? solved[vm.id]?._V : null
+    const d = solved.diagnostics || {}
+    const lit = comps.filter((c) => c.type === 'bulb' && (solved[c.id]?._P || 0) > 0.001).length
+    const num = (v) => (Math.abs(v) < 5e-4 ? '0.000' : (v < 0 ? '\u2212' : '') + Math.abs(v).toFixed(3))
+    const note = d.short ? '电源短路'
+      : d.ammeterParallel ? '电流表并联（误接）'
+        : d.voltmeterSeries ? '电压表串联（误接）'
+          : on ? (lit ? `灯泡亮 ${lit} 只` : '电路接通')
+            : (comps.some((c) => c.type === 'bulb') ? '灯泡灭' : '电路断开')
+    seqRef.current += 1
+    const row = {
+      n: seqRef.current,
+      t: new Date().toLocaleTimeString('zh-CN', { hour12: false }),
+      st: on ? '通路' : '断路',
+      i: i == null ? '—' : num(i),
+      u: u == null ? '—' : num(u),
+      note,
+    }
+    setRecords((rs) => [...rs.slice(-49), row])
+  }, [flowItems.length, swSig])
 
   /* 端头：裸铜丝绕在柱脚的接线柱上（外皮到柱子前就结束，铜丝扣在柱脚上） */
   const wrapAt = (p, W, k) => (
@@ -518,8 +583,11 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   return (
     <div className="esb-root">
       <style>{`
-        .esb-root{position:relative;flex:1;min-height:0;overflow:auto;background:#eef2f7;
+        .esb-root{position:relative;flex:1;min-height:0;background:#eef2f7;
           font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif}
+        /* 画布 1800×1100 比场景视口大，要能滚动；状态条 / 图例 / 实验记录三块浮层
+           挂在滚动区外面，永远贴在"看得见的"左下与右下 */
+        .esb-scroll{position:absolute;inset:0;overflow:auto}
         .esb-canvas{position:relative;width:${CW}px;height:${CH}px;border-radius:14px;
           background:linear-gradient(#fbfcfe,#fbfcfe),
             repeating-linear-gradient(0deg,transparent 0 39px,#e7edf5 39px 40px),
@@ -542,7 +610,8 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         .esb-comp:hover .esb-boxhl{opacity:.45}
         .esb-term{position:absolute;width:20px;height:20px;border-radius:50%;
           background:transparent;border:2px solid transparent;cursor:crosshair;z-index:5;
-          transition:transform .12s,box-shadow .12s,border-color .12s}
+          pointer-events:auto;transition:transform .12s,box-shadow .12s,border-color .12s}
+        .esb-termhit{position:absolute;inset:0;z-index:5;pointer-events:none}
         .esb-term:hover{transform:scale(1.35);box-shadow:0 0 0 5px rgba(37,99,235,.22);border-color:#2563eb}
         .esb-term.active{border-color:#f59e0b;box-shadow:0 0 0 7px rgba(245,158,11,.25);transform:scale(1.3)}
         .esb-wire-preview{fill:none;stroke:#f59e0b;stroke-width:3.4;stroke-linecap:round;opacity:.9}
@@ -556,9 +625,25 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         .esb-status{position:absolute;left:12px;bottom:12px;z-index:20;padding:7px 14px;border-radius:10px;
           font-size:13px;font-weight:600;pointer-events:none;box-shadow:0 4px 14px rgba(2,6,23,.25)}
         .esb-flowlayer{position:absolute;inset:0;pointer-events:none;z-index:4}
-        .esb-flow-legend{position:absolute;right:14px;bottom:14px;z-index:20;display:flex;align-items:center;gap:9px;
+        .esb-flow-legend{position:absolute;left:12px;bottom:52px;z-index:20;display:flex;align-items:center;gap:9px;
           padding:6px 12px;border-radius:10px;background:rgba(255,255,255,.94);border:1px solid #dbe3ec;
           font-size:12px;color:#334155;pointer-events:none;box-shadow:0 4px 14px rgba(2,6,23,.18);white-space:nowrap}
+        .esb-log{position:absolute;right:14px;bottom:14px;z-index:20;width:430px;max-height:198px;
+          display:flex;flex-direction:column;background:rgba(255,255,255,.96);border:1px solid #dbe3ec;
+          border-radius:12px;box-shadow:0 6px 18px rgba(2,6,23,.16);overflow:hidden;
+          font-size:12px;color:#334155;pointer-events:auto}
+        .esb-log-h{display:flex;align-items:center;justify-content:space-between;padding:5px 10px;
+          background:#f1f5f9;border-bottom:1px solid #e2e8f0;flex:none}
+        .esb-log-t{font-weight:700;color:#1e293b}
+        .esb-log-clear{border:none;background:transparent;color:#2563eb;cursor:pointer;
+          font-size:11.5px;font-family:inherit;padding:1px 4px;border-radius:5px}
+        .esb-log-clear:hover{background:#e2e8f0}
+        .esb-log-body{overflow:auto;max-height:160px}
+        .esb-log-empty{padding:13px;color:#94a3b8}
+        .esb-log-tbl{width:100%;border-collapse:collapse}
+        .esb-log-tbl th,.esb-log-tbl td{padding:3px 7px;border-bottom:1px solid #eef2f7;text-align:center;white-space:nowrap}
+        .esb-log-tbl th{position:sticky;top:0;background:#f8fafc;font-weight:600;color:#475569}
+        .esb-log-tbl td.note{text-align:left;color:#64748b}
         .esb-lg-item{display:inline-flex;align-items:center}
         .esb-lg-dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:5px;
           background:#ffd54a;border:1px solid #8a6a00;position:relative}
@@ -569,6 +654,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
           filter:drop-shadow(0 0 0 #fff)}
       `}</style>
 
+      <div className="esb-scroll">
       <div className="esb-canvas" ref={canvasRef}>
         {/* 导线层 */}
         <svg className="esb-wirelayer" width={CW} height={CH}>
@@ -635,20 +721,29 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
               >
                 <div className="esb-boxhl" />
                 <div dangerouslySetInnerHTML={{ __html: t.render(c, dyn) }} />
-                {t.terminals.map((tm) => (
-                  <div
-                    key={tm.id}
-                    className={`esb-term${pending && pending.cid === c.id && pending.tid === tm.id ? ' active' : ''}`}
-                    title={tm.name}
-                    style={{ left: tm.x - 9, top: tm.y - 9 }}
-                    onPointerDown={(e) => onTermDown(e, c, tm.id)}
-                  />
-                ))}
                 {t.meter && ro && (
                   <div className="esb-readout" style={{ opacity: c.showRead ? 1 : 0, color: ro.color }}>{ro.text}</div>
                 )}
               </div>
             )
+          })}
+        </div>
+
+        {/* 接线柱命中层：必须压在所有导线之上——否则柱子一接线，导线那根 18px 的
+            命中带就把柱子盖住，"再点它接第二根线"根本点不动（多表并联就接不上） */}
+        <div className="esb-termhit">
+          {comps.map((c) => {
+            const t = T(c)
+            if (!t) return null
+            return t.terminals.map((tm) => (
+              <div
+                key={c.id + ':' + tm.id}
+                className={`esb-term${pending && pending.cid === c.id && pending.tid === tm.id ? ' active' : ''}`}
+                title={tm.name}
+                style={{ left: c.x + tm.x - 9, top: c.y + tm.y - 9 }}
+                onPointerDown={(e) => onTermDown(e, c, tm.id)}
+              />
+            ))
           })}
         </div>
 
@@ -671,8 +766,10 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             )
           })}
         </svg>
+      </div>
+      </div>
 
-        {/* 状态浮层 */}
+      {/* 状态浮层（贴在可视区左下，跟画布滚动无关） */}
         <div
           className="esb-status"
           style={{
@@ -696,8 +793,33 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             </span>
           </div>
         )}
+
+        {/* 实验记录（右下角，表格）：合闸/断开自动记一行 */}
+        <div className="esb-log">
+          <div className="esb-log-h">
+            <span className="esb-log-t">📋 实验记录</span>
+            <button className="esb-log-clear" onClick={() => { setRecords([]); seqRef.current = 0 }}>清空</button>
+          </div>
+          <div className="esb-log-body">
+            {records.length === 0 ? (
+              <div className="esb-log-empty">合闸 / 断开开关时自动记一行（带当时的电表读数）</div>
+            ) : (
+              <table className="esb-log-tbl">
+                <thead>
+                  <tr><th>#</th><th>时刻</th><th>状态</th><th>I / A</th><th>U / V</th><th>现象</th></tr>
+                </thead>
+                <tbody>
+                  {records.map((r) => (
+                    <tr key={r.n}>
+                      <td>{r.n}</td><td>{r.t}</td><td>{r.st}</td><td>{r.i}</td><td>{r.u}</td><td className="note">{r.note}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
       </div>
-    </div>
   )
 })
 

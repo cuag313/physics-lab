@@ -980,7 +980,9 @@ export const TYPES = {
       { id: 'full', label: '3', name: '3A 接线柱', x: 115, y: 120 },
     ],
     render(c, dyn) {
-      const frac = Math.max(0, Math.min(1, dyn?.frac || 0))
+      // 接反（frac<0）时指针必须往 0 的左边甩，最多压到零位左限位（约 −0.28 满幅，
+      // 再往左就出盘面了；读数里同时出现负号与「接反」）
+      const frac = Math.max(-0.28, Math.min(1, dyn?.frac || 0))
       // 满幅 150 = 原图 256 的 0.58594 倍（原图逐像素实测，见 meterFaceSVG 注释）
       const K = 150 / 256
       const HUB = { x: 128 * K, y: 164 * K }
@@ -1001,7 +1003,7 @@ export const TYPES = {
           <stop offset="100%" stop-color="#a3a9af"/>
         </radialGradient>
       </defs>
-      ${fitInner(150, 150, 150, 150, INNER.meter(frac * 22))}
+      ${fitInner(150, 150, 150, 150, INNER.meter(Math.abs(frac) * 22))}
       ${photo('ammeterA_c.png', 150, 150)}
       <rect x="${23 * K}" y="${27 * K}" width="${210 * K}" height="${142 * K}" rx="${2.5 * K}" fill="#101317"/>
       ${meterFaceSVG(24 * K, 26 * K, 207 * K, 143 * K, {
@@ -1032,7 +1034,8 @@ export const TYPES = {
       { id: 'full', label: '15', name: '15V 接线柱', x: 100, y: 104 },
     ],
     render(c, dyn) {
-      const frac = Math.max(0, Math.min(1, dyn?.frac || 0))
+      // 同安培表：接反时指针压到零位左侧限位
+      const frac = Math.max(-0.28, Math.min(1, dyn?.frac || 0))
       const K = 130 / 256
       const HUB = { x: 128 * K, y: 164 * K }
       const ang = (-26.5 + frac * 78.7).toFixed(2)
@@ -1051,7 +1054,7 @@ export const TYPES = {
           <stop offset="100%" stop-color="#a3a9af"/>
         </radialGradient>
       </defs>
-      ${fitInner(130, 150, 130, 130, INNER.meter(frac * 22))}
+      ${fitInner(130, 150, 130, 130, INNER.meter(Math.abs(frac) * 22))}
       ${photo('voltmeter2_c.png', 130, 130)}
       <rect x="${23 * K}" y="${27 * K}" width="${210 * K}" height="${142 * K}" rx="${2.5 * K}" fill="#101317"/>
       ${meterFaceSVG(24 * K, 26 * K, 207 * K, 143 * K, {

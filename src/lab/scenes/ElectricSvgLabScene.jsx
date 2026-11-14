@@ -915,13 +915,12 @@ export default function ElectricSvgLabScene() {
   }
   const readoutOf = (c) => {
     const o = solved[c.id] || {}
+    const fmt = (v) => (Math.abs(v) < 0.0005 ? '0.000' : (v < 0 ? '\u2212' : '') + Math.abs(v).toFixed(3))
     if (c.type === 'ammeter' || c.type === 'ammeterA') {
-      const num = Math.abs(o._I || 0) < 0.0005 ? '0.000' : Math.abs(o._I || 0).toFixed(3)
-      return { text: `I = ${num} A`, color: o._over ? '#fb7185' : o._rev ? '#fbbf24' : '#4ade80' }
+      return { text: `I = ${fmt(o._I || 0)} A${o._rev ? ' 接反' : ''}`, color: o._over || o._rev ? '#fb7185' : '#4ade80' }
     }
     if (c.type === 'voltmeter') {
-      const num = Math.abs(o._V || 0) < 0.0005 ? '0.000' : Math.abs(o._V || 0).toFixed(3)
-      return { text: `U = ${num} V`, color: o._over ? '#fb7185' : o._rev ? '#fbbf24' : '#4ade80' }
+      return { text: `U = ${fmt(o._V || 0)} V${o._rev ? ' 接反' : ''}`, color: o._over || o._rev ? '#fb7185' : '#4ade80' }
     }
     if (c.type === 'resistor5' || c.type === 'resistor10' || c.type === 'resistor15') {
       // 只有接了电压表 + 电流表（伏安法成立）才有测量值；否则不显示
