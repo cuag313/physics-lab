@@ -12,7 +12,7 @@ import { capPaint } from '../theme/termColors.js'
 export const FIG = '/physics-lab/assets/equipment/fig'
 /* 实拍图版本号：同名图片被覆盖后浏览器会继续用旧缓存（元件库缩略图尤其明显），
    所有 fig 图片 URL 统一带这串版本参数，改图时把它 +1 即可强制刷新。 */
-export const FIG_V = '20261114b'
+export const FIG_V = '20261114c'
 export const figURL = (file) => `${FIG}/${file}?v=${FIG_V}`
 
 /** 滑动变阻器滑片轨道（显示坐标）：与实拍图里瓷筒绕线的左右端对齐（33..159） */
@@ -332,66 +332,90 @@ function needleSVG(px, py, len, frac, zero = -52, full = 52, clipId = '') {
 }
 
 /**
- * 安培表表盘（2D 图纸层，**与 3D 的 ammeterFaceA 同一套实测几何**）。
- * 实测自 iconsnewname\8电流表.png：轴心在白面板自顶 0.97H 处，刻度带外缘 0.746H，
- * 带左端 228.6°、零点 246.3°、右端 307°；左段是负量程（标 −、内圈 -0.2）；
- * 外圈 0/1/2/3 在 0.869H，内圈 0.2/0.4/0.6 在 0.683H；每格刻度是斜齿。
- * 用它盖住实拍照片原本印的表盘和固定红针，2D 上只留一根动态针。
+ * 电表表盘（矢量重绘：盖住实拍图上印死的表盘与固定红针，2D 上只留一根动态针）。
+ *
+ * 几何全部按 iconsnewname 两张 256×256 原图**逐像素实测**（8电流表.png / 电压表_2.png
+ * 是同一副机芯）：白面 x23..232 / y27..168（210×142），轴心 (128,164)，
+ * 刻度带 r 92..109（斜齿，切向偏 16°），外圈数字 r 119、内圈数字 r 80、单位字母 r 42、
+ * 字母下横杠 r 24 / 宽 26；主刻度弧 0 位 243.5°、满偏 322.2°（canvas 角，270° 朝上），
+ * 负量程尾段 213.5..243.5、+ 号尾段 322.2..341.2。
+ * 显示坐标按 s = w / 210 缩放（w 传白面宽，h 传白面高 = 142·s）。
  */
-function ammeterFaceSVG(x, y, w, h) {
-  const cx = x + w / 2
-  const cy = y + h * 0.97
-  const R = h * 0.746
-  const AL = 228.6
-  const AZ = 246.3
-  const AR = 307
-  const rad = (d) => (d * Math.PI) / 180
-  const F = (v) => v.toFixed(1)
-  const SKEW = 0.38 * 180 / Math.PI
+const FACE = {
+  dialX: 23, dialY: 27, dialW: 210, dialH: 142, hubX: 128, hubY: 164,
+  rOut: 109, rIn: 92, rNum: 119, rInner: 80, rUnit: 42,
+  aNeg: 213.5, aZero: 243.5, aFull: 322.2, aTail: 341.2,
+}
 
-  const at = (a, rr) => [cx + Math.cos(rad(a)) * rr, cy + Math.sin(rad(a)) * rr]
+function meterFaceSVG(x, y, w, h, cfg) {
+  const s = w / FACE.dialW
+  const cx = x + (FACE.hubX - FACE.dialX) * s
+  const cy = y + (FACE.hubY - FACE.dialY) * s
+  const rad = (d) => (d * Math.PI) / 180
+  const at = (a, r) => [cx + Math.cos(rad(a)) * r, cy + Math.sin(rad(a)) * r]
+  const f = (v) => v.toFixed(2)
+  const R_OUT = FACE.rOut * s
+  const R_IN = FACE.rIn * s
+  const INK = '#63686d'
+  const TICK = '#55595f'
+  const TICK_M = '#33383d'
 
   let ticks = ''
-  const tick = (a, len, sw, color) => {
-    const [x1, y1] = at(a, R)
-    const [x2, y2] = at(a + SKEW, R - len)
-    ticks += `<line x1="${F(x1)}" y1="${F(y1)}" x2="${F(x2)}" y2="${F(y2)}" stroke="${color}" stroke-width="${F(sw)}"/>`
+  const tick = (a, major) => {
+    const [x1, y1] = at(a, R_OUT)
+    const [x2, y2] = at(a, major ? R_IN : R_IN + 4.5 * s)
+    ticks += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${major ? TICK_M : TICK}" stroke-width="${f((major ? 2.4 : 1.5) * s)}"/>`
   }
-  // 负量程段
-  for (let i = 0; i <= 8; i++) {
-    const a = AL + (AZ - AL) * (i / 8)
-    tick(a, h * 0.049, i === 0 ? 1.5 : 0.75, i === 0 ? '#14171b' : '#4e545a')
+  // 负量程尾段（0 之前的短齿）：齿更短，避免压到左侧的 −/0.2 标号
+  for (let i = 0; i < 10; i++) {
+    const a = FACE.aNeg + (FACE.aZero - FACE.aNeg) * (i / 10)
+    const [x1, y1] = at(a, R_OUT)
+    const [x2, y2] = at(a, R_OUT - 8 * s)
+    ticks += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${TICK}" stroke-width="${f(1.5 * s)}"/>`
   }
-  // 正量程段 30 小格
-  for (let i = 0; i <= 30; i++) {
-    const a = AZ + (AR - AZ) * (i / 30)
-    const major = i % 10 === 0
-    const mid = i % 5 === 0
-    const len = major ? h * 0.068 : mid ? h * 0.058 : h * 0.049
-    tick(a, len, major ? 1.6 : mid ? 0.9 : 0.6, major ? '#14171b' : '#4e545a')
-  }
-
-  const mark = (a, str, rr, size, color) => {
-    const [tx, ty] = at(a, rr)
-    const deg = a + 90
-    return `<text x="${F(tx)}" y="${F(ty)}" transform="rotate(${F(deg)} ${F(tx)} ${F(ty)})" text-anchor="middle" dominant-baseline="middle" font-size="${F(size)}" font-weight="700" fill="${color}">${str}</text>`
+  // 正量程段：0..满偏 30 小格，每 10 格一根长齿（0/1/2/3）
+  for (let i = 0; i <= 30; i++) tick(FACE.aZero + (FACE.aFull - FACE.aZero) * (i / 30), i % 10 === 0)
+  // 满偏之后的 + 号尾段（同样短齿）
+  for (let i = 1; i <= 6; i++) {
+    const a = FACE.aFull + (FACE.aTail - FACE.aFull) * (i / 7)
+    const [x1, y1] = at(a, R_OUT)
+    const [x2, y2] = at(a, R_OUT - 8 * s)
+    ticks += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${TICK}" stroke-width="${f(1.5 * s)}"/>`
   }
 
-  let nums = ''
-  for (let v = 0; v <= 3; v++) nums += mark(AZ + (AR - AZ) * (v / 3), String(v), h * 0.869, h * 0.136, '#14171b')
-  nums += mark(AZ + (AR - AZ) / 3, '0.2', h * 0.63, h * 0.09, '#1c2026')
-  nums += mark(AZ + (AR - AZ) * 2 / 3, '0.4', h * 0.63, h * 0.09, '#1c2026')
-  nums += mark(AR, '0.6', h * 0.63, h * 0.09, '#1c2026')
-  nums += mark(233, '0.2', h * 0.63, h * 0.09, '#1c2026')
+  const mark = (a, str, r, size, color = INK, weight = '600') => {
+    const [tx, ty] = at(a, r)
+    return `<text x="${f(tx)}" y="${f(ty)}" transform="rotate(${f(a + 90)} ${f(tx)} ${f(ty)})" text-anchor="middle" dominant-baseline="middle" font-size="${f(size)}" font-weight="${weight}" fill="${color}">${str}</text>`
+  }
+
+  const A0 = FACE.aZero
+  const SPAN = FACE.aFull - FACE.aZero
+  const rOuter = (cfg.outerR || 124) * s
+  let marks = ''
+  cfg.outer.forEach((str, i) => {
+    marks += mark(A0 + SPAN * (i / (cfg.outer.length - 1)), str, rOuter, 19 * s)
+  })
+  cfg.inner.forEach((str, i) => {
+    marks += mark(A0 + SPAN * ((i + 1) / cfg.inner.length), str, 85 * s, 16.5 * s)
+  })
+  marks += mark(FACE.aNeg + 7, cfg.leftOuter, 126 * s, 19 * s)
+  if (cfg.leftOuter2) marks += mark(FACE.aNeg + 2.5, cfg.leftOuter2, 112 * s, 17 * s)
+  marks += mark(FACE.aNeg + 19, cfg.leftInner, (FACE.rInner + 15) * s, 17 * s)
+  marks += mark(FACE.aNeg + 10.5, cfg.leftNum, 85 * s, 16.5 * s)
+  marks += mark(FACE.aFull + 5, cfg.plus, 113 * s, 14 * s)
 
   return `
-    <rect x="${F(x)}" y="${F(y)}" width="${F(w)}" height="${F(h)}" fill="url(#es-g-meterfaceA)"/>
-    ${ticks}
-    ${nums}
-    ${mark(AL, '\u2212', h * 0.82, h * 0.14, '#2b2f35')}
-    ${mark(313, '\u00b1', h * 0.80, h * 0.135, '#2b2f35')}
-    <text x="${F(cx)}" y="${F(cy - h * 0.503)}" text-anchor="middle" dominant-baseline="middle" font-size="${F(h * 0.218)}" font-weight="700" fill="#33373d">A</text>
-    <rect x="${F(cx - 46 * h / 434)}" y="${F(cy - h * 0.415)}" width="${F(92 * h / 434)}" height="1.1" fill="#3f444a"/>`
+    <defs>
+      <clipPath id="es-cp-${cfg.clip || 'face'}">
+        <rect x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}"/>
+      </clipPath>
+    </defs>
+    <rect x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" rx="${f(2.5 * s)}" fill="url(#es-g-meterface)"/>
+    <g clip-path="url(#es-cp-${cfg.clip || 'face'})">${ticks}</g>
+    ${marks}
+    <text x="${f(cx)}" y="${f(cy - FACE.rUnit * s)}" text-anchor="middle" dominant-baseline="middle"
+      font-size="${f(32 * s)}" font-weight="700" fill="#7c8085">${cfg.unit}</text>
+    <rect x="${f(cx - 13 * s)}" y="${f(cy - 24 * s)}" width="${f(26 * s)}" height="${f(1.7 * s)}" fill="#5e6368"/>`
 }
 
 /** 接线柱圆点叠层：黑、红、红（金属座圈 + 彩色柱帽，照片缺中柱时补齐三个柱位） */
@@ -822,43 +846,69 @@ export const TYPES = {
     ],
     render(c, dyn) {
       const frac = Math.max(0, Math.min(1, dyn?.frac || 0))
-      // 针角必须落在实测刻度带上：零点 246.3°、满偏 307°（canvas 角，270° 朝上），
-      // 换算成"相对竖直"即 -23.7° → +37°。用 ±52 是抄 J0407 的，针会悬在刻度外。
-      const ang = (-23.7 + frac * 60.7).toFixed(2)
+      // 满幅 150 = 原图 256 的 0.58594 倍（原图逐像素实测，见 meterFaceSVG 注释）
+      const K = 150 / 256
+      const HUB = { x: 128 * K, y: 164 * K }
+      // 针角：0 位 243.5°、满偏 322.2°（canvas 角）→ 相对竖直 -26.5° → +52.2°
+      const ang = (-26.5 + frac * 78.7).toFixed(2)
+      const LEN = 110 * K
       return `
     <svg width="150" height="150" viewBox="0 0 150 150">
       <defs>
-        <radialGradient id="es-g-meterfaceA" cx="50%" cy="38%" r="62%">
-          <stop offset="0%" stop-color="#fdfcfa"/>
-          <stop offset="55%" stop-color="#f8f7f3"/>
-          <stop offset="100%" stop-color="#ebeae5"/>
+        <radialGradient id="es-g-meterface" cx="50%" cy="40%" r="66%">
+          <stop offset="0%" stop-color="#ffffff"/>
+          <stop offset="62%" stop-color="#fdfdfd"/>
+          <stop offset="100%" stop-color="#f0f0ee"/>
         </radialGradient>
       </defs>
       ${fitInner(150, 150, 150, 150, INNER.meter(frac * 22))}
       ${photo('ammeterA_c.png', 150, 150)}
-      <rect x="17.6" y="11.7" width="114.8" height="97.4" rx="1.6" fill="#0f1215"/>
-      ${ammeterFaceSVG(18.8, 12.9, 112.5, 94.9)}
-      <line x1="75" y1="105" x2="75" y2="38" stroke="#d01f24" stroke-width="1.7" stroke-linecap="round"
-        transform="rotate(${ang} 75 105)"/>
-      <circle cx="75" cy="105" r="3.4" fill="#cdd2d7" stroke="#98a0a8" stroke-width="0.8"/>
-      <circle cx="75" cy="105" r="1.2" fill="#7d858d"/>
+      <rect x="${23 * K}" y="${27 * K}" width="${210 * K}" height="${142 * K}" rx="${2.5 * K}" fill="#101317"/>
+      ${meterFaceSVG(23 * K, 27 * K, 210 * K, 142 * K, {
+        clip: 'mA', unit: 'A', outer: ['0', '1', '2', '3'], inner: ['0.2', '0.4', '0.6'],
+        leftOuter: '\u2212', leftInner: '\u2212', leftNum: '0.2', plus: '+',
+      })}
+      <line x1="${HUB.x}" y1="${HUB.y}" x2="${HUB.x}" y2="${HUB.y - LEN}" stroke="#d01f24" stroke-width="1.7" stroke-linecap="round"
+        transform="rotate(${ang} ${HUB.x} ${HUB.y})"/>
+      <circle cx="${HUB.x}" cy="${HUB.y}" r="${8 * K}" fill="#d7dadc" stroke="#9aa1a8" stroke-width="${1.1 * K}"/>
+      <circle cx="${HUB.x}" cy="${HUB.y}" r="${3 * K}" fill="#b9bec3"/>
     </svg>` }
   },
 
-  /* ── 电压表（真实 J0408 图 + 动画表针 + 三接线柱黑红红） ── */
+  /* ── 电压表（1:1 复刻 iconsnewname/电压表_2.png：同副机芯，双刻度 0..15 / 0..3） ── */
   voltmeter: {
-    label: '电压表', w: 130, h: 133, meter: 'U',
+    label: '电压表', w: 130, h: 130, meter: 'U',
     terminals: [
-      { id: 'neg', label: '−', name: '负接线柱', x: 29, y: 102 },
-      { id: 'mid', label: '3', name: '3V 接线柱', x: 65, y: 102 },
-      { id: 'full', label: '15', name: '15V 接线柱', x: 101, y: 102 },
+      { id: 'neg', label: '−', name: '负接线柱', x: 29, y: 104 },
+      { id: 'mid', label: '3', name: '3V 接线柱', x: 65, y: 104 },
+      { id: 'full', label: '15', name: '15V 接线柱', x: 100, y: 104 },
     ],
     render(c, dyn) {
+      const frac = Math.max(0, Math.min(1, dyn?.frac || 0))
+      const K = 130 / 256
+      const HUB = { x: 128 * K, y: 164 * K }
+      const ang = (-26.5 + frac * 78.7).toFixed(2)
+      const LEN = 110 * K
       return `
-    <svg width="130" height="133" viewBox="0 0 130 133">
-      ${fitInner(130, 150, 130, 133, INNER.meter((dyn?.frac || 0) * 22))}
-      ${photo('voltmeter_c.png', 130, 133)}
-      ${needleSVG(61.9, 81.5, 53, dyn?.frac || 0, -26.3, 41.8)}
+    <svg width="130" height="130" viewBox="0 0 130 130">
+      <defs>
+        <radialGradient id="es-g-meterface" cx="50%" cy="40%" r="66%">
+          <stop offset="0%" stop-color="#ffffff"/>
+          <stop offset="62%" stop-color="#fdfdfd"/>
+          <stop offset="100%" stop-color="#f0f0ee"/>
+        </radialGradient>
+      </defs>
+      ${fitInner(130, 150, 130, 130, INNER.meter(frac * 22))}
+      ${photo('voltmeter2_c.png', 130, 130)}
+      <rect x="${23 * K}" y="${27 * K}" width="${210 * K}" height="${142 * K}" rx="${2.5 * K}" fill="#101317"/>
+      ${meterFaceSVG(23 * K, 27 * K, 210 * K, 142 * K, {
+        clip: 'mV', outerR: 116, leftOuter2: '5', unit: 'V', outer: ['0', '5', '10', '15'], inner: ['1', '2', '3'],
+        leftOuter: '\u2212', leftInner: '\u2212', leftNum: '1', plus: '+',
+      })}
+      <line x1="${HUB.x}" y1="${HUB.y}" x2="${HUB.x}" y2="${HUB.y - LEN}" stroke="#d01f24" stroke-width="1.7" stroke-linecap="round"
+        transform="rotate(${ang} ${HUB.x} ${HUB.y})"/>
+      <circle cx="${HUB.x}" cy="${HUB.y}" r="${8 * K}" fill="#d7dadc" stroke="#9aa1a8" stroke-width="${1.1 * K}"/>
+      <circle cx="${HUB.x}" cy="${HUB.y}" r="${3 * K}" fill="#b9bec3"/>
     </svg>` }
   },
 

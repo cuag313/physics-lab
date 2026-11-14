@@ -214,7 +214,7 @@ const PALETTE_ICONS = {
   })(),
   ammeter: `<img src="${figURL('ammeter_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
   ammeterA: `<img src="${figURL('ammeterA_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
-  voltmeter: `<img src="${figURL('voltmeter_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
+  voltmeter: `<img src="${figURL('voltmeter2_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
   rheostat: `<img src="${figURL('rheostat_c.png')}" alt="" style="width:42px;height:42px;object-fit:contain"/>`,
   resistor5: miniResistor('#0f7a3d', '#1b1b1b'),
   resistor10: miniResistor('#7a4a12', '#1b1b1b'),

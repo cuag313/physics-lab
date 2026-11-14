@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>电表 1:1 对照（渲染 / 底图 / 叠影）</title>
+<style>
+  body{margin:0;background:#fff;font:13px/1.4 "Microsoft YaHei",system-ui,sans-serif;color:#111}
+  .row{display:flex;align-items:flex-end;gap:16px;padding:12px 16px;border-bottom:1px solid #e5e7eb}
+  .cap{width:150px;flex:0 0 150px;padding-bottom:6px}
+  .box{position:relative;border:1px dashed #cbd5e1;background:
+     repeating-linear-gradient(0deg,transparent 0 9px,#f4f7fb 9px 10px),
+     repeating-linear-gradient(90deg,transparent 0 9px,#f4f7fb 9px 10px),#fff}
+  .box .art,.box .ref{position:absolute;left:0;top:0}
+  .tag{position:absolute;left:2px;top:2px;font-size:10px;color:#2563eb;background:rgba(255,255,255,.85);padding:0 3px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="module">
+import { TYPES, figURL } from '../src/lab/scenes/electricSvgInstruments.js'
+
+const CASES = [
+  { key: 'ammeterA', ref: 'ammeterA_c.png', note: '= 8电流表.png（逐像素相同）', frac: 0 },
+  { key: 'voltmeter', ref: 'voltmeter2_c.png', note: '= 电压表_2.png（256×256 原图）', frac: 0 },
+  { key: 'ammeter', ref: 'ammeter_c.png', note: '旧毫安表（118×138 裁图）', frac: 0 },
+]
+
+const root = document.getElementById('root')
+const out = []
+for (const cs of CASES) {
+  const t = TYPES[cs.key]
+  if (!t) continue
+  const row = document.createElement('div')
+  row.className = 'row'
+  row.dataset.type = cs.key
+  row.innerHTML = `<div class="cap"><b>${t.label}</b><br><span style="color:#6b7280">${t.w}×${t.h}</span><br><span style="color:#6b7280">${cs.note}</span></div>`
+
+  const panels = [
+    { cls: 'p-art', tag: '渲染 1:1' },
+    { cls: 'p-ref', tag: '底图' },
+    { cls: 'p-ov', tag: '叠影 50%' },
+    { cls: 'p-ov2', tag: '叠影 15%（底图像迹）' },
+  ]
+  const boxes = []
+  for (const p of panels) {
+    const box = document.createElement('div')
+    box.className = `box ${p.cls}`
+    box.dataset.type = cs.key
+    box.dataset.panel = p.cls
+    box.style.width = `${t.w}px`
+    box.style.height = `${t.h}px`
+    const art = document.createElement('div')
+    art.className = 'art'
+    art.style.width = `${t.w}px`
+    art.style.height = `${t.h}px`
+    art.innerHTML = t.render({ id: `${cs.key}-${p.cls}`, type: cs.key, f: 0.4 }, { frac: cs.frac })
+    art.style.opacity = p.cls === 'p-ref' ? '0' : p.cls === 'p-ov' ? '0.5' : '0.85'
+    const ref = document.createElement('div')
+    ref.className = 'ref'
+    ref.style.width = `${t.w}px`
+    ref.style.height = `${t.h}px`
+    ref.innerHTML = `<img src="${figURL(cs.ref)}" style="width:${t.w}px;height:${t.h}px;display:block"/>`
+    if (p.cls === 'p-art') ref.style.opacity = '0'
+    box.appendChild(ref)
+    box.appendChild(art)
+    const tg = document.createElement('span')
+    tg.className = 'tag'
+    tg.textContent = p.tag
+    box.appendChild(tg)
+    row.appendChild(box)
+    boxes.push(box)
+  }
+  root.appendChild(row)
+  out.push({ key: cs.key, w: t.w, h: t.h, terms: t.terminals.map((x) => ({ id: x.id, x: x.x, y: x.y })) })
+}
+window.__meter = out
+document.title = 'ready'
+</script>
+</body>
+</html>
