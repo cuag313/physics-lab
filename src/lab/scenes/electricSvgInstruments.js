@@ -130,9 +130,23 @@ const INNER = {
     // 开关内部没有剖面内容，保留空层以维持 .inner 结构一致。
     return ''
   },
-  meter(deg = 0) {
-    // 磁电式表头：线圈在 N/S 极磁场中随电流转动 → 游丝扭转 → 指针偏转。
-    // 剖视时线圈按指针比例同步偏转（绕中心 65,61），不是静态图。
+  meter(deg = 0, kind = 'mA') {
+    /* 磁电式表头：线圈在 N/S 极磁场中随电流转动 → 游丝扭转 → 指针偏转。
+       剖视时线圈按指针比例同步偏转（绕中心 65,61），不是静态图。
+       kind 区分量程扩展零件（三块表看着"一模一样"就是因为以前不分）：
+         'mA' 微安级表头直测；'A' 并一只分流电阻扩大量程；'V' 串一只分压电阻扩量程。
+       标注一律 ≤12 字：长句在 130~150px 的表上会整行溢出壳外（N/S 极 + 一句短标签足够）。 */
+    const extra = kind === 'A'
+      ? `<rect x="40" y="99" width="50" height="8" rx="4" fill="#b87333" stroke="#7c4a1b"/>
+         <text class="plabel" x="65" y="122">分流电阻（扩大量程）</text>`
+      : kind === 'V'
+        ? `<rect x="34" y="99" width="62" height="8" rx="4" fill="#ece7d8" stroke="#a89d80"/>
+           <rect x="43" y="98" width="3.4" height="10" fill="#1d4ed8"/>
+           <rect x="55" y="98" width="3.4" height="10" fill="#f59e0b"/>
+           <rect x="67" y="98" width="3.4" height="10" fill="#16a34a"/>
+           <rect x="79" y="98" width="3.4" height="10" fill="#b87333"/>
+           <text class="plabel" x="65" y="122">分压电阻（扩大量程）</text>`
+        : `<text class="plabel" x="65" y="122">表头直测（微安级）</text>`
     return `
       <rect x="26" y="40" width="16" height="42" rx="3" fill="#e11d48" opacity=".75"/>
       <rect x="88" y="40" width="16" height="42" rx="3" fill="#2563eb" opacity=".75"/>
@@ -146,8 +160,7 @@ const INNER = {
         <line x1="50" y1="70" x2="80" y2="70" stroke="#fde68a" stroke-width="1.4"/>
         <line x1="65" y1="61" x2="65" y2="90" stroke="#d6b25f" stroke-width="2"/>
       </g>
-      <text class="plabel" x="65" y="88">通电线圈（随指针偏转）</text>
-      <text class="plabel" x="65" y="98">游丝提供反力矩</text>`
+      ${extra}`
   },
   rheostat() {
     return `
@@ -898,27 +911,24 @@ export const TYPES = {
         ? '<animate attributeName="opacity" values="1;0.55;1" dur="0.9s" repeatCount="indefinite"/>'
         : ''
 
-      /* 亮度分成两段：0~0.45 只给柔和光晕；0.45~1 才算「很亮」，逐级点亮放射光芒。
-         hot = 0 时完全没有光线，hot = 1（额定满亮）时 12 长 + 12 短光芒全部拉满。 */
-      const hot = Math.max(0, Math.min(1, (bright - 0.45) / 0.55))
-      const rMid = 30 + bright * 16
-      const rOut = 46 + bright * 16 + hot * 20
+      /* 发光＝「中心亮、向外逐步淡」的三层同心柔光 + 一圈等长细芒。
+         以前是 12 长 + 12 短的交错锥形（长短不一 → 看着像四射的爆炸，太夸张），
+         现在：① 光芒 18 根、角度均分、长度一致；② 长度收短（满亮也只有 9+11px，越出玻璃泡不多）；
+         ③ 主要亮度交给径向渐变（中心 → 外圈连续掉到 0），所以整体是柔和的光团而不是尖刺。 */
+      const hot = Math.max(0, Math.min(1, (bright - 0.40) / 0.60))
+      const rMid = 25 + bright * 11          // 近玻璃的暖白光晕（核心）
+      const rOut = 38 + bright * 13          // 外圈大范围柔光（让边缘自然消失）
       const cx = 89, cy = 25
-      const gold = [255, 178, 64]   // 光芒/外晕固定暖金色：白光芒在浅色底板上会「看不见」
+      const gold = [255, 190, 110]   // 暖金：白光芒在浅色底板上等于看不见
       const lid = `es-bulblit-${uid}-${Math.round(bright * 100)}`
 
-      // 放射光芒：以灯丝为中心向外拉出的细长锥形，越亮越长，末端渐隐（不在中心留死白）
       const rays = (dyn.rays !== false) && hot > 0.03
         ? (() => {
-          const R0 = 32 + bright * 3               // 起点在玻璃泡外沿
-          const longL = 14 + 25 * hot              // 长芒
-          const shortL = 8 + 14 * hot              // 短芒（错开 15°）
+          const R0 = 26 + bright * 3                  // 起点：玻璃泡外沿，别压住泡本身
+          const L = 9 + 11 * hot                      // 等长细芒（原来 14+25，太长了）
           let out = ''
-          for (let i = 0; i < 12; i++) {
-            out += `<g transform="rotate(${i * 30})"><path d="M -2.9 ${-R0} L 0 ${-(R0 + longL)} L 2.9 ${-R0} Z" fill="url(#${rid})"/></g>`
-          }
-          for (let i = 0; i < 12; i++) {
-            out += `<g transform="rotate(${15 + i * 30})"><path d="M -1.8 ${-R0} L 0 ${-(R0 + shortL)} L 1.8 ${-R0} Z" fill="url(#${rid})"/></g>`
+          for (let i = 0; i < 18; i++) {
+            out += `<g transform="rotate(${i * 20})"><path d="M -1.15 ${-R0} L 0 ${-(R0 + L)} L 1.15 ${-R0} Z" fill="url(#${rid})"/></g>`
           }
           return out
         })()
@@ -933,23 +943,24 @@ export const TYPES = {
       <defs>
         <clipPath id="${clipId}"><rect x="0" y="0" width="176" height="83"/></clipPath>
         <radialGradient id="${gid}" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stop-color="${rgb(core)}" stop-opacity="${(0.95 * bright).toFixed(3)}"/>
-          <stop offset="38%" stop-color="${rgb(halo)}" stop-opacity="${(0.66 * bright).toFixed(3)}"/>
+          <stop offset="0%" stop-color="${rgb(core)}" stop-opacity="${(0.90 * bright).toFixed(3)}"/>
+          <stop offset="22%" stop-color="${rgb(halo)}" stop-opacity="${(0.62 * bright).toFixed(3)}"/>
+          <stop offset="52%" stop-color="${rgb(halo)}" stop-opacity="${(0.26 * bright).toFixed(3)}"/>
           <stop offset="100%" stop-color="${rgb(halo)}" stop-opacity="0"/>
         </radialGradient>
         <radialGradient id="${oid}" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stop-color="${rgb(gold)}" stop-opacity="${(0.34 * bright).toFixed(3)}"/>
-          <stop offset="45%" stop-color="${rgb(gold)}" stop-opacity="${(0.14 * bright).toFixed(3)}"/>
+          <stop offset="0%" stop-color="${rgb(gold)}" stop-opacity="${(0.24 * bright).toFixed(3)}"/>
+          <stop offset="48%" stop-color="${rgb(gold)}" stop-opacity="${(0.10 * bright).toFixed(3)}"/>
           <stop offset="100%" stop-color="${rgb(gold)}" stop-opacity="0"/>
         </radialGradient>
         <radialGradient id="${lid}" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stop-color="#FFFDF0" stop-opacity="${(0.9 * bright).toFixed(3)}"/>
-          <stop offset="42%" stop-color="#FFD98A" stop-opacity="${(0.46 * bright).toFixed(3)}"/>
-          <stop offset="100%" stop-color="#FFB443" stop-opacity="0"/>
+          <stop offset="0%" stop-color="#FFFEF8" stop-opacity="${(0.95 * bright).toFixed(3)}"/>
+          <stop offset="40%" stop-color="#FFE6AE" stop-opacity="${(0.52 * bright).toFixed(3)}"/>
+          <stop offset="100%" stop-color="#FFC46A" stop-opacity="0"/>
         </radialGradient>
         <linearGradient id="${rid}" x1="0" y1="1" x2="0" y2="0">
-          <stop offset="0%" stop-color="${rgb(gold)}" stop-opacity="0.9"/>
-          <stop offset="45%" stop-color="${rgb(gold)}" stop-opacity="0.6"/>
+          <stop offset="0%" stop-color="${rgb(gold)}" stop-opacity="0.62"/>
+          <stop offset="55%" stop-color="${rgb(gold)}" stop-opacity="0.26"/>
           <stop offset="100%" stop-color="${rgb(gold)}" stop-opacity="0"/>
         </linearGradient>
         <radialGradient id="es-g-hub" cx="42%" cy="34%" r="62%">
@@ -961,19 +972,19 @@ export const TYPES = {
       <g clip-path="url(#${clipId})">${fitInner(256, 121, 176, 83, INNER.bulb())}</g>
       ${bright > 0.02 ? `<circle cx="${cx}" cy="${cy}" r="${rOut.toFixed(1)}" fill="url(#${oid})" style="mix-blend-mode:screen"/>` : ''}
       ${hot > 0.03
-        ? `<g transform="translate(${cx} ${cy})" opacity="${(0.22 + 0.6 * hot).toFixed(3)}">
-        <g><animate attributeName="opacity" values="0.86;1;0.86" dur="2.4s" repeatCount="indefinite"/>${rays}</g>
+        ? `<g transform="translate(${cx} ${cy})" opacity="${(0.18 + 0.34 * hot).toFixed(3)}">
+        <g><animate attributeName="opacity" values="0.88;1;0.88" dur="2.8s" repeatCount="indefinite"/>${rays}</g>
       </g>`
         : ''}
       ${photo('bulb_c.png', 176, 83, `filter:brightness(${(0.97 + 0.07 * bright).toFixed(3)}) saturate(${(0.94 + 0.14 * bright).toFixed(2)})`)}
       ${bright > 0.02
-        ? `<circle cx="${cx}" cy="${cy}" r="${(18 + 10 * bright).toFixed(1)}" fill="url(#${lid})" style="mix-blend-mode:screen"/>`
+        ? `<circle cx="${cx}" cy="${cy}" r="${(20 + 12 * bright).toFixed(1)}" fill="url(#${lid})" style="mix-blend-mode:screen"/>`
         : ''}
       ${bright > 0.02
         ? `<circle class="es-bulb-halo" cx="${cx}" cy="${cy}" r="${rMid.toFixed(1)}" fill="url(#${gid})" style="mix-blend-mode:screen">${animOver}</circle>`
         : ''}
       ${bright > 0.02
-        ? `<circle cx="${cx}" cy="${cy}" r="${(2 + 6 * bright + 4 * hot).toFixed(1)}" fill="${rgb(core)}" opacity="${(0.5 * bright).toFixed(3)}" style="mix-blend-mode:screen"/>`
+        ? `<circle cx="${cx}" cy="${cy}" r="${(3 + 8 * bright + 5 * hot).toFixed(1)}" fill="${rgb(core)}" opacity="${(0.55 * bright).toFixed(3)}" style="mix-blend-mode:screen"/>`
         : ''}
     </svg>` }
   },
@@ -1026,7 +1037,7 @@ export const TYPES = {
           <stop offset="100%" stop-color="#a3a9af"/>
         </radialGradient>
       </defs>
-      ${fitInner(150, 150, 150, 150, INNER.meter(Math.abs(frac) * 22))}
+      ${fitInner(150, 150, 150, 150, INNER.meter(Math.abs(frac) * 22, 'mA'))}
       ${photo('ammeter6_c.png', 150, 150)}
       <!-- 表壳黑框 + 白盘归成「可淡出的一层」：一键透视时盘面半透明，露出后面的磁钢/线圈 -->
       <g class="esb-dial">
@@ -1074,7 +1085,7 @@ export const TYPES = {
           <stop offset="100%" stop-color="#a3a9af"/>
         </radialGradient>
       </defs>
-      ${fitInner(150, 150, 150, 150, INNER.meter(Math.abs(frac) * 22))}
+      ${fitInner(150, 150, 150, 150, INNER.meter(Math.abs(frac) * 22, 'A'))}
       ${photo('ammeterA_c.png', 150, 150)}
       <g class="esb-dial">
         <rect x="${23 * K}" y="${27 * K}" width="${210 * K}" height="${142 * K}" rx="${2.5 * K}" fill="#101317"/>
@@ -1127,7 +1138,7 @@ export const TYPES = {
           <stop offset="100%" stop-color="#a3a9af"/>
         </radialGradient>
       </defs>
-      ${fitInner(130, 150, 130, 130, INNER.meter(Math.abs(frac) * 22))}
+      ${fitInner(130, 150, 130, 130, INNER.meter(Math.abs(frac) * 22, 'V'))}
       ${photo('voltmeter2_c.png', 130, 130)}
       <g class="esb-dial">
         <rect x="${23 * K}" y="${27 * K}" width="${210 * K}" height="${142 * K}" rx="${2.5 * K}" fill="#101317"/>
