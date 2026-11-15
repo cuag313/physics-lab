@@ -84,32 +84,44 @@ export function drawKnowledgeCard(ctx, rect, SECTIONS, opts = {}) {
   ctx.translate(0, -scroll)
 
   let cy = y + headH
+  /* 只画「完整可见」的行：滚到边界时不会露出半截字 */
+  const isVis = (yy, hh) => {
+    const t = yy - scroll, b = yy - scroll + hh
+    return t >= clipTop && b <= clipTop + viewH
+  }
   for (const sec of SECTIONS) {
     // 小节标题：左侧色条 + 同色淡药丸
-    ctx.fillStyle = sec.c
-    ctx.beginPath(); ctx.roundRect(left - 2, cy + 5, 3.4, 13, 2); ctx.fill()
-    ctx.font = `bold ${Math.min(12.5, fs + 1.5)}px "Microsoft YaHei", sans-serif`
-    const tw = ctx.measureText(sec.t).width
-    ctx.fillStyle = hexA(sec.c, 0.13)
-    ctx.beginPath(); ctx.roundRect(left + 6, cy + 1, tw + 16, 21, 10); ctx.fill()
-    ctx.fillStyle = sec.c
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-    ctx.fillText(sec.t, left + 14, cy + 12)
+    if (isVis(cy, 21)) {
+      ctx.fillStyle = sec.c
+      ctx.beginPath(); ctx.roundRect(left - 2, cy + 5, 3.4, 13, 2); ctx.fill()
+      ctx.font = `bold ${Math.min(12.5, fs + 1.5)}px "Microsoft YaHei", sans-serif`
+      const tw = ctx.measureText(sec.t).width
+      ctx.fillStyle = hexA(sec.c, 0.13)
+      ctx.beginPath(); ctx.roundRect(left + 6, cy + 1, tw + 16, 21, 10); ctx.fill()
+      ctx.fillStyle = sec.c
+      ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      ctx.fillText(sec.t, left + 14, cy + 12)
+    }
     cy += R.head
 
     for (const it of sec.items) {
-      ctx.fillStyle = sec.c
-      ctx.beginPath(); ctx.arc(left + 5, cy + (fs + R.line) / 2 - 1, 2.6, 0, Math.PI * 2); ctx.fill()
-      for (const ln of layoutRuns(ctx, it, maxW - 16, fs)) {
-        let lx = left + 14
-        for (const run of ln) {
-          ctx.font = `${run.b ? 'bold ' : ''}${fs}px "Microsoft YaHei", sans-serif`
-          ctx.fillStyle = run.c || '#5A4636'
-          ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-          ctx.fillText(run.s, lx, cy + (fs + R.line) / 2 - 1)
-          lx += ctx.measureText(run.s).width
+      const lineH = fs + R.line
+      if (isVis(cy, fs + 2)) {
+        ctx.fillStyle = sec.c
+        ctx.beginPath(); ctx.arc(left + 5, cy + lineH / 2 - 1, 2.6, 0, Math.PI * 2); ctx.fill()
+        for (const ln of layoutRuns(ctx, it, maxW - 16, fs)) {
+          let lx = left + 14
+          for (const run of ln) {
+            ctx.font = `${run.b ? 'bold ' : ''}${fs}px "Microsoft YaHei", sans-serif`
+            ctx.fillStyle = run.c || '#5A4636'
+            ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+            ctx.fillText(run.s, lx, cy + lineH / 2 - 1)
+            lx += ctx.measureText(run.s).width
+          }
+          cy += lineH
         }
-        cy += fs + R.line
+      } else {
+        cy += layoutRuns(ctx, it, maxW - 16, fs).length * lineH
       }
       cy += R.item
     }

@@ -1,49 +1,73 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
+import InfoDock from '../ui/InfoDock'
+import BuilderPalette from '../ui/BuilderPalette'
+import { fitLayout } from '../ui/canvasLayout'
+import { drawKnowledgeCard } from '../ui/knowledgeCard'
+import BuilderSVG from '../simple3d/BuilderSVG.jsx'
+import { TYPES } from './electricSvgInstruments.js'
+import { CFG } from '../engine/electricLab.js'
 import { symBattery, symSwitch, symRheostat, symMeter, symHalf, SYM_INK } from '../render/symbols.js'
 
 /**
- * JouleLawScene — 探究焦耳定律 Q = I²Rt
+ * JouleLawScene — 探究焦耳定律 Q = I²Rt（第 6 个按「简单电路」模板改造的电学实验）
  *
- * 烧杯里浸着电阻丝，电阻丝两端从烧杯侧壁引出接到下方电路
- *
- * Step1: 一个烧杯，调变阻器改变电流 → 升温快慢不同 → Q∝I²
- * Step2: 两个烧杯（R=5Ω/20Ω）串联，同电流 → 对比升温 → Q∝R
- * Step3: 一个烧杯，通电计时 → 温度随时间上升 → Q∝t
+ *   Tab1 📖 电路演示 —— 暖色底 + 标准符号回路：
+ *                        上边 滑变（左）+ 电流表（右）串联
+ *                        下边 电源 → 煤油瓶 R₁=5Ω → 煤油瓶 R₂=10Ω → 开关
+ *                        两瓶串联 ⇒ 电流相同 ⇒ 升温快慢只由 R 决定（Q = I²Rt，转换法看温度计）
+ *                        点/拖滑片改变电流、点开关通断、点「记录一组数据」攒 4 组
+ *   Tab2 🔧 自己动手 —— 与简单电路同一套 1:1 SVG 器材（9 件器材栏 + 三色导线）+
+ *                        一键透视内部结构 + 实验记录表（都在 BuilderSVG 里）
  */
+
+/** 器材栏缩略图：与桌面器材同源 */
+function thumb(type) {
+  const t = TYPES[type]
+  if (!t) return null
+  const svg = t.render(
+    { id: `pal-${type}`, closed: true, showRead: false, f: 0.4 },
+    { bright: 0.55, frac: 0.35, I: 0, f: 0.4, rays: false }
+  )
+  return <span dangerouslySetInnerHTML={{ __html: svg }} />
+}
+
+const RHEO_MAX = 20       // 20Ω 2A 滑动变阻器
+const R1H = 5.0           // 煤油瓶 ① 里的电阻丝
+const R2H = 10.0          // 煤油瓶 ② 里的电阻丝
+const T0 = 20.0           // 初始温度 ℃
+const TMAX = 95.0         // 显示上限（再高就沸腾了，实验不做到那一步）
+const CV = 0.15           // 虚拟热容 J/℃：两瓶等质量煤油等比热 ⇒ ΔT ∝ Q
+const QCAP = (TMAX - T0) * CV
+const MAX_REC = 4
+
 export default function JouleLawScene() {
   const canvasRef = useRef(null)
   const animRef = useRef(null)
+  const builderRef = useRef(null)
 
   const S = useRef({
     tab: 1,
-    step: 1,
     switchClosed: false,
-    sliderR: 15,
-    U: 6,
-    elapsed: 0,
-    // 烧杯温度（°C）
-    temps: [20, 20],
-    records: [],
-    // Tab2
-    components: [],
-    wires: [],
-    dragId: null,
-    dragOffX: 0, dragOffY: 0,
-    connecting: null,
-    nextId: 1,
+    time: 0,                // 动画时间（电子流动）
+    tOn: 0,                 // 累计通电时间 s
+    ratio: 1,               // 滑片位置：1 = 阻值最大（右端）
+    q1: 0, q2: 0,           // 两瓶已产生的热量 J
+    records: [],            // [{ t, i, t1, t2, q1, q2 }]
     wireColor: '#F44336',
-    _guideOpen: false,
+    dragging: false,
+    cardScroll: 0,
+    cardDrag: null,
   })
 
   const [tab, setTab] = useState(1)
-  const [step, setStep] = useState(1)
   const [, forceUpdate] = useState(0)
 
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas) return
-    const R = { canvas, ctx: canvas.getContext('2d'), W: 0, H: 0,
+    const R = {
+      canvas, ctx: canvas.getContext('2d'), W: 0, H: 0,
       resize() {
         const rect = { width: canvas.clientWidth, height: canvas.clientHeight }
         canvas.width = rect.width * devicePixelRatio
@@ -53,29 +77,16 @@ export default function JouleLawScene() {
       },
     }
     R.resize(); canvasRef.current._R = R
-
-    let last = performance.now()
-    const loop = (now) => {
-      const dt = (now - last) / 1000; last = now
+    const loop = () => {
       const s = S.current
+      s.time += 1 / 60
       if (s.switchClosed) {
-        s.elapsed += dt
-        // 当前电路电流
-        let I, Ra, Rb
-        if (s.step === 1) {
-          I = s.U / (10 + s.sliderR)
-          Ra = 10
-        } else if (s.step === 2) {
-          I = s.U / (5 + 20 + s.sliderR)
-          Ra = 5; Rb = 20
-        } else {
-          I = s.U / (10 + s.sliderR)
-          Ra = 10
-        }
-        // 温度累积 ΔT ∝ I²Rt
-        const k = 0.8
-        s.temps[0] += I * I * Ra * dt * k
-        if (s.step === 2) s.temps[1] += I * I * Rb * dt * k
+        // 闭合期间热量随时间累积：P = I²R，Q = P·t
+        const Rr = s.ratio * RHEO_MAX
+        const I = CFG.VS.V / (R1H + R2H + Rr + CFG.AMM_R)
+        s.tOn += 1 / 60
+        s.q1 = Math.min(QCAP, s.q1 + (I * I * R1H) / 60)
+        s.q2 = Math.min(QCAP, s.q2 + (I * I * R2H) / 60)
       }
       render(R)
       animRef.current = requestAnimationFrame(loop)
@@ -85,682 +96,611 @@ export default function JouleLawScene() {
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current) }
   }, [])
 
+  /** 物理：两瓶 + 滑变 + 电流表内阻串联；两瓶电流相同 */
+  function solve() {
+    const s = S.current
+    const Rr = Math.round(s.ratio * RHEO_MAX * 10) / 10
+    const I = s.switchClosed ? CFG.VS.V / (R1H + R2H + Rr + CFG.AMM_R) : 0
+    const P1 = I * I * R1H, P2 = I * I * R2H
+    const T1 = T0 + s.q1 / CV, T2 = T0 + s.q2 / CV
+    return { Rr, I, P1, P2, T1, T2 }
+  }
+
   function render(R) {
-    try {
     const ctx = R.ctx, W = R.W, H = R.H
     ctx.clearRect(0, 0, W, H)
-    ctx.fillStyle = '#f0f4f8'; ctx.fillRect(0, 0, W, H)
+    const bg = ctx.createLinearGradient(0, 0, W * 0.35, H)
+    bg.addColorStop(0, '#FFFCF5'); bg.addColorStop(0.55, '#FDF4E6'); bg.addColorStop(1, '#FBEDD9')
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H)
     canvasRef.current._clickAreas = []
-    canvasRef.current._palAreas = []
     if (S.current.tab === 1) renderDemo(ctx, W, H)
-    else renderBuilder(ctx, W, H)
-    } catch (e) { console.error('render error:', e) }
   }
 
   // ================================================================
-  //  Tab 1：实验演示
+  //  Tab 1：电路演示
   // ================================================================
   function renderDemo(ctx, W, H) {
     const s = S.current
-
-    // 顶部步骤标签
-    const labels = ['① Q∝I²', '② Q∝R', '③ Q∝t']
-    const bw = 90, bh = 28, gap = 8
-    const totalW = bw * 3 + gap * 2
-    const bx0 = (W - totalW) / 2
-    for (let i = 0; i < 3; i++) {
-      const x = bx0 + i * (bw + gap), y = 10
-      ctx.fillStyle = s.step === i + 1 ? '#FF9800' : '#fff'
-      ctx.strokeStyle = s.step === i + 1 ? '#E65100' : '#999'
-      ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.roundRect(x, y, bw, bh, 6); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = s.step === i + 1 ? '#fff' : '#555'
-      ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText(labels[i], x + bw / 2, y + bh / 2)
-      canvasRef.current._clickAreas.push({
-        x: x - 3, y: y - 3, w: bw + 6, h: bh + 6,
-        onClick: () => {
-          S.current.step = i + 1
-          S.current.elapsed = 0
-          S.current.temps = [20, 20]
-          S.current.records = []
-          S.current.switchClosed = false
-          setStep(i + 1)
-          forceUpdate(n => n + 1)
-        }
-      })
-    }
-    ctx.textBaseline = 'alphabetic'
-
-    const subs = {
-      1: '保持电阻 R、时间 t 不变，改变电流 I',
-      2: '保持电流 I、时间 t 不变，改变电阻 R',
-      3: '保持电流 I、电阻 R 不变，观察随时间 t 的变化',
-    }
-    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'
-    ctx.fillText(subs[s.step], W / 2, 52)
-
-    // 电路区域（伏安法标准布局：下边=电源+开关，上边=变阻器→A表→烧杯）
-    const circL = 50, circR = Math.min(W * 0.66, W) - 25
-    const span = circR - circL
-    const circTop = 75, circBottom = H - 50
-    const topWireY = circTop + 80
     const on = s.switchClosed
-    const wc = on ? '#1565C0' : '#999'
+    const sol = solve()
+    const layBase = fitLayout(W, H)
+    /* 「半紧凑」：宽而矮的窗口（如 1280×640）仍保留右侧知识卡，只把电路压扁 */
+    const lay = (layBase.compact && W >= 900 && H >= 400)
+      ? {
+        compact: false,
+        circuit: { L: W * 0.04, R: W * 0.52, T: 48, B: H - 40 },
+        readout: layBase.readout,
+        guide: null,
+        font: { title: 15, label: 10, body: 12, data: 12 },
+      }
+      : layBase
 
-    // 上边元件位置（左→右：变阻器→安培表→烧杯）
-    const rheoX = circL + span * 0.15
-    const ammX = circL + span * 0.32
-    // 下边元件位置（左→右：电源→开关）
-    const battX = circL + span * 0.25
-    const swX = circL + span * 0.65
-
-    // 烧杯位置
-    const beakerW = 85, beakerH = 110
-    let beakerXs
-    if (s.step === 2) {
-      const startX = circL + span * 0.42
-      beakerXs = [startX, startX + beakerW + 30]
+    const RAIL = 46
+    let panel
+    if (!lay.compact) {
+      const pw = Math.max(360, Math.min(W * (H < 820 ? 0.52 : 0.40), 780))
+      panel = { x: W - 16 - RAIL - pw, y: 10, w: pw, h: H - 20 }
+      lay.circuit.R = Math.min(lay.circuit.R, panel.x - 20)
     } else {
-      beakerXs = [circL + span * 0.5 - beakerW / 2]
-    }
-    const beakerY = circTop + 5
-    const pinY = beakerY + beakerH
-
-    // 画烧杯
-    for (let i = 0; i < beakerXs.length; i++) {
-      const Rval = s.step === 2 ? (i === 0 ? 5 : 20) : 10
-      drawBeakerWithResistor(ctx, beakerXs[i], beakerY, beakerW, beakerH, s.temps[i], Rval, on)
+      const pw = Math.max(196, Math.min(W * 0.3, 330))
+      panel = { x: W - 14 - RAIL - pw, y: 12, w: pw, h: 108 }
+      lay.circuit.R = Math.min(lay.circuit.R, panel.x - 14)
     }
 
-    // ─── 矩形回路导线（标准电路符号：断开留缺口）───
-    const scale = 1
-    const lw = 2 * scale + 0.6
-    const hBat = symHalf('battery', scale, 3)
-    const hSw = symHalf('switch', scale)
-    const hAm = symHalf('meter', scale)
-    const hRheo = symHalf('rheostat', scale)
+    const left = lay.circuit.L, right = lay.circuit.R
+    const top = lay.circuit.T, bottom = lay.circuit.B - (lay.compact ? 0 : 36)
+    const areaW = right - left, areaH = bottom - top
+
+    const scaleOf = (w) => Math.max(0.55, Math.min(1.1, w / 420))
+    let loopW = Math.min(areaW * 0.74, 540)
+    const fits = (w) => {
+      const sc = scaleOf(w)
+      return w * 0.52 + 62 * sc + 150 * sc + 8 <= areaH
+    }
+    if (!fits(loopW)) {
+      let lo = 180, hi = loopW
+      for (let i = 0; i < 14; i++) { const m = (lo + hi) / 2; if (fits(m)) lo = m; else hi = m }
+      loopW = lo
+    }
+    const chipUp = 62 * scaleOf(loopW), chipDn = 150 * scaleOf(loopW)
+    const scale = scaleOf(loopW)
+    const loopH = loopW * 0.52
+    const x0 = left + (areaW - loopW) / 2
+    const y0 = top + Math.max(chipUp + 4, (areaH - (loopH + chipUp + chipDn)) / 2) + chipUp
+    const x1 = x0 + loopW, y1 = y0 + loopH
+    const midX = x0 + loopW / 2, midY = y0 + loopH / 2
+
+    // 上边：滑变（左）、电流表（右）；下边：电源、煤油瓶①②、开关
+    const rheoX = x0 + loopW * 0.26
+    const amX = x0 + loopW * 0.74
+    const battX = x0 + loopW * 0.14
+    const b1X = x0 + loopW * 0.40
+    const b2X = x0 + loopW * 0.64
+    const swX = x0 + loopW * 0.86
+    const gap = 15 * scale          // 瓶底两根引线的半间距（导线在此让位）
+
+    const wc = on ? '#1565C0' : '#9aa7b1'
     const ink = on ? SYM_INK : '#7c8a93'
-    // 下边：左→电源→开关→右
-    ctx.strokeStyle = wc; ctx.lineWidth = lw
-    ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(battX - hBat, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(battX + hBat, circBottom); ctx.lineTo(swX - hSw, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(swX + hSw, circBottom); ctx.lineTo(circR, circBottom); ctx.stroke()
-    // 右边：下→上
-    ctx.beginPath(); ctx.moveTo(circR, circBottom); ctx.lineTo(circR, topWireY); ctx.stroke()
-    // 上边：右→烧杯→安培表→变阻器→左
-    const lastBeakerX = beakerXs[beakerXs.length - 1]
-    const lastBeakerRightPinX = lastBeakerX + beakerW - 12
-    ctx.beginPath(); ctx.moveTo(circR, topWireY); ctx.lineTo(lastBeakerRightPinX, topWireY); ctx.stroke()
-    // 烧杯引脚连线
-    for (let i = beakerXs.length - 1; i >= 0; i--) {
-      const bx = beakerXs[i]
-      const p1x = bx + 12, p2x = bx + beakerW - 12
-      ctx.beginPath(); ctx.moveTo(p2x, pinY); ctx.lineTo(p2x, topWireY); ctx.stroke()
-      ctx.beginPath(); ctx.moveTo(p1x, pinY); ctx.lineTo(p1x, topWireY); ctx.stroke()
-      if (i > 0) {
-        const prevBeakerX = beakerXs[i - 1]
-        const prevRightPinX = prevBeakerX + beakerW - 12
-        ctx.beginPath(); ctx.moveTo(p1x, topWireY); ctx.lineTo(prevRightPinX, topWireY); ctx.stroke()
-      }
-    }
-    const firstBeakerLeftPinX = beakerXs[0] + 12
-    ctx.beginPath(); ctx.moveTo(firstBeakerLeftPinX, topWireY); ctx.lineTo(ammX + hAm, topWireY); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(ammX - hAm, topWireY); ctx.lineTo(rheoX + hRheo, topWireY); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(rheoX - hRheo, topWireY); ctx.lineTo(circL, topWireY); ctx.stroke()
-    // 左边：上→下
-    ctx.beginPath(); ctx.moveTo(circL, topWireY); ctx.lineTo(circL, circBottom); ctx.stroke()
+    const lw = 2 * scale + 0.6
 
-    // ─── 元件绘制（标准电路符号）───
-    // 下边：电源组 + 开关
-    symBattery(ctx, battX, circBottom, { n: 3, scale, ink, flip: true })
-    ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('电池组 6V', battX, circBottom + 18)
-    ctx.textBaseline = 'alphabetic'
-    symSwitch(ctx, swX, circBottom, { closed: on, scale, ink })
+    const hRheo = symHalf('rheostat', scale)
+    const hMeter = symHalf('meter', scale)
+    const hBat = symHalf('battery', scale, 2)
+    const hSw = symHalf('switch', scale)
+
+    // ─── 导线（瓶处在 y1 上让位给两根引线）───
+    drawLine(ctx, x0, y0, rheoX - hRheo, y0, wc, lw)
+    drawLine(ctx, rheoX + hRheo, y0, amX - hMeter, y0, wc, lw)
+    drawLine(ctx, amX + hMeter, y0, x1, y0, wc, lw)
+    drawLine(ctx, x1, y0, x1, y1, wc, lw)
+    drawLine(ctx, x0, y0, x0, y1, wc, lw)
+    drawLine(ctx, x0, y1, battX - hBat, y1, wc, lw)
+    drawLine(ctx, battX + hBat, y1, b1X - gap, y1, wc, lw)
+    drawLine(ctx, b1X + gap, y1, b2X - gap, y1, wc, lw)
+    drawLine(ctx, b2X + gap, y1, swX - hSw, y1, wc, lw)
+    drawLine(ctx, swX + hSw, y1, x1, y1, wc, lw)
+
+    // ─── 符号 ───
+    const geo = symRheostat(ctx, rheoX, y0, { scale, ratio: s.ratio, ink })
+    symMeter(ctx, amX, y0, { kind: 'A', scale, ink })
+    symBattery(ctx, battX, y1, { n: 2, scale, ink, flip: true })
+    symSwitch(ctx, swX, y1, { closed: on, scale, ink })
+
+    // ─── 两个煤油瓶 ───
+    drawBottle(ctx, b1X, y1, { scale, Rw: R1H, temp: sol.T1, q: s.q1, on, time: s.time, wc })
+    drawBottle(ctx, b2X, y1, { scale, Rw: R2H, temp: sol.T2, q: s.q2, on, time: s.time, wc })
+
+    // 电子流动（滑变内部走「左端 → 线圈 → 箭头杆 → 横线 → 右端」；瓶处沿引线贴底绕过）
+    if (on) {
+      const path = [
+        { x: battX + hBat, y: y1 },
+        { x: b1X - gap, y: y1 }, { x: b1X - gap, y: y1 - 8 * scale },
+        { x: b1X + gap, y: y1 - 8 * scale }, { x: b1X + gap, y: y1 },
+        { x: b2X - gap, y: y1 }, { x: b2X - gap, y: y1 - 8 * scale },
+        { x: b2X + gap, y: y1 - 8 * scale }, { x: b2X + gap, y: y1 },
+        { x: swX + hSw, y: y1 },
+        { x: x1, y: y1 }, { x: x1, y: y0 },
+        { x: amX + hMeter, y: y0 }, { x: amX - hMeter, y: y0 },
+        { x: rheoX + geo.half, y: y0 },
+        { x: rheoX + geo.W / 2, y: y0 }, { x: rheoX + geo.W / 2, y: geo.topY },
+        { x: geo.ax, y: geo.topY },
+        { x: geo.ax, y: y0 },
+        { x: rheoX - geo.W / 2, y: y0 }, { x: rheoX - geo.half, y: y0 },
+        { x: x0, y: y0 }, { x: x0, y: y1 },
+        { x: battX - hBat, y: y1 },
+      ]
+      drawCurrentFlow(ctx, path, s.time, 0.5)
+    }
+
+    // 开关可点
     canvasRef.current._clickAreas.push({
-      x: swX - hSw - 10, y: circBottom - 22, w: (hSw + 10) * 2, h: 44,
-      onClick: () => {
-        S.current.switchClosed = !S.current.switchClosed
-        forceUpdate(n => n + 1)
-      }
+      x: swX - hSw - 12, y: y1 - 22, w: (hSw + 12) * 2, h: 44,
+      onClick: () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) },
     })
-
-    // 上边：滑动变阻器（可点选滑片位置）
-    symRheostat(ctx, rheoX, topWireY, { scale, ink, ratio: s.sliderR / 50 })
-    ctx.fillStyle = '#E65100'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText(`${s.sliderR}Ω`, rheoX, topWireY + 16)
-    ctx.textBaseline = 'alphabetic'
-    canvasRef.current._clickAreas.push({
-      x: rheoX - hRheo - 10, y: topWireY - 36, w: (hRheo + 10) * 2, h: 56,
-      onClick: (mx) => {
-        const r = Math.max(0, Math.min(1, (mx - (rheoX - hRheo)) / (hRheo * 2)))
-        S.current.sliderR = Math.round(r * 50)
-        forceUpdate(n => n + 1)
-      }
-    })
-
-    // 上边：安培表
-    const I = s.step === 2 ? s.U / (5 + 20 + s.sliderR) : s.U / (10 + s.sliderR)
-    symMeter(ctx, ammX, topWireY, { kind: 'A', scale, ink })
-    ctx.fillStyle = '#333'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText(on ? I.toFixed(2) + 'A' : '', ammX + hAm + 6, topWireY - 4)
-    ctx.textBaseline = 'alphabetic'
-
-    // 计时
-    ctx.fillStyle = '#333'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'right'
-    ctx.fillText('t = ' + s.elapsed.toFixed(1) + ' s', circR - 5, circTop - 5)
-    ctx.textBaseline = 'alphabetic'
-
-    // 右侧面板
-    drawRightPanel(ctx, Math.min(W * 0.66, W) + 15, 70, W - Math.min(W * 0.66, W) - 30, H - 90, s)
-  }
-
-  // 烧杯+电阻丝+温度计（电阻丝浸在煤油里）
-  function drawBeakerWithResistor(ctx, bx, by, bw, bh, temp, Rval, on) {
-    // 烧杯
-    ctx.fillStyle = 'rgba(200,230,255,0.3)'
-    ctx.strokeStyle = '#888'; ctx.lineWidth = 2
-    ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, [4, 4, 10, 10]); ctx.fill(); ctx.stroke()
-
-    // 煤油
-    ctx.fillStyle = 'rgba(66,165,245,0.3)'
-    ctx.fillRect(bx + 3, by + 8, bw - 6, bh - 20)
-
-    // 电阻丝（红色线圈）
-    const coilY = by + bh * 0.6
-    const heat = on ? Math.min((temp - 20) / 50, 1) : 0
-    const coilColor = heat < 0.25 ? '#D32F2F' : heat < 0.5 ? '#FF6F00' : heat < 0.75 ? '#FFD600' : '#FFF59D'
-    ctx.strokeStyle = coilColor; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-    ctx.beginPath()
-    const coilW = bw - 30
-    for (let s2 = 0; s2 < 5; s2++) {
-      const sx = bx + 15 + s2 * (coilW / 5)
-      ctx.moveTo(sx, coilY - 5)
-      ctx.lineTo(sx + coilW / 10, coilY + 5)
-      ctx.lineTo(sx + coilW / 5, coilY - 5)
-    }
-    ctx.stroke(); ctx.lineCap = 'butt'
-
-    // 温度计
-    const tx = bx + bw - 8
-    ctx.strokeStyle = '#555'; ctx.lineWidth = 1.5
-    ctx.beginPath(); ctx.moveTo(tx, by + 10); ctx.lineTo(tx, by + bh - 20); ctx.stroke()
-    ctx.beginPath(); ctx.arc(tx, by + bh - 15, 5, 0, Math.PI * 2); ctx.stroke()
-    const maxH = bh - 35
-    const riseH = Math.min((temp - 20) / 80, 1) * maxH
-    ctx.fillStyle = '#E53935'
-    ctx.fillRect(tx - 2, by + bh - 15 - riseH, 4, riseH)
-    ctx.beginPath(); ctx.arc(tx, by + bh - 15, 4, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = '#333'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText(temp.toFixed(1) + '°C', tx, by + 12)
-
-    // 标签
-    ctx.fillStyle = '#444'; ctx.font = 'bold 10px sans-serif'; ctx.textBaseline = 'top'
-    ctx.fillText(`R=${Rval}Ω`, bx + bw / 2, by + bh + 5)
-    ctx.textBaseline = 'alphabetic'
-  }
-
-  function drawRightPanel(ctx, x, y, w, h, s) {
-    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill(); ctx.stroke()
-
-    ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('🎯 探究 Q 与 I、R、t 的关系', x + 12, y + 12)
-
-    const I = s.step === 2 ? s.U / (5 + 20 + s.sliderR) : s.U / (10 + s.sliderR)
-    const Rval = s.step === 2 ? 5 : 10
-    const Rtxt = s.step === 2 ? '5Ω / 20Ω 串联' : '10Ω'
-    ctx.font = '10px sans-serif'; ctx.fillStyle = '#444'
-    ctx.fillText(`I = ${I.toFixed(2)}A  R = ${Rtxt}`, x + 12, y + 32)
-    ctx.fillText(`t = ${s.elapsed.toFixed(1)}s    Q = I²Rt = ${I.toFixed(2)}²×${Rval}×${s.elapsed.toFixed(1)}`, x + 12, y + 46)
-
-    const Q0 = I * I * Rval * s.elapsed
-    const Q1 = s.step === 2 ? I * I * 20 * s.elapsed : 0
-    ctx.fillStyle = '#E65100'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText(`Q = ${Q0.toFixed(1)} J` + (s.step === 2 ? `  Q₁=${Q0.toFixed(1)}J  Q₂=${Q1.toFixed(1)}J` : ''), x + 12, y + 62)
-
-    // 操作步骤
-    let ky = y + (s.step === 2 ? 116 : 100)
-    const guideSteps = s.step === 1
-      ? ['① 闭合开关', '② 调变阻器改电流', '③ 观察温度上升快慢', '④ 结论：I 越大，升温越快']
-      : s.step === 2
-        ? ['① 闭合开关', '② 两电阻丝串联', '③ 同电流，R大的升温快', '④ 结论：Q ∝ R']
-        : ['① 闭合开关开始计时', '② 每隔几秒点"记录"', '③ 观察温度随时间上升', '④ 结论：Q ∝ t']
-    ctx.fillStyle = '#5D4037'; ctx.font = 'bold 10px sans-serif'
-    ctx.fillText('📋 操作步骤', x + 12, ky); ky += 16
-    ctx.font = '10px sans-serif'
-    for (let i = 0; i < guideSteps.length; i++) {
-      ctx.fillText(guideSteps[i], x + 12, ky + i * 14)
-    }
-    ky += guideSteps.length * 14 + 10
-
-    // Step3 数据表
-    if (s.step === 3) {
-      ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'
-      ctx.fillText('📊 实验数据', x + 12, ky); ky += 18
-      ctx.fillStyle = '#FFB74D'
-      ctx.fillRect(x + 12, ky, w - 24, 18)
-      ctx.fillStyle = '#333'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'
-      const col1 = x + 30, col2 = x + 65, col3 = x + 105, col4 = x + 145
-      ctx.fillText('序号', col1, ky + 3)
-      ctx.fillText('t(s)', col2, ky + 3)
-      ctx.fillText('I²Rt(J)', col3, ky + 3)
-      ctx.fillText('ΔT(°C)', col4, ky + 3)
-      ky += 18
-      for (let i = 0; i < s.records.length; i++) {
-        const r = s.records[i]
-        if (i % 2 === 0) { ctx.fillStyle = '#FFF8E1'; ctx.fillRect(x + 12, ky, w - 24, 16) }
-        ctx.fillStyle = '#333'; ctx.font = '10px monospace'; ctx.textAlign = 'center'
-        ctx.fillText(String(i + 1), col1, ky + 2)
-        ctx.fillText(r.t.toFixed(1), col2, ky + 2)
-        ctx.fillText(r.Q.toFixed(1), col3, ky + 2)
-        ctx.fillText(r.dT.toFixed(1), col4, ky + 2)
-        ky += 16
-      }
-      ctx.textAlign = 'left'
-    }
-
-    // 底部按钮
-    const btnY = y + h - 42
-    const btnW = 68, btnH = 26, gap = 8
-    const bx = x + 12
-    if (s.step === 3) {
-      ctx.fillStyle = '#4CAF50'; ctx.strokeStyle = '#2E7D32'
-      ctx.beginPath(); ctx.roundRect(bx, btnY, btnW, btnH, 5); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText('📝 记录', bx + btnW / 2, btnY + 9)
-      canvasRef.current._clickAreas.push({
-        x: bx, y: btnY, w: btnW, h: btnH,
-        onClick: () => {
-          const s2 = S.current
-          const I2 = s2.step === 2 ? s2.U / (5 + 20 + s2.sliderR) : s2.U / (10 + s2.sliderR)
-          const R2 = s2.step === 2 ? 5 : 10
-          s2.records.push({ t: s2.elapsed, Q: I2 * I2 * R2 * s2.elapsed, dT: s2.temps[0] - 20 })
-          forceUpdate(n => n + 1)
-        }
-      })
-    }
-    ctx.fillStyle = '#FF9800'; ctx.strokeStyle = '#E65100'
-    ctx.beginPath(); ctx.roundRect(bx + btnW + gap, btnY, btnW, btnH, 5); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText('🗑 清除', bx + btnW + gap + btnW / 2, btnY + 9)
-    canvasRef.current._clickAreas.push({
-      x: bx + btnW + gap, y: btnY, w: btnW, h: btnH,
-      onClick: () => { S.current.records = []; forceUpdate(n => n + 1) }
-    })
-    ctx.fillStyle = '#9E9E9E'; ctx.strokeStyle = '#616161'
-    ctx.beginPath(); ctx.roundRect(bx + (btnW + gap) * 2, btnY, btnW, btnH, 5); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText('↺ 重置', bx + (btnW + gap) * 2 + btnW / 2, btnY + 9)
-    canvasRef.current._clickAreas.push({
-      x: bx + (btnW + gap) * 2, y: btnY, w: btnW, h: btnH,
-      onClick: () => {
-        S.current.elapsed = 0; S.current.temps = [20, 20]
-        S.current.records = []; S.current.switchClosed = false
-        forceUpdate(n => n + 1)
-      }
-    })
-    ctx.textBaseline = 'alphabetic'
-  }
-
-  // ================================================================
-  //  Tab 2：自己动手（简化版，复用OhmsLawScene器材逻辑）
-  // ================================================================
-  function renderBuilder(ctx, W, H) {
-    const s = S.current
-    const palW = 150
-    const palX = W - palW - 10
-    const cvX = 10, cvY = 10, cvW = W - palW - 30, cvH = H - 20
-
-    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.roundRect(cvX, cvY, cvW, cvH, 8); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#e0e0e0'
-    for (let gx = cvX + 20; gx < cvX + cvW; gx += 30)
-      for (let gy = cvY + 20; gy < cvY + cvH; gy += 30)
-        ctx.fillRect(gx, gy, 2, 2)
-
-    drawPalette(ctx, palX, cvY, palW, cvH)
-
-    // 画导线
-    for (const wire of s.wires) {
-      const fc = s.components.find(c => c.id === wire.from.compId)
-      const tc = s.components.find(c => c.id === wire.to.compId)
-      if (!fc || !tc) continue
-      const fp = getTermPos(fc, wire.from.portIndex)
-      const tp = getTermPos(tc, wire.to.portIndex)
-      ctx.strokeStyle = s.wireColor; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-      ctx.beginPath()
-      ctx.moveTo(fp.x, fp.y)
-      const m1x = wire.mid1X ?? (fp.x + tp.x) / 2
-      const m1y = wire.mid1Y ?? fp.y
-      const m2x = wire.mid2X ?? (fp.x + tp.x) / 2
-      const m2y = wire.mid2Y ?? tp.y
-      ctx.bezierCurveTo(m1x, m1y, m2x, m2y, tp.x, tp.y)
-      ctx.stroke()
-    }
-
-    // 拖线
-    if (s.connecting) {
-      const from = getTermPos(s.components.find(c => c.id === s.connecting.compId), s.connecting.portIndex)
-      ctx.strokeStyle = s.wireColor; ctx.lineWidth = 2.5; ctx.setLineDash([5, 5])
-      ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(s.connecting.mx, s.connecting.my); ctx.stroke()
-      ctx.setLineDash([])
-    }
-
-    for (const comp of s.components) drawComp(ctx, comp)
-
-    // 未连线红框
-    for (const comp of s.components) {
-      const adj = s.wires.filter(w => w.from.compId === comp.id || w.to.compId === comp.id).length
-      if (adj < 2) {
-        ctx.strokeStyle = '#F44336'; ctx.lineWidth = 2; ctx.setLineDash([4, 3])
-        ctx.beginPath(); ctx.roundRect(comp.x - 28, comp.y - 28, 56, 56, 6); ctx.stroke()
-        ctx.setLineDash([])
-        ctx.fillStyle = '#F44336'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'
-        ctx.fillText('未连线', comp.x, comp.y - 32)
-      }
-    }
-
-    // 状态
-    const eng = solveBuilder()
-    ctx.fillStyle = eng.ok ? '#4CAF50' : '#F44336'
-    ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText(eng.ok ? '✅ ' + eng.reason : '❌ ' + (eng.reason || '画布是空的'), cvX + 12, cvY + cvH - 25)
-
-    // 操作气泡
-    {
-      const bw2 = 190, bh2 = s._guideOpen ? 160 : 36
-      const bx = cvX + cvW - bw2 - 12, by = cvY + 10
-      ctx.fillStyle = 'rgba(255,253,230,0.95)'; ctx.strokeStyle = '#FFB300'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.roundRect(bx, by, bw2, bh2, 8); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#5D4037'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText('📋 操作说明', bx + 10, by + 18)
-      ctx.textAlign = 'right'
-      ctx.fillText(s._guideOpen ? '收起 ▲' : '展开 ▼', bx + bw2 - 10, by + 18)
-      canvasRef.current._clickAreas.push({ x: bx - 5, y: by - 3, w: bw2 + 10, h: 42, onClick: () => { s._guideOpen = !s._guideOpen; forceUpdate(n => n + 1) } })
-      if (s._guideOpen) {
-        ctx.textAlign = 'left'; ctx.font = '10px sans-serif'
-        const lines = [
-          '① 拖入器材到画布',
-          '② 点击接线柱连线',
-          '③ 拖动变阻器滑片调阻值',
-          '④ 双击开关通断',
-          '⑤ 右键删除',
-          '⑥ 接成串联电路',
-        ]
-        for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], bx + 10, by + 40 + i * 15)
-      }
-      ctx.textBaseline = 'alphabetic'
-    }
-  }
-
-  function drawPalette(ctx, x, y, w, h) {
-    const s = S.current
-    ctx.fillStyle = '#fafafa'; ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('电学器材', x + w / 2, y + 10)
-
-    const items = [
-      { type: 'battery', name: '电源' },
-      { type: 'switch', name: '开关' },
-      { type: 'rheostat', name: '滑动变阻器' },
-      { type: 'ammeter', name: '电流表 A' },
-      { type: 'heater', name: '电阻丝 10Ω' },
-      { type: 'heater20', name: '电阻丝 20Ω' },
-    ]
-    const itemH = 34
-    for (let i = 0; i < items.length; i++) {
-      const iy = y + 35 + i * (itemH + 4)
-      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#ccc'
-      ctx.beginPath(); ctx.roundRect(x + 8, iy, w - 16, itemH, 5); ctx.fill(); ctx.stroke()
-      drawPaletteIcon(ctx, x + 20, iy + itemH / 2, items[i].type)
-      ctx.fillStyle = '#333'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(items[i].name, x + 38, iy + itemH / 2)
-      canvasRef.current._palAreas.push({ x: x + 8, y: iy, w: w - 16, h: itemH, type: items[i].type })
-    }
-    ctx.fillStyle = '#666'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('导线颜色：', x + 10, y + 35 + items.length * (itemH + 4) + 5)
-    const colors = [['#F44336', '红'], ['#FFC107', '黄'], ['#4CAF50', '绿']]
-    for (let i = 0; i < 3; i++) {
-      const cy = y + 35 + items.length * (itemH + 4) + 22 + i * 22
-      ctx.fillStyle = colors[i][0]
-      ctx.fillRect(x + 10, cy, 36, 14)
-      ctx.strokeStyle = s.wireColor === colors[i][0] ? '#333' : '#ccc'
-      ctx.strokeRect(x + 10, cy, 36, 14)
-      ctx.fillStyle = '#333'; ctx.font = '10px sans-serif'
-      ctx.fillText(colors[i][1], x + 52, cy + 2)
-      canvasRef.current._palAreas.push({ x: x + 8, y: cy - 2, w: w - 16, h: 18, action: 'color', color: colors[i][0] })
-    }
-    ctx.textBaseline = 'alphabetic'
-  }
-
-  function drawPaletteIcon(ctx, x, y, type) {
-    ctx.save(); ctx.translate(x, y)
-    if (type === 'battery') {
-      ctx.fillStyle = '#4CAF50'; ctx.strokeStyle = '#2E7D32'
-      ctx.fillRect(-10, -7, 20, 14); ctx.strokeRect(-10, -7, 20, 14)
-    } else if (type === 'switch') {
-      ctx.strokeStyle = '#666'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.moveTo(-7, 0); ctx.lineTo(5, -4); ctx.stroke()
-      ctx.fillStyle = '#666'; ctx.beginPath(); ctx.arc(-7, 0, 2, 0, Math.PI * 2); ctx.fill()
-      ctx.beginPath(); ctx.arc(7, 0, 2, 0, Math.PI * 2); ctx.fill()
-    } else if (type === 'rheostat') {
-      ctx.fillStyle = '#D7CCC8'; ctx.strokeStyle = '#8D6E63'
-      ctx.fillRect(-10, -4, 20, 8); ctx.strokeRect(-10, -4, 20, 8)
-      ctx.strokeStyle = '#FF6F00'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(4, -10); ctx.stroke()
-    } else if (type === 'ammeter') {
-      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#E53935'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#E53935'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText('A', 0, 2)
-    } else if (type === 'heater' || type === 'heater20') {
-      ctx.strokeStyle = '#D32F2F'; ctx.lineWidth = 2
-      ctx.beginPath();
-      for (let s2 = 0; s2 < 4; s2++) {
-        ctx.moveTo(-8 + s2 * 5, -3); ctx.lineTo(-6 + s2 * 5, 3); ctx.lineTo(-4 + s2 * 5, -3)
-      }
-      ctx.stroke()
-    }
-    ctx.restore()
-  }
-
-  function getTermPos(comp, portIndex) {
-    if (comp.type === 'battery') return { x: comp.x + (portIndex === 0 ? -18 : 18), y: comp.y }
-    if (comp.type === 'switch') return { x: comp.x + (portIndex === 0 ? -15 : 15), y: comp.y }
-    if (comp.type === 'rheostat') return { x: comp.x + (portIndex === 0 ? -25 : 25), y: comp.y }
-    if (comp.type === 'ammeter') return { x: comp.x + (portIndex === 0 ? -16 : 16), y: comp.y }
-    if (comp.type === 'heater' || comp.type === 'heater20') return { x: comp.x + (portIndex === 0 ? -12 : 12), y: comp.y }
-    return { x: comp.x, y: comp.y }
-  }
-
-  function drawComp(ctx, comp) {
-    ctx.save(); ctx.translate(comp.x, comp.y)
-    if (comp.type === 'battery') {
-      ctx.fillStyle = '#4CAF50'; ctx.strokeStyle = '#2E7D32'
-      ctx.beginPath(); ctx.roundRect(-18, -11, 36, 22, 3); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText('6V', 0, 3)
-    } else if (comp.type === 'switch') {
-      ctx.strokeStyle = comp.closed ? '#4CAF50' : '#F44336'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(-15, 0); ctx.lineTo(10, comp.closed ? 0 : -10); ctx.stroke()
-      ctx.lineCap = 'butt'
-      ctx.fillStyle = '#333'
-      ctx.beginPath(); ctx.arc(-15, 0, 3, 0, Math.PI * 2); ctx.fill()
-      ctx.beginPath(); ctx.arc(15, 0, 3, 0, Math.PI * 2); ctx.fill()
-    } else if (comp.type === 'rheostat') {
-      ctx.fillStyle = '#D7CCC8'; ctx.strokeStyle = '#8D6E63'
-      ctx.beginPath(); ctx.roundRect(-25, -10, 50, 20, 3); ctx.fill(); ctx.stroke()
-      const Rv = comp.props?.resistance ?? 20
-      const ratio = Rv / 50
-      const sx = -25 + ratio * 50
-      ctx.strokeStyle = '#FF6F00'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(sx, -10); ctx.lineTo(sx + 8, -22); ctx.stroke()
-      ctx.lineCap = 'butt'
-      ctx.fillStyle = '#333'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText(Rv + 'Ω', 0, 14)
-    } else if (comp.type === 'ammeter') {
-      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#E53935'; ctx.lineWidth = 2.5
-      ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#E53935'; ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('A', 0, 2)
-    } else if (comp.type === 'heater' || comp.type === 'heater20') {
-      const Rval = comp.type === 'heater' ? 10 : 20
-      ctx.strokeStyle = '#D32F2F'; ctx.lineWidth = 2.5
-      ctx.beginPath()
-      for (let s2 = 0; s2 < 5; s2++) {
-        ctx.moveTo(-12 + s2 * 6, -5); ctx.lineTo(-9 + s2 * 6, 5); ctx.lineTo(-6 + s2 * 6, -5)
-      }
-      ctx.stroke()
-      ctx.fillStyle = '#333'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-      ctx.fillText(Rval + 'Ω', 0, 16)
-    }
-    ctx.restore()
-    ctx.fillStyle = '#333'
-    const p0 = getTermPos(comp, 0), p1 = getTermPos(comp, 1)
-    ctx.beginPath(); ctx.arc(p0.x, p0.y, 3.5, 0, Math.PI * 2); ctx.fill()
-    ctx.beginPath(); ctx.arc(p1.x, p1.y, 3.5, 0, Math.PI * 2); ctx.fill()
-  }
-
-  function solveBuilder() {
-    const s = S.current
-    if (s.components.length === 0) return { ok: false, reason: '画布是空的' }
-    const batteries = s.components.filter(c => c.type === 'battery')
-    if (batteries.length === 0) return { ok: false, reason: '需要电源' }
-    const hasLoad = s.components.some(c => c.type === 'heater' || c.type === 'heater20' || c.type === 'rheostat')
-    if (!hasLoad) return { ok: false, reason: '需要电阻丝' }
-    return { ok: true, reason: '电路已接好' }
-  }
-
-  function findTerm(x, y) {
-    const s = S.current
-    for (const comp of s.components) {
-      for (let i = 0; i < 2; i++) {
-        const p = getTermPos(comp, i)
-        if ((x - p.x) ** 2 + (y - p.y) ** 2 < 100) return { compId: comp.id, portIndex: i }
-      }
-    }
-    return null
-  }
-
-  // 事件
-  function getPos(e) {
-    return eventToCanvas(canvasRef.current, e)
-  }
-  function handleMouseDown(e) {
-    if (e.button !== 0) return
-    const s = S.current; const { x, y } = getPos(e)
-    if (s.tab === 1) {
-      for (const a of canvasRef.current._clickAreas) { if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(x, y); return } }
-      return
-    }
-    for (const a of canvasRef.current._clickAreas || []) {
-      if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(); return }
-    }
-    for (const a of canvasRef.current._palAreas) {
-      if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) {
-        if (a.action === 'color') { s.wireColor = a.color; forceUpdate(n => n + 1); return }
-        if (a.type) {
-          const id = s.nextId++
-          const props = {}
-          if (a.type === 'rheostat') props.resistance = 20
-          s.components.push({ id, type: a.type, x, y, closed: a.type === 'switch' ? false : true, props })
-          s.dragId = id; forceUpdate(n => n + 1); return
-        }
-      }
-    }
-    for (const comp of s.components) {
-      if (comp.type !== 'rheostat') continue
-      const Rv = (comp.props?.resistance != null) ? comp.props.resistance : 20
-      const sliderX = comp.x - 25 + (Rv / 50) * 50
-      if (Math.abs(x - sliderX) < 12 && Math.abs(y - (comp.y - 16)) < 15) {
-        s.dragId = 'rheo_' + comp.id; forceUpdate(n => n + 1); return
-      }
-    }
-    const term = findTerm(x, y)
-    if (term) { s.connecting = { ...term, mx: x, my: y }; forceUpdate(n => n + 1); return }
-    for (const comp of s.components) {
-      if (Math.abs(x - comp.x) < 25 && Math.abs(y - comp.y) < 25) {
-        s.dragId = comp.id; s.dragOffX = x - comp.x; s.dragOffY = y - comp.y; forceUpdate(n => n + 1); return
-      }
-    }
-  }
-  function handleMouseMove(e) {
-    const s = S.current; const { x, y } = getPos(e)
-    if (s.connecting) { s.connecting.mx = x; s.connecting.my = y; forceUpdate(n => n + 1); return }
-    if (s.dragId == null) return
-    if (typeof s.dragId === 'string' && s.dragId.startsWith('rheo_')) {
-      const id = parseInt(s.dragId.split('_')[1])
-      const comp = s.components.find(c => c.id === id)
-      if (comp) {
-        const ratio = Math.max(0, Math.min(1, (x - (comp.x - 25)) / 50))
-        comp.props.resistance = Math.round(ratio * 50)
-        forceUpdate(n => n + 1)
-      }
-      return
-    }
-    const comp = s.components.find(c => c.id === s.dragId)
-    if (comp) { comp.x = x - s.dragOffX; comp.y = y - s.dragOffY; forceUpdate(n => n + 1) }
-  }
-  function handleMouseUp(e) {
-    const s = S.current; const { x, y } = getPos(e)
-    if (s.connecting) {
-      const term = findTerm(x, y)
-      if (term && !(term.compId === s.connecting.compId && term.portIndex === s.connecting.portIndex)) {
-        const exists = s.wires.some(w =>
-          (w.from.compId === s.connecting.compId && w.from.portIndex === s.connecting.portIndex && w.to.compId === term.compId && w.to.portIndex === term.portIndex) ||
-          (w.to.compId === s.connecting.compId && w.to.portIndex === s.connecting.portIndex && w.from.compId === term.compId && w.from.portIndex === term.portIndex)
-        )
-        if (!exists) s.wires.push({ id: s.wires.length + 1, from: { ...s.connecting }, to: term })
-      }
-      s.connecting = null; forceUpdate(n => n + 1); return
-    }
-    s.dragId = null
-  }
-  function handleDoubleClick(e) {
-    const s = S.current; const { x, y } = getPos(e)
-    const comp = s.components.find(c => Math.abs(x - c.x) < 25 && Math.abs(y - c.y) < 25 && c.type === 'switch')
-    if (comp) { comp.closed = !comp.closed; forceUpdate(n => n + 1) }
-  }
-  function handleContextMenu(e) {
-    e.preventDefault()
-    const s = S.current; const { x, y } = getPos(e)
-    const idx = s.components.findIndex(c => Math.abs(x - c.x) < 25 && Math.abs(y - c.y) < 25)
-    if (idx >= 0) {
-      const id = s.components[idx].id
-      s.components.splice(idx, 1)
-      s.wires = s.wires.filter(w => w.from.compId !== id && w.to.compId !== id)
+    // 滑片连续可调（不做档位吸附，滑片跟手走）
+    const travel = Math.max(6 * scale, geo.W / 2 - 7 * scale)
+    const sliderArea = { x: rheoX - travel, y: y0 - 26 * scale, w: travel * 2, h: 44 * scale }
+    const slideTo = (mx) => {
+      S.current.ratio = Math.max(0, Math.min(1, (mx - (rheoX - travel)) / (travel * 2)))
       forceUpdate(n => n + 1)
     }
+    canvasRef.current._clickAreas.push({ ...sliderArea, onClick: slideTo, onDrag: slideTo })
+    canvasRef.current._sliderArea = sliderArea
+
+    // 记录按钮（回路下方）
+    const recW = 176 * scale, recH = 32 * scale
+    const recX = midX - recW / 2, recY = y1 + 58 * scale
+    const recount = s.records.length
+    const recActive = on && recount < MAX_REC
+    ctx.save()
+    ctx.fillStyle = recActive ? '#FFF3E0' : '#F5F0E8'
+    ctx.strokeStyle = recActive ? '#E0761F' : '#D8CBB8'
+    ctx.lineWidth = 1.4
+    ctx.beginPath(); ctx.roundRect(recX, recY, recW, recH, recH / 2); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = recActive ? '#C2410C' : '#A79884'
+    ctx.font = `bold ${Math.max(10, Math.round(12 * scale))}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText(
+      recount >= MAX_REC ? `已记录 ${MAX_REC} 组（点「重置」清空）` : `📋 记录一组数据（${recount}/${MAX_REC}）`,
+      midX, recY + recH / 2
+    )
+    ctx.restore()
+    if (recActive) {
+      canvasRef.current._clickAreas.push({
+        x: recX, y: recY, w: recW, h: recH,
+        onClick: () => {
+          const cur = solve()
+          if (cur.I <= 0.005) return
+          S.current.records.push({ t: S.current.tOn, i: cur.I, t1: cur.T1, t2: cur.T2, q1: S.current.q1, q2: S.current.q2 })
+          forceUpdate(n => n + 1)
+        },
+      })
+    }
+
+    // 调试/验收钩子
+    canvasRef.current._dbg = {
+      swX, swY: y1, rheoX, rheoY: y0, hRheo, hSw, b1X, b2X,
+      recX: midX, recY: recY + recH / 2, scale,
+      closed: on, ratio: s.ratio, I: sol.I, T1: sol.T1, T2: sol.T2,
+      q1: s.q1, q2: s.q2, tOn: s.tOn, recN: recount,
+    }
+
+    // ─── 标注 ───
+    const labelFont = Math.max(9, Math.round(11 * scale))
+    ctx.fillStyle = '#667'; ctx.font = `${labelFont}px sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText('电源', battX, y1 + 26 * scale)
+    ctx.fillText(on ? '开关（闭合）' : '开关（断开）', swX, y1 + 26 * scale)
+    ctx.fillStyle = '#8A5A2B'; ctx.font = `bold ${labelFont}px sans-serif`
+    ctx.fillText(`R₁ = ${R1H.toFixed(0)} Ω`, b1X, y1 + 12 * scale)
+    ctx.fillText(`T₁ = ${sol.T1.toFixed(1)} ℃`, b1X, y1 + 26 * scale)
+    ctx.fillText(`R₂ = ${R2H.toFixed(0)} Ω`, b2X, y1 + 12 * scale)
+    ctx.fillText(`T₂ = ${sol.T2.toFixed(1)} ℃`, b2X, y1 + 26 * scale)
+
+    ctx.fillStyle = '#667'; ctx.font = `${labelFont}px sans-serif`
+    ctx.fillText('电流表 A（串联）', amX, y0 - 34 * scale)
+    ctx.fillText(
+      scale < 0.95
+        ? `R₁ = ${sol.Rr.toFixed(1)} Ω`
+        : `滑动变阻器  R₁ = ${sol.Rr.toFixed(1)} Ω（0～20 Ω）`,
+      rheoX, y0 + 20 * scale
+    )
+    ctx.textAlign = 'center'
+    ctx.fillText(`A 表：${sol.I.toFixed(2)} A`, amX, y0 + 20 * scale)
+
+    // 滑片说明
+    ctx.fillStyle = '#B08954'; ctx.font = `${labelFont}px sans-serif`
+    ctx.fillText('← 左移电流大、升温快　·　右移电流小、升温慢 →', rheoX + 22 * scale, y0 + 38 * scale)
+
+    // 电流方向（左竖线上，向上）+ 一侧 e⁻
+    if (on) {
+      const ax = x0 + 18 * scale
+      const ya = y1 - 22 * scale, yb = midY + 6 * scale
+      ctx.strokeStyle = '#E53935'; ctx.lineWidth = 2.2 * scale; ctx.lineCap = 'round'
+      ctx.beginPath(); ctx.moveTo(ax, ya); ctx.lineTo(ax, yb); ctx.stroke(); ctx.lineCap = 'butt'
+      ctx.fillStyle = '#E53935'
+      ctx.beginPath(); ctx.moveTo(ax, yb - 10 * scale)
+      ctx.lineTo(ax - 5 * scale, yb); ctx.lineTo(ax + 5 * scale, yb); ctx.closePath(); ctx.fill()
+      ctx.font = `bold ${labelFont + 1}px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+      ctx.fillText('电流 I', ax + 10 * scale, (ya + yb) / 2)
+      ctx.fillStyle = '#B8860B'; ctx.font = `${labelFont}px sans-serif`
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+      ctx.fillText('e⁻↓', ax + 10 * scale, yb + 10 * scale)
+      ctx.fillText('e⁻→', x0 + loopW * 0.50, y0 + 21 * scale)
+    }
+
+    // ─── 知识卡片 ───
+    const SECTIONS = buildSections(s.records)
+    if (lay.compact) {
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+      let ky = panel.y + 12
+      const px = panel.x + 14
+      ctx.font = `bold ${lay.font.data}px monospace`; ctx.fillStyle = '#333'
+      ctx.fillText(`R₁ = ${sol.Rr.toFixed(1)} Ω`, px, ky); ky += 18
+      ctx.fillText(`I = ${sol.I.toFixed(2)} A`, px, ky); ky += 18
+      ctx.fillText(`T₁ = ${sol.T1.toFixed(1)} ℃`, px, ky); ky += 18
+      ctx.fillText(`T₂ = ${sol.T2.toFixed(1)} ℃`, px, ky); ky += 18
+      ctx.fillStyle = on ? '#2E7D32' : '#888'
+      ctx.font = `bold ${lay.font.body}px sans-serif`
+      ctx.fillText(on ? '● 通路' : '○ 断路', px, ky)
+      ctx.textBaseline = 'alphabetic'
+      canvasRef.current._cardBox = null
+      return
+    }
+
+    const cardOut = drawKnowledgeCard(ctx, panel, SECTIONS, {
+      title: '📖 焦耳定律知识',
+      scroll: s.cardScroll,
+      tip: (c, tx, ty) => {
+        if (on) {
+          c.fillStyle = '#C2410C'
+          c.fillText(
+            `● 通电 t = ${s.tOn.toFixed(1)} s｜I = ${sol.I.toFixed(2)} A｜T₁ = ${sol.T1.toFixed(1)} ℃｜T₂ = ${sol.T2.toFixed(1)} ℃`,
+            tx, ty + 10
+          )
+        } else {
+          c.fillStyle = '#B08954'
+          c.fillText('○ 断开：滑片先移到阻值最大处（最右），再闭合开关（点画面里的开关）', tx, ty + 10)
+        }
+      },
+    })
+    canvasRef.current._cardBox = cardOut
+      ? { x: panel.x, y: panel.y + 2, w: panel.w, h: cardOut.cardH, maxScroll: cardOut.maxScroll, scroll: cardOut.scroll }
+      : null
+    ctx.textBaseline = 'alphabetic'
+
+    if (canvasRef.current._dbg) {
+      const cbox = canvasRef.current._cardBox
+      canvasRef.current._dbg.cardMax = cbox ? cbox.maxScroll : 0
+      canvasRef.current._dbg.cardScroll = S.current.cardScroll
+      canvasRef.current._dbg.card = cbox
+    }
   }
+
+  /* ── 知识卡片内容（7 节，第 6 节是本次记录）── */
+  function buildSections(records) {
+    const rows = records.map((r, i) => {
+      const d1 = r.t1 - T0, d2 = r.t2 - T0
+      const ratio = d1 > 0.3 ? (d2 / d1) : null
+      return [
+        [`第 ${i + 1} 次：t = `], [`${r.t.toFixed(1)} s`, '#C2410C', 1],
+        ['，I = '], [`${r.i.toFixed(2)} A`, '#C2410C', 1],
+        ['，T₁ = '], [`${r.t1.toFixed(1)} ℃`, '#B45309', 1],
+        ['，T₂ = '], [`${r.t2.toFixed(1)} ℃`, '#B45309', 1],
+        ratio ? ['　ΔT₂/ΔT₁ = ' + ratio.toFixed(2), '#15803D', 1] : [''],
+      ]
+    })
+    if (records.length) {
+      const last = records[records.length - 1]
+      const d1 = last.t1 - T0, d2 = last.t2 - T0
+      if (d1 > 0.3) {
+        rows.push([
+          ['ΔT 之比 = '], [`${(d2 / d1).toFixed(2)}`, '#DC2626', 1],
+          ['，理论 Q₂/Q₁ = R₂/R₁ = '], ['2.00', '#15803D', 1],
+          ['（同电流、同时间）'],
+        ])
+      }
+    }
+    if (!rows.length) {
+      rows.push([['闭合开关后点下方「📋 记录一组数据」，记下 t、I 和两瓶温度，看 ΔT 之比。']])
+    }
+
+    return [
+      {
+        t: '实验目的', c: '#E0761F',
+        items: [
+          [['探究电流通过导体产生的热量 Q 与'], ['电流 I', '#C2410C', 1], ['、'], ['电阻 R', '#C2410C', 1], ['、'], ['通电时间 t', '#C2410C', 1], [' 的关系，得出 '], ['Q = I²Rt', '#DC2626', 1], ['。']],
+          [['学会用'], ['转换法', '#15803D', 1], ['：热量看不见，用温度计示数升高（煤油升温）来反映 Q 的多少。']],
+          [['学会用'], ['控制变量法', '#15803D', 1], ['：两瓶串联保证 I、t 相同，只比较 R 不同的效果。']],
+        ],
+      },
+      {
+        t: '实验器材', c: '#C98A12',
+        items: [
+          [['干电池组（3 V）、开关、'], ['电流表', '#C2410C', 1], ['、'], ['滑动变阻器（20 Ω 2 A）', '#EA8C1B', 1], ['、导线。']],
+          [['两个'], ['完全相同的烧瓶', '#C2410C', 1], ['，装'], ['等质量、同种的煤油', '#C2410C', 1], ['，瓶内分别浸一段电阻丝 '], ['R₁ = 5 Ω', '#EA8C1B', 1], [' 和 '], ['R₂ = 10 Ω', '#EA8C1B', 1], ['。']],
+          [['两支'], ['相同的温度计', '#C2410C', 1], ['（玻璃泡浸没在煤油中，不碰电阻丝和瓶壁）。']],
+        ],
+      },
+      {
+        t: '实验步骤', c: '#CA8A04',
+        items: [
+          [['① '], ['断开开关', '#DC2626', 1], ['，把两瓶的电阻丝'], ['串联', '#15803D', 1], ['接入电路（这样通过它们的 '], ['I 相同', '#15803D', 1], ['）。']],
+          [['② 滑变「一上一下」串入电路，闭合前把滑片移到'], ['阻值最大处', '#DC2626', 1], ['，记下两温度计的初温。']],
+          [['③ '], ['闭合开关', '#15803D', 1], ['，开始计时，读出电流 I。']],
+          [['④ 通电一段时间，每隔几秒记一次 t、I、T₁、T₂，比较两瓶升温快慢。']],
+          [['⑤ 再改变滑片位置（改变 I）重做，比较不同电流下的升温快慢；'], ['断开开关', '#DC2626', 1], ['，整理器材。']],
+        ],
+      },
+      {
+        t: '电路与接法', c: '#C2410C',
+        items: [
+          [['两段电阻丝'], ['串联', '#15803D', 1], ['在同一回路里 ⇒ 通过的'], ['电流 I 相同、通电时间 t 相同', '#DC2626', 1], ['，只有 R 不同。']],
+          [['电流表'], ['串联', '#15803D', 1], ['在回路里（'], ['+ 柱进、− 柱出', '#DC2626', 1], ['），本实验约 0.2 A，用 0～0.6 A 档。']],
+          [['滑动变阻器'], ['改变电流大小', '#C2410C', 1], ['，也可保护电路；接法「一上一下」。']],
+          [['温度计'], ['玻璃泡要浸没在煤油中', '#DC2626', 1], ['，读数时视线与液柱顶端齐平。']],
+        ],
+      },
+      {
+        t: '数据处理：为什么是 Q = I²Rt', c: '#B45309',
+        items: [
+          [['焦耳定律：'], ['Q = I²Rt', '#DC2626', 1], ['（Q 热量 J，I 电流 A，R 电阻 Ω，t 时间 s）。']],
+          [['同 I、同 t 时 '], ['Q ∝ R', '#15803D', 1], ['：R₂ = 2R₁ ⇒ Q₂ = 2Q₁ ⇒ '], ['T₂ 升得比 T₁ 快一倍', '#C2410C', 1], ['。']],
+          [['同 R、同 t 时 '], ['Q ∝ I²', '#15803D', 1], ['：电流变成 2 倍，热量变成 '], ['4 倍', '#C2410C', 1], ['（不是 2 倍）。']],
+          [['同 I、同 R 时 '], ['Q ∝ t', '#15803D', 1], ['：通电越久越热。']],
+          [['温度计示数只是'], ['间接反映', '#C2410C', 1], ['热量，不能把「温度」直接当成「热量」；两瓶必须'], ['等质量、同种煤油', '#DC2626', 1], ['，升温才可比。']],
+        ],
+      },
+      { t: '本次测量记录', c: '#15803D', items: rows },
+      {
+        t: '注意事项', c: '#DC2626',
+        items: [
+          [['连线、改线时开关必须'], ['断开', '#DC2626', 1], ['；闭合前滑片在'], ['阻值最大处', '#DC2626', 1], ['。']],
+          [['通电时间不要过长，煤油温度别升得太高'], ['（超过 60 ℃ 就停）', '#DC2626', 1], ['，以免烫伤或煤油溢出。']],
+          [['两瓶必须'], ['等质量、同种煤油', '#DC2626', 1], ['，温度计规格相同，否则升温不可比。']],
+          [['电表'], ['正负柱不能接反', '#DC2626', 1], ['，量程不能超；先试触再闭合。']],
+        ],
+      },
+    ]
+  }
+
+  // ================================================================
+  //  交互
+  // ================================================================
+  const getPos = (e) => eventToCanvas(canvasRef.current, e)
+
+  const handleMouseDown = useCallback((e) => {
+    if (e.button !== 0) return
+    const { x, y } = getPos(e)
+    if (S.current.tab !== 1) return
+    // 知识卡片内容较多时：按住卡片上下拖动即可滚动
+    const box = canvasRef.current._cardBox
+    if (box && box.maxScroll > 0 && x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h) {
+      S.current.cardDrag = { y0: y, s0: S.current.cardScroll }
+      return
+    }
+    for (const a of canvasRef.current._clickAreas) {
+      if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) {
+        S.current.dragging = !!a.onDrag
+        a.onClick?.(x)
+        return
+      }
+    }
+  }, [])
+
+  const handleMouseMove = useCallback((e) => {
+    if (S.current.tab !== 1) return
+    if (S.current.cardDrag) {
+      const { y } = getPos(e)
+      const box = canvasRef.current._cardBox
+      const b = S.current.cardDrag
+      S.current.cardScroll = Math.max(0, Math.min(box?.maxScroll || 0, b.s0 - (y - b.y0)))
+      forceUpdate(n => n + 1)
+      return
+    }
+    if (!S.current.dragging) return
+    const { x } = getPos(e)
+    const a = canvasRef.current._clickAreas.find((k) => k.onDrag)
+    a?.onDrag?.(x)
+  }, [])
+
+  const handleMouseUp = useCallback(() => {
+    S.current.dragging = false
+    S.current.cardDrag = null
+  }, [])
+
+  const handleWheel = useCallback((e) => {
+    const box = canvasRef.current?._cardBox
+    if (!box || !box.maxScroll) return
+    const { x, y } = getPos(e)
+    if (x < box.x || x > box.x + box.w || y < box.y || y > box.y + box.h) return
+    S.current.cardScroll = Math.max(0, Math.min(box.maxScroll, S.current.cardScroll + e.deltaY))
+    forceUpdate(n => n + 1)
+  }, [])
+
+  const handleReset = useCallback(() => {
+    S.current.switchClosed = false
+    S.current.ratio = 1
+    S.current.records = []
+    S.current.q1 = 0
+    S.current.q2 = 0
+    S.current.tOn = 0
+    S.current.cardScroll = 0
+    builderRef.current?.reset()
+    forceUpdate(n => n + 1)
+  }, [])
+
+  const handleAddFromPalette = useCallback((type) => { builderRef.current?.add(type) }, [])
+  const handleDropFromPalette = useCallback((type, clientX, clientY) => { builderRef.current?.addAt(type, clientX, clientY) }, [])
+  const handlePickColor = useCallback((color) => { S.current.wireColor = color; forceUpdate(v => v + 1) }, [])
 
   return (
     <SceneShell
-      title="探究焦耳定律 Q = I²Rt"
+      title="探究焦耳定律"
       tab={tab}
-      onTabChange={(t) => { S.current.tab = t; setTab(t); forceUpdate(n => n + 1) }}
-      onReset={() => {
-        S.current.elapsed = 0
-        S.current.temps = [20, 20]
-        S.current.records = []
-        S.current.switchClosed = false
-        forceUpdate(n => n + 1)
-      }}
-      desc={tab === 1
-        ? '控制变量：改 I / 改 R / 改 t，观察电阻丝升温快慢，归纳 Q = I²Rt'
-        : '自己动手：拖入器材，搭建可调节电流的焦耳定律实验电路'}
+      onTabChange={(t) => { S.current.tab = t; setTab(t) }}
+      tab1Label="📖 电路演示"
+      tab2Label="🔧 自己动手"
+      onReset={handleReset}
+      desc={tab === 1 ? (
+        <>
+          <b>探究焦耳定律</b>
+          <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
+            电路演示：两瓶等量煤油串联同电流 · 升温看热量 · Q = I²Rt
+          </span>
+        </>
+      ) : null}
     >
-      <canvas
-        ref={canvasRef}
-        style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        onDoubleClick={handleDoubleClick}
-        onContextMenu={handleContextMenu}
-      />
+      <div style={{ display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0, width: '100%' }}>
+        <canvas
+          ref={canvasRef}
+          className="canvas-fill"
+          style={{ width: '100%', flex: 1, minHeight: 0, display: tab === 1 ? 'block' : 'none', touchAction: 'none' }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onWheel={handleWheel}
+        />
+        {tab === 2 && (
+          <BuilderSVG ref={builderRef} wireColor={S.current.wireColor} />
+        )}
+        {tab === 1 ? (
+          <InfoDock
+            purpose="探究电流产生的热量与电流、电阻、通电时间的关系，得出 Q = I²Rt。"
+            steps={[
+              '两瓶煤油等量、同种，瓶内电阻丝 R₁=5Ω、R₂=10Ω 串联',
+              '滑片先放阻值最大处，再点开关闭合',
+              '通电一会儿，看两支温度计谁升得快',
+              '点「记录一组数据」，再改滑片换电流重做',
+            ]}
+            hint="两瓶串联 ⇒ I、t 相同，只有 R 不同 ⇒ ΔT 之比 = R 之比 = 2。"
+          />
+        ) : (
+          <InfoDock
+            align="left"
+            offset={{ left: 26, top: 26 }}
+            hint="点右侧器材加入 → 拖拽移动 → 点接线柱连线。电流表串联、滑变「一上一下」；轻点开关通断，双击电表看读数，双击器材或按 Delete 删除。"
+            hintTitle="操作说明"
+          />
+        )}
+        {tab === 2 && (
+          <BuilderPalette side="right"
+            items={[
+              // 与「简单电路」完全同一套器材
+              { type: 'battery', name: '电池组', icon: thumb('battery') },
+              { type: 'accumulator', name: '蓄电池', icon: thumb('accumulator') },
+              { type: 'bulb', name: '灯泡', icon: thumb('bulb') },
+              { type: 'switch', name: '开关', icon: thumb('switch') },
+              { type: 'resistor5', name: '电阻', icon: thumb('resistor5') },
+              { type: 'rheostat', name: '滑变', icon: thumb('rheostat') },
+              { type: 'ammeter', name: '电流表', icon: thumb('ammeter') },
+              { type: 'ammeterA', name: '安培表', icon: thumb('ammeterA') },
+              { type: 'voltmeter', name: '电压表', icon: thumb('voltmeter') },
+            ]}
+            wireColor={S.current.wireColor}
+            onPickColor={handlePickColor}
+            onAdd={handleAddFromPalette}
+            onDropAt={handleDropFromPalette}
+            hint="点选或拖到桌面加入"
+          />
+        )}
+      </div>
     </SceneShell>
   )
+}
+
+/* ── 煤油瓶（电阻丝 + 温度计 + 气泡）── */
+function drawBottle(ctx, cx, baseY, o) {
+  const { scale, Rw, temp, q, on, time, wc } = o
+  const sc = scale
+  const w = 34 * sc, h = 46 * sc
+  const by = baseY - 14 * sc - h        // 瓶底 y（留 14sc 给引线）
+  const bx = cx - w / 2
+  const hf = Math.min(1, q / 6)
+
+  // 两根引线（瓶底 → 导线）
+  ctx.strokeStyle = wc; ctx.lineWidth = 2 * sc + 0.5; ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.moveTo(cx - 15 * sc, baseY); ctx.lineTo(cx - 15 * sc, by + h - 3 * sc)
+  ctx.moveTo(cx + 15 * sc, baseY); ctx.lineTo(cx + 15 * sc, by + h - 3 * sc)
+  ctx.stroke()
+
+  // 瓶身
+  ctx.fillStyle = 'rgba(255,255,255,0.94)'
+  ctx.strokeStyle = '#A8C0CE'; ctx.lineWidth = 1.6 * sc
+  ctx.beginPath(); ctx.roundRect(bx, by, w, h, 6 * sc); ctx.fill(); ctx.stroke()
+
+  // 煤油（受热后略微变暖）
+  const oilTop = by + h * 0.30
+  ctx.fillStyle = hf > 0.05 && on
+    ? `rgba(255,${Math.round(208 - 40 * hf)},${Math.round(120 - 30 * hf)},0.55)`
+    : 'rgba(255,208,120,0.5)'
+  ctx.beginPath(); ctx.roundRect(bx + 2 * sc, oilTop, w - 4 * sc, h - (oilTop - by) - 2 * sc, 4 * sc); ctx.fill()
+
+  // 电阻丝（红热程度随热量）
+  const ry = by + h * 0.66
+  const sx1 = bx + 6 * sc, sx2 = bx + w - 6 * sc
+  // 电阻丝两端接回引线（看着是接在电路里，不是悬空的）
+  ctx.strokeStyle = '#9A7B54'; ctx.lineWidth = 1.2 * sc
+  ctx.beginPath()
+  ctx.moveTo(cx - 15 * sc, by + h - 3 * sc); ctx.lineTo(sx1, ry)
+  ctx.moveTo(cx + 15 * sc, by + h - 3 * sc); ctx.lineTo(sx2, ry)
+  ctx.stroke()
+  ctx.strokeStyle = `rgba(214,64,32,${0.45 + 0.55 * hf})`
+  ctx.lineWidth = 1.8 * sc
+  ctx.beginPath(); ctx.moveTo(sx1, ry)
+  for (let i = 1; i <= 4; i++) {
+    ctx.lineTo(sx1 + (sx2 - sx1) * (i / 4), ry + (i % 2 ? -4 * sc : 4 * sc))
+  }
+  ctx.stroke()
+
+  // 气泡（受热上升）
+  if (on && hf > 0.08) {
+    ctx.fillStyle = `rgba(255,255,255,${0.35 + 0.3 * hf})`
+    for (let i = 0; i < 3; i++) {
+      const ph = (time * 0.7 + i * 0.33) % 1
+      const y2 = ry - ph * (ry - oilTop) * 0.9
+      ctx.beginPath(); ctx.arc(bx + w * (0.34 + i * 0.15), y2, 1.6 * sc, 0, Math.PI * 2); ctx.fill()
+    }
+  }
+
+  // 温度计（瓶顶向上伸出的细管）
+  const th = 30 * sc, tw = 5.4 * sc
+  ctx.fillStyle = '#FFFFFF'; ctx.strokeStyle = '#9FB6C4'; ctx.lineWidth = 1.2 * sc
+  ctx.beginPath(); ctx.roundRect(cx - tw / 2, by - th, tw, th + 9 * sc, tw / 2); ctx.fill(); ctx.stroke()
+  const frac = Math.max(0, Math.min(1, (temp - T0) / (TMAX - T0)))
+  const liqH = Math.max(2 * sc, (th - 5 * sc) * frac)
+  ctx.fillStyle = '#E53935'
+  ctx.beginPath(); ctx.roundRect(cx - 1.2 * sc, by - 3 * sc - liqH, 2.4 * sc, liqH, 1.2 * sc); ctx.fill()
+  ctx.beginPath(); ctx.arc(cx, by + 3 * sc, 2.6 * sc, 0, Math.PI * 2); ctx.fill()
+}
+
+// ─── 画辅助 ───
+function drawLine(ctx, x1, y1, x2, y2, color, w) {
+  ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = 'round'
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
+}
+
+/** 电子流动（黄点） */
+function drawCurrentFlow(ctx, points, time, speed) {
+  let totalLen = 0; const segs = []
+  for (let i = 0; i < points.length - 1; i++) {
+    const dx = points[i + 1].x - points[i].x, dy = points[i + 1].y - points[i].y
+    const len = Math.sqrt(dx * dx + dy * dy)
+    segs.push({ ...points[i], ex: points[i + 1].x, ey: points[i + 1].y, len }); totalLen += len
+  }
+  ctx.fillStyle = '#FFEB3B'
+  const n = Math.max(5, Math.floor(totalLen / 45))
+  for (let d = 0; d < n; d++) {
+    let pos = ((time * speed * 100 + d * (totalLen / n)) % totalLen)
+    for (const seg of segs) {
+      if (pos <= seg.len) {
+        const r = pos / seg.len
+        ctx.beginPath(); ctx.arc(seg.x + (seg.ex - seg.x) * r, seg.y + (seg.ey - seg.y) * r, 3, 0, Math.PI * 2); ctx.fill()
+        break
+      }
+      pos -= seg.len
+    }
+  }
 }
