@@ -34,7 +34,7 @@ function thumb(type) {
 const RHEO_MAX = 20            // 20Ω 2A 滑动变阻器
 const R_FIXED = 10             // 实验 Ⅰ 的定值电阻（保持不变）
 const R_SET = [5, 10, 15, 20]  // 实验 Ⅱ / Ⅲ 依次更换的定值电阻
-const R_INT = 2.0              // 实验 Ⅲ 计入的电源内阻
+const R_INT = 0.5              // 实验 Ⅲ 计入的电源内阻（中学阶段一般忽略，这里取小值便于观察端电压微降）
 const EMF = CFG.VS.V           // 电源电动势 3.0 V
 const MAX_PTS = 6              // 每张图像最多描 6 个点
 
@@ -305,7 +305,10 @@ export default function OhmsLawScene() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'top'
 
     ctx.fillStyle = '#667'; ctx.font = `${labelFont}px sans-serif`
-    ctx.fillText(s.mode === 3 ? '电源  E = 3.00 V，r = 2.0 Ω' : '电源', battX, y1 + 20 * scale)
+    ctx.fillText(
+      s.mode === 3 ? `电源  E = ${EMF.toFixed(2)} V，r = ${R_INT.toFixed(1)} Ω` : '电源',
+      battX, y1 + 20 * scale
+    )
     ctx.fillText(on ? '开关（闭合）' : '开关（断开）', swX, y1 + 20 * scale)
     ctx.fillText(`滑动变阻器  R₁ = ${sol.Rr.toFixed(1)} Ω`, rheoX, y0 + 20 * scale)
     ctx.fillText('电流表 A（串联）', amX, y0 - 33 * scale)
@@ -496,10 +499,11 @@ export default function OhmsLawScene() {
       {
         t: mode === 3 ? '全电路欧姆定律' : '控制变量法', c: '#CA8A04',
         items: mode === 3 ? [
-          [['电源不是理想的：电动势 '], ['E = 3.00 V', '#C2410C', 1], ['，内阻 '], [`r = ${R_INT.toFixed(1)} Ω`, '#C2410C', 1], ['，内阻上要分掉 '], ['I·r', '#DC2626', 1], ['。']],
+          [['电源可等效成「无内阻的理想电源 E」与「内阻 r」串联：'], ['E = 3.00 V', '#C2410C', 1], ['，'], [`r = ${R_INT.toFixed(1)} Ω`, '#C2410C', 1], ['。']],
           [['闭合开关：'], ['I = E/(R + r)', '#DC2626', 1], ['，端电压 '], ['U = E − I·r', '#DC2626', 1], ['（也等于 I·R）。']],
           [['开路（断开开关）：I = 0 → '], ['U = E = 3.00 V', '#15803D', 1], ['，此时电压表跨在电源两端读的就是 E。']],
-          [['短路（R = 0）：I短 = E/r = 1.5 A，端电压几乎为 0 —— '], ['绝不允许短接电源', '#DC2626', 1], ['。']],
+          [['内阻很小（0.5 Ω），端电压只比 E 低一点点 —— '], ['中学一般把它忽略，就得到 U = E', '#15803D', 1], ['；实际电池用久了 r 变大，端电压下降才明显。']],
+          [['短路（R = 0）：I短 = E/r = '], [`${(EMF / R_INT).toFixed(1)} A`, '#DC2626', 1], ['，端电压几乎为 0 —— '], ['绝不允许短接电源', '#DC2626', 1], ['。']],
         ] : [
           [['研究 I 与 U：保持 '], ['R 不变', '#15803D', 1], ['，只改变 R 两端的 U（拖滑片），看 I 怎么变。']],
           [['研究 I 与 R：保持 '], ['U 不变', '#15803D', 1], ['，只改变 R 的阻值（换电阻），看 I 怎么变。']],
