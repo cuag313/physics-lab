@@ -1875,32 +1875,26 @@ export const TYPES = {
         : '#C8813E'
       const coreBody = core ? '#9DA8B4' : '#CDD5DE'
       const coreLine = core ? '#6B7684' : '#A9B5C0'
-      /* 裸绕线：弹簧式（每圈一条左下→右上斜线 + 顶部/底部各一段背面弧） */
+      /* 裸绕线：每圈 = 上半椭圆弧 → 斜线穿过铁芯 → 向左的下半椭圆弧 */
       const loops = turns <= 10 ? 5 : turns <= 20 ? 7 : 9
       const gapX = coilW / loops
+      const wCoil = gapX * 0.74
+      const yT0 = axisY - coreH / 2, yB0 = axisY + coreH / 2
       let coil = ''
       for (let i = 0; i < loops; i++) {
-        const x0 = cL + gapX * (i + 0.08), x1 = x0 + gapX * 0.62
-        const mx = (x0 + x1) / 2
-        coil += `<path d="M${x1.toFixed(1)} ${(cT + 1).toFixed(1)} Q${(mx + gapX * 0.12).toFixed(1)} ${(cT - 7).toFixed(1)} ${(x0 + gapX * 0.86).toFixed(1)} ${(cT + 1).toFixed(1)}" fill="none" stroke="rgba(120,78,34,${(0.30 + 0.14 * hot).toFixed(2)})" stroke-width="1.5"/>
-        <path d="M${x0.toFixed(1)} ${(cB - 1).toFixed(1)} Q${(mx + gapX * 0.12).toFixed(1)} ${(cB + 5).toFixed(1)} ${(x0 + gapX * 0.78).toFixed(1)} ${(cB - 1).toFixed(1)}" fill="none" stroke="rgba(120,78,34,${(0.30 + 0.14 * hot).toFixed(2)})" stroke-width="1.5"/>
-        <line x1="${x0.toFixed(1)}" y1="${(cB - 1).toFixed(1)}" x2="${x1.toFixed(1)}" y2="${(cT + 1).toFixed(1)}" stroke="${wire}" stroke-width="3"/>
-        <line x1="${(x0 + 0.6).toFixed(1)}" y1="${(cB - 3).toFixed(1)}" x2="${(x1 + 0.6).toFixed(1)}" y2="${(cT + 3).toFixed(1)}" stroke="rgba(255,228,186,0.62)" stroke-width="0.9"/>`
+        const xa = cL + gapX * i
+        const c1 = (v) => v.toFixed(1)
+        coil += `<path d="M${c1(xa + wCoil * 0.06)} ${c1(yT0)} Q${c1(xa + wCoil * 0.5)} ${c1(yT0 - 8)} ${c1(xa + wCoil * 0.94)} ${c1(yT0)}" fill="none" stroke="${wire}" stroke-width="3.2" stroke-linecap="round"/>
+        <path d="M${c1(xa + wCoil * 0.94)} ${c1(yT0)} L${c1(xa + wCoil * 0.46)} ${c1(yB0)}" fill="none" stroke="${wire}" stroke-width="3.2" stroke-linecap="round"/>
+        <path d="M${c1(xa + wCoil * 0.46)} ${c1(yB0)} Q${c1(xa + wCoil * 0.25)} ${c1(yB0 + 8)} ${c1(xa + wCoil * 0.06)} ${c1(yB0)}" fill="none" stroke="${wire}" stroke-width="3.2" stroke-linecap="round"/>
+        <path d="M${c1(xa + wCoil * 0.06 + 0.7)} ${c1(yT0 + 0.7)} Q${c1(xa + wCoil * 0.5)} ${c1(yT0 - 6.4)} ${c1(xa + wCoil * 0.94 + 0.7)} ${c1(yT0 + 0.7)}" fill="none" stroke="rgba(255,228,186,0.58)" stroke-width="0.9"/>`
       }
-      /* 线圈两端端面：看得出铁芯从中间穿过；抽芯后露出空心内腔 */
-      const ends = [-1, 1].map((s) => {
-        const ex = s < 0 ? cL : cR
-        return `<ellipse cx="${ex.toFixed(1)}" cy="${axisY}" rx="3.6" ry="${coilH / 2}" fill="none" stroke="rgba(139,90,43,${(0.8 + 0.12 * hot).toFixed(2)})" stroke-width="2.2"/>
-        ${core ? '' : `<ellipse cx="${ex.toFixed(1)}" cy="${axisY}" rx="3.2" ry="${coilH / 2 - 2}" fill="rgba(70,45,20,0.16)"/>`}`
-      }).join('')
-      /* 铁芯：一根水平圆柱棒，两端画出端面椭圆 */
+      /* 铁芯：一根水平圆柱棒（两端不收缩、不画端面圆） */
       const coreSvg = `<g transform="translate(0,${liftY})">
         <rect x="${coreX}" y="${axisY - coreH / 2}" width="${coreLen}" height="${coreH}" rx="${coreH / 2}"
               fill="${coreBody}" stroke="${coreLine}" stroke-width="1.1"/>
         <rect x="${coreX + 9}" y="${axisY - coreH / 2 + 4}" width="${coreLen - 18}" height="3.6" rx="1.8"
               fill="#F0F4F9" opacity="0.48"/>
-        <ellipse cx="${coreX + 2}" cy="${axisY}" rx="3.2" ry="${coreH / 2}" fill="${coreBody}" stroke="${coreLine}" stroke-width="1"/>
-        <ellipse cx="${coreX + coreLen - 2}" cy="${axisY}" rx="3.2" ry="${coreH / 2}" fill="${coreBody}" stroke="${coreLine}" stroke-width="1"/>
       </g>`
       /* 大头针：吸在 N 极（铁芯左端）下方，向两侧散开 */
       const pinX = 26
@@ -1926,7 +1920,6 @@ export const TYPES = {
       <!-- 引出线：两根都从线圈下缘引出 → 两个接线柱 -->
       <path d="M${(cL + 2).toFixed(1)} ${(cB - 2).toFixed(1)} L48 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
       <path d="M${(cR - 2).toFixed(1)} ${(cB - 2).toFixed(1)} L162 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
-      ${ends}
       ${coil}
       ${field}
       ${pinMarks}
