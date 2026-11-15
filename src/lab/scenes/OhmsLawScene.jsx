@@ -33,7 +33,9 @@ function thumb(type) {
 
 const RHEO_MAX = 20            // 20Ω 2A 滑动变阻器
 const R_FIXED = 10             // 实验 Ⅰ 的定值电阻（保持不变）
-const R_SET = [5, 10, 15, 20]  // 实验 Ⅱ 依次更换的定值电阻
+const R_SET = [5, 10, 15, 20]  // 实验 Ⅱ / Ⅲ 依次更换的定值电阻
+const R_INT = 2.0              // 实验 Ⅲ 计入的电源内阻
+const EMF = CFG.VS.V           // 电源电动势 3.0 V
 const MAX_PTS = 6              // 每张图像最多描 6 个点
 
 export default function OhmsLawScene() {
@@ -43,12 +45,12 @@ export default function OhmsLawScene() {
 
   const S = useRef({
     tab: 1,
-    mode: 1,                // 1 = 保持 R 不变改 U；2 = 保持 U 不变改 R
+    mode: 1,                // 1 = R 不变改 U；2 = U 不变改 R；3 = 全电路（计入内阻）
     switchClosed: false,
     time: 0,
     ratio: 1,               // 滑片位置：1 = 阻值最大（右端）
-    rIdx: 1,                // 实验 Ⅱ 当前定值电阻下标（R_SET[1] = 10Ω）
-    pts: [],                // [{ x, y, u, i }] 已描的点（x：Ⅰ 是 U，Ⅱ 是 R）
+    rIdx: 1,                // 实验 Ⅱ / Ⅲ 当前定值电阻下标（R_SET[1] = 10Ω）
+    pts: [],                // [{ x, y, u, i }] 已描的点（x：Ⅰ 是 U，Ⅱ 是 R，Ⅲ 是 I）
     wireColor: '#F44336',
     dragging: false,
   })
@@ -77,16 +79,24 @@ export default function OhmsLawScene() {
 
   /**
    * 物理：定值电阻 R 与滑变、电流表内阻串联，电压表 1e7Ω 视为理想。
-   * 实验 Ⅰ 滑变接入 0～20Ω，用于改变 R 两端电压；实验 Ⅱ 滑变归 0，保证 U_R 恒为电源电压。
+   *   Ⅰ、Ⅱ 按理想电源（内阻忽略，r=0）处理：滑变接入 0～20Ω 改 U，或换 R 改 I。
+   *   Ⅲ 全电路：电源内阻 r = 2.0Ω 计入，滑变归 0（只留 R 做外电路），
+   *      电压表跨接在电源两端读路端电压 U = E − I·r（开路时读 E）。
    */
   function solve() {
     const s = S.current
-    const mode1 = s.mode === 1
-    const Rr = mode1 ? Math.round(s.ratio * RHEO_MAX * 10) / 10 : 0
-    const R = mode1 ? R_FIXED : R_SET[s.rIdx]
-    const I = s.switchClosed ? CFG.VS.V / (R + Rr + CFG.AMM_R) : 0
-    const U = I * R
-    return { mode1, Rr, R, I, U, Rmeas: I > 0.002 ? U / I : 0 }
+    const mode = s.mode
+    const rInt = mode === 3 ? R_INT : 0
+    const Rr = mode === 1 ? Math.round(s.ratio * RHEO_MAX * 10) / 10 : 0
+    const R = mode === 1 ? R_FIXED : R_SET[s.rIdx]
+    const I = s.switchClosed ? EMF / (R + Rr + rInt + CFG.AMM_R) : 0
+    const Uout = I * (R + Rr)                         // 外电路（路端）电压
+    const Udisp = mode === 3 ? (s.switchClosed ? Uout : EMF) : Uout   // Ⅲ 开路时电压表跨电源读 E
+    return {
+      mode, rInt, Rr, R, I, U: Uout, Udisp,
+      Ur: I * rInt,                                    // 内电压
+      Rmeas: I > 0.002 ? Uout / I : 0,
+    }
   }
 
   function render(R) {
@@ -167,14 +177,18 @@ export default function OhmsLawScene() {
     drawLine(ctx, rxX + hRes, y1, swX - hSw, y1, wc, lw)
     drawLine(ctx, swX + hSw, y1, x1, y1, wc, lw)
 
-    // 电压表：并联在定值电阻两端（回路内、R 上方；引线各让开一段，看着不挤）
+    // 电压表：Ⅰ/Ⅱ 并联在定值电阻两端；Ⅲ 跨接在电源两端，直接读路端电压 U = E − Ir
+    const useInt = sol.mode === 3
     const volY = y1 - 62 * scale, volR = 13 * scale, vTap = hRes + 24 * scale
+    const vX = useInt ? battX : rxX
+    const tapA = useInt ? battX - hBat - 8 * scale : rxX - vTap
+    const tapB = useInt ? battX + hBat + 8 * scale : rxX + vTap
     ctx.save()
     ctx.strokeStyle = on ? '#7CB342' : '#9aa7b1'
     ctx.lineWidth = 1.6 * scale + 0.4
     ctx.beginPath()
-    ctx.moveTo(rxX - vTap, y1); ctx.lineTo(rxX - vTap, volY); ctx.lineTo(rxX - volR - 2, volY)
-    ctx.moveTo(rxX + vTap, y1); ctx.lineTo(rxX + vTap, volY); ctx.lineTo(rxX + volR + 2, volY)
+    ctx.moveTo(tapA, y1); ctx.lineTo(tapA, volY); ctx.lineTo(vX - volR - 2, volY)
+    ctx.moveTo(tapB, y1); ctx.lineTo(tapB, volY); ctx.lineTo(vX + volR + 2, volY)
     ctx.stroke()
     ctx.restore()
 
@@ -182,7 +196,7 @@ export default function OhmsLawScene() {
     const geo = symRheostat(ctx, rheoX, y0, { scale, ratio: s.ratio, ink })
     symMeter(ctx, amX, y0, { kind: 'A', scale, ink })
     symResistor(ctx, rxX, y1, { scale, ink })
-    symMeter(ctx, rxX, volY, { kind: 'V', scale, ink: on ? '#558B2F' : ink })
+    symMeter(ctx, vX, volY, { kind: 'V', scale, ink: on ? '#558B2F' : ink })
     symBattery(ctx, battX, y1, { n: 2, scale, ink, flip: true })
     symSwitch(ctx, swX, y1, { closed: on, scale, ink })
 
@@ -220,23 +234,28 @@ export default function OhmsLawScene() {
     canvasRef.current._clickAreas.push({ ...sliderArea, onClick: slideTo, onDrag: slideTo })
     canvasRef.current._sliderArea = sliderArea
 
-    // ─── 回路下方：左侧一列（两枚实验药丸 + 记录按钮），右侧实时描点图 ───
+    // ─── 回路下方：左侧一列（三枚实验药丸 + 记录按钮），右侧实时描点图 ───
     const belowY = y1 + 46 * scale
     const colW = 216 * scale, bh = 28 * scale
     const pill1 = { x: x0, y: belowY, w: colW, h: bh }
     const pill2 = { x: x0, y: belowY + 35 * scale, w: colW, h: bh }
-    drawPill(ctx, pill1, 'Ⅰ  保持 R 不变，改变 U', s.mode === 1, scale)
-    drawPill(ctx, pill2, 'Ⅱ  保持 U 不变，改变 R', s.mode === 2, scale)
+    const pill3 = { x: x0, y: belowY + 70 * scale, w: colW, h: bh }
+    drawPill(ctx, pill1, 'Ⅰ  R 不变，改变 U', s.mode === 1, scale)
+    drawPill(ctx, pill2, 'Ⅱ  U 不变，改变 R', s.mode === 2, scale)
+    drawPill(ctx, pill3, 'Ⅲ  全电路：计入内阻 r', s.mode === 3, scale)
     canvasRef.current._clickAreas.push({
       ...pill1, onClick: () => { setMode(1) },
     })
     canvasRef.current._clickAreas.push({
       ...pill2, onClick: () => { setMode(2) },
     })
+    canvasRef.current._clickAreas.push({
+      ...pill3, onClick: () => { setMode(3) },
+    })
 
     // 记录按钮
     const recW = colW, recH = 30 * scale
-    const recX = x0, recY = belowY + 70 * scale
+    const recX = x0, recY = belowY + 105 * scale
     const n = s.pts.length
     const recActive = on && n < MAX_PTS
     ctx.save()
@@ -255,7 +274,9 @@ export default function OhmsLawScene() {
         onClick: () => {
           const cur = solve()
           if (cur.I <= 0.002) return
-          S.current.pts.push({ x: cur.mode1 ? cur.U : cur.R, y: cur.I, u: cur.U, i: cur.I, r: cur.R })
+          const dx = cur.mode === 1 ? cur.U : cur.mode === 2 ? cur.R : cur.I
+          const dy = cur.mode === 3 ? cur.U : cur.I
+          S.current.pts.push({ x: dx, y: dy, u: cur.U, i: cur.I, r: cur.R })
           forceUpdate(v => v + 1)
         },
       })
@@ -272,6 +293,7 @@ export default function OhmsLawScene() {
       rxTap: vTap, scale,
       pill1X: pill1.x + pill1.w / 2, pill1Y: pill1.y + pill1.h / 2,
       pill2X: pill2.x + pill2.w / 2, pill2Y: pill2.y + pill2.h / 2,
+      pill3X: pill3.x + pill3.w / 2, pill3Y: pill3.y + pill3.h / 2,
       recX: recX + recW / 2, recY: recY + recH / 2,
       chartX: chart.x, chartY: chart.y, chartW: chart.w, chartH: chart.h,
       mode: s.mode, closed: on, pts: s.pts.length,
@@ -283,19 +305,20 @@ export default function OhmsLawScene() {
     ctx.textAlign = 'center'; ctx.textBaseline = 'top'
 
     ctx.fillStyle = '#667'; ctx.font = `${labelFont}px sans-serif`
-    ctx.fillText('电源', battX, y1 + 20 * scale)
+    ctx.fillText(s.mode === 3 ? '电源  E = 3.00 V，r = 2.0 Ω' : '电源', battX, y1 + 20 * scale)
     ctx.fillText(on ? '开关（闭合）' : '开关（断开）', swX, y1 + 20 * scale)
     ctx.fillText(`滑动变阻器  R₁ = ${sol.Rr.toFixed(1)} Ω`, rheoX, y0 + 20 * scale)
     ctx.fillText('电流表 A（串联）', amX, y0 - 33 * scale)
 
-    // 定值电阻标签（实验 Ⅱ 可点换值）
-    ctx.fillStyle = s.mode === 2 ? '#C2410C' : '#667'
-    ctx.font = `${s.mode === 2 ? 'bold ' : ''}${labelFont}px sans-serif`
+    // 定值电阻标签（实验 Ⅱ / Ⅲ 可点换值）
+    const canSwapR = s.mode !== 1
+    ctx.fillStyle = canSwapR ? '#C2410C' : '#667'
+    ctx.font = `${canSwapR ? 'bold ' : ''}${labelFont}px sans-serif`
     ctx.fillText(
-      s.mode === 2 ? `R = ${sol.R} Ω ▸ 点我换值` : `R = ${R_FIXED} Ω（不变）`,
+      canSwapR ? `R = ${sol.R} Ω ▸ 点我换值` : `R = ${R_FIXED} Ω（不变）`,
       rxX, y1 + 20 * scale
     )
-    if (s.mode === 2) {
+    if (canSwapR) {
       canvasRef.current._clickAreas.push({
         x: rxX - 62 * scale, y: y1 + 16 * scale, w: 124 * scale, h: 20 * scale,
         onClick: () => {
@@ -305,11 +328,21 @@ export default function OhmsLawScene() {
       })
     }
 
-    // 电压表：名称与读数分两行贴在 V 圈下方（引线已让开，不压线）
-    ctx.fillStyle = '#558B2F'; ctx.font = `${labelFont}px sans-serif`
-    ctx.fillText('电压表 V', rxX, volY + volR + 8 * scale)
-    ctx.fillStyle = '#C2410C'; ctx.font = `bold ${readFont}px monospace`
-    ctx.fillText(`U = ${sol.U.toFixed(2)} V`, rxX, volY + volR + 22 * scale)
+    // 电压表：名称与读数贴在 V 圈旁；Ⅲ 放在圈的右侧，避免压住电源与引线
+    ctx.font = `${labelFont}px sans-serif`; ctx.textBaseline = 'top'
+    if (useInt) {
+      ctx.textAlign = 'left'
+      ctx.fillStyle = '#558B2F'
+      ctx.fillText('电压表 V（路端）', vX + volR + 12 * scale, volY - 15 * scale)
+      ctx.fillStyle = '#C2410C'; ctx.font = `bold ${readFont}px monospace`
+      ctx.fillText(`U = ${sol.Udisp.toFixed(2)} V`, vX + volR + 12 * scale, volY + 1 * scale)
+      ctx.textAlign = 'center'
+    } else {
+      ctx.fillStyle = '#558B2F'
+      ctx.fillText('电压表 V', vX, volY + volR + 8 * scale)
+      ctx.fillStyle = '#C2410C'; ctx.font = `bold ${readFont}px monospace`
+      ctx.fillText(`U = ${sol.Udisp.toFixed(2)} V`, vX, volY + volR + 22 * scale)
+    }
     ctx.fillStyle = '#B45309'
     ctx.fillText(`I = ${sol.I.toFixed(2)} A`, amX, y0 + 20 * scale)
 
@@ -317,9 +350,19 @@ export default function OhmsLawScene() {
     ctx.fillStyle = '#B08954'; ctx.font = `${labelFont}px sans-serif`
     ctx.fillText(
       s.mode === 1 ? '← 滑片左移 U 变大　·　右移 U 变小 →'
-        : '实验 Ⅱ 滑变归 0（滑片在最左），U 保持 3 V',
+        : s.mode === 2 ? '实验 Ⅱ 滑变归 0（滑片在最左），U 保持 3 V'
+          : '实验 Ⅲ：滑变归 0，换 R 看端电压怎么掉',
       rheoX, y0 + 36 * scale
     )
+
+    // Ⅲ 模式的内电压补充读数（贴电源右上方）
+    if (useInt && on) {
+      ctx.fillStyle = '#A16207'
+      ctx.font = `${labelFont}px monospace`
+      ctx.textAlign = 'left'
+      ctx.fillText(`I·r = ${sol.Ur.toFixed(2)} V`, battX + hBat + 26 * scale, y1 - 12 * scale)
+      ctx.textAlign = 'center'
+    }
 
     // 电流方向（左竖线上，向上）
     if (on) {
@@ -347,7 +390,8 @@ export default function OhmsLawScene() {
       ctx.font = `bold ${lay.font.data}px monospace`; ctx.fillStyle = '#333'
       ctx.fillText(`R₁ = ${sol.Rr.toFixed(1)} Ω`, px, ky); ky += 18
       ctx.fillText(`R = ${sol.R} Ω`, px, ky); ky += 18
-      ctx.fillText(`U = ${sol.U.toFixed(2)} V`, px, ky); ky += 18
+      if (sol.mode === 3) { ctx.fillText(`E = ${EMF.toFixed(2)} V`, px, ky); ky += 18 }
+      ctx.fillText(`U = ${sol.Udisp.toFixed(2)} V`, px, ky); ky += 18
       ctx.fillText(`I = ${sol.I.toFixed(2)} A`, px, ky); ky += 18
       ctx.fillStyle = on ? '#2E7D32' : '#888'
       ctx.font = `bold ${lay.font.body}px sans-serif`
@@ -362,19 +406,26 @@ export default function OhmsLawScene() {
         if (on) {
           c.fillStyle = '#C2410C'
           c.fillText(
-            `● ${s.mode === 1 ? 'R 不变' : 'U 不变'}：U = ${sol.U.toFixed(2)} V　I = ${sol.I.toFixed(2)} A　U/I = ${sol.Rmeas.toFixed(1)} Ω`,
+            sol.mode === 3
+              ? `● 闭合：I = ${sol.I.toFixed(2)} A　U = E − Ir = ${EMF.toFixed(2)} − ${sol.I.toFixed(2)}×${R_INT.toFixed(1)} = ${sol.Udisp.toFixed(2)} V`
+              : `● ${s.mode === 1 ? 'R 不变' : 'U 不变'}：U = ${sol.U.toFixed(2)} V　I = ${sol.I.toFixed(2)} A　U/I = ${sol.Rmeas.toFixed(1)} Ω`,
             tx, ty + 10
           )
         } else {
           c.fillStyle = '#B08954'
-          c.fillText('○ 断开：滑片先移到阻值最大处（最右），再点画面里的开关闭合', tx, ty + 10)
+          c.fillText(
+            sol.mode === 3
+              ? '○ 开路：I = 0，电压表跨在电源两端 → 端电压 U = E = 3.00 V'
+              : '○ 断开：滑片先移到阻值最大处（最右），再点画面里的开关闭合',
+            tx, ty + 10
+          )
         }
       },
     })
     ctx.textBaseline = 'alphabetic'
   }
 
-  /** 实验模式切换：Ⅰ 从阻值最大起步，Ⅱ 滑变归 0 并清空描点 */
+  /** 实验模式切换：Ⅰ 从阻值最大起步；Ⅱ / Ⅲ 滑变归 0 并清空描点 */
   function setMode(m) {
     const s = S.current
     if (s.mode === m) return
@@ -400,7 +451,7 @@ export default function OhmsLawScene() {
         rows.push([['闭合开关后拖滑片改变 U，点「📋 记录一个数据点」，攒 3 个点就能看出 I 与 U 成正比。']])
       }
       rows.push([['U/I 三组都约等于 '], [`10 Ω`, '#DC2626', 1], ['（R 没变），说明 '], ['I = U/R', '#DC2626', 1], ['。']])
-    } else {
+    } else if (mode === 2) {
       if (pts.length) {
         pts.forEach((p, i) => {
           rows.push([
@@ -413,6 +464,19 @@ export default function OhmsLawScene() {
         rows.push([['闭合开关，点「定值电阻」换 5/10/15/20 Ω，各记一点，就能看出 I 与 R 成反比。']])
       }
       rows.push([['I·R 三组都约等于 '], [`3.00 V`, '#DC2626', 1], ['（U 没变），说明 '], ['I = U/R', '#DC2626', 1], ['。']])
+    } else {
+      if (pts.length) {
+        pts.forEach((p, i) => {
+          rows.push([
+            [`第 ${i + 1} 点：I = `], [`${p.i.toFixed(2)} A`, '#C2410C', 1],
+            ['，U = '], [`${p.u.toFixed(2)} V`, '#C2410C', 1],
+            [' → I·r = '], [`${(p.i * R_INT).toFixed(2)} V`, '#15803D', 1],
+          ])
+        })
+      } else {
+        rows.push([['闭合开关，点「定值电阻」换 5/10/15/20 Ω，各记一点：I 越大，端电压 U 掉得越多。']])
+      }
+      rows.push([['每次都有 '], ['U + I·r = 3.00 V', '#DC2626', 1], ['（电动势守恒），即 '], ['U = E − I·r', '#DC2626', 1], ['。']])
     }
 
     return [
@@ -430,8 +494,13 @@ export default function OhmsLawScene() {
         ],
       },
       {
-        t: '控制变量法', c: '#CA8A04',
-        items: [
+        t: mode === 3 ? '全电路欧姆定律' : '控制变量法', c: '#CA8A04',
+        items: mode === 3 ? [
+          [['电源不是理想的：电动势 '], ['E = 3.00 V', '#C2410C', 1], ['，内阻 '], [`r = ${R_INT.toFixed(1)} Ω`, '#C2410C', 1], ['，内阻上要分掉 '], ['I·r', '#DC2626', 1], ['。']],
+          [['闭合开关：'], ['I = E/(R + r)', '#DC2626', 1], ['，端电压 '], ['U = E − I·r', '#DC2626', 1], ['（也等于 I·R）。']],
+          [['开路（断开开关）：I = 0 → '], ['U = E = 3.00 V', '#15803D', 1], ['，此时电压表跨在电源两端读的就是 E。']],
+          [['短路（R = 0）：I短 = E/r = 1.5 A，端电压几乎为 0 —— '], ['绝不允许短接电源', '#DC2626', 1], ['。']],
+        ] : [
           [['研究 I 与 U：保持 '], ['R 不变', '#15803D', 1], ['，只改变 R 两端的 U（拖滑片），看 I 怎么变。']],
           [['研究 I 与 R：保持 '], ['U 不变', '#15803D', 1], ['，只改变 R 的阻值（换电阻），看 I 怎么变。']],
           [['两组实验都不能同时改两个量，否则说不清是谁影响了 I。']],
@@ -443,14 +512,20 @@ export default function OhmsLawScene() {
           [['① '], ['断开开关', '#DC2626', 1], ['按图连线：电流表'], ['串联', '#15803D', 1], ['，电压表'], ['并联', '#15803D', 1], ['在定值电阻两端，滑变「一上一下」，滑片置'], ['阻值最大处', '#DC2626', 1], ['。']],
           [['② 闭合开关，调滑片使 U 分别为 1.0 / 2.0 / 3.0 V，记下对应 I。']],
           [['③ 换 5 / 10 / 15 / 20 Ω，保持 U = 3.0 V，分别记下 I。']],
-          [['④ 用数据描点画 I–U、I–R 图像，归纳规律。']],
+          [['④ '], ...(mode === 3
+            ? [['描点画 U–I 图像：纵截距是 E，斜率绝对值是 r。']]
+            : [['用数据描点画 I–U、I–R 图像，归纳规律。']])],
           [['⑤ '], ['断开开关', '#DC2626', 1], ['，拆线整理器材。']],
         ],
       },
       { t: '本次数据记录', c: '#15803D', items: rows },
       {
         t: '实验结论', c: '#C2410C',
-        items: [
+        items: mode === 3 ? [
+          [['U–I 图像是一条'], ['下降的直线', '#DC2626', 1], ['：纵截距就是 '], ['E = 3.00 V', '#C2410C', 1], ['，斜率的绝对值就是内阻 '], [`r = ${R_INT.toFixed(1)} Ω`, '#C2410C', 1], ['。']],
+          [['I 越大，内阻分掉的 I·r 越大，'], ['端电压 U 越低', '#DC2626', 1], [' —— 用电高峰灯变暗就是这个原因。']],
+          [['全电路欧姆定律：'], ['I = E/(R + r)', '#DC2626', 1], ['，电源内部也有电阻，电流在内部也要「消耗」电压。']],
+        ] : [
           [['R 一定：'], ['I 与 U 成正比', '#DC2626', 1], ['，I–U 图像是过原点的直线，I₁ : I₂ = U₁ : U₂。']],
           [['U 一定：'], ['I 与 R 成反比', '#DC2626', 1], ['，I–R 图像是双曲线，I₁ : I₂ = R₂ : R₁。']],
           [['欧姆定律：'], ['I = U/R', '#DC2626', 1], ['——通过导体的电流跟导体两端电压成正比、跟导体电阻成反比。']],
@@ -521,7 +596,7 @@ export default function OhmsLawScene() {
         <>
           <b>欧姆定律</b>
           <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
-            控制变量法：R 不变改 U · U 不变改 R · 实时描点看正比与反比
+            控制变量法：R 不变改 U · U 不变改 R · 计入内阻用全电路 U = E − Ir
           </span>
         </>
       ) : null}
@@ -541,14 +616,14 @@ export default function OhmsLawScene() {
         )}
         {tab === 1 ? (
           <InfoDock
-            purpose="探究电流与电压、电阻的关系，用控制变量法和图像归纳出欧姆定律 I=U/R。"
+            purpose="探究电流与电压、电阻的关系，用控制变量法和图像归纳出欧姆定律 I=U/R；再把电源内阻算进去，认识全电路欧姆定律 U=E−Ir。"
             steps={[
               '闭合开关前，滑片放在阻值最大处',
               '实验 Ⅰ：保持 R = 10 Ω，拖滑片让 U 依次为 1.0 / 2.0 / 3.0 V，各记一点',
               '实验 Ⅱ：保持 U = 3 V，点定值电阻换 5 / 10 / 15 / 20 Ω，各记一点',
-              '右侧小图会把点描出来：Ⅰ 是直线，Ⅱ 是双曲线',
+              '实验 Ⅲ：计入电源内阻 r = 2 Ω，电压表跨在电源两端读路端电压；先断开看 U = E，再闭合看 U = E − Ir',
             ]}
-            hint="U/I 一直等于 R，说明 I = U/R；R 变大时 I 变小，是反比关系。"
+            hint="R 不变时 U/I 恒为 R；U 不变时 I·R 恒为 U；计入内阻后 U + I·r 恒为 E。"
           />
         ) : (
           <InfoDock
@@ -610,9 +685,9 @@ function drawPill(ctx, r, text, active, scale) {
  * 虚线是理想关系，实心点是用户记录的真实读数。
  */
 function drawChart(ctx, box, pts, mode, k) {
-  const xMax = mode === 1 ? 3.2 : 24
-  const yMax = mode === 1 ? 0.32 : 0.64
-  const padL = 34 * k, padB = 22 * k, padT = 26 * k, padR = 10 * k
+  const xMax = mode === 1 ? 3.2 : mode === 2 ? 24 : 0.6
+  const yMax = mode === 1 ? 0.32 : mode === 2 ? 0.64 : 3.2
+  const padL = 34 * k, padB = 22 * k, padT = 32 * k, padR = 10 * k
   const px = box.x + padL, py = box.y + box.h - padB
   const pw = box.w - padL - padR, ph = box.h - padB - padT
 
@@ -622,11 +697,17 @@ function drawChart(ctx, box, pts, mode, k) {
   ctx.lineWidth = 1.2
   ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 8 * k); ctx.fill(); ctx.stroke()
 
-  // 标题（居中，两行）
+  // 标题（居中；图表窄时用短标题，避免压住左上角的轴名）
+  const title = mode === 1 ? 'I–U 图像（R 保持不变）'
+    : mode === 2 ? 'I–R 图像（U 保持不变）'
+      : 'U–I 图像（全电路，斜率 = −r）'
+  const titleShort = mode === 1 ? 'I–U（R 不变）' : mode === 2 ? 'I–R（U 不变）' : 'U–I（斜率 = −r）'
   ctx.textAlign = 'center'; ctx.textBaseline = 'top'
   ctx.fillStyle = '#8A7256'
-  ctx.font = `bold ${Math.max(9, Math.round(10.5 * k))}px sans-serif`
-  ctx.fillText(mode === 1 ? 'I–U 图像（R 保持不变）' : 'I–R 图像（U 保持不变）', box.x + box.w / 2, box.y + 5 * k)
+  const titleFs = Math.max(8, Math.round(10.5 * k))
+  ctx.font = `bold ${titleFs}px sans-serif`
+  const useTitle = ctx.measureText(title).width > box.w - 76 * k ? titleShort : title
+  ctx.fillText(useTitle, box.x + box.w / 2 + 10 * k, box.y + 5 * k)
 
   // 轴
   ctx.strokeStyle = '#C9B79A'; ctx.lineWidth = 1.2
@@ -648,12 +729,12 @@ function drawChart(ctx, box, pts, mode, k) {
     ctx.fillText(formatTick(mode, (yMax * i) / 4, true), px - 5 * k, y)
   }
 
-  // 轴名（y 在标题左侧、x 在右下，避开曲线与刻度）
+  // 轴名（y 轴名放标题下一行，与顶端刻度错开；x 轴名在右下）
   ctx.fillStyle = '#8A7256'; ctx.font = `bold ${Math.max(8, Math.round(9.5 * k))}px sans-serif`
   ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-  ctx.fillText('I / A', box.x + 8 * k, box.y + 5 * k)
+  ctx.fillText(mode === 3 ? 'U / V' : 'I / A', box.x + 8 * k, box.y + 18 * k)
   ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'
-  ctx.fillText(mode === 1 ? 'U / V' : 'R / Ω', px + pw, py - 5 * k)
+  ctx.fillText(mode === 1 ? 'U / V' : mode === 2 ? 'R / Ω' : 'I / A', px + pw, py - 5 * k)
 
   // 关系曲线（理想值，绿虚线）
   ctx.strokeStyle = '#7CB342'; ctx.lineWidth = 1.5; ctx.setLineDash([5 * k, 4 * k])
@@ -662,17 +743,32 @@ function drawChart(ctx, box, pts, mode, k) {
     const uEnd = Math.min(xMax, R_FIXED * yMax)
     ctx.moveTo(px, py)
     ctx.lineTo(px + (pw * uEnd) / xMax, py - (ph * (uEnd / R_FIXED)) / yMax)
-  } else {
+  } else if (mode === 2) {
     let first = true
     for (let i = 0; i <= 60; i++) {
       const R = 3 + (xMax - 3) * (i / 60)
-      const I = CFG.VS.V / R
+      const I = EMF / R
       if (I > yMax) continue
       const x = px + (pw * R) / xMax, y = py - (ph * I) / yMax
       if (first) { ctx.moveTo(x, y); first = false } else ctx.lineTo(x, y)
     }
+  } else {
+    // U = E − I·r：从 (0, E) 斜向下，斜率 −r
+    const iEnd = Math.max(0, Math.min(xMax, (EMF - 0) / R_INT))
+    ctx.moveTo(px, py - ph * EMF / yMax)
+    ctx.lineTo(px + (pw * iEnd) / xMax, py - ph * Math.max(0, EMF - iEnd * R_INT) / yMax)
   }
   ctx.stroke(); ctx.setLineDash([])
+
+  // Ⅲ：开路点 (0, E) —— 空心点，标「开路」
+  if (mode === 3) {
+    const ox = px, oy = py - (ph * EMF) / yMax
+    ctx.strokeStyle = '#2E7D32'; ctx.lineWidth = 1.6
+    ctx.beginPath(); ctx.arc(ox, oy, 3.6 * k, 0, Math.PI * 2); ctx.stroke()
+    ctx.fillStyle = '#2E7D32'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'
+    ctx.font = `${Math.max(8, Math.round(9 * k))}px sans-serif`
+    ctx.fillText('开路 U=E', ox + 6 * k, oy - 3 * k)
+  }
 
   // 描出的实测点
   for (const p of pts) {
@@ -686,6 +782,7 @@ function drawChart(ctx, box, pts, mode, k) {
 }
 
 function formatTick(mode, v, isY = false) {
+  if (mode === 3) return isY ? v.toFixed(1) : v.toFixed(2)
   if (isY) return v.toFixed(2)
   return mode === 1 ? v.toFixed(1) : v.toFixed(0)
 }
