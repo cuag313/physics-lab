@@ -1878,11 +1878,11 @@ export const TYPES = {
       /* 一条连续螺旋线的侧视投影（正弦波）：前面可见；背面且落在铁芯轮廓内的一段被挡住 → 断开不画 */
       const loops = turns <= 10 ? 5 : turns <= 20 ? 7 : 9
       const gapX = coilW / loops
-      const Rcoil = coreH / 2 + 8
+      const Rcoil = coreH / 2 + 3
       const rCore = coreH / 2
       const yT0 = axisY - coreH / 2, yB0 = axisY + coreH / 2
       const xStart = cL
-      const xEndC = cL + gapX * (loops - Math.asin(rCore / Rcoil) / Math.PI)
+      const xEndC = cL + gapX * (loops - 0.5 - Math.asin(rCore / Rcoil) / Math.PI)
       const xEnd = xEndC
       const phase0 = Math.asin(rCore / Rcoil)
       let dPath = '', pen = false
@@ -1924,7 +1924,7 @@ export const TYPES = {
       ${!core ? `<text x="105" y="${axisY + liftY + coreH / 2 + 16}" text-anchor="middle" font-size="8" font-weight="700" fill="#DC2626">铁芯已抽出（磁性骤减）</text>` : ''}
       <!-- 引出线：左从上沿收笔处斜下穿过铁芯；右从下沿收笔处直接向下 → 两个接线柱 -->
       <path d="M${cL.toFixed(1)} ${(axisY - rCore).toFixed(1)} L48 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
-      <path d="M${xEnd.toFixed(1)} ${(axisY + rCore).toFixed(1)} L162 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
+      <path d="M${xEnd.toFixed(1)} ${axisY.toFixed(1)} L162 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
       ${coil}
       ${field}
       ${pinMarks}

@@ -725,15 +725,15 @@ function drawEM(ctx, cx, baseY, o) {
   //    前面（cos>0）可见；背面（cos<0）且落在铁芯轮廓内（|sin| < r/R）的那段被铁芯挡住 → 断开不画
   const loops = turns === 10 ? 5 : turns === 20 ? 7 : 9
   const gapX = coilW / loops              // 每圈轴向长度 = 正弦的一个周期
-  const Rcoil = coreH / 2 + 8 * sc        // 线圈半径（比铁芯粗一圈）
+  const Rcoil = coreH / 2 + 3 * sc        // 线圈半径（比铁芯粗一圈）
   const rCore = coreH / 2                 // 铁芯半径
-  // ↓ 左端起笔：x=cL 处落在铁芯**上沿**、且正在由背面转入前面（sin=+r/R 递增，cos>0）
-  //   左引线就从这里往下斜穿过铁芯接干线（手绘里那根"从上斜穿过铁芯"的线）
-  //   右端收笔：让终点落在铁芯**下沿**（刚从背面出来处），右干线直接接这一点，
-  //   于是右端不会再出现"翘到铁芯上方的尖角"
+  // ↓ 左端起笔：x=cL 落在铁芯**上沿**、正在由背面转入前面（sin=+r/R 递增，cos>0）
+  //   左引线从这里往下斜穿过铁芯接干线（手绘那根"从上斜穿过铁芯"的线）
+  //   右端收笔：终点取 sin=0（铁芯**中线**、前面），于是最右只剩铁芯内的一段斜线 ——
+  //   铁芯上方不出拱、下方不出波谷，右干线直接从这一点以斜线接到干线
   const kRatio = rCore / Rcoil
   const phase0 = Math.asin(kRatio)
-  const xEnd = cL + gapX * (loops - Math.asin(kRatio) / Math.PI)
+  const xEnd = cL + gapX * (loops - 0.5 - Math.asin(kRatio) / Math.PI)   // 收在铁芯上沿（转入背面处）
   ctx.strokeStyle = wire; ctx.lineWidth = 2.9 * sc; ctx.lineCap = 'round'
   ctx.beginPath()
   let pen = false
@@ -747,10 +747,10 @@ function drawEM(ctx, cx, baseY, o) {
   }
   ctx.stroke()
   ctx.lineCap = 'butt'
-  // 两根引线：左从上沿收笔处斜下穿过铁芯；右从下沿收笔处直接向下 —— 都接干线
+  // 两根引线：左从上沿收笔处斜下穿过铁芯；右从中线收笔处斜下 —— 都接干线
   ctx.strokeStyle = wire; ctx.lineWidth = 2.6 * sc
   ctx.beginPath(); ctx.moveTo(cL, cy - rCore); ctx.lineTo(g.lp.x, g.lp.y); ctx.stroke()
-  ctx.beginPath(); ctx.moveTo(xEnd, cy + rCore); ctx.lineTo(g.rp.x, g.rp.y); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(xEnd, cy - rCore); ctx.lineTo(g.rp.x, g.rp.y); ctx.stroke()
 
   // ── 磁极标记：左端 N、右端 S（由绕向 + 电流方向决定）
   if (on && core) {
@@ -866,9 +866,9 @@ function emGeom(cx, baseY, sc, turns) {
   const cT = cy - coilH / 2, cB = cy + coilH / 2
   const loops = turns === 10 ? 5 : turns === 20 ? 7 : 9
   const gapX = coilW / loops
-  const Rcoil = coreH / 2 + 8 * sc
+  const Rcoil = coreH / 2 + 3 * sc
   const rCore = coreH / 2
-  const xEnd = cL + gapX * (loops - Math.asin(rCore / Rcoil) / Math.PI)
+  const xEnd = cL + gapX * (loops - Math.asin(rCore / Rcoil) / (2 * Math.PI))
   return {
     cy, coreLen, coreH, coilW, coilH, cL, cR, cT, cB, loops, gapX, Rcoil, xEnd,
     lp: { x: cL - 8 * sc, y: cy + Rcoil + 12 * sc },   // 左引线：从上沿收笔处斜下穿过铁芯 → 落点
