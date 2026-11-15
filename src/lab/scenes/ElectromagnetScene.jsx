@@ -200,13 +200,11 @@ export default function ElectromagnetScene() {
     drawLine(ctx, x1, y0, x1, y1, wc, lw)
     drawLine(ctx, x0, y0, x0, y1, wc, lw)
     drawLine(ctx, x0, y1, battX - hBat, y1, wc, lw)
-    // 电磁铁：导线直接接到线圈两端（两根引线都从线圈下缘引出，同手绘图）
-    drawLine(ctx, battX + hBat, y1, emX - gap, y1, wc, lw)
-    drawLine(ctx, emX - gap, y1, emX - gap, eg.lp.y, wc, lw)
-    drawLine(ctx, emX - gap, eg.lp.y, eg.lp.x, eg.lp.y, wc, lw)
-    drawLine(ctx, eg.rp.x, eg.rp.y, emX + gap, eg.rp.y, wc, lw)
-    drawLine(ctx, emX + gap, eg.rp.y, emX + gap, y1, wc, lw)
-    drawLine(ctx, emX + gap, y1, swX - hSw, y1, wc, lw)
+    // 电磁铁：导线接到线圈下方（两根引线竖直落到干线，同手绘图）
+    drawLine(ctx, battX + hBat, y1, eg.lp.x, y1, wc, lw)
+    drawLine(ctx, eg.lp.x, y1, eg.lp.x, eg.lp.y, wc, lw)
+    drawLine(ctx, eg.rp.x, y1, eg.rp.x, eg.rp.y, wc, lw)
+    drawLine(ctx, eg.rp.x, y1, swX - hSw, y1, wc, lw)
     drawLine(ctx, swX + hSw, y1, x1, y1, wc, lw)
 
     // ─── 符号 ───
@@ -225,12 +223,10 @@ export default function ElectromagnetScene() {
     if (on) {
       const path = [
         { x: battX + hBat, y: y1 },
-        { x: emX - gap, y: y1 },
-        { x: emX - gap, y: eg.lp.y },
+        { x: eg.lp.x, y: y1 },
         eg.lp,
         eg.rp,
-        { x: emX + gap, y: eg.rp.y },
-        { x: emX + gap, y: y1 },
+        { x: eg.rp.x, y: y1 },
         { x: swX + hSw, y: y1 },
         { x: x1, y: y1 }, { x: x1, y: y0 },
         { x: amX + hMeter, y: y0 }, { x: amX - hMeter, y: y0 },
@@ -732,26 +728,28 @@ function drawEM(ctx, cx, baseY, o) {
   ctx.lineCap = 'round'
   for (let i = 0; i < loops; i++) {
     const xa = cL + gapX * i
-    // 上半椭圆弧：左 → 右，凸出铁芯上缘
+
+
+    // 上半椭圆弧：左 → 右，两端压在铁芯上缘内侧（导线从前面绕过上方）
     ctx.strokeStyle = wire; ctx.lineWidth = 3.2 * sc
-    ctx.beginPath(); ctx.moveTo(xa + w * 0.06, yT)
-    ctx.quadraticCurveTo(xa + w * 0.5, yT - 8 * sc, xa + w * 0.94, yT); ctx.stroke()
-    // 正面斜线：右上 → 左下（穿过铁芯前面）
-    ctx.beginPath(); ctx.moveTo(xa + w * 0.94, yT); ctx.lineTo(xa + w * 0.46, yB); ctx.stroke()
-    // 下半椭圆弧：右 → 左，凸出铁芯下缘
-    ctx.beginPath(); ctx.moveTo(xa + w * 0.46, yB)
-    ctx.quadraticCurveTo(xa + w * 0.25, yB + 8 * sc, xa + w * 0.06, yB); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(xa + w * 0.06, yT + 6 * sc)
+    ctx.quadraticCurveTo(xa + w * 0.5, yT - 11 * sc, xa + w * 0.94, yT + 6 * sc); ctx.stroke()
+    // 正面斜线：右上 → 左下（斜着穿过铁芯前面）
+    ctx.beginPath(); ctx.moveTo(xa + w * 0.94, yT + 6 * sc); ctx.lineTo(xa + w * 0.46, yB - 6 * sc); ctx.stroke()
+    // 下半椭圆弧：右 → 左，两端压在铁芯下缘内侧
+    ctx.beginPath(); ctx.moveTo(xa + w * 0.46, yB - 6 * sc)
+    ctx.quadraticCurveTo(xa + w * 0.25, yB + 11 * sc, xa + w * 0.06, yB - 6 * sc); ctx.stroke()
     // 高光
     ctx.strokeStyle = 'rgba(255,228,186,0.58)'; ctx.lineWidth = 0.9 * sc
-    ctx.beginPath(); ctx.moveTo(xa + w * 0.06 + 0.7 * sc, yT + 0.7 * sc)
-    ctx.quadraticCurveTo(xa + w * 0.5, yT - 6.4 * sc, xa + w * 0.94 + 0.7 * sc, yT + 0.7 * sc); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(xa + w * 0.06 + 0.7 * sc, yT + 6.7 * sc)
+    ctx.quadraticCurveTo(xa + w * 0.5, yT - 9.4 * sc, xa + w * 0.94 + 0.7 * sc, yT + 6.7 * sc); ctx.stroke()
   }
   ctx.lineCap = 'butt'
-  // 两根很短的引出线（长导线由 renderDemo 接到电路上）：都从线圈下缘引出
-  const xFirst = cL, xLast = cL + (loops - 1) * gapX + w
+  // 两根短引线（长导线由 renderDemo 接到电路上）：从最左/最右那一圈的下弧终点斜向接出
+  const xFirst = cL, xLast = cL + (loops - 1) * gapX + w * 0.06
   ctx.strokeStyle = wire; ctx.lineWidth = 2.2 * sc
-  ctx.beginPath(); ctx.moveTo(xFirst, yB - 0.5 * sc); ctx.lineTo(g.lp.x, g.lp.y); ctx.stroke()
-  ctx.beginPath(); ctx.moveTo(xLast - 2 * sc, yB); ctx.lineTo(g.rp.x, g.rp.y); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(xFirst + w * 0.06, yB - 6 * sc); ctx.lineTo(g.lp.x, g.lp.y); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(xLast, yB - 6 * sc); ctx.lineTo(g.rp.x, g.rp.y); ctx.stroke()
 
   // ── 磁极标记：左端 N、右端 S（由绕向 + 电流方向决定）
   if (on && core) {

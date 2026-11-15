@@ -1884,10 +1884,10 @@ export const TYPES = {
       for (let i = 0; i < loops; i++) {
         const xa = cL + gapX * i
         const c1 = (v) => v.toFixed(1)
-        coil += `<path d="M${c1(xa + wCoil * 0.06)} ${c1(yT0)} Q${c1(xa + wCoil * 0.5)} ${c1(yT0 - 8)} ${c1(xa + wCoil * 0.94)} ${c1(yT0)}" fill="none" stroke="${wire}" stroke-width="3.2" stroke-linecap="round"/>
-        <path d="M${c1(xa + wCoil * 0.94)} ${c1(yT0)} L${c1(xa + wCoil * 0.46)} ${c1(yB0)}" fill="none" stroke="${wire}" stroke-width="3.2" stroke-linecap="round"/>
-        <path d="M${c1(xa + wCoil * 0.46)} ${c1(yB0)} Q${c1(xa + wCoil * 0.25)} ${c1(yB0 + 8)} ${c1(xa + wCoil * 0.06)} ${c1(yB0)}" fill="none" stroke="${wire}" stroke-width="3.2" stroke-linecap="round"/>
-        <path d="M${c1(xa + wCoil * 0.06 + 0.7)} ${c1(yT0 + 0.7)} Q${c1(xa + wCoil * 0.5)} ${c1(yT0 - 6.4)} ${c1(xa + wCoil * 0.94 + 0.7)} ${c1(yT0 + 0.7)}" fill="none" stroke="rgba(255,228,186,0.58)" stroke-width="0.9"/>`
+        coil += `<path d="M${c1(xa + wCoil * 0.06)} ${c1(yT0 + 6)} Q${c1(xa + wCoil * 0.5)} ${c1(yT0 - 11)} ${c1(xa + wCoil * 0.94)} ${c1(yT0 + 6)}" fill="none" stroke="${wire}" stroke-width="3.2" stroke-linecap="round"/>
+        <path d="M${c1(xa + wCoil * 0.94)} ${c1(yT0 + 6)} L${c1(xa + wCoil * 0.46)} ${c1(yB0 - 6)}" fill="none" stroke="${wire}" stroke-width="3.2" stroke-linecap="round"/>
+        <path d="M${c1(xa + wCoil * 0.46)} ${c1(yB0 - 6)} Q${c1(xa + wCoil * 0.25)} ${c1(yB0 + 11)} ${c1(xa + wCoil * 0.06)} ${c1(yB0 - 6)}" fill="none" stroke="${wire}" stroke-width="3.2" stroke-linecap="round"/>
+        <path d="M${c1(xa + wCoil * 0.06 + 0.7)} ${c1(yT0 + 6.7)} Q${c1(xa + wCoil * 0.5)} ${c1(yT0 - 9.4)} ${c1(xa + wCoil * 0.94 + 0.7)} ${c1(yT0 + 6.7)}" fill="none" stroke="rgba(255,228,186,0.58)" stroke-width="0.9"/>`
       }
       /* 铁芯：一根水平圆柱棒（两端不收缩、不画端面圆） */
       const coreSvg = `<g transform="translate(0,${liftY})">
@@ -1917,9 +1917,9 @@ export const TYPES = {
     <svg width="210" height="200" viewBox="0 0 210 200">
       ${coreSvg}
       ${!core ? `<text x="105" y="${axisY + liftY + coreH / 2 + 16}" text-anchor="middle" font-size="8" font-weight="700" fill="#DC2626">铁芯已抽出（磁性骤减）</text>` : ''}
-      <!-- 引出线：两根都从线圈下缘引出 → 两个接线柱 -->
-      <path d="M${(cL + 2).toFixed(1)} ${(cB - 2).toFixed(1)} L48 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
-      <path d="M${(cR - 2).toFixed(1)} ${(cB - 2).toFixed(1)} L162 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
+      <!-- 引出线：从最左/最右那一圈的下弧终点斜向接到两个接线柱 -->
+      <path d="M${(cL + wCoil * 0.06).toFixed(1)} ${(yB0 - 6).toFixed(1)} L48 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
+      <path d="M${(cL + (loops - 1) * gapX + wCoil * 0.06).toFixed(1)} ${(yB0 - 6).toFixed(1)} L162 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
       ${coil}
       ${field}
       ${pinMarks}
