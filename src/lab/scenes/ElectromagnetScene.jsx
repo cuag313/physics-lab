@@ -174,7 +174,7 @@ export default function ElectromagnetScene() {
     const battX = x0 + loopW * 0.14
     const emX = x0 + loopW * 0.56
     const swX = x0 + loopW * 0.86
-    const gap = 44 * scale          // 电磁铁两根引线的半间距（大头针挂在中间，不压引线）
+    const gap = 104 * scale         // 电磁铁横躺后的占位半宽（导线在底座两侧接入）
 
     const wc = on ? '#1565C0' : '#9aa7b1'
     const ink = on ? SYM_INK : '#7c8a93'
@@ -212,8 +212,8 @@ export default function ElectromagnetScene() {
     if (on) {
       const path = [
         { x: battX + hBat, y: y1 },
-        { x: emX - gap, y: y1 }, { x: emX - gap, y: y1 - 10 * scale },
-        { x: emX + gap, y: y1 - 10 * scale }, { x: emX + gap, y: y1 },
+        { x: emX - gap, y: y1 }, { x: emX - gap, y: y1 - 12 * scale },
+        { x: emX + gap, y: y1 - 12 * scale }, { x: emX + gap, y: y1 },
         { x: swX + hSw, y: y1 },
         { x: x1, y: y1 }, { x: x1, y: y0 },
         { x: amX + hMeter, y: y0 }, { x: amX - hMeter, y: y0 },
@@ -350,8 +350,16 @@ export default function ElectromagnetScene() {
 
     // 电流表超量程：真表不允许，必须右移滑片减小电流
     if (on && sol.I > CFG.AMM_FS) {
-      ctx.fillStyle = '#DC2626'; ctx.textAlign = 'center'; ctx.font = `bold ${labelFont}px sans-serif`
-      ctx.fillText(`⚠ 超量程（0～${CFG.AMM_FS} A）—— 把滑片右移减小电流`, amX, y0 + 36 * scale)
+      const txt = scale < 0.95
+        ? `⚠ 超量程 0～${CFG.AMM_FS} A：滑片右移`
+        : `⚠ 超量程（0～${CFG.AMM_FS} A）—— 把滑片右移减小电流`
+      let fs2 = labelFont
+      ctx.font = `bold ${fs2}px sans-serif`
+      while (ctx.measureText(txt).width > geo.W * 0.9 && fs2 > 8.5) {
+        fs2 -= 0.5; ctx.font = `bold ${fs2}px sans-serif`
+      }
+      ctx.fillStyle = '#DC2626'; ctx.textAlign = 'center'
+      ctx.fillText(txt, x0 + geo.W / 2, y0 + 36 * scale)
     }
 
     // 滑片说明
@@ -673,106 +681,157 @@ export default function ElectromagnetScene() {
   )
 }
 
-/* ── 电磁铁：软铁芯 + 绕线线圈 + 吸住的大头针 ── */
+/* ── 电磁铁（横躺）：软铁芯水平穿过密绕线圈，磁极在铁芯两端 ── */
 function drawEM(ctx, cx, baseY, o) {
   const { scale, turns, I, pins, core, on, time, wc } = o
   const sc = scale
-  const coreW = 13 * sc
-  const coreH = 108 * sc
-  const magnetBot = baseY - 30 * sc         // 磁极原位（线圈下端、大头针挂点）
-  const lift = core ? 0 : 80 * sc           // 抽出后整个铁芯移到线圈上方
-  const coreBot = magnetBot - lift
-  const coreTop = coreBot - coreH
+  const cy = baseY - 80 * sc                 // 铁芯轴线高度（横躺）
+  const coreLen = 200 * sc
+  const coreH = 26 * sc
+  const coilW = (60 + (turns - 10) * 1.5) * sc   // 匝数越多绕得越长：10/20/30 → 60/75/90
+  const coilH = 54 * sc
+  const cL = cx - coilW / 2
+  const cT = cy - coilH / 2
+  const lift = core ? 0 : 64 * sc            // 抽出：铁芯整体抬到线圈上方
+  const ccy = cy - lift
   const hot = on ? Math.min(1, I / 0.6) : 0
-
-  // 两根引线（底座 → 导线）
-  ctx.strokeStyle = wc; ctx.lineWidth = 2 * sc + 0.5; ctx.lineCap = 'round'
-  ctx.beginPath()
-  ctx.moveTo(cx - 44 * sc, baseY); ctx.lineTo(cx - 17 * sc, baseY - 4 * sc)
-  ctx.moveTo(cx + 44 * sc, baseY); ctx.lineTo(cx + 17 * sc, baseY - 4 * sc)
-  ctx.stroke()
-  ctx.lineCap = 'butt'
-
-  // 软铁芯（金属棒；抽出时整个移到线圈上方、颜色变浅）
-  ctx.fillStyle = core ? '#9AA4AF' : '#CFD6DE'
-  ctx.strokeStyle = core ? '#6B7684' : '#AAB5C0'
-  ctx.lineWidth = 1.2 * sc
-  ctx.beginPath(); ctx.roundRect(cx - coreW / 2, coreTop, coreW, coreH, 4 * sc); ctx.fill(); ctx.stroke()
-  ctx.fillStyle = core ? 'rgba(232,238,244,0.55)' : 'rgba(232,238,244,0.35)'
-  ctx.beginPath(); ctx.roundRect(cx - coreW / 2 + 2 * sc, coreTop + 4 * sc, 4 * sc, coreH - 10 * sc, 2 * sc); ctx.fill()
-
-  // 线圈：匝数越多绕得越长（10 匝最短、30 匝最长），位置固定在磁极上方
-  const coilH = (52 + (turns - 10) * 0.9) * sc
-  const cy1 = magnetBot - 14 * sc
-  const cy0 = cy1 - coilH
-  const nL = Math.max(6, Math.floor((coilH - 10 * sc) / (5.4 * sc)))
   const coilBody = on
     ? `rgb(${Math.round(198 + 40 * hot)},${Math.round(120 + 40 * hot)},${Math.round(52 - 20 * hot)})`
     : '#C8813E'
   const coilEdge = on ? '#9A5B22' : '#8B5A2B'
-  const cw2 = 15 * sc          // 绕线柱半宽
-  // 绕线柱本体（密绕漆包线包住铁芯）
-  ctx.fillStyle = coilBody
-  ctx.strokeStyle = coilEdge; ctx.lineWidth = 1 * sc
-  ctx.beginPath(); ctx.roundRect(cx - cw2, cy0, cw2 * 2, coilH, 6 * sc); ctx.fill(); ctx.stroke()
-  // 斜向绕线纹理（裁在柱体内部）
+  const coreBody = core ? '#9AA4AF' : '#CFD6DE'
+  const coreLine = core ? '#6B7684' : '#AAB5C0'
+
+  // 底座（黑色 ABS 条，导线从这里接入）
+  ctx.fillStyle = '#2B2E33'
+  ctx.beginPath(); ctx.roundRect(cx - 92 * sc, baseY - 12 * sc, 184 * sc, 12 * sc, 5 * sc); ctx.fill()
+  ctx.fillStyle = 'rgba(255,255,255,0.10)'
+  ctx.beginPath(); ctx.roundRect(cx - 88 * sc, baseY - 10.4 * sc, 176 * sc, 2.6 * sc, 1.3 * sc); ctx.fill()
+
+  // 两根引线：线圈两端 → 底座上的接线圈柱
+  ctx.strokeStyle = '#8D96A1'; ctx.lineWidth = 2 * sc
+  ctx.beginPath()
+  ctx.moveTo(cx - coilW / 2 + 2 * sc, cy + coilH / 2 - 8 * sc); ctx.lineTo(cx - 52 * sc, baseY - 8 * sc)
+  ctx.moveTo(cx + coilW / 2 - 2 * sc, cy + coilH / 2 - 8 * sc); ctx.lineTo(cx + 52 * sc, baseY - 8 * sc)
+  ctx.stroke()
+
+  // 软铁芯：水平金属棒，贯穿线圈、两端露出端面
+  ctx.fillStyle = coreBody; ctx.strokeStyle = coreLine; ctx.lineWidth = 1.1 * sc
+  ctx.beginPath(); ctx.roundRect(cx - coreLen / 2, ccy - coreH / 2, coreLen, coreH, coreH / 2); ctx.fill(); ctx.stroke()
+  // 顶部高光 + 端面椭圆（看得出是一根圆柱棒）
+  ctx.fillStyle = 'rgba(240,246,252,0.62)'
+  ctx.beginPath(); ctx.roundRect(cx - coreLen / 2 + 8 * sc, ccy - coreH / 2 + 4 * sc, coreLen - 16 * sc, 5 * sc, 2.5 * sc); ctx.fill()
+  for (const s of [-1, 1]) {
+    ctx.fillStyle = coreBody; ctx.strokeStyle = coreLine; ctx.lineWidth = 1 * sc
+    ctx.beginPath(); ctx.ellipse(cx + s * (coreLen / 2 - 2 * sc), ccy, 3.4 * sc, coreH / 2, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+  }
+
+  // ─── 线圈（密绕漆包线，横躺在铁芯上）───
+  ctx.fillStyle = coilBody; ctx.strokeStyle = coilEdge; ctx.lineWidth = 1 * sc
+  ctx.beginPath(); ctx.roundRect(cL, cT, coilW, coilH, 7 * sc); ctx.fill(); ctx.stroke()
+  // 竖直密绕条纹：一暗一亮，像一圈圈并排的漆包线
   ctx.save()
-  ctx.beginPath(); ctx.roundRect(cx - cw2 + 1, cy0 + 1, cw2 * 2 - 2, coilH - 2, 5 * sc); ctx.clip()
-  ctx.strokeStyle = coilEdge; ctx.lineWidth = 1.25 * sc
-  for (let i = 0; i < nL * 2; i++) {
-    const y = cy0 + i * (coilH / (nL * 2)) + 1
-    ctx.beginPath()
-    ctx.moveTo(cx - cw2, y); ctx.lineTo(cx + cw2, y + 6 * sc)
-    ctx.stroke()
+  ctx.beginPath(); ctx.roundRect(cL + 1.2 * sc, cT + 1.2 * sc, coilW - 2.4 * sc, coilH - 2.4 * sc, 6 * sc); ctx.clip()
+  const step = 3.3 * sc
+  for (let x = cL + 2 * sc; x < cL + coilW - 1; x += step) {
+    ctx.strokeStyle = 'rgba(110,58,18,0.92)'; ctx.lineWidth = 1.2 * sc
+    ctx.beginPath(); ctx.moveTo(x, cT); ctx.lineTo(x, cT + coilH); ctx.stroke()
+    ctx.strokeStyle = 'rgba(252,214,164,0.60)'; ctx.lineWidth = 1.0 * sc
+    ctx.beginPath(); ctx.moveTo(x + 1.35 * sc, cT); ctx.lineTo(x + 1.35 * sc, cT + coilH); ctx.stroke()
   }
   ctx.restore()
-  // 左侧高光 + 端面椭圆
-  ctx.fillStyle = 'rgba(239,192,138,0.42)'
-  ctx.beginPath(); ctx.roundRect(cx - cw2 + 2 * sc, cy0 + 3 * sc, 4 * sc, coilH - 6 * sc, 2 * sc); ctx.fill()
-  ctx.strokeStyle = coilEdge; ctx.lineWidth = 1 * sc
-  ctx.fillStyle = coilBody
-  for (const yy of [cy0, cy0 + coilH]) {
-    ctx.beginPath(); ctx.ellipse(cx, yy, cw2, 4.6 * sc, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+  // 上下边缘压暗（圆柱弧度的观感）
+  const shd = ctx.createLinearGradient(0, cT, 0, cT + coilH)
+  shd.addColorStop(0, 'rgba(80,45,10,0.30)')
+  shd.addColorStop(0.22, 'rgba(80,45,10,0)')
+  shd.addColorStop(0.78, 'rgba(80,45,10,0)')
+  shd.addColorStop(1, 'rgba(80,45,10,0.34)')
+  ctx.save()
+  ctx.beginPath(); ctx.roundRect(cL + 1.2 * sc, cT + 1.2 * sc, coilW - 2.4 * sc, coilH - 2.4 * sc, 6 * sc); ctx.clip()
+  ctx.fillStyle = shd; ctx.fillRect(cL, cT, coilW, coilH)
+  ctx.restore()
+  // 顶部横向高光
+  ctx.fillStyle = 'rgba(255,228,192,0.34)'
+  ctx.beginPath(); ctx.roundRect(cL + 5 * sc, cT + 4 * sc, coilW - 10 * sc, 3.6 * sc, 1.8 * sc); ctx.fill()
+  // 左右端面：椭圆 + 内圈 + 铁芯截面（看得出铁芯是从线圈里穿过去的）
+  for (const s of [-1, 1]) {
+    const ex = cx + s * coilW / 2
+    ctx.fillStyle = coilBody; ctx.strokeStyle = coilEdge; ctx.lineWidth = 1 * sc
+    ctx.beginPath(); ctx.ellipse(ex, cy, 5.6 * sc, coilH / 2, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = 'rgba(60,40,20,0.35)'
+    ctx.beginPath(); ctx.ellipse(ex, cy, 4.2 * sc, coilH / 2 - 4 * sc, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = core ? coreBody : '#3B4450'
+    ctx.beginPath(); ctx.ellipse(ex - s * 0.8 * sc, cy, 3 * sc, 8.4 * sc, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = core ? coreLine : '#222B34'; ctx.lineWidth = 0.8 * sc
+    ctx.beginPath(); ctx.ellipse(ex - s * 0.8 * sc, cy, 3 * sc, 8.4 * sc, 0, 0, Math.PI * 2); ctx.stroke()
   }
 
-  // 磁极标记 N / S（铁芯抽出后不标磁极，避免与上方说明文字打架）
+  // 磁极标记 N / S：标在铁芯两端露出的上方（不压磁感线）
   if (on && core) {
-    ctx.fillStyle = '#C2410C'; ctx.font = `bold ${Math.max(9, Math.round(11 * sc))}px sans-serif`
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText('N', cx, coreTop + 10 * sc)
-    ctx.fillStyle = '#1D4ED8'
-    ctx.fillText('S', cx, magnetBot - 6 * sc)
+    const fz = Math.max(9, Math.round(11 * sc))
+    ctx.font = `bold ${fz}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#1D4ED8'; ctx.fillText('S', cx - 84 * sc, ccy - coreH / 2 - 9 * sc)
+    ctx.fillStyle = '#C2410C'; ctx.fillText('N', cx + 84 * sc, ccy - coreH / 2 - 9 * sc)
   }
 
-  // 磁感线（通电时底端向外拱起，随时间轻微脉动）
-  if (on) {
+  // 磁感线：铁芯两端环绕（通电且插着铁芯时；抽芯后磁性骤减，不再画）
+  if (on && core) {
     const ph = 0.5 + 0.5 * Math.sin(time * 2.2)
-    ctx.strokeStyle = `rgba(37,99,235,${0.22 + 0.18 * ph * (0.4 + hot)})`
-    ctx.lineWidth = 1.2 * sc
-    ctx.setLineDash([4 * sc, 3 * sc])
-    for (let k = 0; k < 2; k++) {
-      const r = (16 + k * 8) * sc
-      ctx.beginPath()
-      ctx.moveTo(cx - r, magnetBot)
-      ctx.bezierCurveTo(cx - r * 0.9, magnetBot + r * 0.55, cx + r * 0.9, magnetBot + r * 0.55, cx + r, magnetBot)
-      ctx.stroke()
+    ctx.strokeStyle = `rgba(37,99,235,${0.20 + 0.16 * ph * (0.4 + hot)})`
+    ctx.lineWidth = 1.1 * sc
+    ctx.setLineDash([3.5 * sc, 3 * sc])
+    for (const s of [-1, 1]) {
+      for (let k = 0; k < 2; k++) {
+        ctx.beginPath()
+        ctx.ellipse(cx + s * (coreLen / 2 + 2 * sc), ccy, 6 * sc, (21 + k * 7) * sc, 0, 0, Math.PI * 2)
+        ctx.stroke()
+      }
     }
     ctx.setLineDash([])
   }
 
-  // 大头针：挂在磁极下方，左右两列
-  for (let i = 0; i < pins; i++) {
-    const col = i % 2 ? 1 : -1
-    const row = Math.floor(i / 2)
-    const px = cx + col * (7 + row * 5.4) * sc
-    ctx.strokeStyle = '#6B7280'; ctx.lineWidth = 1.5 * sc; ctx.lineCap = 'round'
-    ctx.beginPath(); ctx.moveTo(px, magnetBot + 2 * sc); ctx.lineTo(px, magnetBot + 12 * sc); ctx.stroke()
-    ctx.fillStyle = '#94A3B8'
-    ctx.beginPath(); ctx.arc(px, magnetBot + 13.4 * sc, 2.1 * sc, 0, Math.PI * 2); ctx.fill()
-    ctx.strokeStyle = '#5B6470'; ctx.lineWidth = 0.6 * sc
-    ctx.beginPath(); ctx.arc(px, magnetBot + 13.4 * sc, 2.1 * sc, 0, Math.PI * 2); ctx.stroke()
+  // 抽出铁芯时给一句提示（不标磁极）
+  if (!core) {
+    ctx.fillStyle = '#DC2626'; ctx.font = `bold ${Math.max(8, Math.round(10 * sc))}px sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText('铁芯已抽出（磁性骤减）', cx, ccy - coreH / 2 - 11 * sc)
   }
-  ctx.lineCap = 'butt'
+
+  // 大头针：吸在 N 极（铁芯右端端面）下方，向两侧散开
+  if (pins > 0) {
+    const pinX = cx + 86 * sc
+    const pinY0 = core ? cy + coreH / 2 : cy + coilH / 2 - 2 * sc
+    const gapPin = Math.min(4.2, 46 / Math.max(1, pins - 1)) * sc
+    for (let i = 0; i < pins; i++) {
+      const off = (i - (pins - 1) / 2) * gapPin
+      const y2 = pinY0 + (12 + Math.abs(off) / sc * 0.32) * sc
+      ctx.strokeStyle = '#6B7280'; ctx.lineWidth = 1.4 * sc; ctx.lineCap = 'round'
+      ctx.beginPath()
+      ctx.moveTo(pinX + off * 0.18, pinY0 + 1 * sc)
+      ctx.lineTo(pinX + off, y2)
+      ctx.stroke()
+      ctx.fillStyle = '#94A3B8'
+      ctx.beginPath(); ctx.arc(pinX + off, y2 + 1.4 * sc, 1.9 * sc, 0, Math.PI * 2); ctx.fill()
+      ctx.strokeStyle = '#5B6470'; ctx.lineWidth = 0.55 * sc
+      ctx.beginPath(); ctx.arc(pinX + off, y2 + 1.4 * sc, 1.9 * sc, 0, Math.PI * 2); ctx.stroke()
+    }
+    ctx.lineCap = 'butt'
+  }
+  ctx.textBaseline = 'alphabetic'
+
+  // 底座上的两个接线圈柱（左黑帽 −、右红帽 +）
+  for (const [s, dark] of [[-1, true], [1, false]]) {
+    const px = cx + s * 52 * sc
+    const py = baseY - 9 * sc
+    ctx.fillStyle = dark ? '#2C3238' : '#C0392B'
+    ctx.beginPath(); ctx.arc(px, py, 4.4 * sc, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = dark ? '#15191D' : '#8E2418'; ctx.lineWidth = 0.9 * sc
+    ctx.beginPath(); ctx.arc(px, py, 4.4 * sc, 0, Math.PI * 2); ctx.stroke()
+    ctx.fillStyle = 'rgba(255,255,255,0.30)'
+    ctx.beginPath(); ctx.arc(px - 1.4 * sc, py - 1.6 * sc, 1.5 * sc, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = '#C98A3E'; ctx.lineWidth = 1.1 * sc
+    ctx.beginPath(); ctx.ellipse(px, py + 3.8 * sc, 3.4 * sc, 1.1 * sc, 0, 0, Math.PI * 2); ctx.stroke()
+  }
 }
 
 // ─── 画辅助 ───
