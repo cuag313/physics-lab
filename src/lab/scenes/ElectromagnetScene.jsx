@@ -746,7 +746,8 @@ function drawEM(ctx, cx, baseY, o) {
   }
   ctx.stroke()
   ctx.lineCap = 'butt'
-  // 两根引线：只画"铁芯下沿以外"的可见部分 —— 穿过铁芯的那一段被挡住，不画（也不是虚线）
+  // 两根引线：右引线只画"铁芯下沿以外"的可见部分（穿过铁芯那截被挡住，不画）；
+  // 左引线保持手绘稿的走法 —— 从上沿一路斜穿铁芯接干线
   ctx.strokeStyle = wire; ctx.lineWidth = 2.6 * sc
   const leadFrom = (x0, y0, x1, y1) => {
     const yBot = cy + rCore
@@ -754,7 +755,7 @@ function drawEM(ctx, cx, baseY, o) {
     const xb = x0 + (x1 - x0) * t
     ctx.beginPath(); ctx.moveTo(xb, yBot); ctx.lineTo(x1, y1); ctx.stroke()
   }
-  leadFrom(cL, cy - rCore, g.lp.x, g.lp.y)
+  ctx.beginPath(); ctx.moveTo(cL, cy - rCore); ctx.lineTo(g.lp.x, g.lp.y); ctx.stroke()
   leadFrom(xEnd, cy - rCore, g.rp.x, g.rp.y)
 
   // ── 磁极标记：左端 N、右端 S（由绕向 + 电流方向决定）
