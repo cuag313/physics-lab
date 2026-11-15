@@ -1881,7 +1881,9 @@ export const TYPES = {
       const Rcoil = coreH / 2 + 8
       const rCore = coreH / 2
       const yT0 = axisY - coreH / 2, yB0 = axisY + coreH / 2
-      const xStart = cL, xEnd = cR
+      const xStart = cL
+      const xEndC = cL + gapX * (loops - Math.asin(rCore / Rcoil) / Math.PI)
+      const xEnd = xEndC
       const phase0 = Math.asin(rCore / Rcoil)
       let dPath = '', pen = false
       for (let x = xStart; x <= xEnd + 0.01; x += 0.8) {
@@ -1920,9 +1922,9 @@ export const TYPES = {
     <svg width="210" height="200" viewBox="0 0 210 200">
       ${coreSvg}
       ${!core ? `<text x="105" y="${axisY + liftY + coreH / 2 + 16}" text-anchor="middle" font-size="8" font-weight="700" fill="#DC2626">铁芯已抽出（磁性骤减）</text>` : ''}
-      <!-- 引出线：两端都从上沿收笔处斜下穿过铁芯 → 两个接线柱 -->
+      <!-- 引出线：左从上沿收笔处斜下穿过铁芯；右从下沿收笔处直接向下 → 两个接线柱 -->
       <path d="M${cL.toFixed(1)} ${(axisY - rCore).toFixed(1)} L48 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
-      <path d="M${cR.toFixed(1)} ${(axisY - rCore).toFixed(1)} L162 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
+      <path d="M${xEnd.toFixed(1)} ${(axisY + rCore).toFixed(1)} L162 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
       ${coil}
       ${field}
       ${pinMarks}

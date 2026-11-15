@@ -727,26 +727,30 @@ function drawEM(ctx, cx, baseY, o) {
   const gapX = coilW / loops              // 每圈轴向长度 = 正弦的一个周期
   const Rcoil = coreH / 2 + 8 * sc        // 线圈半径（比铁芯粗一圈）
   const rCore = coreH / 2                 // 铁芯半径
-  // ↓ 起笔相位：让 x=cL 处正好落在铁芯**上沿**、且刚由背面转入前面（sin=+r/R, cos>0）
-  //   于是最左一圈收在上沿、左引线从上沿往下穿过铁芯接干线；最右一圈同样收在上沿
-  const phase0 = Math.asin(rCore / Rcoil)
+  // ↓ 左端起笔：x=cL 处落在铁芯**上沿**、且正在由背面转入前面（sin=+r/R 递增，cos>0）
+  //   左引线就从这里往下斜穿过铁芯接干线（手绘里那根"从上斜穿过铁芯"的线）
+  //   右端收笔：让终点落在铁芯**下沿**（刚从背面出来处），右干线直接接这一点，
+  //   于是右端不会再出现"翘到铁芯上方的尖角"
+  const kRatio = rCore / Rcoil
+  const phase0 = Math.asin(kRatio)
+  const xEnd = cL + gapX * (loops - Math.asin(kRatio) / Math.PI)
   ctx.strokeStyle = wire; ctx.lineWidth = 2.9 * sc; ctx.lineCap = 'round'
   ctx.beginPath()
   let pen = false
-  for (let x = cL; x <= cR + 0.01; x += 0.6) {
+  for (let x = cL; x <= xEnd + 0.01; x += 0.6) {
     const th = (2 * Math.PI * (x - cL)) / gapX + phase0
     const sy = Math.sin(th), cz = Math.cos(th)
     const yy = cy - Rcoil * sy
-    const hidden = cz < 0 && Math.abs(sy) < rCore / Rcoil
+    const hidden = cz < 0 && Math.abs(sy) < kRatio
     if (hidden) { pen = false; continue }
     if (!pen) { ctx.moveTo(x, yy); pen = true } else { ctx.lineTo(x, yy) }
   }
   ctx.stroke()
   ctx.lineCap = 'butt'
-  // 两根引线：都从铁芯上沿收笔处下来，穿过铁芯接到干线
+  // 两根引线：左从上沿收笔处斜下穿过铁芯；右从下沿收笔处直接向下 —— 都接干线
   ctx.strokeStyle = wire; ctx.lineWidth = 2.6 * sc
   ctx.beginPath(); ctx.moveTo(cL, cy - rCore); ctx.lineTo(g.lp.x, g.lp.y); ctx.stroke()
-  ctx.beginPath(); ctx.moveTo(cR, cy - rCore); ctx.lineTo(g.rp.x, g.rp.y); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(xEnd, cy + rCore); ctx.lineTo(g.rp.x, g.rp.y); ctx.stroke()
 
   // ── 磁极标记：左端 N、右端 S（由绕向 + 电流方向决定）
   if (on && core) {
@@ -863,10 +867,12 @@ function emGeom(cx, baseY, sc, turns) {
   const loops = turns === 10 ? 5 : turns === 20 ? 7 : 9
   const gapX = coilW / loops
   const Rcoil = coreH / 2 + 8 * sc
+  const rCore = coreH / 2
+  const xEnd = cL + gapX * (loops - Math.asin(rCore / Rcoil) / Math.PI)
   return {
-    cy, coreLen, coreH, coilW, coilH, cL, cR, cT, cB, loops, gapX, Rcoil,
+    cy, coreLen, coreH, coilW, coilH, cL, cR, cT, cB, loops, gapX, Rcoil, xEnd,
     lp: { x: cL - 8 * sc, y: cy + Rcoil + 12 * sc },   // 左引线：从上沿收笔处斜下穿过铁芯 → 落点
-    rp: { x: cR + 8 * sc, y: cy + Rcoil + 12 * sc },   // 右引线：从上沿收笔处斜下穿过铁芯 → 落点
+    rp: { x: xEnd + 8 * sc, y: cy + Rcoil + 12 * sc }, // 右引线：从下沿收笔处直接向下 → 落点
     nL: { x: cx - (coreLen / 2 + 21 * sc), y: cy },  // 左端小磁针
     nR: { x: cx + (coreLen / 2 + 21 * sc), y: cy },  // 右端小磁针
     nr: 13.5 * sc,
