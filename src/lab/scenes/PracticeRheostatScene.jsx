@@ -45,6 +45,8 @@ export default function PracticeRheostatScene() {
     ratio: 1,               // 滑片位置：1 = 阻值最大（右端）
     wireColor: '#F44336',
     dragging: false,
+    cardScroll: 0,
+    cardDrag: null,
   })
 
   const [tab, setTab] = useState(1)
@@ -276,11 +278,13 @@ export default function PracticeRheostatScene() {
       ctx.font = `bold ${lay.font.body}px sans-serif`
       ctx.fillText(on ? '● 通路' : '○ 断路', px, ky)
       ctx.textBaseline = 'alphabetic'
+      canvasRef.current._cardBox = null
       return
     }
 
-    drawKnowledgeCard(ctx, panel, SECTIONS, {
+    const cardOut = drawKnowledgeCard(ctx, panel, SECTIONS, {
       title: '📖 滑动变阻器知识',
+      scroll: s.cardScroll,
       tip: (c, tx, ty) => {
         if (on) {
           c.fillStyle = '#C2410C'
@@ -291,6 +295,9 @@ export default function PracticeRheostatScene() {
         }
       },
     })
+    canvasRef.current._cardBox = cardOut
+      ? { x: panel.x, y: panel.y + 2, w: panel.w, h: cardOut.cardH, maxScroll: cardOut.maxScroll, scroll: cardOut.scroll }
+      : null
     ctx.textBaseline = 'alphabetic'
   }
 
@@ -362,6 +369,11 @@ export default function PracticeRheostatScene() {
     if (e.button !== 0) return
     const { x, y } = getPos(e)
     if (S.current.tab !== 1) return
+    const box = canvasRef.current._cardBox
+    if (box && box.maxScroll > 0 && x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h) {
+      S.current.cardDrag = { y0: y, s0: S.current.cardScroll }
+      return
+    }
     for (const a of canvasRef.current._clickAreas) {
       if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) {
         S.current.dragging = !!a.onDrag
@@ -372,17 +384,39 @@ export default function PracticeRheostatScene() {
   }, [])
 
   const handleMouseMove = useCallback((e) => {
-    if (!S.current.dragging || S.current.tab !== 1) return
+    if (S.current.tab !== 1) return
+    if (S.current.cardDrag) {
+      const { y } = getPos(e)
+      const box = canvasRef.current._cardBox
+      const b = S.current.cardDrag
+      S.current.cardScroll = Math.max(0, Math.min(box?.maxScroll || 0, b.s0 - (y - b.y0)))
+      forceUpdate(n => n + 1)
+      return
+    }
+    if (!S.current.dragging) return
     const { x } = getPos(e)
     const a = canvasRef.current._clickAreas.find((k) => k.onDrag)
     a?.onDrag?.(x)
   }, [])
 
-  const handleMouseUp = useCallback(() => { S.current.dragging = false }, [])
+  const handleMouseUp = useCallback(() => {
+    S.current.dragging = false
+    S.current.cardDrag = null
+  }, [])
+
+  const handleWheel = useCallback((e) => {
+    const box = canvasRef.current?._cardBox
+    if (!box || !box.maxScroll) return
+    const { x, y } = getPos(e)
+    if (x < box.x || x > box.x + box.w || y < box.y || y > box.y + box.h) return
+    S.current.cardScroll = Math.max(0, Math.min(box.maxScroll, S.current.cardScroll + e.deltaY))
+    forceUpdate(n => n + 1)
+  }, [])
 
   const handleReset = useCallback(() => {
     S.current.switchClosed = false
     S.current.ratio = 1
+    S.current.cardScroll = 0
     builderRef.current?.reset()
     forceUpdate(n => n + 1)
   }, [])
@@ -417,6 +451,7 @@ export default function PracticeRheostatScene() {
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
+          onWheel={handleWheel}
         />
         {tab === 2 && (
           <BuilderSVG ref={builderRef} wireColor={S.current.wireColor} />
