@@ -394,13 +394,29 @@ describe('电磁铁（线圈 + 软铁芯）', () => {
     [{ id: 1, type: 'battery' }, { id: 2, type: 'electromagnet', turns, core }],
     [{ id: 1, a: '1:p', b: '2:a' }, { id: 2, a: '2:b', b: '1:n' }])
 
-  it('线圈电阻随匝数增加：R = 0.25Ω × 匝数', () => {
+  it('线圈电阻随匝数增加：R = 0.12Ω × 匝数', () => {
     for (const turns of [10, 20, 30]) {
       const out = em(turns, true)
-      expect(out[2]._R).toBeCloseTo(0.25 * turns, 9)
-      expect(out[2]._I).toBeCloseTo(3 / (0.25 * turns + CFG.VS.r), 9)
+      expect(out[2]._R).toBeCloseTo(CFG.EM_R_PER_TURN * turns, 9)
+      expect(out[2]._I).toBeCloseTo(3 / (CFG.EM_R_PER_TURN * turns + CFG.VS.r), 9)
       expect(out[2]._turns).toBe(turns)
     }
+  })
+
+  it('同一电路下匝数越多磁性越强（滑变不动也能看出差别）', () => {
+    // 串一个 10Ω 定值电阻代替滑变，限住电流，避免三档都吸满（封顶 15 针）
+    const emR = (turns) => loop(
+      [{ id: 1, type: 'battery' }, { id: 2, type: 'electromagnet', turns, core: true }, { id: 3, type: 'resistor10' }],
+      [
+        { id: 1, a: '1:p', b: '2:a' },
+        { id: 2, a: '2:b', b: '3:a' },
+        { id: 3, a: '3:b', b: '1:n' },
+      ])
+    const p10 = emR(10)[2]._pins
+    const p20 = emR(20)[2]._pins
+    const p30 = emR(30)[2]._pins
+    expect(p20).toBeGreaterThan(p10)
+    expect(p30).toBeGreaterThan(p20)
   })
 
   it('磁性 ∝ N·I，针数 = floor(N·I / 1.2)；抽出铁芯后只剩 1/4', () => {
@@ -409,8 +425,8 @@ describe('电磁铁（线圈 + 软铁芯）', () => {
     const s1 = withCore[2]._strength, s2 = noCore[2]._strength
     expect(s1).toBeCloseTo(20 * withCore[2]._I, 9)
     expect(s2).toBeCloseTo(s1 * CFG.EM_CORE_MU, 9)   // 同一电流，磁性只剩 1/4
-    expect(withCore[2]._pins).toBe(Math.floor(s1 / CFG.EM_PIN_K))
-    expect(noCore[2]._pins).toBe(Math.floor(s2 / CFG.EM_PIN_K))
+    expect(withCore[2]._pins).toBe(Math.min(CFG.EM_PIN_MAX, Math.floor(s1 / CFG.EM_PIN_K)))
+    expect(noCore[2]._pins).toBe(Math.min(CFG.EM_PIN_MAX, Math.floor(s2 / CFG.EM_PIN_K)))
     expect(withCore[2]._pins).toBeGreaterThan(noCore[2]._pins)
   })
 
