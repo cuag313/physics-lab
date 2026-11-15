@@ -61,6 +61,7 @@ export default function ElectromagnetScene() {
     dragging: false,
     cardScroll: 0,
     cardDrag: null,
+    needle: { ang: 0, vel: 0 },  // 两端小磁针的指针角度（0 = N 朝右；通电后转到 π = N 朝左）
   })
 
   const [tab, setTab] = useState(1)
@@ -82,6 +83,12 @@ export default function ElectromagnetScene() {
     const loop = () => {
       const s = S.current
       s.time += 1 / 60
+      // 小磁针：通电且有铁芯时受磁场作用转到"异名磁极相吸"的方向（阻尼摆动）
+      const tgt = (s.switchClosed && s.core) ? Math.PI : 0
+      const nd = s.needle
+      nd.vel += (tgt - nd.ang) * 0.055
+      nd.vel *= 0.885
+      nd.ang += nd.vel
       render(R)
       animRef.current = requestAnimationFrame(loop)
     }
@@ -174,7 +181,8 @@ export default function ElectromagnetScene() {
     const battX = x0 + loopW * 0.14
     const emX = x0 + loopW * 0.56
     const swX = x0 + loopW * 0.86
-    const gap = 104 * scale         // 电磁铁横躺后的占位半宽（导线在底座两侧接入）
+    const gap = 118 * scale         // 电磁铁横躺后的占位半宽（导线接在线圈两端、绕开小磁针）
+    const eg = emGeom(emX, y1, scale, sol.turns)
 
     const wc = on ? '#1565C0' : '#9aa7b1'
     const ink = on ? SYM_INK : '#7c8a93'
@@ -192,7 +200,12 @@ export default function ElectromagnetScene() {
     drawLine(ctx, x1, y0, x1, y1, wc, lw)
     drawLine(ctx, x0, y0, x0, y1, wc, lw)
     drawLine(ctx, x0, y1, battX - hBat, y1, wc, lw)
+    // 电磁铁：导线直接接到线圈两端 —— 左端下侧进、右端上侧出（与绕向共同满足右手螺旋）
     drawLine(ctx, battX + hBat, y1, emX - gap, y1, wc, lw)
+    drawLine(ctx, emX - gap, y1, emX - gap, eg.lp.y, wc, lw)
+    drawLine(ctx, emX - gap, eg.lp.y, eg.lp.x, eg.lp.y, wc, lw)
+    drawLine(ctx, eg.rp.x, eg.rp.y, emX + gap, eg.rp.y, wc, lw)
+    drawLine(ctx, emX + gap, eg.rp.y, emX + gap, y1, wc, lw)
     drawLine(ctx, emX + gap, y1, swX - hSw, y1, wc, lw)
     drawLine(ctx, swX + hSw, y1, x1, y1, wc, lw)
 
@@ -205,15 +218,19 @@ export default function ElectromagnetScene() {
     // ─── 电磁铁 ───
     drawEM(ctx, emX, y1, {
       scale, turns: sol.turns, I: sol.I, pins: sol.pins,
-      core: s.core, on, time: s.time, wc,
+      core: s.core, on, time: s.time, needle: s.needle, gap,
     })
 
-    // 电子流动：从电源 + 极出发，绕一圈回到 − 极（电磁铁处贴底绕过引线）
+    // 电子流动：从电源 + 极出发，绕一圈回到 − 极（穿过线圈的一段隐藏：电流在线圈里绕圈）
     if (on) {
       const path = [
         { x: battX + hBat, y: y1 },
-        { x: emX - gap, y: y1 }, { x: emX - gap, y: y1 - 12 * scale },
-        { x: emX + gap, y: y1 - 12 * scale }, { x: emX + gap, y: y1 },
+        { x: emX - gap, y: y1 },
+        { x: emX - gap, y: eg.lp.y },
+        eg.lp,
+        eg.rp,
+        { x: emX + gap, y: eg.rp.y },
+        { x: emX + gap, y: y1 },
         { x: swX + hSw, y: y1 },
         { x: x1, y: y1 }, { x: x1, y: y0 },
         { x: amX + hMeter, y: y0 }, { x: amX - hMeter, y: y0 },
@@ -225,7 +242,7 @@ export default function ElectromagnetScene() {
         { x: x0, y: y0 }, { x: x0, y: y1 },
         { x: battX - hBat, y: y1 },
       ]
-      drawCurrentFlow(ctx, path, s.time, 0.5)
+      drawCurrentFlow(ctx, path, s.time, 0.5, { x: eg.cL, y: eg.cT, w: eg.coilW, h: eg.coilH })
     }
 
     // 开关可点
@@ -355,11 +372,11 @@ export default function ElectromagnetScene() {
         : `⚠ 超量程（0～${CFG.AMM_FS} A）—— 把滑片右移减小电流`
       let fs2 = labelFont
       ctx.font = `bold ${fs2}px sans-serif`
-      while (ctx.measureText(txt).width > geo.W * 0.9 && fs2 > 8.5) {
+      while (ctx.measureText(txt).width > loopW + 36 && fs2 > 8.5) {
         fs2 -= 0.5; ctx.font = `bold ${fs2}px sans-serif`
       }
       ctx.fillStyle = '#DC2626'; ctx.textAlign = 'center'
-      ctx.fillText(txt, x0 + geo.W / 2, y0 + 36 * scale)
+      ctx.fillText(txt, x0 + loopW / 2, y0 + 36 * scale)
     }
 
     // 滑片说明
@@ -470,7 +487,7 @@ export default function ElectromagnetScene() {
       }
     }
     if (!rows.length) {
-      rows.push([['闭合开关后点「📋 记录一组数据」，记下匝数、电流、铁芯和吸住的针数。']])
+      rows.push([['点「📋 记录一组数据」，记下匝数、电流、铁芯、吸住的针数。']])
     }
 
     return [
@@ -505,7 +522,7 @@ export default function ElectromagnetScene() {
         items: [
           [['电流表'], ['串联', '#15803D', 1], ['在回路里（'], ['+ 柱进、− 柱出', '#DC2626', 1], ['），本实验约 0.2～0.5 A，用 0～0.6 A 档。']],
           [['滑动变阻器接法「'], ['一上一下', '#15803D', 1], ['」串入电路：既改变电流，又起保护作用。']],
-          [['线圈'], ['匝数越多，导线越长、电阻越大', '#C2410C', 1], ['（本实验按每匝 0.12 Ω 计，10/20/30 匝 ≈ 1.2/2.4/3.6 Ω），所以换匝数后电流会变 —— 这正是必须重新调滑片的原因。']],
+          [['线圈'], ['匝数越多，导线越长、电阻越大', '#C2410C', 1], ['（0.12 Ω/匝，10/20/30 匝 ≈ 1.2/2.4/3.6 Ω），换匝数后电流会变，要重新调滑片。']],
           [['线圈的两个接线柱接到电路里；'], ['铁芯插在线圈中间', '#DC2626', 1], ['，插拔时先断开开关。']],
         ],
       },
@@ -514,8 +531,9 @@ export default function ElectromagnetScene() {
         items: [
           [['通电导线周围有磁场；把导线绕成'], ['线圈', '#15803D', 1], ['，每一匝的磁场叠加，'], ['匝数越多磁场越强', '#C2410C', 1], ['。']],
           [['电流越大，磁场越强：'], ['磁性 ∝ I', '#15803D', 1], ['（同一个线圈，电流加倍 → 磁性约加倍）。']],
-          [['插入'], ['软铁芯', '#15803D', 1], ['后铁芯被磁化，相当于给磁场加了一条"低阻通路"，磁性可以增大'], ['几倍到十几倍', '#DC2626', 1], ['；抽出铁芯磁性骤减。']],
-          [['所以：'], ['磁性 ∝ N × I × μ', '#DC2626', 1], ['（μ 由铁芯决定）。这也是电磁铁比永久磁铁好用的原因 —— '], ['磁性能用开关和电流随时控制', '#15803D', 1], ['。']],
+          [['插入'], ['软铁芯', '#15803D', 1], ['后铁芯被磁化，磁性可增大'], ['几倍到十几倍', '#DC2626', 1], ['；抽出铁芯磁性骤减；两端放小磁针可判磁极。']],
+          [['磁性 ∝ N × I × μ', '#DC2626', 1], ['；绕向定磁极：右手四指顺电流环绕握住线圈，拇指所指即 N 极（本实验 '], ['左端为 N 极', '#C2410C', 1], ['）。']],
+          [['小磁针怎么转：接通的瞬间磁针转动，磁针 S 极被吸向电磁铁 N 极（'], ['异名磁极相吸', '#C2410C', 1], ['）。']],
         ],
       },
       { t: '本次测量记录', c: '#15803D', items: rows },
@@ -592,6 +610,7 @@ export default function ElectromagnetScene() {
     S.current.core = true
     S.current.records = []
     S.current.cardScroll = 0
+    S.current.needle = { ang: 0, vel: 0 }
     builderRef.current?.reset()
     forceUpdate(n => n + 1)
   }, [])
@@ -683,133 +702,115 @@ export default function ElectromagnetScene() {
 
 /* ── 电磁铁（横躺）：软铁芯水平穿过密绕线圈，磁极在铁芯两端 ── */
 function drawEM(ctx, cx, baseY, o) {
-  const { scale, turns, I, pins, core, on, time, wc } = o
+  const { scale, turns, I, pins, core, on, time, needle } = o
   const sc = scale
-  const cy = baseY - 80 * sc                 // 铁芯轴线高度（横躺）
-  const coreLen = 200 * sc
-  const coreH = 26 * sc
-  const coilW = (60 + (turns - 10) * 1.5) * sc   // 匝数越多绕得越长：10/20/30 → 60/75/90
-  const coilH = 54 * sc
-  const cL = cx - coilW / 2
-  const cT = cy - coilH / 2
+  const g = emGeom(cx, baseY, sc, turns)
+  const { cy, coreLen, coreH, coilW, coilH, cL, cR, cT, cB } = g
+  const hot = on ? Math.min(1, Math.max(0, I) / 0.6) : 0
   const lift = core ? 0 : 64 * sc            // 抽出：铁芯整体抬到线圈上方
   const ccy = cy - lift
-  const hot = on ? Math.min(1, I / 0.6) : 0
-  const coilBody = on
-    ? `rgb(${Math.round(198 + 40 * hot)},${Math.round(120 + 40 * hot)},${Math.round(52 - 20 * hot)})`
-    : '#C8813E'
-  const coilEdge = on ? '#9A5B22' : '#8B5A2B'
-  const coreBody = core ? '#9AA4AF' : '#CFD6DE'
-  const coreLine = core ? '#6B7684' : '#AAB5C0'
+  const coreBody = core ? '#A8B3BE' : '#CFD6DE'
+  const coreLine = core ? '#78838F' : '#AAB5C0'
+  const wire = on
+    ? `rgb(${Math.round(198 + 38 * hot)},${Math.round(124 + 32 * hot)},${Math.round(54 - 14 * hot)})`
+    : '#C08434'
 
-  // 底座（黑色 ABS 条，导线从这里接入）
-  ctx.fillStyle = '#2B2E33'
-  ctx.beginPath(); ctx.roundRect(cx - 92 * sc, baseY - 12 * sc, 184 * sc, 12 * sc, 5 * sc); ctx.fill()
-  ctx.fillStyle = 'rgba(255,255,255,0.10)'
-  ctx.beginPath(); ctx.roundRect(cx - 88 * sc, baseY - 10.4 * sc, 176 * sc, 2.6 * sc, 1.3 * sc); ctx.fill()
-
-  // 两根引线：线圈两端 → 底座上的接线圈柱
-  ctx.strokeStyle = '#8D96A1'; ctx.lineWidth = 2 * sc
-  ctx.beginPath()
-  ctx.moveTo(cx - coilW / 2 + 2 * sc, cy + coilH / 2 - 8 * sc); ctx.lineTo(cx - 52 * sc, baseY - 8 * sc)
-  ctx.moveTo(cx + coilW / 2 - 2 * sc, cy + coilH / 2 - 8 * sc); ctx.lineTo(cx + 52 * sc, baseY - 8 * sc)
-  ctx.stroke()
-
-  // 软铁芯：水平金属棒，贯穿线圈、两端露出端面
+  // ── 软铁芯：水平金属棒贯穿线圈、两端露出（不用底座，导线直接接线圈两端）
   ctx.fillStyle = coreBody; ctx.strokeStyle = coreLine; ctx.lineWidth = 1.1 * sc
   ctx.beginPath(); ctx.roundRect(cx - coreLen / 2, ccy - coreH / 2, coreLen, coreH, coreH / 2); ctx.fill(); ctx.stroke()
-  // 顶部高光 + 端面椭圆（看得出是一根圆柱棒）
-  ctx.fillStyle = 'rgba(240,246,252,0.62)'
-  ctx.beginPath(); ctx.roundRect(cx - coreLen / 2 + 8 * sc, ccy - coreH / 2 + 4 * sc, coreLen - 16 * sc, 5 * sc, 2.5 * sc); ctx.fill()
+  ctx.fillStyle = 'rgba(240,246,252,0.48)'
+  ctx.beginPath(); ctx.roundRect(cx - coreLen / 2 + 9 * sc, ccy - coreH / 2 + 4 * sc, coreLen - 18 * sc, 3.6 * sc, 1.8 * sc); ctx.fill()
   for (const s of [-1, 1]) {
-    ctx.fillStyle = coreBody; ctx.strokeStyle = coreLine; ctx.lineWidth = 1 * sc
-    ctx.beginPath(); ctx.ellipse(cx + s * (coreLen / 2 - 2 * sc), ccy, 3.4 * sc, coreH / 2, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = core ? coreBody : '#3B4450'
+    ctx.strokeStyle = core ? coreLine : '#222B34'; ctx.lineWidth = 1 * sc
+    ctx.beginPath(); ctx.ellipse(cx + s * (coreLen / 2 - 1.5 * sc), ccy, 3.2 * sc, coreH / 2, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
   }
 
-  // ─── 线圈（密绕漆包线，横躺在铁芯上）───
-  ctx.fillStyle = coilBody; ctx.strokeStyle = coilEdge; ctx.lineWidth = 1 * sc
-  ctx.beginPath(); ctx.roundRect(cL, cT, coilW, coilH, 7 * sc); ctx.fill(); ctx.stroke()
-  // 竖直密绕条纹：一暗一亮，像一圈圈并排的漆包线
-  ctx.save()
-  ctx.beginPath(); ctx.roundRect(cL + 1.2 * sc, cT + 1.2 * sc, coilW - 2.4 * sc, coilH - 2.4 * sc, 6 * sc); ctx.clip()
-  const step = 3.3 * sc
-  for (let x = cL + 2 * sc; x < cL + coilW - 1; x += step) {
-    ctx.strokeStyle = 'rgba(110,58,18,0.92)'; ctx.lineWidth = 1.2 * sc
-    ctx.beginPath(); ctx.moveTo(x, cT); ctx.lineTo(x, cT + coilH); ctx.stroke()
-    ctx.strokeStyle = 'rgba(252,214,164,0.60)'; ctx.lineWidth = 1.0 * sc
-    ctx.beginPath(); ctx.moveTo(x + 1.35 * sc, cT); ctx.lineTo(x + 1.35 * sc, cT + coilH); ctx.stroke()
+  // ── 线圈：稀疏绕线（每圈一条正面斜线，圈间留缝透出铁芯）
+  //    正面斜线"左下 → 右上"：电流从线圈左端进入时，四指环绕方向对应 N 极在左（右手螺旋）
+  const loops = turns === 10 ? 5 : turns === 20 ? 7 : 9
+  const gapX = coilW / loops
+  ctx.strokeStyle = `rgba(150,95,35,${0.42 + 0.22 * hot})`
+  ctx.lineWidth = 1.5 * sc
+  ctx.beginPath(); ctx.moveTo(cL, cT); ctx.quadraticCurveTo(cx, cT - 4.5 * sc, cR, cT); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(cL, cB); ctx.quadraticCurveTo(cx, cB + 4.5 * sc, cR, cB); ctx.stroke()
+  ctx.lineCap = 'round'
+  for (let i = 0; i < loops; i++) {
+    const x0 = cL + gapX * (i + 0.14)
+    const x1 = x0 + gapX * 0.58
+    // 背面回线（导线绕到铁芯后面，淡）
+    ctx.strokeStyle = `rgba(120,78,34,${0.28 + 0.12 * hot})`
+    ctx.lineWidth = 1.4 * sc
+    ctx.beginPath()
+    ctx.moveTo(x1, cT + 1.2 * sc)
+    ctx.quadraticCurveTo((x0 + x1) / 2 + gapX * 0.12, cT - 6 * sc, x0 + gapX * 0.86, cT + 1.2 * sc)
+    ctx.stroke()
+    // 正面斜线：左下 → 右上
+    ctx.strokeStyle = wire
+    ctx.lineWidth = 3 * sc
+    ctx.beginPath(); ctx.moveTo(x0, cB - 1 * sc); ctx.lineTo(x1, cT + 1 * sc); ctx.stroke()
+    ctx.strokeStyle = 'rgba(255,228,186,0.66)'
+    ctx.lineWidth = 0.9 * sc
+    ctx.beginPath(); ctx.moveTo(x0 + 0.5 * sc, cB - 3 * sc); ctx.lineTo(x1 + 0.5 * sc, cT + 3 * sc); ctx.stroke()
   }
-  ctx.restore()
-  // 上下边缘压暗（圆柱弧度的观感）
-  const shd = ctx.createLinearGradient(0, cT, 0, cT + coilH)
-  shd.addColorStop(0, 'rgba(80,45,10,0.30)')
-  shd.addColorStop(0.22, 'rgba(80,45,10,0)')
-  shd.addColorStop(0.78, 'rgba(80,45,10,0)')
-  shd.addColorStop(1, 'rgba(80,45,10,0.34)')
-  ctx.save()
-  ctx.beginPath(); ctx.roundRect(cL + 1.2 * sc, cT + 1.2 * sc, coilW - 2.4 * sc, coilH - 2.4 * sc, 6 * sc); ctx.clip()
-  ctx.fillStyle = shd; ctx.fillRect(cL, cT, coilW, coilH)
-  ctx.restore()
-  // 顶部横向高光
-  ctx.fillStyle = 'rgba(255,228,192,0.34)'
-  ctx.beginPath(); ctx.roundRect(cL + 5 * sc, cT + 4 * sc, coilW - 10 * sc, 3.6 * sc, 1.8 * sc); ctx.fill()
-  // 左右端面：椭圆 + 内圈 + 铁芯截面（看得出铁芯是从线圈里穿过去的）
+  ctx.lineCap = 'butt'
+  // 线圈两端端面（看得出铁芯从中间穿过；抽芯后露出空心内腔）
   for (const s of [-1, 1]) {
     const ex = cx + s * coilW / 2
-    ctx.fillStyle = coilBody; ctx.strokeStyle = coilEdge; ctx.lineWidth = 1 * sc
-    ctx.beginPath(); ctx.ellipse(ex, cy, 5.6 * sc, coilH / 2, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = 'rgba(60,40,20,0.35)'
-    ctx.beginPath(); ctx.ellipse(ex, cy, 4.2 * sc, coilH / 2 - 4 * sc, 0, 0, Math.PI * 2); ctx.fill()
-    ctx.fillStyle = core ? coreBody : '#3B4450'
-    ctx.beginPath(); ctx.ellipse(ex - s * 0.8 * sc, cy, 3 * sc, 8.4 * sc, 0, 0, Math.PI * 2); ctx.fill()
-    ctx.strokeStyle = core ? coreLine : '#222B34'; ctx.lineWidth = 0.8 * sc
-    ctx.beginPath(); ctx.ellipse(ex - s * 0.8 * sc, cy, 3 * sc, 8.4 * sc, 0, 0, Math.PI * 2); ctx.stroke()
+    ctx.strokeStyle = `rgba(150,95,35,${0.62 + 0.18 * hot})`
+    ctx.lineWidth = 2.2 * sc
+    ctx.beginPath(); ctx.ellipse(ex, cy, 3.6 * sc, coilH / 2, 0, 0, Math.PI * 2); ctx.stroke()
+    if (!core) {
+      ctx.fillStyle = 'rgba(70,45,20,0.16)'
+      ctx.beginPath(); ctx.ellipse(ex, cy, 3.2 * sc, coilH / 2 - 2 * sc, 0, 0, Math.PI * 2); ctx.fill()
+    }
   }
+  // 两根很短的引出线（长导线由 renderDemo 接到电路上）
+  ctx.strokeStyle = wire; ctx.lineWidth = 2.2 * sc
+  ctx.beginPath(); ctx.moveTo(cL + 3 * sc, cB - 5 * sc); ctx.lineTo(g.lp.x, g.lp.y); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(cR - 3 * sc, cT + 5 * sc); ctx.lineTo(g.rp.x, g.rp.y); ctx.stroke()
 
-  // 磁极标记 N / S：标在铁芯两端露出的上方（不压磁感线）
+  // ── 磁极标记：左端 N、右端 S（由绕向 + 电流方向决定）
   if (on && core) {
     const fz = Math.max(9, Math.round(11 * sc))
     ctx.font = `bold ${fz}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillStyle = '#1D4ED8'; ctx.fillText('S', cx - 84 * sc, ccy - coreH / 2 - 9 * sc)
-    ctx.fillStyle = '#C2410C'; ctx.fillText('N', cx + 84 * sc, ccy - coreH / 2 - 9 * sc)
+    ctx.fillStyle = '#C2410C'; ctx.fillText('N', g.nL.x, ccy - coreH / 2 - 8 * sc)
+    ctx.fillStyle = '#1D4ED8'; ctx.fillText('S', g.nR.x, ccy - coreH / 2 - 8 * sc)
   }
 
-  // 磁感线：铁芯两端环绕（通电且插着铁芯时；抽芯后磁性骤减，不再画）
+  // ── 磁感线：两端环绕（通电 + 插着铁芯；抽芯后磁性骤减不再画）
   if (on && core) {
     const ph = 0.5 + 0.5 * Math.sin(time * 2.2)
-    ctx.strokeStyle = `rgba(37,99,235,${0.20 + 0.16 * ph * (0.4 + hot)})`
-    ctx.lineWidth = 1.1 * sc
+    ctx.strokeStyle = `rgba(37,99,235,${0.24 + 0.18 * ph * (0.4 + hot)})`
+    ctx.lineWidth = 1.2 * sc
     ctx.setLineDash([3.5 * sc, 3 * sc])
     for (const s of [-1, 1]) {
       for (let k = 0; k < 2; k++) {
         ctx.beginPath()
-        ctx.ellipse(cx + s * (coreLen / 2 + 2 * sc), ccy, 6 * sc, (21 + k * 7) * sc, 0, 0, Math.PI * 2)
+        ctx.ellipse(cx + s * (coreLen / 2 + 0.5 * sc), ccy, 4.8 * sc, (23 + k * 8) * sc, 0, 0, Math.PI * 2)
         ctx.stroke()
       }
     }
     ctx.setLineDash([])
   }
 
-  // 抽出铁芯时给一句提示（不标磁极）
+  // ── 抽出铁芯的提示（此时不标磁极）
   if (!core) {
     ctx.fillStyle = '#DC2626'; ctx.font = `bold ${Math.max(8, Math.round(10 * sc))}px sans-serif`
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText('铁芯已抽出（磁性骤减）', cx, ccy - coreH / 2 - 11 * sc)
+    ctx.fillText('铁芯已抽出（磁性骤减）', cx, ccy - coreH / 2 - 10 * sc)
   }
 
-  // 大头针：吸在 N 极（铁芯右端端面）下方，向两侧散开
+  // ── 大头针：吸在 N 极（左端）下方散开
   if (pins > 0) {
-    const pinX = cx + 86 * sc
+    const pinX = cx - (coreLen / 2 - 6 * sc)
     const pinY0 = core ? cy + coreH / 2 : cy + coilH / 2 - 2 * sc
-    const gapPin = Math.min(4.2, 46 / Math.max(1, pins - 1)) * sc
+    const gPin = Math.min(4.0, 42 / Math.max(1, pins - 1)) * sc
     for (let i = 0; i < pins; i++) {
-      const off = (i - (pins - 1) / 2) * gapPin
-      const y2 = pinY0 + (12 + Math.abs(off) / sc * 0.32) * sc
+      const off = (i - (pins - 1) / 2) * gPin
+      const y2 = pinY0 + (11 + Math.abs(off) / sc * 0.30) * sc
       ctx.strokeStyle = '#6B7280'; ctx.lineWidth = 1.4 * sc; ctx.lineCap = 'round'
-      ctx.beginPath()
-      ctx.moveTo(pinX + off * 0.18, pinY0 + 1 * sc)
-      ctx.lineTo(pinX + off, y2)
-      ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(pinX + off * 0.18, pinY0 + 1 * sc); ctx.lineTo(pinX + off, y2); ctx.stroke()
       ctx.fillStyle = '#94A3B8'
       ctx.beginPath(); ctx.arc(pinX + off, y2 + 1.4 * sc, 1.9 * sc, 0, Math.PI * 2); ctx.fill()
       ctx.strokeStyle = '#5B6470'; ctx.lineWidth = 0.55 * sc
@@ -817,21 +818,28 @@ function drawEM(ctx, cx, baseY, o) {
     }
     ctx.lineCap = 'butt'
   }
-  ctx.textBaseline = 'alphabetic'
 
-  // 底座上的两个接线圈柱（左黑帽 −、右红帽 +）
-  for (const [s, dark] of [[-1, true], [1, false]]) {
-    const px = cx + s * 52 * sc
-    const py = baseY - 9 * sc
-    ctx.fillStyle = dark ? '#2C3238' : '#C0392B'
-    ctx.beginPath(); ctx.arc(px, py, 4.4 * sc, 0, Math.PI * 2); ctx.fill()
-    ctx.strokeStyle = dark ? '#15191D' : '#8E2418'; ctx.lineWidth = 0.9 * sc
-    ctx.beginPath(); ctx.arc(px, py, 4.4 * sc, 0, Math.PI * 2); ctx.stroke()
-    ctx.fillStyle = 'rgba(255,255,255,0.30)'
-    ctx.beginPath(); ctx.arc(px - 1.4 * sc, py - 1.6 * sc, 1.5 * sc, 0, Math.PI * 2); ctx.fill()
-    ctx.strokeStyle = '#C98A3E'; ctx.lineWidth = 1.1 * sc
-    ctx.beginPath(); ctx.ellipse(px, py + 3.8 * sc, 3.4 * sc, 1.1 * sc, 0, 0, Math.PI * 2); ctx.stroke()
+  // ── 铁芯两端的小磁针：断开时指向地磁北（画面朝右），通电后转到"异名磁极相吸"（红 N 端朝左）
+  for (const n of [g.nL, g.nR]) {
+    const r = g.nr
+    ctx.fillStyle = 'rgba(252,249,241,0.94)'
+    ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = '#B9B0A0'; ctx.lineWidth = 1.2 * sc
+    ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI * 2); ctx.stroke()
+    ctx.strokeStyle = 'rgba(185,176,160,0.55)'; ctx.lineWidth = 0.8 * sc
+    ctx.beginPath(); ctx.arc(n.x, n.y, r - 2.4 * sc, 0, Math.PI * 2); ctx.stroke()
+    ctx.save(); ctx.translate(n.x, n.y); ctx.rotate(needle ? needle.ang : 0)
+    const L = r - 3.2 * sc, W = 1.9 * sc
+    ctx.beginPath(); ctx.moveTo(L, 0); ctx.lineTo(0, -W); ctx.lineTo(0, 0); ctx.closePath()
+    ctx.fillStyle = '#DC2626'; ctx.fill()
+    ctx.beginPath(); ctx.moveTo(-L, 0); ctx.lineTo(0, W); ctx.lineTo(0, 0); ctx.closePath()
+    ctx.fillStyle = '#2563EB'; ctx.fill()
+    ctx.restore()
+    ctx.fillStyle = '#6B7280'
+    ctx.beginPath(); ctx.arc(n.x, n.y, 1.5 * sc, 0, Math.PI * 2); ctx.fill()
   }
+
+  ctx.textBaseline = 'alphabetic'
 }
 
 // ─── 画辅助 ───
@@ -840,8 +848,8 @@ function drawLine(ctx, x1, y1, x2, y2, color, w) {
   ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
 }
 
-/** 电子流动（黄点） */
-function drawCurrentFlow(ctx, points, time, speed) {
+/** 电子流动（黄点）；skipRect 内的点不画（穿线圈那一段不出现） */
+function drawCurrentFlow(ctx, points, time, speed, skipRect) {
   let totalLen = 0; const segs = []
   for (let i = 0; i < points.length - 1; i++) {
     const dx = points[i + 1].x - points[i].x, dy = points[i + 1].y - points[i].y
@@ -855,10 +863,31 @@ function drawCurrentFlow(ctx, points, time, speed) {
     for (const seg of segs) {
       if (pos <= seg.len) {
         const r = pos / seg.len
-        ctx.beginPath(); ctx.arc(seg.x + (seg.ex - seg.x) * r, seg.y + (seg.ey - seg.y) * r, 3, 0, Math.PI * 2); ctx.fill()
+        const px = seg.x + (seg.ex - seg.x) * r, py = seg.y + (seg.ey - seg.y) * r
+        if (skipRect && px > skipRect.x && px < skipRect.x + skipRect.w
+          && py > skipRect.y && py < skipRect.y + skipRect.h) break
+        ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI * 2); ctx.fill()
         break
       }
       pos -= seg.len
     }
+  }
+}
+
+/** 电磁铁（横躺 "裸绕" 螺线管）的几何：drawEM 与导线/电子路径共用，保证接线口对得上 */
+function emGeom(cx, baseY, sc, turns) {
+  const cy = baseY - 66 * sc
+  const coreLen = 160 * sc, coreH = 26 * sc
+  const coilW = (58 + (turns - 10) * 1.5) * sc
+  const coilH = 54 * sc
+  const cL = cx - coilW / 2, cR = cx + coilW / 2
+  const cT = cy - coilH / 2, cB = cy + coilH / 2
+  return {
+    cy, coreLen, coreH, coilW, coilH, cL, cR, cT, cB,
+    lp: { x: cL - 8 * sc, y: cB + 2 * sc },   // 左引线：线圈左端下方
+    rp: { x: cR + 8 * sc, y: cT - 2 * sc },   // 右引线：线圈右端上方
+    nL: { x: cx - (coreLen / 2 + 21 * sc), y: cy },  // 左端小磁针
+    nR: { x: cx + (coreLen / 2 + 21 * sc), y: cy },  // 右端小磁针
+    nr: 13.5 * sc,
   }
 }
