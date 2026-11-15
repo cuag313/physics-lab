@@ -53,6 +53,8 @@ export default function OhmsLawScene() {
     pts: [],                // [{ x, y, u, i }] 已描的点（x：Ⅰ 是 U，Ⅱ 是 R，Ⅲ 是 I）
     wireColor: '#F44336',
     dragging: false,
+    cardScroll: 0,          // 知识卡片滚动偏移
+    cardDrag: null,         // 按住卡片上下拖动时的起点
   })
 
   const [tab, setTab] = useState(1)
@@ -116,13 +118,25 @@ export default function OhmsLawScene() {
     const s = S.current
     const on = s.switchClosed
     const sol = solve()
-    const lay = fitLayout(W, H)
+    const layBase = fitLayout(W, H)
+    /* 「半紧凑」：宽而矮的窗口（例如 1280×640）仍然保留右侧知识卡，只把电路压扁；
+       真正极端的窄条（W < 900 或 H < 400）才退回紧凑模式——否则知识卡会整块消失，
+       用户会觉得「文字说明没显示出来」。 */
+    const lay = (layBase.compact && W >= 900 && H >= 400)
+      ? {
+        compact: false,
+        circuit: { L: W * 0.04, R: W * 0.52, T: 48, B: H - 40 },
+        readout: layBase.readout,
+        guide: null,
+        font: { title: 15, label: 10, body: 12, data: 12 },
+      }
+      : layBase
 
     /* ── 知识卡片（与简单电路同一套几何）── */
     const RAIL = 46
     let panel
     if (!lay.compact) {
-      const pw = Math.max(360, Math.min(W * (H < 820 ? 0.52 : 0.40), 780))
+      const pw = Math.max(360, Math.min(W * (H < 820 ? 0.44 : 0.40), 780))
       panel = { x: W - 16 - RAIL - pw, y: 10, w: pw, h: H - 20 }
       lay.circuit.R = Math.min(lay.circuit.R, panel.x - 20)
     } else {
@@ -137,11 +151,20 @@ export default function OhmsLawScene() {
 
     const scaleOf = (w) => Math.max(0.55, Math.min(1.1, w / 420))
     let loopW = Math.min(areaW * 0.76, 640)
+    // 回路下方还要放「三枚药丸 + 记录按钮 + 描点图」，按总高反解最大可行的回路宽：
+    // 矮窗口（如 1280×640）里如果只按比例塞，回路会被压成一条，所有标签叠在一起。
+    const fits = (wCand) => {
+      const sc = scaleOf(wCand)
+      return wCand * 0.52 + 50 * sc + 258 * sc + 6 <= areaH
+    }
+    let loW = 180, hiW = loopW
+    for (let i = 0; i < 14; i++) {
+      const midW = (loW + hiW) / 2
+      if (fits(midW)) loW = midW; else hiW = midW
+    }
+    loopW = Math.max(180, loW)
     let chipUp = 50 * scaleOf(loopW)
     let chipDn = 258 * scaleOf(loopW)
-    const room = areaH - (chipUp + chipDn + 6)
-    if (room > 60) loopW = Math.min(loopW, room / 0.52)
-    chipUp = 50 * scaleOf(loopW); chipDn = 258 * scaleOf(loopW)
     const scale = scaleOf(loopW)
     const loopH = loopW * 0.52
     const x0 = left + (areaW - loopW) / 2
@@ -236,7 +259,7 @@ export default function OhmsLawScene() {
 
     // ─── 回路下方：左侧一列（三枚实验药丸 + 记录按钮），右侧实时描点图 ───
     const belowY = y1 + 46 * scale
-    const colW = 216 * scale, bh = 28 * scale
+    const colW = Math.min(216 * scale, loopW * 0.46), bh = 28 * scale
     const pill1 = { x: x0, y: belowY, w: colW, h: bh }
     const pill2 = { x: x0, y: belowY + 35 * scale, w: colW, h: bh }
     const pill3 = { x: x0, y: belowY + 70 * scale, w: colW, h: bh }
@@ -306,7 +329,7 @@ export default function OhmsLawScene() {
 
     ctx.fillStyle = '#667'; ctx.font = `${labelFont}px sans-serif`
     ctx.fillText(
-      s.mode === 3 ? `电源  E = ${EMF.toFixed(2)} V，r = ${R_INT.toFixed(1)} Ω` : '电源',
+      s.mode === 3 ? `E = ${EMF.toFixed(2)} V　r = ${R_INT.toFixed(1)} Ω` : '电源',
       battX, y1 + 20 * scale
     )
     ctx.fillText(on ? '开关（闭合）' : '开关（断开）', swX, y1 + 20 * scale)
@@ -315,12 +338,12 @@ export default function OhmsLawScene() {
 
     // 定值电阻标签（实验 Ⅱ / Ⅲ 可点换值）
     const canSwapR = s.mode !== 1
+    const rTxt = scale < 1.0
+      ? (canSwapR ? `R=${sol.R}Ω ▸换值` : `R=${R_FIXED}Ω（不变）`)
+      : (canSwapR ? `R = ${sol.R} Ω ▸ 点我换值` : `R = ${R_FIXED} Ω（不变）`)
     ctx.fillStyle = canSwapR ? '#C2410C' : '#667'
     ctx.font = `${canSwapR ? 'bold ' : ''}${labelFont}px sans-serif`
-    ctx.fillText(
-      canSwapR ? `R = ${sol.R} Ω ▸ 点我换值` : `R = ${R_FIXED} Ω（不变）`,
-      rxX, y1 + 20 * scale
-    )
+    ctx.fillText(rTxt, rxX, y1 + 20 * scale)
     if (canSwapR) {
       canvasRef.current._clickAreas.push({
         x: rxX - 62 * scale, y: y1 + 16 * scale, w: 124 * scale, h: 20 * scale,
@@ -376,12 +399,12 @@ export default function OhmsLawScene() {
       ctx.fillStyle = '#E53935'
       ctx.beginPath(); ctx.moveTo(ax, yb - 10 * scale)
       ctx.lineTo(ax - 5 * scale, yb); ctx.lineTo(ax + 5 * scale, yb); ctx.closePath(); ctx.fill()
-      ctx.font = `bold ${labelFont + 1}px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText('电流 I', ax + 10 * scale, (ya + yb) / 2)
+      ctx.font = `bold ${labelFont + 1}px sans-serif`; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+      ctx.fillText('电流 I', ax + 10 * scale, ya + 8 * scale)
       ctx.fillStyle = '#B8860B'; ctx.font = `${labelFont}px sans-serif`
       ctx.textAlign = 'center'; ctx.textBaseline = 'top'
       ctx.fillText('e⁻↓', ax + 10 * scale, yb + 10 * scale)
-      ctx.fillText('e⁻→', x0 + loopW * 0.5, y0 + 21 * scale)
+      ctx.fillText('e⁻→', x0 + loopW * 0.50, y0 + 21 * scale)
     }
 
     // ─── 知识卡片 ───
@@ -400,11 +423,13 @@ export default function OhmsLawScene() {
       ctx.font = `bold ${lay.font.body}px sans-serif`
       ctx.fillText(on ? '● 通路' : '○ 断路', px, ky)
       ctx.textBaseline = 'alphabetic'
+      canvasRef.current._cardBox = null
       return
     }
 
-    drawKnowledgeCard(ctx, panel, SECTIONS, {
+    const cardOut = drawKnowledgeCard(ctx, panel, SECTIONS, {
       title: '📖 欧姆定律知识',
+      scroll: s.cardScroll,
       tip: (c, tx, ty) => {
         if (on) {
           c.fillStyle = '#C2410C'
@@ -425,6 +450,10 @@ export default function OhmsLawScene() {
         }
       },
     })
+    canvasRef.current._cardBox = {
+      x: panel.x, y: panel.y + 2, w: panel.w, h: cardOut.cardH,
+      maxScroll: cardOut.maxScroll, scroll: cardOut.scroll,
+    }
     ctx.textBaseline = 'alphabetic'
   }
 
@@ -435,6 +464,7 @@ export default function OhmsLawScene() {
     s.mode = m
     s.pts = []
     s.ratio = m === 1 ? 1 : 0
+    s.cardScroll = 0
     forceUpdate(n => n + 1)
   }
 
@@ -556,6 +586,12 @@ export default function OhmsLawScene() {
     if (e.button !== 0) return
     const { x, y } = getPos(e)
     if (S.current.tab !== 1) return
+    // 知识卡片内容较多时：按住卡片上下拖动即可滚动
+    const box = canvasRef.current._cardBox
+    if (box && box.maxScroll > 0 && x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h) {
+      S.current.cardDrag = { y0: y, s0: S.current.cardScroll }
+      return
+    }
     for (const a of canvasRef.current._clickAreas) {
       if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) {
         S.current.dragging = !!a.onDrag
@@ -566,13 +602,34 @@ export default function OhmsLawScene() {
   }, [])
 
   const handleMouseMove = useCallback((e) => {
-    if (!S.current.dragging || S.current.tab !== 1) return
+    if (S.current.tab !== 1) return
+    if (S.current.cardDrag) {
+      const { y } = getPos(e)
+      const box = canvasRef.current._cardBox
+      const b = S.current.cardDrag
+      S.current.cardScroll = Math.max(0, Math.min(box?.maxScroll || 0, b.s0 - (y - b.y0)))
+      forceUpdate(n => n + 1)
+      return
+    }
+    if (!S.current.dragging) return
     const { x } = getPos(e)
     const a = canvasRef.current._clickAreas.find((k) => k.onDrag)
     a?.onDrag?.(x)
   }, [])
 
-  const handleMouseUp = useCallback(() => { S.current.dragging = false }, [])
+  const handleMouseUp = useCallback(() => {
+    S.current.dragging = false
+    S.current.cardDrag = null
+  }, [])
+
+  const handleWheel = useCallback((e) => {
+    const box = canvasRef.current?._cardBox
+    if (!box || !box.maxScroll) return
+    const { x, y } = getPos(e)
+    if (x < box.x || x > box.x + box.w || y < box.y || y > box.y + box.h) return
+    S.current.cardScroll = Math.max(0, Math.min(box.maxScroll, S.current.cardScroll + e.deltaY))
+    forceUpdate(n => n + 1)
+  }, [])
 
   const handleReset = useCallback(() => {
     S.current.switchClosed = false
@@ -580,6 +637,7 @@ export default function OhmsLawScene() {
     S.current.ratio = 1
     S.current.rIdx = 1
     S.current.pts = []
+    S.current.cardScroll = 0
     builderRef.current?.reset()
     forceUpdate(n => n + 1)
   }, [])
@@ -614,6 +672,7 @@ export default function OhmsLawScene() {
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
+          onWheel={handleWheel}
         />
         {tab === 2 && (
           <BuilderSVG ref={builderRef} wireColor={S.current.wireColor} />
@@ -691,7 +750,7 @@ function drawPill(ctx, r, text, active, scale) {
 function drawChart(ctx, box, pts, mode, k) {
   const xMax = mode === 1 ? 3.2 : mode === 2 ? 24 : 0.6
   const yMax = mode === 1 ? 0.32 : mode === 2 ? 0.64 : 3.2
-  const padL = 34 * k, padB = 22 * k, padT = 32 * k, padR = 10 * k
+  const padL = 34 * k, padB = 22 * k, padT = 36 * k, padR = 10 * k
   const px = box.x + padL, py = box.y + box.h - padB
   const pw = box.w - padL - padR, ph = box.h - padB - padT
 
@@ -733,10 +792,10 @@ function drawChart(ctx, box, pts, mode, k) {
     ctx.fillText(formatTick(mode, (yMax * i) / 4, true), px - 5 * k, y)
   }
 
-  // 轴名（y 轴名放标题下一行，与顶端刻度错开；x 轴名在右下）
+  // 轴名（短标题时放第一行左侧；长标题时放第二行，避开顶端刻度）
   ctx.fillStyle = '#8A7256'; ctx.font = `bold ${Math.max(8, Math.round(9.5 * k))}px sans-serif`
   ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-  ctx.fillText(mode === 3 ? 'U / V' : 'I / A', box.x + 8 * k, box.y + 18 * k)
+  ctx.fillText(mode === 3 ? 'U / V' : 'I / A', box.x + 8 * k, box.y + (useTitle === titleShort ? 6 : 18) * k)
   ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'
   ctx.fillText(mode === 1 ? 'U / V' : mode === 2 ? 'R / Ω' : 'I / A', px + pw, py - 5 * k)
 

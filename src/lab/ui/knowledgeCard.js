@@ -36,11 +36,16 @@ export function drawKnowledgeCard(ctx, rect, SECTIONS, opts = {}) {
     return total
   }
 
-  const FITS = [13, 12.5, 12, 11.5, 11, 10.5, 10, 9.5, 9, 8.5, 8]
+  const FITS = [13, 12.5, 12, 11.5, 11, 10.5, 10, 9.5, 9]
   let fs = FITS[FITS.length - 1], contentH = 0
   for (const cand of FITS) { fs = cand; contentH = measure(cand); if (headH + contentH + tipH + 14 <= h) break }
   const cardH = Math.min(h, headH + contentH + tipH + 14)
   const R = rhythm(fs)
+  // 内容装不下时改为「可上下滚动」：内容区高度固定，滚轮/拖动查看其余部分
+  const viewH = Math.max(40, cardH - headH - tipH - 4)
+  const maxScroll = Math.max(0, Math.round(contentH - viewH))
+  const scroll = Math.max(0, Math.min(opts.scroll || 0, maxScroll))
+  const fsUsed = fs
 
   ctx.save()
   // 卡片：暖白渐变 + 暖描边 + 柔和投影（高度=内容高，不留大片空白）
@@ -70,11 +75,13 @@ export function drawKnowledgeCard(ctx, rect, SECTIONS, opts = {}) {
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
   ctx.fillText(title, x + pad + tW / 2, y + 12 + tH / 2 + 1)
 
-  // 内容区裁剪：极端小窗口下也保证字只在框内、不压到底部读数行
+  // 内容区裁剪（从标题药丸下方开始，滚上去的内容不会盖住标题）
+  const clipTop = y + headH - 6
   ctx.save()
   ctx.beginPath()
-  ctx.rect(left - 6, y + 2, maxW + 12, cardH - tipH - 2)
+  ctx.rect(left - 8, clipTop, maxW + 16, viewH)
   ctx.clip()
+  ctx.translate(0, -scroll)
 
   let cy = y + headH
   for (const sec of SECTIONS) {
@@ -110,6 +117,23 @@ export function drawKnowledgeCard(ctx, rect, SECTIONS, opts = {}) {
   }
   ctx.restore()
 
+  // 内容装不下时给出滚动提示：右侧细滚动条 + 标题旁的小字
+  if (maxScroll > 0) {
+    const trackX = x + w - 8, trackY = clipTop + 2, trackH = viewH - 4, trackW = 3
+    ctx.fillStyle = 'rgba(226,204,178,0.75)'
+    ctx.beginPath(); ctx.roundRect(trackX, trackY, trackW, trackH, 1.5); ctx.fill()
+    const th = Math.max(16, trackH * (viewH / (viewH + maxScroll)))
+    const ty = trackY + (trackH - th) * (scroll / maxScroll)
+    ctx.fillStyle = '#E29A4B'
+    ctx.beginPath(); ctx.roundRect(trackX, ty, trackW, th, 1.5); ctx.fill()
+
+    ctx.font = '10px "Microsoft YaHei", sans-serif'
+    ctx.fillStyle = '#B08954'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    const tipTxt = maxScroll - scroll <= 2 ? '↕ 滚轮回看上' : '↕ 内容较多，滚轮上下看'
+    const tx0 = x + pad + tW + 10
+    if (tx0 + ctx.measureText(tipTxt).width + 10 < x + w) ctx.fillText(tipTxt, tx0, y + 12 + 17)
+  }
+
   // 底部读数/提示行
   if (opts.tip) {
     ctx.font = '11.5px "Microsoft YaHei", sans-serif'
@@ -120,6 +144,8 @@ export function drawKnowledgeCard(ctx, rect, SECTIONS, opts = {}) {
     opts.tip(ctx, left, tipY, maxW, fs)
   }
   ctx.restore()
+
+  return { contentH, viewH, maxScroll, scroll, fs: fsUsed, cardH }
 }
 
 /** 富文本按宽度折行：返回 {s, c, b}[] 的行数组 */
