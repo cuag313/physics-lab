@@ -62,6 +62,11 @@ export const CFG = {
   // 教材上的这支教具是「A 组 5Ω + B 组 10Ω」两段电阻丝，各配一支温度计。
   JOULE_SET_A: 5,               // A 组电阻丝（Ω）
   JOULE_SET_B: 10,              // B 组电阻丝（Ω）
+  // 探究电磁铁的磁性：线圈电阻随匝数增加（每匝 0.25Ω），磁性强弱 ∝ N·I×(铁芯 μ)
+  EM_R_PER_TURN: 0.25,          // 每匝线圈电阻（Ω）
+  EM_CORE_MU: 0.25,             // 无铁芯时的等效倍率（软铁芯磁导率远大于空气，抽出后磁性骤减）
+  EM_PIN_K: 1.2,                // N·A → 能吸住的大头针数（1 针 ≈ 1.2 N·A）
+  EM_PIN_MAX: 12,               // 显示上限（再多就画不下了）
 }
 
 /** 电阻箱拨盘 → 阻值（dials: [×1k, ×100, ×10, ×1]，各位 0~9） */
@@ -97,6 +102,7 @@ export const TERM_IDS = {
   mains: ['n', 'l'],                 // 家庭电源：零线 N / 火线 L
   jouleTube: ['a', 'b'],             // 焦耳定律 U 形管：左管 R1、右管 R2 串联，a/b 两接线柱
   jouleSet: ['a1', 'a2', 'b1', 'b2'], // 焦耳定律演示器：A 组（a1-a2）、B 组（b1-b2）两段电阻各一对柱
+  electromagnet: ['a', 'b'],         // 电磁铁（线圈 + 软铁芯）：线圈两端两接线柱
 }
 
 const keyOf = (cid, tid) => cid + ':' + tid
@@ -402,6 +408,12 @@ export function solveCircuit(comps, wires, opts) {
       stampR(A, b1, b2, CFG.JOULE_SET_B)
       els.push({ kind: 'R', a: a1, b: a2, R: CFG.JOULE_SET_A, comp: c, tA: 'a1', tB: 'a2', role: 'ja' })
       els.push({ kind: 'R', a: b1, b: b2, R: CFG.JOULE_SET_B, comp: c, tA: 'b1', tB: 'b2', role: 'jb' })
+    } else if (c.type === 'electromagnet') {
+      // 电磁铁：整支线圈就是一段电阻（匝数越多导线越长、电阻越大）
+      const a = netOf(c, 'a'), bb = netOf(c, 'b')
+      const R = CFG.EM_R_PER_TURN * (c.turns || 20)
+      stampR(A, a, bb, R)
+      els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
     }
     }
 
@@ -538,6 +550,18 @@ export function solveCircuit(comps, wires, opts) {
         o._P_B = I * I * e.R
       }
       o._I = Math.max(o._I || 0, Math.abs(I))
+    } else if (c.type === 'electromagnet') {
+      // 磁性强弱 ∝ N·I；插着软铁芯时铁芯被磁化，磁性大得多（抽出后骤减）
+      const turns = c.turns || 20
+      const core = c.core !== false
+      o._I = Math.abs(I)
+      o._R = e.R
+      o._turns = turns
+      o._core = core
+      // 开关开路在 MNA 里由大电阻模拟，会残留 1e-7 级电流；物理上应无磁性，按 1e-5 截断
+      const eff = o._I < 1e-5 ? 0 : o._I
+      o._strength = turns * eff * (core ? 1 : CFG.EM_CORE_MU)
+      o._pins = Math.min(CFG.EM_PIN_MAX, Math.max(0, Math.floor(o._strength / CFG.EM_PIN_K)))
     }
   }
 

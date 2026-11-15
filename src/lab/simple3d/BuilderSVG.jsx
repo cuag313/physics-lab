@@ -387,10 +387,20 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     }
   }
 
-  const tapComp = useCallback((c, isDouble) => {
+  const tapComp = useCallback((c, isDouble, ev) => {
     if (!c) return
     if (c.type === 'switch') {
       setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, closed: !x.closed } : x)))
+    } else if (c.type === 'electromagnet' && isDouble) {
+      // 双击电磁铁：插 / 抽软铁芯（磁性强弱对比实验的关键一步）
+      setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, core: x.core === false } : x)))
+    } else if (c.type === 'electromagnet' && ev && ev.shiftKey) {
+      // Shift + 单击：换线圈（10 → 20 → 30 → 10 匝循环），线圈电阻随之改变
+      setComps((cs) => cs.map((x) => {
+        if (x.id !== c.id) return x
+        const t = x.turns || 20
+        return { ...x, turns: t === 10 ? 20 : t === 20 ? 30 : 10 }
+      }))
     } else if (T(c) && T(c).meter && isDouble) {
       setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, showRead: !x.showRead } : x)))
     } else {
@@ -410,7 +420,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         const last = lastUpRef.current
         const isDouble = !!(last && now - last.t < 350 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 28)
         lastUpRef.current = { t: now, x: e.clientX, y: e.clientY }
-        tapComp(c, isDouble)
+        tapComp(c, isDouble, e)
       }
       return
     }
@@ -463,6 +473,9 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       const h = heatRef.current.get(c.id) || { qA: 0, qB: 0 }
       const CV = 0.15 // J/℃（与 Tab1 演示同一标度：两瓶等质量煤油，ΔT ∝ Q）
       return { tempA: 20 + h.qA / CV, tempB: 20 + h.qB / CV }
+    }
+    if (c.type === 'electromagnet') {
+      return { I: o._I || 0, pins: o._pins || 0, strength: o._strength || 0 }
     }
     if (c.type === 'bulb') {
       const p = o._P || 0
@@ -577,16 +590,20 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     if (prev.on === on && prev.swSig.split(':')[0] !== swSig.split(':')[0]) return
     const am = comps.find((c) => c.type === 'ammeter' || c.type === 'ammeterA')
     const vm = comps.find((c) => c.type === 'voltmeter')
-    const i = am ? solved[am.id]?._I : null
+    const em = comps.find((c) => c.type === 'electromagnet')
+    const i = am ? solved[am.id]?._I : (em ? solved[em.id]?._I : null)
     const u = vm ? solved[vm.id]?._V : null
     const d = solved.diagnostics || {}
     const lit = comps.filter((c) => c.type === 'bulb' && (solved[c.id]?._P || 0) > 0.001).length
     const num = (v) => (Math.abs(v) < 5e-4 ? '0.000' : (v < 0 ? '\u2212' : '') + Math.abs(v).toFixed(3))
+    const emNote = em && on
+      ? `${em.turns || 20} 匝 吸 ${solved[em.id]?._pins ?? 0} 针${em.core === false ? '（无铁芯）' : ''}`
+      : ''
     const note = d.short ? '电源短路'
       : d.ammeterParallel ? '电流表并联（误接）'
         : d.voltmeterSeries ? '电压表串联（误接）'
-          : on ? (lit ? `灯泡亮 ${lit} 只` : '电路接通')
-            : (comps.some((c) => c.type === 'bulb') ? '灯泡灭' : '电路断开')
+          : on ? (emNote || (lit ? `灯泡亮 ${lit} 只` : '电路接通'))
+            : (em && !emNote ? '电磁铁失磁' : comps.some((c) => c.type === 'bulb') ? '灯泡灭' : '电路断开')
     seqRef.current += 1
     const row = {
       n: seqRef.current,

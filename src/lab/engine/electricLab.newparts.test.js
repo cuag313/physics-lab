@@ -389,6 +389,52 @@ describe('焦耳定律演示器（A 组 5Ω + B 组 10Ω，四柱可各自接线
   })
 })
 
+describe('电磁铁（线圈 + 软铁芯）', () => {
+  const em = (turns, core) => loop(
+    [{ id: 1, type: 'battery' }, { id: 2, type: 'electromagnet', turns, core }],
+    [{ id: 1, a: '1:p', b: '2:a' }, { id: 2, a: '2:b', b: '1:n' }])
+
+  it('线圈电阻随匝数增加：R = 0.25Ω × 匝数', () => {
+    for (const turns of [10, 20, 30]) {
+      const out = em(turns, true)
+      expect(out[2]._R).toBeCloseTo(0.25 * turns, 9)
+      expect(out[2]._I).toBeCloseTo(3 / (0.25 * turns + CFG.VS.r), 9)
+      expect(out[2]._turns).toBe(turns)
+    }
+  })
+
+  it('磁性 ∝ N·I，针数 = floor(N·I / 1.2)；抽出铁芯后只剩 1/4', () => {
+    const withCore = em(20, true)
+    const noCore = em(20, false)
+    const s1 = withCore[2]._strength, s2 = noCore[2]._strength
+    expect(s1).toBeCloseTo(20 * withCore[2]._I, 9)
+    expect(s2).toBeCloseTo(s1 * CFG.EM_CORE_MU, 9)   // 同一电流，磁性只剩 1/4
+    expect(withCore[2]._pins).toBe(Math.floor(s1 / CFG.EM_PIN_K))
+    expect(noCore[2]._pins).toBe(Math.floor(s2 / CFG.EM_PIN_K))
+    expect(withCore[2]._pins).toBeGreaterThan(noCore[2]._pins)
+  })
+
+  it('断开开关：磁性、针数都归零', () => {
+    const out = loop(
+      [{ id: 1, type: 'battery' }, { id: 2, type: 'electromagnet', turns: 20, core: true }],
+      [
+        { id: 1, a: '1:p', b: '2:a' },
+        { id: 2, a: '2:b', b: '1:n' },
+      ])
+    // 用开关串进去，确认断路时没有磁性
+    const open = loop(
+      [{ id: 1, type: 'battery' }, { id: 2, type: 'switch', closed: false }, { id: 3, type: 'electromagnet', turns: 20 }],
+      [
+        { id: 1, a: '1:p', b: '2:a' },
+        { id: 2, a: '2:b', b: '3:a' },
+        { id: 3, a: '3:b', b: '1:n' },
+      ])
+    expect(open[3]._strength).toBeCloseTo(0, 9)
+    expect(open[3]._pins).toBe(0)
+    expect(out[2]._pins).toBeGreaterThan(0)
+  })
+})
+
 describe('滑动变阻器「一上一下」接法', () => {
   // 滑变内部被拆成 R1(bl→杆) / R2(杆→br) 两个电阻，逐段往 out._I 写回；
   // 取较大值：滑块停在左端时 R2 段电流≈0，直接覆盖会把"线圈在通电"抹成 0，

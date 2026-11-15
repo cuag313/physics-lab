@@ -1844,4 +1844,95 @@ export const TYPES = {
       ${termDotSVG(158, 120, false, 'B2')}
     </svg>` }
   },
+
+  /* ── 电磁铁（线圈 + 可插拔软铁芯 + 吸起的大头针）──
+   * 探究电磁铁的磁性专用器材：通电后线圈磁化铁芯，磁性强弱 ∝ 匝数 N × 电流 I，
+   * 大头针被吸在磁极上，数量就是磁性强弱的"读数"（转换法）。
+   * 双击器材可插拔铁芯（抽出后磁性骤减）。 */
+  electromagnet: {
+    label: '电磁铁', w: 210, h: 200,
+    terminals: [
+      { id: 'a', label: '−', name: '线圈接线柱（黑）', x: 58, y: 184 },
+      { id: 'b', label: '+', name: '线圈接线柱（红）', x: 152, y: 184 },
+    ],
+    render(c, dyn = {}) {
+      const turns = c.turns || 20
+      const core = c.core !== false
+      const I = Math.max(0, Number(dyn.I) || 0)
+      const pins = Number.isFinite(dyn.pins) ? dyn.pins : 0
+      const on = I > 1e-3
+      /* 绕线柱高度随匝数变：10 匝最短、30 匝最长（换线圈一眼能看出来） */
+      const cy1 = 132
+      const coilH = 52 + (turns - 10) * 0.9
+      const cy0 = cy1 - coilH
+      const coreTop = core ? 38 : 26
+      const coreH = core ? 112 : 96
+      const coreBot = coreTop + coreH
+      const hot = on ? Math.min(1, I / 0.6) : 0
+      const coilBody = on
+        ? `rgb(${Math.round(201 + 36 * hot)},${Math.round(129 + 34 * hot)},${Math.round(62 - 12 * hot)})`
+        : '#C8813E'
+      const coilEdge = on ? '#9A5B22' : '#8B5A2B'
+      /* 密绕漆包线的斜纹（一圈一圈压着绕，线圈越长画得越多） */
+      const nL = Math.max(6, Math.floor((coilH - 10) / 5.4))
+      const coilTurns = Array.from({ length: nL }, (_, i) => {
+        const y = cy0 + 5 + i * 5.4
+        return `<line x1="90" y1="${y.toFixed(1)}" x2="120" y2="${(y + 6).toFixed(1)}"
+                stroke="${coilEdge}" stroke-width="1.25" opacity="0.72"/>`
+      }).join('')
+      /* 吸住的大头针：一束从磁极散开垂下（针数 = 磁性读数） */
+      const pinBot = core ? coreBot : cy1
+      const pinMarks = Array.from({ length: pins }, (_, i) => {
+        const off = (i - (pins - 1) / 2) * 4.8
+        const tipY = pinBot + 12 + Math.abs(off) * 0.30
+        return `<g>
+        <line x1="${(105 + off * 0.22).toFixed(1)}" y1="${pinBot + 2}" x2="${(105 + off).toFixed(1)}" y2="${tipY.toFixed(1)}" stroke="#727C89" stroke-width="1.5"/>
+        <circle cx="${(105 + off).toFixed(1)}" cy="${(tipY + 1.2).toFixed(1)}" r="1.7" fill="#B9C3CE" stroke="#5b6470" stroke-width="0.5"/>
+      </g>`
+      }).join('')
+      /* 通电时铁芯顶端的磁感线（从 N 极向两侧拱起） */
+      const field = (on && core) ? [0, 1].map((k) => {
+        const r0 = 15 + k * 9
+        return `<path d="M${105 - r0 * 0.5} ${coreTop + 2} C ${105 - r0} ${coreTop - 12}, ${105 + r0} ${coreTop - 12}, ${105 + r0 * 0.5} ${coreTop + 2}"
+              fill="none" stroke="rgba(37,99,235,${0.26 + 0.2 * hot})" stroke-width="1.2" stroke-dasharray="4 3"/>`
+      }).join('') : ''
+      /* 铁芯：插着时竖立在线圈里；抽出后横放在线圈正上方（像拿下来搁在支架上） */
+      const coreSvg = core
+        ? `<rect x="95" y="${coreTop}" width="20" height="${coreH}" rx="5" fill="#9DA8B4" stroke="#6B7684" stroke-width="1.1"/>
+      <rect x="97" y="${coreTop + 4}" width="5" height="${coreH - 10}" rx="2.5" fill="#E8EEF5" opacity="0.62"/>
+      <rect x="110" y="${coreTop + 4}" width="2.4" height="${coreH - 10}" rx="1.2" fill="#6B7684" opacity="0.32"/>`
+        : `<rect x="58" y="34" width="94" height="20" rx="6" fill="#CDD5DE" stroke="#A9B5C0" stroke-width="1.1"/>
+      <rect x="62" y="36.5" width="88" height="5" rx="2.5" fill="#F0F4F9" opacity="0.75"/>
+      <text x="105" y="63" text-anchor="middle" font-size="8" font-weight="700" fill="#DC2626">铁芯已抽出（磁性骤减）</text>`
+      return `
+    <svg width="210" height="200" viewBox="0 0 210 200">
+      <g class="casing">
+        <rect x="24" y="176" width="162" height="20" rx="7" fill="#2b2e33" stroke="#14171b" stroke-width="1"/>
+        <rect x="24" y="176" width="162" height="7" rx="3.5" fill="#3a3f46" opacity=".85"/>
+      </g>
+      ${coreSvg}
+      <!-- 线圈：密绕漆包线柱（匝数越多绕得越长） -->
+      <rect x="88" y="${cy0}" width="34" height="${cy1 - cy0}" rx="7"
+            fill="${coilBody}" stroke="${coilEdge}" stroke-width="1"/>
+      ${coilTurns}
+      <rect x="89.5" y="${cy0 + 3}" width="4.2" height="${cy1 - cy0 - 6}" rx="2"
+            fill="#EFC08A" opacity="${on ? 0.5 : 0.32}"/>
+      <ellipse cx="105" cy="${cy0}" rx="17" ry="4.6" fill="${coilBody}" stroke="${coilEdge}" stroke-width="1"/>
+      <ellipse cx="105" cy="${cy1}" rx="17" ry="4.6" fill="${coilBody}" stroke="${coilEdge}" stroke-width="1"/>
+      <!-- 线圈两端引线 → 两接线柱 -->
+      <path d="M90 ${cy1} L58 182" fill="none" stroke="#8D96A1" stroke-width="2"/>
+      <path d="M120 ${cy1} L152 182" fill="none" stroke="#8D96A1" stroke-width="2"/>
+      ${field}
+      <!-- 磁极标记（只有插着铁芯、通了电才有 N/S 极） -->
+      ${on && core
+        ? `<text x="105" y="${coreTop + 12}" text-anchor="middle" font-size="10" font-weight="700" fill="#C2410C">N</text>
+           <text x="105" y="${coreBot - 8}" text-anchor="middle" font-size="10" font-weight="700" fill="#1D4ED8">S</text>`
+        : ''}
+      ${pinMarks}
+      ${termDotSVG(58, 184, true, '−')}
+      ${termDotSVG(152, 184, false, '+')}
+      ${noteChipSVG(105, 14, `${turns} 匝 · ${I.toFixed(2)} A · 吸 ${pins} 针`,
+        on ? '#93C5FD' : '#94a3b8', 156)}
+    </svg>` }
+  },
 }
