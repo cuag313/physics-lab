@@ -1784,4 +1784,64 @@ export const TYPES = {
         pulled ? '#4ade80' : '#94a3b8', 152)}
     </svg>` }
   },
+
+  /* ── 焦耳定律演示器（两支温度计 + A/B 两段发热电阻丝，4 个接线柱，可各自串进电路） ──
+   * 造型取自成套教具（江苏省华茂科教「焦耳定律实验」那支）：黄色 ABS 立板中间开跑道形孔，
+   * 两侧各插一支温度计（玻璃泡浸在发热电阻丝里），底板下沿四颗接线柱 A1/A2、B1/B2。
+   * 通电后电阻丝红热、温度计红液柱上升（热量由 BuilderSVG 按 Q = P·t 积分后传进来）。 */
+  jouleSet: {
+    label: '焦耳定律演示器', w: 210, h: 150,
+    terminals: [
+      { id: 'a1', label: 'A1', name: 'A 组（5 Ω）接线柱 1', x: 52, y: 120 },
+      { id: 'a2', label: 'A2', name: 'A 组（5 Ω）接线柱 2', x: 76, y: 120 },
+      { id: 'b1', label: 'B1', name: 'B 组（10 Ω）接线柱 1', x: 134, y: 120 },
+      { id: 'b2', label: 'B2', name: 'B 组（10 Ω）接线柱 2', x: 158, y: 120 },
+    ],
+    render(c, dyn = {}) {
+      const tA = Number.isFinite(dyn.tempA) ? dyn.tempA : 20
+      const tB = Number.isFinite(dyn.tempB) ? dyn.tempB : 20
+      const hA = Math.max(0, Math.min(1, (tA - 20) / 75))
+      const hB = Math.max(0, Math.min(1, (tB - 20) / 75))
+      const fA = hA
+      const fB = hB
+      const coilColor = (h) => (h > 0.04 ? `rgba(214,64,32,${(0.42 + 0.58 * h).toFixed(2)})` : '#b87333')
+      /* 一支温度计：白槽 + 玻璃管 + 刻度 + 红液柱 + 球泡（球泡上绕两圈发热电阻丝）
+       * 温度计本身不放进 .casing —— 透视（X-ray）时外壳淡掉，正好露出里面的丝和液柱。 */
+      const thermo = (x, frac, hot, tw) => `
+        <rect x="${x - 7}" y="4" width="14" height="92" rx="7" fill="#fffdf6" opacity="0.92"/>
+        <rect x="${x - 4.6}" y="6" width="9.2" height="86" rx="4.6" fill="#f7fbff" stroke="#b6c9d8" stroke-width="1"/>
+        ${[0, 1, 2, 3, 4].map((i) => `<line x1="${x + 1.4}" y1="${16 + i * 14}" x2="${x + 4.4}" y2="${16 + i * 14}" stroke="#a9bccb" stroke-width="0.8"/>`).join('')}
+        <rect x="${x - 1.7}" y="${(88 - frac * 66).toFixed(1)}" width="3.4" height="${Math.max(3, frac * 66).toFixed(1)}" rx="1.7" fill="#e53935"/>
+        <circle cx="${x}" cy="93" r="5.6" fill="#e53935" stroke="#c62828" stroke-width="0.7"/>
+        <ellipse cx="${x}" cy="89" rx="9.4" ry="3.4" fill="none" stroke="${coilColor(hot)}" stroke-width="1.9"/>
+        <ellipse cx="${x}" cy="95" rx="9.4" ry="3.4" fill="none" stroke="${coilColor(hot)}" stroke-width="1.9"/>
+        <text x="${x}" y="38" text-anchor="middle" font-size="7.4" font-weight="700"
+              fill="${hot > 0.3 ? '#c2410c' : '#5b6470'}"
+              font-family="ui-monospace,Consolas,monospace">${tw}℃</text>`
+      return `
+    <svg width="210" height="150" viewBox="0 0 210 150">
+      <!-- 黄色 ABS 立板（中间跑道形孔）；外壳归入 .casing，透视时淡出 -->
+      <g class="casing">
+        <rect x="40" y="6" width="130" height="120" rx="10" fill="#F2C63D" stroke="#D3A22A" stroke-width="1.2"/>
+        <rect x="40" y="6" width="130" height="9" rx="4.5" fill="#F8D96A" opacity=".75"/>
+        <rect x="93" y="20" width="26" height="66" rx="13" fill="#e9edf2" stroke="#c8ad55" stroke-width="1"/>
+        <rect x="16" y="124" width="178" height="18" rx="7" fill="#E8C25A" stroke="#C79A28" stroke-width="1.1"/>
+        <rect x="16" y="124" width="178" height="7" rx="3.5" fill="#F7DA86" opacity=".9"/>
+      </g>
+      ${thermo(64, fA, hA, tA.toFixed(0))}
+      ${thermo(146, fB, hB, tB.toFixed(0))}
+      <!-- 球泡引线 → 两组接线柱 -->
+      <path d="M59 97 L52 116" fill="none" stroke="#b87333" stroke-width="2"/>
+      <path d="M69 97 L76 116" fill="none" stroke="#b87333" stroke-width="2"/>
+      <path d="M141 97 L134 116" fill="none" stroke="#b87333" stroke-width="2"/>
+      <path d="M151 97 L158 116" fill="none" stroke="#b87333" stroke-width="2"/>
+      <!-- 组别（5Ω / 10Ω）标在球泡右边 -->
+      <text x="78" y="91" font-size="8" font-weight="700" fill="#5b4636">5Ω</text>
+      <text x="154" y="91" font-size="8" font-weight="700" fill="#5b4636">10Ω</text>
+      ${termDotSVG(52, 120, true, 'A1')}
+      ${termDotSVG(76, 120, false, 'A2')}
+      ${termDotSVG(134, 120, true, 'B1')}
+      ${termDotSVG(158, 120, false, 'B2')}
+    </svg>` }
+  },
 }

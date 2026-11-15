@@ -200,6 +200,9 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   const previewTipRef = useRef(null)
   const previewPathRef = useRef(null)
   const canvasRef = useRef(null)
+  /* 焦耳定律演示器的热量累积（每件器材各一份 qA/qB，单位 J）：引擎只给瞬时功率，
+   * 热量必须按时间积分 —— 这正是本实验要演示的 Q = P·t。 */
+  const heatRef = useRef(new Map())
   compsRef.current = comps
   wiresRef.current = wires
 
@@ -289,6 +292,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     reset() {
       setComps([]); setWires([]); setSelected(null); setPending(null)
       previewTipRef.current = null
+      heatRef.current.clear()
     },
   }), [addComp])
 
@@ -426,9 +430,40 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     return () => window.removeEventListener('keydown', kd)
   }, [selected, removeComp, removeWire])
 
+  /* ── 焦耳定律演示器：按 Q = P·t 累积热量（250ms 一步，温度真变了才重画）── */
+  useEffect(() => {
+    const id = setInterval(() => {
+      const cs = compsRef.current || []
+      const sets = cs.filter((c) => c.type === 'jouleSet')
+      if (!sets.length) return
+      const sv = solvedRef.current || {}
+      const CV = 0.15                       // J/℃：与 Tab1 同一标度
+      const QMAX = (95 - 20) * CV           // 11.25 J：上限，再高就"沸腾"了
+      const dt = 0.25
+      let dirty = false
+      for (const c of sets) {
+        const o = sv[c.id] || {}
+        const h = heatRef.current.get(c.id) || { qA: 0, qB: 0 }
+        const a0 = h.qA, b0 = h.qB
+        // 发热 P·dt + 比例散热（时间常数约 40 s：断开后温度计慢慢回落到室温）
+        h.qA = Math.min(QMAX, Math.max(0, h.qA + (o._P_A || 0) * dt - h.qA * 0.025 * dt))
+        h.qB = Math.min(QMAX, Math.max(0, h.qB + (o._P_B || 0) * dt - h.qB * 0.025 * dt))
+        heatRef.current.set(c.id, h)
+        if (Math.abs(h.qA - a0) > 0.008 || Math.abs(h.qB - b0) > 0.008) dirty = true
+      }
+      if (dirty) forceUpdate((n) => n + 1)
+    }, 250)
+    return () => clearInterval(id)
+  }, [])
+
   /* ── 求解结果 → 器材动态状态 ── */
   const dynOf = (c) => {
     const o = solved[c.id] || {}
+    if (c.type === 'jouleSet') {
+      const h = heatRef.current.get(c.id) || { qA: 0, qB: 0 }
+      const CV = 0.15 // J/℃（与 Tab1 演示同一标度：两瓶等质量煤油，ΔT ∝ Q）
+      return { tempA: 20 + h.qA / CV, tempB: 20 + h.qB / CV }
+    }
     if (c.type === 'bulb') {
       const p = o._P || 0
       return { bright: p > 0 ? Math.min(1, p / CFG.BULB_RATED) : 0, over: p > CFG.BULB_RATED * 1.02 }

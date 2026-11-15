@@ -14,7 +14,7 @@ describe('TERM_IDS 注册', () => {
   it('全部新类型都有接线柱定义', () => {
     for (const t of ['resistor5', 'resistor10', 'resistor15', 'switch2', 'motor', 'diode',
       'fuse', 'testPencil', 'electroscope', 'resBox', 'multimeter', 'relay', 'mains', 'energyMeter',
-      'jouleTube', 'accumulator']) {
+      'jouleTube', 'accumulator', 'jouleSet']) {
       expect(TERM_IDS[t], t).toBeTruthy()
       expect(TERM_IDS[t].length).toBeGreaterThan(1)
     }
@@ -356,6 +356,36 @@ describe('单相电能表', () => {
       [{ id: 1, type: 'battery' }, { id: 2, type: 'energyMeter' }],
       [{ id: 1, a: '1:p', b: '2:i1' }, { id: 2, a: '2:i2', b: '1:n' }])
     expect(out[2]._I).toBeLessThan(1e-6)
+  })
+})
+
+describe('焦耳定律演示器（A 组 5Ω + B 组 10Ω，四柱可各自接线）', () => {
+  it('两组串起来：电流相同，P_B = 2 P_A（Q ∝ R）', () => {
+    const out = loop(
+      [{ id: 1, type: 'battery' }, { id: 2, type: 'jouleSet' }],
+      [
+        { id: 1, a: '1:p', b: '2:a1' },
+        { id: 2, a: '2:a2', b: '2:b1' },   // A 组的另一头接 B 组：两段串联
+        { id: 3, a: '2:b2', b: '1:n' },
+      ])
+    const I = 3 / (CFG.JOULE_SET_A + CFG.JOULE_SET_B + CFG.VS.r)
+    expect(near(out[2]._I_A, I, 1e-6)).toBe(true)
+    expect(near(out[2]._I_B, I, 1e-6)).toBe(true)
+    expect(near(out[2]._P_A, I * I * CFG.JOULE_SET_A, 1e-9)).toBe(true)
+    expect(near(out[2]._P_B, I * I * CFG.JOULE_SET_B, 1e-9)).toBe(true)
+    expect(near(out[2]._P_B / out[2]._P_A, 2, 1e-6)).toBe(true)
+  })
+
+  it('只接 A 组（B 组悬空）：A 组按 5Ω 通电，B 组电流为 0', () => {
+    const out = loop(
+      [{ id: 1, type: 'battery' }, { id: 2, type: 'jouleSet' }],
+      [
+        { id: 1, a: '1:p', b: '2:a1' },
+        { id: 2, a: '2:a2', b: '1:n' },
+      ])
+    expect(near(out[2]._I_A, 3 / (CFG.JOULE_SET_A + CFG.VS.r), 1e-6)).toBe(true)
+    expect(out[2]._I_B).toBeCloseTo(0, 12)
+    expect(out[2]._P_B).toBeCloseTo(0, 12)
   })
 })
 

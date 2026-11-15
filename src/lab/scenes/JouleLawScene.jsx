@@ -597,6 +597,8 @@ export default function JouleLawScene() {
               { type: 'ammeter', name: '电流表', icon: thumb('ammeter') },
               { type: 'ammeterA', name: '安培表', icon: thumb('ammeterA') },
               { type: 'voltmeter', name: '电压表', icon: thumb('voltmeter') },
+              // 焦耳定律专用：两支温度计 + A/B 两段发热电阻丝的成套教具
+              { type: 'jouleSet', name: '焦耳演示器', icon: thumb('jouleSet') },
             ]}
             wireColor={S.current.wireColor}
             onPickColor={handlePickColor}

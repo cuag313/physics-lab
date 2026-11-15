@@ -58,6 +58,10 @@ export const CFG = {
   JOULE_R1: 2,                  // 左管电阻丝（Ω）
   JOULE_R2: 4,                  // 右管电阻丝（Ω）
   JOULE_Q_FULL: 40,             // 液柱从初始升到满刻度所需热量（J），仅作显示标度
+  // 焦耳定律演示器（A/B 两组发热电阻，4 个接线柱，可各自串进电路）：
+  // 教材上的这支教具是「A 组 5Ω + B 组 10Ω」两段电阻丝，各配一支温度计。
+  JOULE_SET_A: 5,               // A 组电阻丝（Ω）
+  JOULE_SET_B: 10,              // B 组电阻丝（Ω）
 }
 
 /** 电阻箱拨盘 → 阻值（dials: [×1k, ×100, ×10, ×1]，各位 0~9） */
@@ -92,6 +96,7 @@ export const TERM_IDS = {
   energyMeter: ['i1', 'i2', 'o1', 'o2'], // 单相电能表：1/2 进线，3/4 出线（1-3 电流线圈，2-4 零线直通）
   mains: ['n', 'l'],                 // 家庭电源：零线 N / 火线 L
   jouleTube: ['a', 'b'],             // 焦耳定律 U 形管：左管 R1、右管 R2 串联，a/b 两接线柱
+  jouleSet: ['a1', 'a2', 'b1', 'b2'], // 焦耳定律演示器：A 组（a1-a2）、B 组（b1-b2）两段电阻各一对柱
 }
 
 const keyOf = (cid, tid) => cid + ':' + tid
@@ -388,6 +393,15 @@ export function solveCircuit(comps, wires, opts) {
       const R = CFG.JOULE_R1 + CFG.JOULE_R2
       stampR(A, a, bb, R)
       els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
+    } else if (c.type === 'jouleSet') {
+      // 焦耳定律演示器：A 组、B 组两段发热电阻丝各占一对接线柱，
+      // 学生可以自己把两组串起来（同电流比 R），也可以只接一组。
+      const a1 = netOf(c, 'a1'), a2 = netOf(c, 'a2')
+      const b1 = netOf(c, 'b1'), b2 = netOf(c, 'b2')
+      stampR(A, a1, a2, CFG.JOULE_SET_A)
+      stampR(A, b1, b2, CFG.JOULE_SET_B)
+      els.push({ kind: 'R', a: a1, b: a2, R: CFG.JOULE_SET_A, comp: c, tA: 'a1', tB: 'a2', role: 'ja' })
+      els.push({ kind: 'R', a: b1, b: b2, R: CFG.JOULE_SET_B, comp: c, tA: 'b1', tB: 'b2', role: 'jb' })
     }
     }
 
@@ -514,6 +528,16 @@ export function solveCircuit(comps, wires, opts) {
       // 瞬时功率，热量由场景按时间积分（Q = I²Rt），引擎本身无时间状态
       o._P1 = I * I * CFG.JOULE_R1
       o._P2 = I * I * CFG.JOULE_R2
+    } else if (c.type === 'jouleSet') {
+      // 两段各写各的：A 组、B 组的电流与瞬时功率（热量由 BuilderSVG 按时间积分）
+      if (e.role === 'ja') {
+        o._I_A = Math.abs(I)
+        o._P_A = I * I * e.R
+      } else {
+        o._I_B = Math.abs(I)
+        o._P_B = I * I * e.R
+      }
+      o._I = Math.max(o._I || 0, Math.abs(I))
     }
   }
 
