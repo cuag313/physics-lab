@@ -104,7 +104,7 @@ const LOADERS = {
   electromagnet: () => import('./ElectromagnetScene'),
   emfInternalResistance: () => import('./EmfInternalResistanceScene'),
   ohmsLaw: () => import('./OhmsLawScene'),
-  bulbPower: () => import('./VoltAmpereResistorScene'),
+  bulbPower: () => import('./BulbPowerScene'),
   voltAmpereResistor: () => import('./VoltAmpereResistorScene'),
   multimeter: () => import('./MultimeterScene'),
   ampereForce: () => import('./AmpereForceScene'),
@@ -142,9 +142,6 @@ const PROPS = {
   },
   momentumConservation: {
     defaultTab: 'conservation',
-  },
-  bulbPower: {
-    title: '伏安法测小灯泡电功率',
   },
 }
 

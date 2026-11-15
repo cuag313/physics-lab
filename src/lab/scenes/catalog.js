@@ -213,7 +213,6 @@ export const EXPERIMENT_CATALOG = [
     grade: '九年级',
     tags: ['P=UI', '额定功率', '实际功率', '非线性'],
     examLevel: '★★★',
-    preset: 'rheostatCurrentLimit',
   },
   {
     key: 'jouleLaw',
