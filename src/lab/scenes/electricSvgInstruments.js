@@ -1865,7 +1865,7 @@ export const TYPES = {
       /* 横躺、无底座：铁芯水平穿过线圈，引出线直接接线圈两端 */
       const axisY = 104
       const coreX = 20, coreLen = 170, coreH = 26
-      const coilW = 62 + (turns - 10) * 1.5   // 10/20/30 匝 → 62/77/92
+      const coilW = 70 + (turns - 10) * 3   // 10/20/30 匝 → 70/100/130
       const coilH = 56
       const cL = 105 - coilW / 2, cR = cL + coilW
       const cT = axisY - coilH / 2, cB = cT + coilH
@@ -1875,21 +1875,23 @@ export const TYPES = {
         : '#C8813E'
       const coreBody = core ? '#9DA8B4' : '#CDD5DE'
       const coreLine = core ? '#6B7684' : '#A9B5C0'
-      /* 裸绕线（照手绘）：上弧(左→右) → 右端下钩转背面 → 下弧(左→右) → 圈间竖直短线 */
+      /* 一条连续螺旋线的侧视投影（正弦波）：前面可见；背面且落在铁芯轮廓内的一段被挡住 → 断开不画 */
       const loops = turns <= 10 ? 5 : turns <= 20 ? 7 : 9
       const gapX = coilW / loops
-      const wCoil = gapX * 0.62
+      const Rcoil = coreH / 2 + 8
+      const rCore = coreH / 2
       const yT0 = axisY - coreH / 2, yB0 = axisY + coreH / 2
-      const c1 = (v) => v.toFixed(1)
-      let coil = ''
-      for (let i = 0; i < loops; i++) {
-        const xa = cL + gapX * i, xb = xa + wCoil
-        coil += `<path d="M${c1(xa)} ${c1(yT0 + 6)} Q${c1((xa + xb) / 2)} ${c1(yT0 - 11)} ${c1(xb)} ${c1(yT0 + 6)}" fill="none" stroke="${wire}" stroke-width="3.2" stroke-linecap="round"/>
-        <path d="M${c1(xb)} ${c1(yT0 + 6)} L${c1(xb - 1.6)} ${c1(yT0 + 6 + coreH * 0.3)}" fill="none" stroke="${wire}" stroke-width="3.2" stroke-linecap="round"/>
-        <path d="M${c1(xa)} ${c1(yB0 - 6)} Q${c1((xa + xb) / 2)} ${c1(yB0 + 11)} ${c1(xb)} ${c1(yB0 - 6)}" fill="none" stroke="${wire}" stroke-width="3.2" stroke-linecap="round"/>
-        ${i < loops - 1 ? `<path d="M${c1(xb)} ${c1(yB0 - 6)} L${c1(xa + gapX)} ${c1(yT0 + 6)}" fill="none" stroke="${wire}" stroke-width="3.2" stroke-linecap="round"/>` : ''}
-        <path d="M${c1(xa + 0.7)} ${c1(yT0 + 6.7)} Q${c1((xa + xb) / 2)} ${c1(yT0 - 9.4)} ${c1(xb + 0.7)} ${c1(yT0 + 6.7)}" fill="none" stroke="rgba(255,228,186,0.58)" stroke-width="0.9"/>`
+      const xStart = cL - gapX * 0.25
+      const xEnd = xStart + loops * gapX
+      let dPath = '', pen = false
+      for (let x = xStart; x <= xEnd + 0.01; x += 0.8) {
+        const th = (2 * Math.PI * (x - xStart)) / gapX
+        const sy = Math.sin(th), cz = Math.cos(th)
+        if (cz < 0 && Math.abs(sy) < rCore / Rcoil) { pen = false; continue }
+        dPath += (pen ? ' L' : ' M') + x.toFixed(1) + ' ' + (axisY + Rcoil * sy).toFixed(1)
+        pen = true
       }
+      const coil = `<path d="${dPath}" fill="none" stroke="${wire}" stroke-width="2.6" stroke-linecap="round"/>`
       /* 铁芯：一根水平圆柱棒（两端不收缩、不画端面圆） */
       const coreSvg = `<g transform="translate(0,${liftY})">
         <rect x="${coreX}" y="${axisY - coreH / 2}" width="${coreLen}" height="${coreH}" rx="${coreH / 2}"
@@ -1918,9 +1920,9 @@ export const TYPES = {
     <svg width="210" height="200" viewBox="0 0 210 200">
       ${coreSvg}
       ${!core ? `<text x="105" y="${axisY + liftY + coreH / 2 + 16}" text-anchor="middle" font-size="8" font-weight="700" fill="#DC2626">铁芯已抽出（磁性骤减）</text>` : ''}
-      <!-- 引出线：左从第一圈上弧左端斜出、右从最后一圈下弧右端斜出 → 两个接线柱 -->
-      <path d="M${cL.toFixed(1)} ${(yT0 + 6).toFixed(1)} L48 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
-      <path d="M${(cL + (loops - 1) * gapX + wCoil).toFixed(1)} ${(yB0 - 6).toFixed(1)} L162 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
+      <!-- 引出线：左接第一个波谷、右接最后一个波谷 → 两个接线柱 -->
+      <path d="M${xStart.toFixed(1)} ${(axisY + Rcoil).toFixed(1)} L48 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
+      <path d="M${xEnd.toFixed(1)} ${(axisY + Rcoil).toFixed(1)} L162 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
       ${coil}
       ${field}
       ${pinMarks}

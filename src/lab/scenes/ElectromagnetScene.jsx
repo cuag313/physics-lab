@@ -721,42 +721,31 @@ function drawEM(ctx, cx, baseY, o) {
   ctx.fillStyle = 'rgba(240,246,252,0.48)'
   ctx.beginPath(); ctx.roundRect(cx - coreLen / 2 + 9 * sc, ccy - coreH / 2 + 4 * sc, coreLen - 18 * sc, 3.6 * sc, 1.8 * sc); ctx.fill()
 
-  // ── 线圈（照手绘）：每圈 = 前面上半椭圆弧（左→右）+ 右端向下小钩（转入背面）
-  //    → 背面不可见 → 前面下半椭圆弧（左→右）→ 圈间竖直短线接到下一圈上弧左端
-  //    左侧 x=xa 处上下两端之间是背面（不画），所以每圈之间留出缝隙、铁芯从缝里透出
+  // ── 线圈：一条**连续螺旋线**的侧视投影（正弦波）
+  //    前面（cos>0）可见；背面（cos<0）且落在铁芯轮廓内（|sin| < r/R）的那段被铁芯挡住 → 断开不画
   const loops = turns === 10 ? 5 : turns === 20 ? 7 : 9
-  const gapX = coilW / loops
-  const w = gapX * 0.62
-  ctx.lineCap = 'round'
-  for (let i = 0; i < loops; i++) {
-    const xa = cL + gapX * i, xb = xa + w
-    ctx.strokeStyle = wire; ctx.lineWidth = 3.2 * sc
-    // 上半椭圆弧（前面，左 → 右）
-    ctx.beginPath(); ctx.moveTo(xa, yT + 6 * sc)
-    ctx.quadraticCurveTo((xa + xb) / 2, yT - 11 * sc, xb, yT + 6 * sc); ctx.stroke()
-    // 上弧右端：斜向下的小钩，导线转进铁芯背面（背面部分不画）
-    ctx.beginPath(); ctx.moveTo(xb, yT + 6 * sc)
-    ctx.lineTo(xb - 1.6 * sc, yT + 6 * sc + coreH * 0.30); ctx.stroke()
-    // 下半椭圆弧（前面，左 → 右）
-    ctx.beginPath(); ctx.moveTo(xa, yB - 6 * sc)
-    ctx.quadraticCurveTo((xa + xb) / 2, yB + 11 * sc, xb, yB - 6 * sc); ctx.stroke()
-    // 下弧右端 → 下一圈上弧左端：圈间近乎竖直的短线（穿过铁芯前面）
-    if (i < loops - 1) {
-      ctx.beginPath(); ctx.moveTo(xb, yB - 6 * sc); ctx.lineTo(xa + gapX, yT + 6 * sc); ctx.stroke()
-    }
-    // 高光
-    ctx.strokeStyle = 'rgba(255,228,186,0.58)'; ctx.lineWidth = 0.9 * sc
-    ctx.beginPath(); ctx.moveTo(xa + 0.7 * sc, yT + 6.7 * sc)
-    ctx.quadraticCurveTo((xa + xb) / 2, yT - 9.4 * sc, xb + 0.7 * sc, yT + 6.7 * sc); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(xa + 0.7 * sc, yB - 6.7 * sc)
-    ctx.quadraticCurveTo((xa + xb) / 2, yB + 9.4 * sc, xb + 0.7 * sc, yB - 6.7 * sc); ctx.stroke()
+  const gapX = coilW / loops              // 每圈轴向长度 = 正弦的一个周期
+  const Rcoil = coreH / 2 + 8 * sc        // 线圈半径（比铁芯粗一圈）
+  const rCore = coreH / 2                 // 铁芯半径
+  const xStart = cL - gapX * 0.25         // 从第一个波谷（铁芯下方）起笔
+  const xEnd = xStart + loops * gapX
+  ctx.strokeStyle = wire; ctx.lineWidth = 2.9 * sc; ctx.lineCap = 'round'
+  ctx.beginPath()
+  let pen = false
+  for (let x = xStart; x <= xEnd + 0.01; x += 0.6) {
+    const th = (2 * Math.PI * (x - xStart)) / gapX
+    const sy = Math.sin(th), cz = Math.cos(th)
+    const yy = cy + Rcoil * sy
+    const hidden = cz < 0 && Math.abs(sy) < rCore / Rcoil
+    if (hidden) { pen = false; continue }
+    if (!pen) { ctx.moveTo(x, yy); pen = true } else { ctx.lineTo(x, yy) }
   }
+  ctx.stroke()
   ctx.lineCap = 'butt'
-  // 两根引线：左从第一圈上弧左端"从上斜穿过铁芯"接到电路；右从最后一圈下弧右端直接接干线
-  const xFirst = cL, xLast = cL + (loops - 1) * gapX + w
+  // 两根引线：左接第一个波谷、右接最后一个波谷（都在线圈下方），再落到电路
   ctx.strokeStyle = wire; ctx.lineWidth = 2.6 * sc
-  ctx.beginPath(); ctx.moveTo(xFirst, yT + 6 * sc); ctx.lineTo(g.lp.x, g.lp.y); ctx.stroke()
-  ctx.beginPath(); ctx.moveTo(xLast, yB - 6 * sc); ctx.lineTo(g.rp.x, g.rp.y); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(xStart, cy + Rcoil); ctx.lineTo(g.lp.x, g.lp.y); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(xEnd, cy + Rcoil); ctx.lineTo(g.rp.x, g.rp.y); ctx.stroke()
 
   // ── 磁极标记：左端 N、右端 S（由绕向 + 电流方向决定）
   if (on && core) {
@@ -866,14 +855,17 @@ function drawCurrentFlow(ctx, points, time, speed, skipRect) {
 function emGeom(cx, baseY, sc, turns) {
   const cy = baseY - 66 * sc
   const coreLen = 160 * sc, coreH = 26 * sc
-  const coilW = (58 + (turns - 10) * 1.5) * sc
+  const coilW = (76 + (turns - 10) * 4) * sc
   const coilH = 44 * sc
   const cL = cx - coilW / 2, cR = cx + coilW / 2
   const cT = cy - coilH / 2, cB = cy + coilH / 2
+  const loops = turns === 10 ? 5 : turns === 20 ? 7 : 9
+  const gapX = coilW / loops
+  const Rcoil = coreH / 2 + 8 * sc
   return {
-    cy, coreLen, coreH, coilW, coilH, cL, cR, cT, cB,
-    lp: { x: cL - 18 * sc, y: cB + 8 * sc },   // 左引线：从第一圈上弧左端"从上斜穿过铁芯"接到这里
-    rp: { x: cR + 4 * sc, y: cB + 8 * sc },    // 右引线：从最后一圈下弧右端直接接到干线
+    cy, coreLen, coreH, coilW, coilH, cL, cR, cT, cB, loops, gapX, Rcoil,
+    lp: { x: cL - gapX * 0.25 - 8 * sc, y: cy + Rcoil + 10 * sc },  // 左引线：接第一个波谷
+    rp: { x: cL - gapX * 0.25 + loops * gapX + 8 * sc, y: cy + Rcoil + 10 * sc }, // 右引线：接最后一个波谷
     nL: { x: cx - (coreLen / 2 + 21 * sc), y: cy },  // 左端小磁针
     nR: { x: cx + (coreLen / 2 + 21 * sc), y: cy },  // 右端小磁针
     nr: 13.5 * sc,
