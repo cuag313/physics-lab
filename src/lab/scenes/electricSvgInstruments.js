@@ -1852,8 +1852,8 @@ export const TYPES = {
   electromagnet: {
     label: '电磁铁', w: 210, h: 200,
     terminals: [
-      { id: 'a', label: '−', name: '线圈左端接线柱（黑）', x: 48, y: 140 },
-      { id: 'b', label: '+', name: '线圈右端接线柱（红）', x: 162, y: 68 },
+      { id: 'a', label: '−', name: '线圈左端接线柱（黑）', x: 48, y: 148 },
+      { id: 'b', label: '+', name: '线圈右端接线柱（红）', x: 162, y: 148 },
     ],
     render(c, dyn = {}) {
       const turns = c.turns || 20
@@ -1875,20 +1875,18 @@ export const TYPES = {
         : '#C8813E'
       const coreBody = core ? '#9DA8B4' : '#CDD5DE'
       const coreLine = core ? '#6B7684' : '#A9B5C0'
-      /* 稀疏裸绕线：每圈一条左下→右上斜线（左端 N 极，右手螺旋），圈间留缝透出铁芯 */
+      /* 裸绕线：弹簧式（每圈一条左下→右上斜线 + 顶部/底部各一段背面弧） */
       const loops = turns <= 10 ? 5 : turns <= 20 ? 7 : 9
       const gapX = coilW / loops
       let coil = ''
       for (let i = 0; i < loops; i++) {
-        const x0 = cL + gapX * (i + 0.14), x1 = x0 + gapX * 0.58
+        const x0 = cL + gapX * (i + 0.08), x1 = x0 + gapX * 0.62
         const mx = (x0 + x1) / 2
-        coil += `<path d="M${x1.toFixed(1)} ${(cT + 1).toFixed(1)} Q${(mx + gapX * 0.12).toFixed(1)} ${(cT - 6).toFixed(1)} ${(x0 + gapX * 0.86).toFixed(1)} ${(cT + 1).toFixed(1)}" fill="none" stroke="rgba(120,78,34,${(0.28 + 0.12 * hot).toFixed(2)})" stroke-width="1.5"/>
+        coil += `<path d="M${x1.toFixed(1)} ${(cT + 1).toFixed(1)} Q${(mx + gapX * 0.12).toFixed(1)} ${(cT - 7).toFixed(1)} ${(x0 + gapX * 0.86).toFixed(1)} ${(cT + 1).toFixed(1)}" fill="none" stroke="rgba(120,78,34,${(0.30 + 0.14 * hot).toFixed(2)})" stroke-width="1.5"/>
+        <path d="M${x0.toFixed(1)} ${(cB - 1).toFixed(1)} Q${(mx + gapX * 0.12).toFixed(1)} ${(cB + 5).toFixed(1)} ${(x0 + gapX * 0.78).toFixed(1)} ${(cB - 1).toFixed(1)}" fill="none" stroke="rgba(120,78,34,${(0.30 + 0.14 * hot).toFixed(2)})" stroke-width="1.5"/>
         <line x1="${x0.toFixed(1)}" y1="${(cB - 1).toFixed(1)}" x2="${x1.toFixed(1)}" y2="${(cT + 1).toFixed(1)}" stroke="${wire}" stroke-width="3"/>
-        <line x1="${(x0 + 0.5).toFixed(1)}" y1="${(cB - 3).toFixed(1)}" x2="${(x1 + 0.5).toFixed(1)}" y2="${(cT + 3).toFixed(1)}" stroke="rgba(255,228,186,0.66)" stroke-width="0.9"/>`
+        <line x1="${(x0 + 0.6).toFixed(1)}" y1="${(cB - 3).toFixed(1)}" x2="${(x1 + 0.6).toFixed(1)}" y2="${(cT + 3).toFixed(1)}" stroke="rgba(255,228,186,0.62)" stroke-width="0.9"/>`
       }
-      /* 线圈上下缘各一条微拱弧线，把一圈圈线串成整体 */
-      const rim = `<path d="M${cL.toFixed(1)} ${(cB - 1).toFixed(1)} Q105 ${(cB + 4.5).toFixed(1)} ${cR.toFixed(1)} ${(cB - 1).toFixed(1)}" fill="none" stroke="rgba(139,90,43,${(0.4 + 0.14 * hot).toFixed(2)})" stroke-width="1.3"/>
-        <path d="M${cL.toFixed(1)} ${(cT + 1).toFixed(1)} Q105 ${(cT - 4.5).toFixed(1)} ${cR.toFixed(1)} ${(cT + 1).toFixed(1)}" fill="none" stroke="rgba(139,90,43,${(0.34 + 0.12 * hot).toFixed(2)})" stroke-width="1.2"/>`
       /* 线圈两端端面：看得出铁芯从中间穿过；抽芯后露出空心内腔 */
       const ends = [-1, 1].map((s) => {
         const ex = s < 0 ? cL : cR
@@ -1925,16 +1923,15 @@ export const TYPES = {
     <svg width="210" height="200" viewBox="0 0 210 200">
       ${coreSvg}
       ${!core ? `<text x="105" y="${axisY + liftY + coreH / 2 + 16}" text-anchor="middle" font-size="8" font-weight="700" fill="#DC2626">铁芯已抽出（磁性骤减）</text>` : ''}
-      <!-- 引出线：左从线圈下缘、右从线圈上缘 → 两个接线柱 -->
-      <path d="M${(cL + 2).toFixed(1)} ${(cB - 2).toFixed(1)} L48 140" fill="none" stroke="#8D96A1" stroke-width="2"/>
-      <path d="M${(cR - 2).toFixed(1)} ${(cT + 2).toFixed(1)} L162 68" fill="none" stroke="#8D96A1" stroke-width="2"/>
-      ${rim}
+      <!-- 引出线：两根都从线圈下缘引出 → 两个接线柱 -->
+      <path d="M${(cL + 2).toFixed(1)} ${(cB - 2).toFixed(1)} L48 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
+      <path d="M${(cR - 2).toFixed(1)} ${(cB - 2).toFixed(1)} L162 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
       ${ends}
       ${coil}
       ${field}
       ${pinMarks}
-      ${termDotSVG(48, 140, true, '−')}
-      ${termDotSVG(162, 68, false, '+')}
+      ${termDotSVG(48, 148, true, '−')}
+      ${termDotSVG(162, 148, false, '+')}
       ${noteChipSVG(105, 14, `${turns} 匝 · ${I.toFixed(2)} A · 吸 ${pins} 针`,
         on ? '#93C5FD' : '#94a3b8', 156)}
     </svg>` }

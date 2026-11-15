@@ -200,7 +200,7 @@ export default function ElectromagnetScene() {
     drawLine(ctx, x1, y0, x1, y1, wc, lw)
     drawLine(ctx, x0, y0, x0, y1, wc, lw)
     drawLine(ctx, x0, y1, battX - hBat, y1, wc, lw)
-    // 电磁铁：导线直接接到线圈两端 —— 左端下侧进、右端上侧出（与绕向共同满足右手螺旋）
+    // 电磁铁：导线直接接到线圈两端（两根引线都从线圈下缘引出，同手绘图）
     drawLine(ctx, battX + hBat, y1, emX - gap, y1, wc, lw)
     drawLine(ctx, emX - gap, y1, emX - gap, eg.lp.y, wc, lw)
     drawLine(ctx, emX - gap, eg.lp.y, eg.lp.x, eg.lp.y, wc, lw)
@@ -242,7 +242,10 @@ export default function ElectromagnetScene() {
         { x: x0, y: y0 }, { x: x0, y: y1 },
         { x: battX - hBat, y: y1 },
       ]
-      drawCurrentFlow(ctx, path, s.time, 0.5, { x: eg.cL, y: eg.cT, w: eg.coilW, h: eg.coilH })
+      // 隐藏区覆盖「两根引线之间 + 线圈本体」，电子进了线圈就消失、从另一端出来
+      drawCurrentFlow(ctx, path, s.time, 0.5, {
+        x: eg.lp.x, y: eg.cT - 2, w: eg.rp.x - eg.lp.x, h: (eg.cB + 12) - (eg.cT - 2),
+      })
     }
 
     // 开关可点
@@ -726,32 +729,31 @@ function drawEM(ctx, cx, baseY, o) {
     ctx.beginPath(); ctx.ellipse(cx + s * (coreLen / 2 - 1.5 * sc), ccy, 3.2 * sc, coreH / 2, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
   }
 
-  // ── 线圈：稀疏绕线（每圈一条正面斜线，圈间留缝透出铁芯）
+  // ── 线圈：弹簧式绕线（每圈 = 一条左下→右上的正面斜线 + 顶端/底端各一段背面弧）
   //    正面斜线"左下 → 右上"：电流从线圈左端进入时，四指环绕方向对应 N 极在左（右手螺旋）
   const loops = turns === 10 ? 5 : turns === 20 ? 7 : 9
   const gapX = coilW / loops
-  ctx.strokeStyle = `rgba(150,95,35,${0.42 + 0.22 * hot})`
-  ctx.lineWidth = 1.5 * sc
-  ctx.beginPath(); ctx.moveTo(cL, cT); ctx.quadraticCurveTo(cx, cT - 4.5 * sc, cR, cT); ctx.stroke()
-  ctx.beginPath(); ctx.moveTo(cL, cB); ctx.quadraticCurveTo(cx, cB + 4.5 * sc, cR, cB); ctx.stroke()
   ctx.lineCap = 'round'
   for (let i = 0; i < loops; i++) {
-    const x0 = cL + gapX * (i + 0.14)
-    const x1 = x0 + gapX * 0.58
-    // 背面回线（导线绕到铁芯后面，淡）
-    ctx.strokeStyle = `rgba(120,78,34,${0.28 + 0.12 * hot})`
-    ctx.lineWidth = 1.4 * sc
-    ctx.beginPath()
-    ctx.moveTo(x1, cT + 1.2 * sc)
-    ctx.quadraticCurveTo((x0 + x1) / 2 + gapX * 0.12, cT - 6 * sc, x0 + gapX * 0.86, cT + 1.2 * sc)
+    const x0 = cL + gapX * (i + 0.08)
+    const x1 = x0 + gapX * 0.62
+    // 顶端背面弧（上凸，线绕到铁芯上后方）
+    ctx.strokeStyle = `rgba(120,78,34,${0.30 + 0.14 * hot})`
+    ctx.lineWidth = 1.5 * sc
+    ctx.beginPath(); ctx.moveTo(x1, cT + 1 * sc)
+    ctx.quadraticCurveTo((x0 + x1) / 2 + gapX * 0.12, cT - 7 * sc, x0 + gapX * 0.86, cT + 1 * sc)
+    ctx.stroke()
+    // 底端背面弧（下凸，线绕到铁芯下方）
+    ctx.beginPath(); ctx.moveTo(x0, cB - 1 * sc)
+    ctx.quadraticCurveTo((x0 + x1) / 2 + gapX * 0.12, cB + 5 * sc, x0 + gapX * 0.78, cB - 1 * sc)
     ctx.stroke()
     // 正面斜线：左下 → 右上
     ctx.strokeStyle = wire
     ctx.lineWidth = 3 * sc
     ctx.beginPath(); ctx.moveTo(x0, cB - 1 * sc); ctx.lineTo(x1, cT + 1 * sc); ctx.stroke()
-    ctx.strokeStyle = 'rgba(255,228,186,0.66)'
+    ctx.strokeStyle = 'rgba(255,228,186,0.62)'
     ctx.lineWidth = 0.9 * sc
-    ctx.beginPath(); ctx.moveTo(x0 + 0.5 * sc, cB - 3 * sc); ctx.lineTo(x1 + 0.5 * sc, cT + 3 * sc); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(x0 + 0.6 * sc, cB - 3 * sc); ctx.lineTo(x1 + 0.6 * sc, cT + 3 * sc); ctx.stroke()
   }
   ctx.lineCap = 'butt'
   // 线圈两端端面（看得出铁芯从中间穿过；抽芯后露出空心内腔）
@@ -765,10 +767,10 @@ function drawEM(ctx, cx, baseY, o) {
       ctx.beginPath(); ctx.ellipse(ex, cy, 3.2 * sc, coilH / 2 - 2 * sc, 0, 0, Math.PI * 2); ctx.fill()
     }
   }
-  // 两根很短的引出线（长导线由 renderDemo 接到电路上）
+  // 两根很短的引出线（长导线由 renderDemo 接到电路上）：都从线圈下缘引出
   ctx.strokeStyle = wire; ctx.lineWidth = 2.2 * sc
-  ctx.beginPath(); ctx.moveTo(cL + 3 * sc, cB - 5 * sc); ctx.lineTo(g.lp.x, g.lp.y); ctx.stroke()
-  ctx.beginPath(); ctx.moveTo(cR - 3 * sc, cT + 5 * sc); ctx.lineTo(g.rp.x, g.rp.y); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(cL + 3 * sc, cB - 4 * sc); ctx.lineTo(g.lp.x, g.lp.y); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(cR - 3 * sc, cB - 4 * sc); ctx.lineTo(g.rp.x, g.rp.y); ctx.stroke()
 
   // ── 磁极标记：左端 N、右端 S（由绕向 + 电流方向决定）
   if (on && core) {
@@ -884,8 +886,8 @@ function emGeom(cx, baseY, sc, turns) {
   const cT = cy - coilH / 2, cB = cy + coilH / 2
   return {
     cy, coreLen, coreH, coilW, coilH, cL, cR, cT, cB,
-    lp: { x: cL - 8 * sc, y: cB + 2 * sc },   // 左引线：线圈左端下方
-    rp: { x: cR + 8 * sc, y: cT - 2 * sc },   // 右引线：线圈右端上方
+    lp: { x: cL - 7 * sc, y: cB + 9 * sc },   // 左引线：线圈左端下方引出
+    rp: { x: cR + 7 * sc, y: cB + 9 * sc },   // 右引线：线圈右端下方引出（与手绘一致）
     nL: { x: cx - (coreLen / 2 + 21 * sc), y: cy },  // 左端小磁针
     nR: { x: cx + (coreLen / 2 + 21 * sc), y: cy },  // 右端小磁针
     nr: 13.5 * sc,
