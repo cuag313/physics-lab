@@ -728,9 +728,8 @@ function drawEM(ctx, cx, baseY, o) {
   const Rcoil = coreH / 2 + 3 * sc        // 线圈半径（比铁芯粗一圈）
   const rCore = coreH / 2                 // 铁芯半径
   // ↓ 左端起笔：x=cL 落在铁芯**上沿**、正在由背面转入前面（sin=+r/R 递增，cos>0）
-  //   左引线从这里往下斜穿过铁芯接干线（手绘那根"从上斜穿过铁芯"的线）
-  //   右端收笔：终点取 sin=0（铁芯**中线**、前面），于是最右只剩铁芯内的一段斜线 ——
-  //   铁芯上方不出拱、下方不出波谷，右干线直接从这一点以斜线接到干线
+  //   右端收在上沿（转入背面处），最右边不会冒出铁芯上方的尖角或下方的圆弧
+  //   两端引线都只画"铁芯下沿以外"的可见段 —— 穿过铁芯的那截被挡住，直接不画
   const kRatio = rCore / Rcoil
   const phase0 = Math.asin(kRatio)
   const xEnd = cL + gapX * (loops - 0.5 - Math.asin(kRatio) / Math.PI)   // 收在铁芯上沿（转入背面处）
@@ -747,10 +746,16 @@ function drawEM(ctx, cx, baseY, o) {
   }
   ctx.stroke()
   ctx.lineCap = 'butt'
-  // 两根引线：左从上沿收笔处斜下穿过铁芯；右从中线收笔处斜下 —— 都接干线
+  // 两根引线：只画"铁芯下沿以外"的可见部分 —— 穿过铁芯的那一段被挡住，不画（也不是虚线）
   ctx.strokeStyle = wire; ctx.lineWidth = 2.6 * sc
-  ctx.beginPath(); ctx.moveTo(cL, cy - rCore); ctx.lineTo(g.lp.x, g.lp.y); ctx.stroke()
-  ctx.beginPath(); ctx.moveTo(xEnd, cy - rCore); ctx.lineTo(g.rp.x, g.rp.y); ctx.stroke()
+  const leadFrom = (x0, y0, x1, y1) => {
+    const yBot = cy + rCore
+    const t = (yBot - y0) / (y1 - y0)
+    const xb = x0 + (x1 - x0) * t
+    ctx.beginPath(); ctx.moveTo(xb, yBot); ctx.lineTo(x1, y1); ctx.stroke()
+  }
+  leadFrom(cL, cy - rCore, g.lp.x, g.lp.y)
+  leadFrom(xEnd, cy - rCore, g.rp.x, g.rp.y)
 
   // ── 磁极标记：左端 N、右端 S（由绕向 + 电流方向决定）
   if (on && core) {

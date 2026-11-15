@@ -1922,9 +1922,9 @@ export const TYPES = {
     <svg width="210" height="200" viewBox="0 0 210 200">
       ${coreSvg}
       ${!core ? `<text x="105" y="${axisY + liftY + coreH / 2 + 16}" text-anchor="middle" font-size="8" font-weight="700" fill="#DC2626">铁芯已抽出（磁性骤减）</text>` : ''}
-      <!-- 引出线：左从上沿收笔处斜下穿过铁芯；右从下沿收笔处直接向下 → 两个接线柱 -->
-      <path d="M${cL.toFixed(1)} ${(axisY - rCore).toFixed(1)} L48 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
-      <path d="M${xEnd.toFixed(1)} ${axisY.toFixed(1)} L162 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
+      <!-- 引出线：只画铁芯下沿以外的可见段（穿过铁芯那截被挡住，不画） -->
+      <path d="M${(cL + (48 - cL) * ((2 * rCore) / (148 - axisY + rCore))).toFixed(1)} ${(axisY + rCore).toFixed(1)} L48 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
+      <path d="M${(xEnd + (162 - xEnd) * ((2 * rCore) / (148 - axisY + rCore))).toFixed(1)} ${(axisY + rCore).toFixed(1)} L162 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
       ${coil}
       ${field}
       ${pinMarks}
