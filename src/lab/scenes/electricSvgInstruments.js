@@ -2008,4 +2008,105 @@ export const TYPES = {
         on ? '#93C5FD' : '#94a3b8', 156)}
     </svg>` }
   },
+
+  /* ── 奥斯特实验板（本专题专用）：一段垂直穿过板面的直导线 + 板上 4 支小磁针 ──
+   * 通电后：磁感线按电流大小决定条数（疏密表达强弱），4 支磁针的 N 极同向指向该处磁感线的切向。
+   * ⊙ = 电流向外（磁感线逆时针，逆时针走一圈再回到自身）；⊗ = 电流向里（顺时针）。
+   * 透视（.inner）里能看到板下走线槽与导线的走向。 */
+  ostersBoard: {
+    label: '奥斯特实验板', w: 230, h: 170,
+    terminals: [
+      { id: 'a', label: '1', name: '接线柱 1（接电源）', x: 30, y: 150 },
+      { id: 'b', label: '2', name: '接线柱 2', x: 200, y: 150 },
+    ],
+    render(c, dyn = {}) {
+      const cx = 115, cy = 80
+      const I = Number(dyn.I) || 0
+      const sign = Number(dyn.sign) || 0
+      const on = I > 1e-3
+      const rings = on ? Math.min(3, 1 + Math.round(I / 0.6)) : 0
+      const dirs = [-Math.PI / 2, 0, Math.PI / 2, Math.PI]
+      const pr = 50
+
+      let field = ''
+      for (let k = 0; k < rings; k++) {
+        const r = 26 + k * 11
+        const op = (0.8 - k * 0.15).toFixed(2)
+        field += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="#a78bfa" stroke-width="1.15" stroke-dasharray="5 4" opacity="${op}"/>`
+        for (let a = 0; a < 4; a++) {
+          const ang = a * Math.PI / 2 + Math.PI / 4
+          const px = cx + Math.cos(ang) * r, py = cy + Math.sin(ang) * r
+          const tan = sign > 0 ? ang - Math.PI / 2 : ang + Math.PI / 2
+          field += `<path d="M ${(px + Math.cos(tan) * 4.6).toFixed(1)} ${(py + Math.sin(tan) * 4.6).toFixed(1)}
+            L ${(px + Math.cos(tan + 2.5) * 3.1).toFixed(1)} ${(py + Math.sin(tan + 2.5) * 3.1).toFixed(1)}
+            L ${(px + Math.cos(tan - 2.5) * 3.1).toFixed(1)} ${(py + Math.sin(tan - 2.5) * 3.1).toFixed(1)} Z"
+            fill="#7c3aed" opacity="${op}"/>`
+        }
+      }
+
+      let pins4 = ''
+      for (let k = 0; k < 4; k++) {
+        const a = dirs[k]
+        const px = cx + Math.cos(a) * pr, py = cy + Math.sin(a) * pr
+        const ang = on ? (sign > 0 ? a - Math.PI / 2 : a + Math.PI / 2) : -Math.PI / 2
+        pins4 += compassSVG(px, py, 15, ang)
+      }
+
+      /* 中心：导线截面（⊙ / ⊗） */
+      const hole = sign !== 0
+        ? `<circle cx="${cx}" cy="${cy}" r="11" fill="url(#ostCoin)"/>
+           <circle cx="${cx}" cy="${cy}" r="11" fill="none" stroke="#8C5A2B" stroke-width="1.6"/>
+           <circle cx="${cx}" cy="${cy}" r="8.6" fill="#1E293B"/>
+           ${sign > 0
+    ? `<circle cx="${cx}" cy="${cy}" r="5" fill="none" stroke="#F8FAFC" stroke-width="1.6"/>
+               <circle cx="${cx}" cy="${cy}" r="1.8" fill="#F8FAFC"/>`
+    : `<path d="M ${cx - 4.2} ${cy - 4.2} L ${cx + 4.2} ${cy + 4.2} M ${cx + 4.2} ${cy - 4.2} L ${cx - 4.2} ${cy + 4.2}" stroke="#F8FAFC" stroke-width="1.7" stroke-linecap="round"/>`}`
+        : `<circle cx="${cx}" cy="${cy}" r="11" fill="#3B4A5A" stroke="#26333F" stroke-width="1.4"/>
+           <circle cx="${cx}" cy="${cy}" r="6.4" fill="none" stroke="#5B6B7B" stroke-width="1.5"/>`
+
+      /* 透视层：板内走线槽 + 导线穿过板面 + 电流箭头 */
+      const inner = `<g class="inner">
+        <path d="M 30 150 L 68 133 L ${cx - 13} ${cy + 2} M 200 150 L 162 133 L ${cx + 13} ${cy + 2}"
+          fill="none" stroke="#c2410c" stroke-width="2" stroke-dasharray="4 3" opacity="0.9"/>
+        <line x1="${cx - 13}" y1="${cy}" x2="${cx + 13}" y2="${cy}" stroke="#f59e0b" stroke-width="2.4" opacity="0.95"/>
+        ${sign !== 0 ? `<path d="M ${cx + (sign > 0 ? 9 : -9) - 4.4} ${cy - 6} L ${cx + (sign > 0 ? 9 : -9) + 4} ${cy} L ${cx + (sign > 0 ? 9 : -9) - 4.4} ${cy + 6} Z" fill="#fbbf24"/>` : ''}
+        <text class="plabel" x="${cx}" y="${cy + 22}">直导线垂直穿板面</text>
+      </g>`
+
+      return `
+    <svg width="230" height="170" viewBox="0 0 230 170">
+      <defs>
+        <radialGradient id="ostCoin" cx="35%" cy="30%" r="75%">
+          <stop offset="0" stop-color="#E8B06A"/><stop offset="1" stop-color="#B87333"/>
+        </radialGradient>
+      </defs>
+      <rect class="casing" x="2" y="2" width="226" height="166" rx="12" fill="#26323F" stroke="#121A22" stroke-width="2"/>
+      <rect class="casing" x="10" y="10" width="210" height="126" rx="8" fill="#2F3E4E" stroke="#3D5062" stroke-width="1.2"/>
+      <rect class="casing" x="10" y="10" width="210" height="126" rx="8" fill="none" stroke="#0f1720" stroke-width="0.8" opacity="0.6"/>
+      ${inner}
+      ${field}
+      ${pins4}
+      ${hole}
+      ${termDotSVG(30, 150, true, '1')}
+      ${termDotSVG(200, 150, false, '2')}
+      ${noteChipSVG(115, 148, on ? `${I.toFixed(2)} A · 磁针偏转` : '未通电 · 磁针指南北',
+    on ? '#C4B5FD' : '#94a3b8', 148)}
+    </svg>` }
+  },
+}
+
+/** 一支小磁针（SVG 片段）：白盘 + 红(N)/蓝(S) 针；ang 为 N 极方向（屏幕坐标，y 向下） */
+function compassSVG(x, y, r, ang) {
+  const L = r * 0.76, wd = r * 0.19
+  const nx = (x + Math.cos(ang) * L).toFixed(1), ny = (y + Math.sin(ang) * L).toFixed(1)
+  const sx = (x - Math.cos(ang) * L).toFixed(1), sy = (y - Math.sin(ang) * L).toFixed(1)
+  const px = (Math.cos(ang + Math.PI / 2) * wd).toFixed(1)
+  const py = (Math.sin(ang + Math.PI / 2) * wd).toFixed(1)
+  return `<g>
+        <circle cx="${x}" cy="${y}" r="${r}" fill="#FFFDF8" stroke="#C9B18A" stroke-width="1.2"/>
+        <circle cx="${x}" cy="${y}" r="${(r * 0.8).toFixed(1)}" fill="none" stroke="#E2D3B8" stroke-width="0.8"/>
+        <path d="M ${nx} ${ny} L ${(x + Number(px)).toFixed(1)} ${(y + Number(py)).toFixed(1)} L ${(x - Number(px)).toFixed(1)} ${(y - Number(py)).toFixed(1)} Z" fill="#E5484D"/>
+        <path d="M ${sx} ${sy} L ${(x + Number(px)).toFixed(1)} ${(y + Number(py)).toFixed(1)} L ${(x - Number(px)).toFixed(1)} ${(y - Number(py)).toFixed(1)} Z" fill="#2563EB"/>
+        <circle cx="${x}" cy="${y}" r="${(r * 0.15).toFixed(1)}" fill="#B8860B"/>
+      </g>`
 }

@@ -67,6 +67,8 @@ export const CFG = {
   EM_CORE_MU: 0.25,             // 无铁芯时的等效倍率（软铁芯磁导率远大于空气，抽出后磁性骤减）
   EM_PIN_K: 1.8,                // N·A → 能吸住的大头针数（1 针 ≈ 1.8 N·A）
   EM_PIN_MAX: 4,                // 显示上限；实验只备 4 枚大头针
+  // 奥斯特实验（电生磁）：板上那段直导线近似理想导线，磁场强弱 ∝ 电流
+  OSTER_WIRE_R: 0.02,           // 直导线电阻（Ω）
 }
 
 /** 电阻箱拨盘 → 阻值（dials: [×1k, ×100, ×10, ×1]，各位 0~9） */
@@ -103,6 +105,7 @@ export const TERM_IDS = {
   jouleTube: ['a', 'b'],             // 焦耳定律 U 形管：左管 R1、右管 R2 串联，a/b 两接线柱
   jouleSet: ['a1', 'a2', 'b1', 'b2'], // 焦耳定律演示器：A 组（a1-a2）、B 组（b1-b2）两段电阻各一对柱
   electromagnet: ['a', 'b'],         // 电磁铁（线圈 + 软铁芯）：线圈两端两接线柱
+  ostersBoard: ['a', 'b'],           // 奥斯特实验板（通电直导线 + 小磁针）：直导线两端两接线柱
 }
 
 const keyOf = (cid, tid) => cid + ':' + tid
@@ -414,6 +417,12 @@ export function solveCircuit(comps, wires, opts) {
       const R = CFG.EM_R_PER_TURN * (c.turns || 10)
       stampR(A, a, bb, R)
       els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
+    } else if (c.type === 'ostersBoard') {
+      // 奥斯特实验板：板上那段直导线就是一小段电阻（近似理想导线）
+      const a = netOf(c, 'a'), bb = netOf(c, 'b')
+      const R = CFG.OSTER_WIRE_R
+      stampR(A, a, bb, R)
+      els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
     }
     }
 
@@ -565,6 +574,13 @@ export function solveCircuit(comps, wires, opts) {
       const eff = o._I < 1e-5 ? 0 : o._I
       o._strength = turns * eff * (core ? 1 : CFG.EM_CORE_MU)
       o._pins = Math.min(CFG.EM_PIN_MAX, Math.max(0, Math.floor(o._strength / CFG.EM_PIN_K)))
+    } else if (c.type === 'ostersBoard') {
+      // 通电直导线：电流大小决定磁场强弱（磁感线疏密），电流方向用电流的正负表示。
+      // 板上的小磁针 N 极指向 B 的方向：a→b 为正（I > 0）时按安培定则取一侧，反接则反向。
+      o._I = Math.abs(I)
+      o._sign = Math.abs(I) < 1e-5 ? 0 : (I > 0 ? 1 : -1)
+      o._bmag = Math.abs(I)
+      o._R = e.R
     }
   }
 

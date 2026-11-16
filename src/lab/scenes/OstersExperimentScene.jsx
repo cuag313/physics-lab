@@ -1,41 +1,69 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
-import { symBattery, symSwitch, symHalf, SYM_INK } from '../render/symbols.js'
+import InfoDock from '../ui/InfoDock'
+import BuilderPalette from '../ui/BuilderPalette'
+import { drawKnowledgeCard } from '../ui/knowledgeCard'
+import BuilderSVG from '../simple3d/BuilderSVG.jsx'
+import { TYPES } from './electricSvgInstruments.js'
+import { CFG } from '../engine/electricLab.js'
+import { symBattery, symSwitch, symRheostat, symMeter, symHalf, SYM_INK } from '../render/symbols.js'
 
 /**
- * OstersExperimentScene — 电生磁（奥斯特实验）
+ * OstersExperimentScene — 电生磁（奥斯特实验）（第 8 个按「简单电路」模板改造的初中电学实验）
  *
- * 通电导线周围产生环形磁场，安培定则（右手螺旋定则）
+ *   知识点只讲「电流周围存在磁场」+ 直导线的安培定则，不与「电磁铁磁性影响因素」重叠：
+ *     · 研究对象是【一段直导线】周围的环形磁场（没有磁极、没有匝数、没有铁芯）
+ *     · 用【小磁针】显示 B 的方向（导线要沿南北方向放，先排除地磁干扰再通电）
+ *     · B 强弱只看电流大小（磁感线疏密），不做 N·I·μ 的定量计算
  *
- * Step1: 磁场存在 — 通电后小磁针偏转，观察环形磁感线
- * Step2: 电流与磁场 — 改变电流大小，观察磁感线密度变化
- * Step3: 方向规律 — 反转电流方向，验证安培定则
+ *   Tab1 📖 电路演示 —— 暖色底 + 标准符号回路（滑变 / 电流表 / 电池 / 开关）
+ *                        回路右侧竖边就是那段直导线，中点画「导线截面」⊙ / ⊗
+ *                        右边放大视图：导线截面 + 同心圆磁感线 + 4 支指南针（随电流方向摆动）
+ *   Tab2 🔧 自己动手 —— 同一套 1:1 SVG 器材（9 件基础 + 本专题专用「奥斯特实验板」）+
+ *                        一键透视 + 实验记录表（都在 BuilderSVG 里）
  */
+
+function thumb(type) {
+  const t = TYPES[type]
+  if (!t) return null
+  let svg = t.render({ id: `pal-${type}`, f: 0.4 }, { I: 0, sign: 0, bmag: 0, bright: 0.5, frac: 0 })
+  if (type === 'ostersBoard') svg = svg.replace('<svg width="230" height="170"', '<svg style="width:44px;height:34px"')
+  return <span dangerouslySetInnerHTML={{ __html: svg }} />
+}
+
+const RHEO_MAX = 20          // 20Ω 2A 滑动变阻器
+const MAX_REC = 4
+/* 设计坐标系（绘制时整体等比缩放并居中） */
+const D = {
+  L: 44, R: 430, T: 236, B: 540,       // 回路矩形
+  cx: 664, cy: 366, Rmax: 150,          // 放大视图（导线截面）中心与最大半径
+  ctrlY: 618,                            // 控件行
+  noteY: 664,
+  VW: 900, VH: 780,
+}
+
 export default function OstersExperimentScene() {
   const canvasRef = useRef(null)
   const animRef = useRef(null)
+  const builderRef = useRef(null)
 
   const S = useRef({
     tab: 1,
-    step: 1,
     switchClosed: false,
-    current: 3,        // 电流 A
-    direction: 1,      // 1=向外⊙, -1=向里⊗
-    records: [],
-    // Tab2
-    components: [],
-    wires: [],
-    dragId: null,
-    dragOffX: 0, dragOffY: 0,
-    connecting: null,
-    nextId: 1,
+    time: 0,
+    ratio: 1,                 // 滑片：1 = 阻值最大
+    reverse: false,           // 电池是否反接（电流方向）
+    records: [],              // [{ i, sign, ang }]
     wireColor: '#F44336',
-    _guideOpen: false,
+    dragging: false,
+    cardScroll: 0,
+    cardDrag: null,
+    // 4 支指南针：无电流时都指向"地磁北"（屏幕上方）
+    needles: [0, 1, 2, 3].map(() => ({ ang: -Math.PI / 2, vel: 0 })),
   })
 
   const [tab, setTab] = useState(1)
-  const [, setStep] = useState(1)
   const [, forceUpdate] = useState(0)
 
   useEffect(() => {
@@ -51,8 +79,23 @@ export default function OstersExperimentScene() {
       },
     }
     R.resize(); canvasRef.current._R = R
-
     const loop = () => {
+      const s = S.current
+      s.time += 1 / 60
+      /* 小磁针：通电后 N 极转到该处磁感线的切向（安培定则）；断电回指向地磁北 */
+      const sol = solveQuiet()
+      const dirs = [-Math.PI / 2, 0, Math.PI / 2, Math.PI]   // 上、右、下、左 四支针的方位角
+      for (let k = 0; k < s.needles.length; k++) {
+        const nd = s.needles[k]
+        const a = dirs[k]
+        const tgt = sol.sign === 0 ? -Math.PI / 2 : (sol.sign > 0 ? a - Math.PI / 2 : a + Math.PI / 2)
+        let d = tgt - nd.ang
+        while (d > Math.PI) d -= Math.PI * 2
+        while (d < -Math.PI) d += Math.PI * 2
+        nd.vel += d * 0.06
+        nd.vel *= 0.88
+        nd.ang += nd.vel
+      }
       render(R)
       animRef.current = requestAnimationFrame(loop)
     }
@@ -61,654 +104,666 @@ export default function OstersExperimentScene() {
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current) }
   }, [])
 
+  /** 物理：滑变 + 电流表内阻 + 电源内阻 + 直导线，串联 */
+  function solve() {
+    const s = S.current
+    const Rr = Math.round(s.ratio * RHEO_MAX * 10) / 10
+    const Rtot = CFG.OSTER_WIRE_R + Rr + CFG.AMM_R + CFG.VS.r
+    const I = s.switchClosed ? CFG.VS.V / Rtot : 0
+    const sign = I < 1e-6 ? 0 : (s.reverse ? -1 : 1)
+    return { Rr, Rtot, I, sign }
+  }
+
+  /* rAF 里也要用，包一层避免声明顺序问题 */
+  function solveQuiet() { return solve() }
+
   function render(R) {
-    try {
-      const ctx = R.ctx, W = R.W, H = R.H
-      ctx.clearRect(0, 0, W, H)
-      ctx.fillStyle = '#f0f4f8'; ctx.fillRect(0, 0, W, H)
-      canvasRef.current._clickAreas = []
-      canvasRef.current._palAreas = []
-      if (S.current.tab === 1) renderDemo(ctx, W, H)
-      else renderBuilder(ctx, W, H)
-    } catch (e) { console.error('render error:', e) }
+    const ctx = R.ctx, W = R.W, H = R.H
+    ctx.clearRect(0, 0, W, H)
+    const bg = ctx.createLinearGradient(0, 0, W * 0.35, H)
+    bg.addColorStop(0, '#FFFCF5'); bg.addColorStop(0.55, '#FDF4E6'); bg.addColorStop(1, '#FBEDD9')
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H)
+    canvasRef.current._clickAreas = []
+    if (S.current.tab === 1) renderDemo(ctx, W, H)
   }
 
   // ================================================================
-  //  Tab 1：实验演示
+  //  Tab 1
   // ================================================================
   function renderDemo(ctx, W, H) {
     const s = S.current
+    const sol = solve()
     const on = s.switchClosed
 
-    // 顶部步骤标签
-    const labels = ['① 磁场存在', '② 电流与磁场', '③ 安培定则']
-    const bw = 105, bh = 28, gap = 8
-    const totalW = bw * 3 + gap * 2
-    const bx0 = (W - totalW) / 2
-    for (let i = 0; i < 3; i++) {
-      const x = bx0 + i * (bw + gap), y = 10
-      ctx.fillStyle = s.step === i + 1 ? '#FF9800' : '#fff'
-      ctx.strokeStyle = s.step === i + 1 ? '#E65100' : '#999'
-      ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.roundRect(x, y, bw, bh, 6); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = s.step === i + 1 ? '#fff' : '#555'
-      ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText(labels[i], x + bw / 2, y + bh / 2)
-      canvasRef.current._clickAreas.push({
-        x: x - 3, y: y - 3, w: bw + 6, h: bh + 6,
-        onClick: () => {
-          S.current.step = i + 1
-          S.current.records = []
-          setStep(i + 1)
-          forceUpdate(n => n + 1)
-        }
-      })
-    }
-    ctx.textBaseline = 'alphabetic'
+    /* 右侧知识卡面板 */
+    const RAIL = 46
+    const pw = Math.max(300, Math.min(W * 0.40, 700))
+    const panel = { x: W - 16 - RAIL - pw, y: 10, w: pw, h: H - 20 }
+    const viewW = panel.x - 16
 
-    const subs = {
-      1: '闭合开关，导线通电，小磁针偏转 → 电流周围存在磁场',
-      2: '调节电流大小，观察磁感线密度变化 → I 越大磁场越强',
-      3: '反转电流方向，观察磁感线和小磁针方向 → 右手螺旋定则',
-    }
-    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'
-    ctx.fillText(subs[s.step], W / 2, 52)
-    ctx.fillStyle = '#1565C0'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText('🎯 实验目的：探究通电导线周围磁场的存在、强弱规律及安培定则', W / 2, 70)
+    /* 设计坐标 → 屏幕坐标（等比缩放 + 居中，水平方向被知识卡压缩时自动缩小） */
+    const sc = Math.max(0.5, Math.min(1.12, Math.min(viewW / D.VW, H / D.VH)))
+    const ox = (viewW - D.VW * sc) / 2
+    const oy = (H - D.VH * sc) / 2
+    const TX = (x) => ox + x * sc
+    const TY = (y) => oy + y * sc
+    const FS = (n) => Math.max(9, Math.round(n * sc))
 
-    // ─── 电路（矩形回路）：顶边=通电直导线（载流导体，产生磁场），下边=电源+开关 ───
-    const circL = 60, circR = W * 0.52
-    const span = circR - circL
-    const circTop = H * 0.70, circBottom = H - 52
-    const wc = on ? '#1565C0' : '#999'
-    const battX = circL + span * 0.28
-    const swX = circL + span * 0.72
+    ctx.save()
+    ctx.translate(ox, oy); ctx.scale(sc, sc)
 
-    // 导线（侧边+下边）— 标准电路符号：导线断开留缺口
-    const scale = 1
-    const lw = 2 * scale + 0.6
-    const hBat = symHalf('battery', scale, 3)
-    const hSw = symHalf('switch', scale)
+    const wc = on ? '#1565C0' : '#9aa7b1'
     const ink = on ? SYM_INK : '#7c8a93'
-    ctx.strokeStyle = wc; ctx.lineWidth = lw; ctx.lineCap = 'round'
-    ctx.beginPath(); ctx.moveTo(circR, circTop); ctx.lineTo(circR, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(circR, circBottom); ctx.lineTo(swX + hSw, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(swX - hSw, circBottom); ctx.lineTo(battX + hBat, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(battX - hBat, circBottom); ctx.lineTo(circL, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(circL, circTop); ctx.stroke()
-    ctx.lineCap = 'butt'
-    // 顶边：通电直导线（加粗=载流导体，电流流过才产生磁场）
-    ctx.strokeStyle = wc; ctx.lineWidth = 5; ctx.lineCap = 'round'
-    ctx.beginPath(); ctx.moveTo(circL, circTop); ctx.lineTo(circR, circTop); ctx.stroke()
-    ctx.lineCap = 'butt'
-    // 导线标注（下方，避免与截面图重叠）
-    ctx.fillStyle = '#5D4037'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('通电直导线（载流导体）', (circL + circR) / 2, circTop + 8)
+    const lw = 2.6
 
-    // ─── 磁场主视觉（导线截面 + 环形磁感线 + 小磁针）───
-    const cx = W * 0.30, cy = H * 0.34
-    const maxR = Math.min(W * 0.14, H * 0.15)
-    drawWireField(ctx, cx, cy, maxR, s.current, s.direction, on)
+    /* ─── 回路：上边 滑变 + 电流表；下边 电池 + 开关；右边竖边 = 那段直导线 ─── */
+    const { L, R, T, B } = D
+    const rheoX = L + (R - L) * 0.28
+    const amX = L + (R - L) * 0.70
+    const battX = L + (R - L) * 0.16
+    const swX = L + (R - L) * 0.74
 
-    // 连接：截面图是该导线的放大视图（导线已接入电路，电流流过产生磁场）
-    const wireMidX = (circL + circR) / 2
-    ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 1.5; ctx.setLineDash([5, 4])
-    ctx.beginPath(); ctx.moveTo(cx + maxR * 0.4, cy + maxR + 42); ctx.lineTo(wireMidX, circTop - 16); ctx.stroke()
+    const hRheo = symHalf('rheostat', 1)
+    const hMeter = symHalf('meter', 1)
+    const hBat = symHalf('battery', 1, 2)
+    const hSw = symHalf('switch', 1)
+
+    drawLine(ctx, L, T, rheoX - hRheo, T, wc, lw)
+    drawLine(ctx, rheoX + hRheo, T, amX - hMeter, T, wc, lw)
+    drawLine(ctx, amX + hMeter, T, R, T, wc, lw)
+    drawLine(ctx, L, T, L, B, wc, lw)
+    drawLine(ctx, L, B, battX - hBat, B, wc, lw)
+    drawLine(ctx, battX + hBat, B, swX - hSw, B, wc, lw)
+    drawLine(ctx, swX + hSw, B, R, B, wc, lw)
+    /* 右边竖边：这段就是"垂直于纸面方向"的载流直导线（截面图里看它的磁场） */
+    drawLine(ctx, R, T, R, B, wc, 5.2)
+
+    const geo = symRheostat(ctx, rheoX, T, { scale: 1, ratio: s.ratio, ink })
+    symMeter(ctx, amX, T, { kind: 'A', scale: 1, ink })
+    symBattery(ctx, battX, B, { n: 2, scale: 1, ink, flip: !s.reverse })
+    symSwitch(ctx, swX, B, { closed: on, scale: 1, ink })
+
+    /* 电流读数 + 换向标记 */
+    ctx.fillStyle = sol.I > CFG.AMM_FS ? '#DC2626' : '#475569'
+    ctx.font = `bold ${FS(11)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText(`I = ${sol.I.toFixed(2)} A`, amX, T - 46)
+    if (sol.I > CFG.AMM_FS) {
+      ctx.font = `${FS(9.5)}px "Microsoft YaHei", sans-serif`
+      ctx.fillText('⚠ 超过电流表量程 0.6 A', amX, T - 78)
+    }
+    ctx.fillStyle = on ? '#1565C0' : '#94a3b8'
+    ctx.font = `${FS(10)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText(on ? '● 通路' : '○ 断路', amX, T - 62)
+    ctx.fillStyle = '#5D4037'
+    ctx.font = `bold ${FS(11)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText('滑动变阻器 R₁', rheoX, T - 40)
+    ctx.fillText('电流表 A', amX, T + 30)
+    ctx.fillText('电池组 3V', battX, B + 20)
+    ctx.fillText('开关', swX, B + 20)
+
+    /* 导线"截面"标记：这段导线垂直于纸面 */
+    const midY = (T + B) / 2
+    drawWireDot(ctx, R, midY, 13, sol.sign, { big: true })
+    ctx.textAlign = 'left'
+    ctx.fillStyle = '#8D6E63'
+    ctx.font = `bold ${FS(10.5)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText('载流直导线', R + 22, midY - 22)
+    ctx.fillStyle = '#64748B'
+    ctx.font = `${FS(9)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText('（垂直于纸面）', R + 22, midY - 8)
+    /* 虚线引到放大视图 */
+    ctx.strokeStyle = '#C7A97C'; ctx.lineWidth = 1.2; ctx.setLineDash([6, 5])
+    ctx.beginPath(); ctx.moveTo(R + 14, midY + 14); ctx.lineTo(D.cx - D.Rmax - 6, D.cy); ctx.stroke()
     ctx.setLineDash([])
-    ctx.fillStyle = '#8D6E63'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText('放大', (cx + maxR * 0.4 + wireMidX) / 2, (cy + maxR + 42 + circTop - 16) / 2)
 
-    // 电流流动
+    /* 电子流动（沿回路） */
     if (on) {
-      const path = [
-        { x: battX + hBat, y: circBottom }, { x: swX, y: circBottom },
-        { x: circR, y: circBottom }, { x: circR, y: circTop },
-        { x: circL, y: circTop }, { x: circL, y: circBottom },
-        { x: battX - hBat, y: circBottom },
-      ]
-      drawCurrentFlow(ctx, path)
+      const path = s.reverse
+        ? [{ x: battX - hBat, y: B }, { x: L, y: B }, { x: L, y: T }, { x: rheoX - hRheo, y: T },
+          { x: rheoX + geo.W / 2, y: T }, { x: geo.ax, y: geo.topY }, { x: geo.ax, y: T },
+          { x: amX - hMeter, y: T }, { x: R, y: T }]
+        : [{ x: R, y: T }, { x: amX + hMeter, y: T }, { x: rheoX + geo.W / 2, y: T },
+          { x: geo.ax, y: geo.topY }, { x: geo.ax, y: T }, { x: rheoX - hRheo, y: T },
+          { x: L, y: T }, { x: L, y: B }, { x: battX - hBat, y: B }]
+      drawFlow(ctx, path, s.time, '#FBBF24')
     }
 
-    // 电源 + 开关（标准电路符号）
-    symBattery(ctx, battX, circBottom, { n: 3, scale, ink, flip: true })
-    ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('电池组 6V', battX, circBottom + 18)
-    ctx.textBaseline = 'alphabetic'
-    symSwitch(ctx, swX, circBottom, { closed: on, scale, ink })
-    canvasRef.current._clickAreas.push({
-      x: swX - hSw - 10, y: circBottom - 22, w: (hSw + 10) * 2, h: 44,
-      onClick: () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) }
-    })
+    /* ─── 放大视图：导线截面 + 同心圆磁感线 + 4 支指南针 ─── */
+    const { cx, cy, Rmax } = D
+    ctx.fillStyle = '#FFFDF8'
+    ctx.strokeStyle = '#E8DCC8'; ctx.lineWidth = 1.4
+    ctx.beginPath(); ctx.arc(cx, cy, Rmax + 12, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
 
-    // ─── 参数调节（底部）───
-    const barY = H - 26
-    ctx.font = '11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-    ctx.fillStyle = '#1976D2'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText(`电流 I = ${s.current.toFixed(1)} A`, 70, barY)
-    drawMiniSlider(ctx, 185, barY, 100, (s.current - 0.5) / 7.5, (r) => {
-      S.current.current = Math.round((0.5 + r * 7.5) * 10) / 10
-      forceUpdate(n => n + 1)
-    })
-    // 方向按钮
-    ctx.fillStyle = s.direction > 0 ? '#E53935' : '#1565C0'
-    ctx.font = 'bold 11px sans-serif'
-    ctx.fillText(s.direction > 0 ? '⊙ 电流向外' : '⊗ 电流向里', 310, barY)
-    ctx.fillStyle = '#7B1FA2'; ctx.strokeStyle = '#4A148C'
-    ctx.beginPath(); ctx.roundRect(430, barY - 13, 72, 26, 5); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'
-    ctx.fillText('↻ 反转', 466, barY)
-    canvasRef.current._clickAreas.push({
-      x: 430, y: barY - 13, w: 72, h: 26,
-      onClick: () => { S.current.direction *= -1; forceUpdate(n => n + 1) }
-    })
-    ctx.textBaseline = 'alphabetic'
-
-    // 右侧面板
-    drawRightPanel(ctx, W * 0.56, 70, W - W * 0.56 - 25, H - 100, s)
-  }
-
-  // ─── 导线截面 + 环形磁感线 + 小磁针 ───
-  function drawWireField(ctx, cx, cy, maxR, current, direction, on) {
-    // 磁感线（同心圆）
-    if (on && current > 0) {
-      const numCircles = Math.floor(3 + current * 1.2)
-      for (let i = 1; i <= numCircles; i++) {
-        const r = 30 + i * (maxR - 30) / numCircles
-        ctx.strokeStyle = `rgba(33,150,243,${0.25 + 0.4 * (1 - i / numCircles)})`
-        ctx.lineWidth = 1.2 + current * 0.18
+    const bmag = sol.I
+    const rings = on ? Math.max(2, Math.min(4, 2 + Math.round(bmag / 0.6))) : 0
+    if (rings > 0) {
+      for (let k = 0; k < rings; k++) {
+        const r = 44 + k * 26
+        ctx.strokeStyle = `rgba(124,58,237,${0.5 - k * 0.07})`
+        ctx.lineWidth = 1.2 + 0.5 * Math.min(1, bmag / 1.2)
         ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke()
-
-        // 切向箭头
-        for (let a = 0; a < 3; a++) {
-          const angle = (a / 3) * Math.PI * 2
-          const ax = cx + Math.cos(angle) * r
-          const ay = cy + Math.sin(angle) * r
-          const tangent = direction > 0 ? angle + Math.PI / 2 : angle - Math.PI / 2
-          ctx.fillStyle = 'rgba(21,101,192,0.8)'
-          ctx.beginPath()
-          ctx.moveTo(ax + Math.cos(tangent) * 6, ay + Math.sin(tangent) * 6)
-          ctx.lineTo(ax + Math.cos(tangent + 2.5) * 4, ay + Math.sin(tangent + 2.5) * 4)
-          ctx.lineTo(ax + Math.cos(tangent - 2.5) * 4, ay + Math.sin(tangent - 2.5) * 4)
-          ctx.closePath(); ctx.fill()
+        for (let a = 0; a < 4; a++) {
+          const ang = a * Math.PI / 2 + Math.PI / 4
+          const px = cx + Math.cos(ang) * r, py = cy + Math.sin(ang) * r
+          const tan = sol.sign > 0 ? ang - Math.PI / 2 : ang + Math.PI / 2
+          arrowAt(ctx, px, py, tan, 5.4, 'rgba(109,40,217,0.85)')
         }
       }
     }
 
-    // 小磁针（8个方位）
-    const needleR = maxR * 0.55
-    for (let a = 0; a < 8; a++) {
-      const angle = a * Math.PI / 4
-      const nx = cx + Math.cos(angle) * needleR
-      const ny = cy + Math.sin(angle) * needleR
-      const needleAngle = on
-        ? (direction > 0 ? angle + Math.PI / 2 : angle - Math.PI / 2)
-        : angle + Math.PI / 4  // 无磁场时随机指向
-      // N极（红）
-      ctx.strokeStyle = '#E53935'; ctx.lineWidth = 3; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(nx, ny)
-      ctx.lineTo(nx + Math.cos(needleAngle) * 13, ny + Math.sin(needleAngle) * 13)
-      ctx.stroke()
-      // S极（蓝）
-      ctx.strokeStyle = '#1565C0'
-      ctx.beginPath(); ctx.moveTo(nx, ny)
-      ctx.lineTo(nx - Math.cos(needleAngle) * 13, ny - Math.sin(needleAngle) * 13)
-      ctx.stroke()
-      ctx.lineCap = 'butt'
-      // 轴点
-      ctx.fillStyle = '#333'
-      ctx.beginPath(); ctx.arc(nx, ny, 2.5, 0, Math.PI * 2); ctx.fill()
+    /* 4 支指南针（上、右、下、左） */
+    const dirs = [-Math.PI / 2, 0, Math.PI / 2, Math.PI]
+    const pend = 104
+    for (let k = 0; k < 4; k++) {
+      const px = cx + Math.cos(dirs[k]) * pend
+      const py = cy + Math.sin(dirs[k]) * pend
+      drawCompass(ctx, px, py, 24, s.needles[k].ang, { live: on && bmag > 1e-3 })
     }
 
-    // 导线截面（中心圆）
-    ctx.fillStyle = '#8D6E63'; ctx.strokeStyle = '#5D4037'; ctx.lineWidth = 2.5
-    ctx.beginPath(); ctx.arc(cx, cy, 12, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    // 电流方向符号
-    if (on) {
-      ctx.fillStyle = direction > 0 ? '#fff' : '#fff'
-      ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText(direction > 0 ? '⊙' : '⊗', cx, cy)
-    } else {
-      ctx.fillStyle = '#bbb'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('—', cx, cy)
-    }
+    /* 中心：导线截面 */
+    drawWireDot(ctx, cx, cy, 17, sol.sign, { big: true })
+    ctx.fillStyle = '#5D4037'
+    ctx.font = `bold ${FS(11)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText('通电直导线（截面）', cx, cy + Rmax + 18)
+    ctx.fillStyle = on ? '#6D28D9' : '#94a3b8'
+    ctx.font = `${FS(10)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText(on ? `B 的方向：磁感线 ${sol.sign > 0 ? '逆时针' : '顺时针'}，${sol.sign > 0 ? '⊙ 电流向外' : '⊗ 电流向里'}` : '断开：磁感线消失，磁针指南北', cx, cy + Rmax + 36)
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'top'
+    ctx.fillStyle = '#8A7355'
+    ctx.font = `${FS(9.5)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText('越往外圆越大 → 磁感线越稀', cx - Rmax + 6, cy + Rmax + 56)
 
-    // 标注
-    ctx.fillStyle = '#5D4037'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('通电导线（截面）', cx, cy + maxR + 12)
-    if (on) {
-      ctx.fillStyle = '#1565C0'; ctx.font = '10px sans-serif'
-      ctx.fillText('蓝红小磁针：红端=N极', cx, cy + maxR + 28)
+    /* ─── 控件行：滑片（拖） + 换向 + 记录 ─── */
+    const cy0 = D.ctrlY
+    /* 滑条 */
+    const barX = 60, barW = 190
+    ctx.fillStyle = '#E7DFD2'; ctx.strokeStyle = '#C9BCA6'; ctx.lineWidth = 1.2
+    ctx.beginPath(); ctx.roundRect(barX, cy0 - 30, barW + 96, 60, 10); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = '#475569'
+    ctx.font = `bold ${FS(10.5)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    ctx.fillText('滑片：', barX + 10, cy0 - 14)
+    ctx.fillStyle = '#8A7355'
+    ctx.font = `${FS(9.5)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText(`R₁ = ${sol.Rr.toFixed(1)} Ω`, barX + 56, cy0 - 14)
+    ctx.strokeStyle = '#B9AC96'; ctx.lineWidth = 3
+    ctx.beginPath(); ctx.moveTo(barX + 12, cy0 + 8); ctx.lineTo(barX + 12 + barW, cy0 + 8); ctx.stroke()
+    const kx = barX + 12 + s.ratio * barW
+    ctx.fillStyle = '#F59E0B'
+    ctx.beginPath(); ctx.arc(kx, cy0 + 8, 8, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = '#B45309'; ctx.lineWidth = 1.2
+    ctx.beginPath(); ctx.arc(kx, cy0 + 8, 8, 0, Math.PI * 2); ctx.stroke()
+    const slideTo = (mx) => {
+      S.current.ratio = Math.max(0, Math.min(1, (mx - (barX + 12)) / barW))
+      forceUpdate(n => n + 1)
     }
-    ctx.textBaseline = 'alphabetic'
-  }
-
-  function drawMiniSlider(ctx, x, y, w, ratio, onChange) {
-    ctx.strokeStyle = '#bbb'; ctx.lineWidth = 3
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w, y); ctx.stroke()
-    const kx = x + Math.max(0, Math.min(1, ratio)) * w
-    ctx.fillStyle = '#FF9800'
-    ctx.beginPath(); ctx.arc(kx, y, 6, 0, Math.PI * 2); ctx.fill()
     canvasRef.current._clickAreas.push({
-      x: x - 8, y: y - 14, w: w + 16, h: 28,
-      onClick: (mx) => onChange(Math.max(0, Math.min(1, (mx - x) / w)))
+      x: TX(barX + 2), y: TY(cy0 - 4), w: barW * sc + 20, h: 26 * sc,
+      onClick: (mx) => slideTo((mx - ox) / sc), onDrag: (mx) => slideTo((mx - ox) / sc),
     })
-  }
 
-  function drawCurrentFlow(ctx, path) {
-    const t = (performance.now() / 1000) % 1
-    let segLens = [], total = 0
-    for (let i = 0; i < path.length - 1; i++) {
-      const d = Math.hypot(path[i + 1].x - path[i].x, path[i + 1].y - path[i].y)
-      segLens.push(d); total += d
-    }
-    const N = 5
-    for (let k = 0; k < N; k++) {
-      let dist = ((t + k / N) % 1) * total
-      for (let i = 0; i < segLens.length; i++) {
-        if (dist <= segLens[i]) {
-          const r = dist / segLens[i]
-          const x = path[i].x + (path[i + 1].x - path[i].x) * r
-          const y = path[i].y + (path[i + 1].y - path[i].y) * r
-          ctx.fillStyle = 'rgba(255,193,7,0.9)'
-          ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill()
-          break
-        }
-        dist -= segLens[i]
-      }
-    }
-  }
-
-  // ─── 右侧面板 ───
-  function drawRightPanel(ctx, x, y, w, h, s) {
-    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill(); ctx.stroke()
-
-    ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('🎯 奥斯特实验 — 电生磁', x + 12, y + 12)
-
-    // 物理量
-    ctx.font = '10px sans-serif'; ctx.fillStyle = '#444'
-    ctx.fillText(`电流 I = ${s.current.toFixed(1)} A    方向：${s.direction > 0 ? '向外 ⊙' : '向里 ⊗'}`, x + 12, y + 32)
-    ctx.fillStyle = '#1565C0'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText(`磁场强弱 ∝ I（磁感线密度）`, x + 12, y + 50)
-
-    // 公式
-    ctx.fillStyle = '#FF6F00'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText('安培定则（右手螺旋定则）', x + 12, y + 72)
-    ctx.font = '10px sans-serif'; ctx.fillStyle = '#5D4037'
-    ctx.fillText('右手握住导线，拇指指向电流方向，', x + 12, y + 90)
-    ctx.fillText('四指弯曲方向 = 磁感线环绕方向', x + 12, y + 106)
-
-    // 操作步骤
-    let ky = y + 132
-    const guideSteps = s.step === 1
-      ? ['① 闭合开关通电', '② 观察小磁针偏转', '③ 磁感线呈同心圆', '④ 结论：电流周围存在磁场']
-      : s.step === 2
-        ? ['① 拖动滑条改变电流', '② 磁感线密度随 I 变化', '③ 结论：I 越大磁场越强']
-        : ['① 点"反转"改变电流方向', '② 磁感线箭头反向', '③ 小磁针 N 极反向', '④ 验证安培定则']
-    ctx.fillStyle = '#5D4037'; ctx.font = 'bold 10px sans-serif'
-    ctx.fillText('📋 操作步骤', x + 12, ky); ky += 16
-    ctx.font = '10px sans-serif'; ctx.fillStyle = '#5D4037'
-    for (let i = 0; i < guideSteps.length; i++) {
-      ctx.fillText(guideSteps[i], x + 12, ky + i * 14)
-    }
-    ky += guideSteps.length * 14 + 6
-
-    // 注意事项
-    ctx.fillStyle = '#C62828'; ctx.font = 'bold 10px sans-serif'
-    ctx.fillText('⚠ 注意事项', x + 12, ky); ky += 14
-    ctx.font = '9px sans-serif'; ctx.fillStyle = '#B71C1C'
-    const notes = s.step === 1
-      ? ['• 导线应沿南北方向放置（与小磁针平行）', '• 通电时间要短，避免导线过热', '• 小磁针静止后再观察偏转']
-      : s.step === 2
-        ? ['• 只改变电流大小，导线位置不变', '• 磁感线密度反映磁场强弱', '• 电流越大磁感线越密，磁场越强']
-        : ['• 反转电流后注意观察磁感线箭头方向', '• 小磁针 N 极方向与磁感线方向一致', '• 安培定则：右手握导线，拇指=电流方向']
-    for (let i = 0; i < notes.length; i++) ctx.fillText(notes[i], x + 12, ky + i * 12)
-    ky += notes.length * 12 + 8
-
-    // 数据表
-    if (s.records.length > 0) {
-      ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'
-      ctx.fillText('📊 实验数据', x + 12, ky); ky += 18
-      ctx.fillStyle = '#FFB74D'
-      ctx.fillRect(x + 12, ky, w - 24, 18)
-      ctx.fillStyle = '#333'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'
-      const c1 = x + 32, c2 = x + 80, c3 = x + 140
-      ctx.fillText('序号', c1, ky + 3)
-      ctx.fillText('I(A)', c2, ky + 3)
-      ctx.fillText('方向', c3, ky + 3)
-      ky += 18
-      for (let i = 0; i < s.records.length; i++) {
-        const r = s.records[i]
-        if (i % 2 === 0) { ctx.fillStyle = '#FFF8E1'; ctx.fillRect(x + 12, ky, w - 24, 16) }
-        ctx.fillStyle = '#333'; ctx.font = '10px monospace'; ctx.textAlign = 'center'
-        ctx.fillText(String(i + 1), c1, ky + 2)
-        ctx.fillText(r.I.toFixed(1), c2, ky + 2)
-        ctx.fillText(r.dir > 0 ? '⊙' : '⊗', c3, ky + 2)
-        ky += 16
-      }
-      ctx.textAlign = 'left'
-    }
-
-    // 按钮
-    const btnY = y + h - 42
-    const btnW = 68, btnH = 26, gap = 8
-    const bx = x + 12
-    ctx.fillStyle = '#4CAF50'; ctx.strokeStyle = '#2E7D32'
-    ctx.beginPath(); ctx.roundRect(bx, btnY, btnW, btnH, 5); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'
-    ctx.fillText('📝 记录', bx + btnW / 2, btnY + 9)
+    /* 换向按钮 */
+    const revX = 62 + barW + 96 + 16
+    ctx.fillStyle = s.reverse ? '#E8F0FE' : '#FFF3E0'
+    ctx.strokeStyle = s.reverse ? '#1D4ED8' : '#E0761F'
+    ctx.lineWidth = 1.4
+    ctx.beginPath(); ctx.roundRect(revX, cy0 - 18, 108, 36, 18); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = s.reverse ? '#1D4ED8' : '#B45309'
+    ctx.font = `bold ${FS(10.5)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText('↻ 电流换向', revX + 54, cy0)
     canvasRef.current._clickAreas.push({
-      x: bx, y: btnY, w: btnW, h: btnH,
+      x: TX(revX), y: TY(cy0 - 18), w: 108 * sc, h: 36 * sc,
+      onClick: () => { S.current.reverse = !S.current.reverse; forceUpdate(n => n + 1) },
+    })
+
+    /* 记录按钮 */
+    const recX = revX + 108 + 16
+    const recOn = on && s.records.length < MAX_REC
+    ctx.fillStyle = recOn ? '#FFF3E0' : '#F5F0E8'
+    ctx.strokeStyle = recOn ? '#E0761F' : '#D8CBB8'
+    ctx.lineWidth = 1.4
+    ctx.beginPath(); ctx.roundRect(recX, cy0 - 18, 178, 36, 18); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = recOn ? '#B45309' : '#A08E76'
+    ctx.font = `bold ${FS(10.5)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText(`📋 记录一组数据（${s.records.length}/${MAX_REC}）`, recX + 89, cy0)
+    canvasRef.current._clickAreas.push({
+      x: TX(recX), y: TY(cy0 - 18), w: 178 * sc, h: 36 * sc,
       onClick: () => {
-        const s2 = S.current
-        s2.records.push({ I: s2.current, dir: s2.direction })
+        if (!on || S.current.records.length >= MAX_REC) return
+        const ang = s.needles[0].ang + Math.PI / 2      // 相对"指北"的偏转角
+        S.current.records.push({ i: sol.I, sign: sol.sign, ang })
         forceUpdate(n => n + 1)
-      }
-    })
-    ctx.fillStyle = '#FF9800'; ctx.strokeStyle = '#E65100'
-    ctx.beginPath(); ctx.roundRect(bx + btnW + gap, btnY, btnW, btnH, 5); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText('🗑 清除', bx + btnW + gap + btnW / 2, btnY + 9)
-    canvasRef.current._clickAreas.push({
-      x: bx + btnW + gap, y: btnY, w: btnW, h: btnH,
-      onClick: () => { S.current.records = []; forceUpdate(n => n + 1) }
-    })
-    ctx.fillStyle = '#9E9E9E'; ctx.strokeStyle = '#616161'
-    ctx.beginPath(); ctx.roundRect(bx + (btnW + gap) * 2, btnY, btnW, btnH, 5); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText('↺ 重置', bx + (btnW + gap) * 2 + btnW / 2, btnY + 9)
-    canvasRef.current._clickAreas.push({
-      x: bx + (btnW + gap) * 2, y: btnY, w: btnW, h: btnH,
-      onClick: () => {
-        S.current.current = 3; S.current.direction = 1
-        S.current.records = []; S.current.switchClosed = false
-        forceUpdate(n => n + 1)
-      }
+      },
     })
     ctx.textBaseline = 'alphabetic'
-  }
+    ctx.restore()
 
-  // ================================================================
-  //  Tab 2：自己动手
-  // ================================================================
-  function renderBuilder(ctx, W, H) {
-    const s = S.current
-    const palW = 150
-    const palX = W - palW - 10
+    /* 开关 / 滑片符号的命中区（换算到屏幕坐标） */
+    canvasRef.current._clickAreas.push({
+      x: TX(swX - hSw - 12), y: TY(B - 22), w: (hSw + 12) * 2 * sc, h: 44 * sc,
+      onClick: () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) },
+    })
+    const travel = Math.max(6, geo.W / 2 - 7)
+    canvasRef.current._clickAreas.push({
+      x: TX(rheoX - travel), y: TY(T - 26), w: travel * 2 * sc, h: 44 * sc,
+      onClick: (mx) => {
+        S.current.ratio = Math.max(0, Math.min(1, ((mx - ox) / sc - (rheoX - travel)) / (travel * 2)))
+        forceUpdate(n => n + 1)
+      },
+      onDrag: (mx) => {
+        S.current.ratio = Math.max(0, Math.min(1, ((mx - ox) / sc - (rheoX - travel)) / (travel * 2)))
+        forceUpdate(n => n + 1)
+      },
+    })
 
-    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#e0e0e0'
-    ctx.beginPath(); ctx.roundRect(10, 10, palX - 25, H - 20, 8); ctx.fill(); ctx.stroke()
-
-    for (const wire of s.wires) {
-      const c1 = s.components.find(c => c.id === wire.from.compId)
-      const c2 = s.components.find(c => c.id === wire.to.compId)
-      if (!c1 || !c2) continue
-      const p1 = getTermPos(c1, wire.from.portIndex)
-      const p2 = getTermPos(c2, wire.to.portIndex)
-      ctx.strokeStyle = wire.color || s.wireColor; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke()
-      ctx.lineCap = 'butt'
-    }
-    if (s.connecting) {
-      const c1 = s.components.find(c => c.id === s.connecting.compId)
-      if (c1) {
-        const p1 = getTermPos(c1, s.connecting.portIndex)
-        ctx.strokeStyle = '#FF9800'; ctx.lineWidth = 2; ctx.setLineDash([5, 4])
-        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(s.connecting.mx, s.connecting.my); ctx.stroke()
-        ctx.setLineDash([])
-      }
-    }
-
-    for (const comp of s.components) drawComp(ctx, comp)
-
-    const bx = 22, by = H - 130, bw2 = palX - 50
-    ctx.fillStyle = 'rgba(255,252,240,0.95)'; ctx.strokeStyle = '#ddd'
-    ctx.beginPath(); ctx.roundRect(bx, by, bw2, s._guideOpen ? 118 : 36, 6); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#5D4037'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-    ctx.fillText('📋 操作说明', bx + 10, by + 18)
-    ctx.textAlign = 'right'
-    ctx.fillText(s._guideOpen ? '收起 ▲' : '展开 ▼', bx + bw2 - 10, by + 18)
-    canvasRef.current._clickAreas.push({ x: bx - 5, y: by - 3, w: bw2 + 10, h: 42, onClick: () => { s._guideOpen = !s._guideOpen; forceUpdate(n => n + 1) } })
-    if (s._guideOpen) {
-      ctx.textAlign = 'left'; ctx.font = '10px sans-serif'
-      const lines = [
-        '① 拖入器材到画布',
-        '② 点击接线柱连线',
-        '③ 双击开关通断',
-        '④ 右键删除器材',
-        '⑤ 观察导线周围磁场',
-      ]
-      for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], bx + 10, by + 40 + i * 15)
-    }
+    /* ─── 知识卡片 ─── */
+    const SEC_COLORS = ['#E0761F', '#C98A12', '#CA8A04', '#C2410C', '#B45309', '#7C3AED', '#15803D', '#DC2626']
+    const SECTIONS = buildSections(s.records).map((sec, i) => ({
+      t: sec.title, c: SEC_COLORS[i % SEC_COLORS.length], items: sec.lines,
+    }))
+    const cardOut = drawKnowledgeCard(ctx, panel, SECTIONS, {
+      title: '📖 电生磁知识',
+      scroll: s.cardScroll,
+      tip: (c, tx, ty) => {
+        c.fillStyle = on ? '#6D28D9' : '#B08954'
+        c.fillText(
+          on
+            ? `● 通路｜I = ${sol.I.toFixed(2)} A｜电流${s.reverse ? '向里 ⊗' : '向外 ⊙'}｜磁感线${sol.sign > 0 ? '逆时针' : '顺时针'}`
+            : '○ 断开：导线沿南北方向放好、磁针指北，再闭合开关看它偏到东西方向',
+          tx, ty + 10
+        )
+      },
+    })
+    canvasRef.current._cardBox = cardOut
+      ? { x: panel.x, y: panel.y + 2, w: panel.w, h: cardOut.cardH, maxScroll: cardOut.maxScroll, scroll: cardOut.scroll }
+      : null
     ctx.textBaseline = 'alphabetic'
 
-    drawPalette(ctx, palX, 10, palW, H - 20)
+    /* 调试/验收钩子（坐标已换算成 canvas 屏幕坐标） */
+    canvasRef.current._dbg = {
+      swX: TX(swX), swY: TY(B),
+      rheoX: TX(rheoX), rheoY: TY(T), hRheo,
+      revX: TX(revX + 54), revY: TY(cy0),
+      recX: TX(recX + 89), recY: TY(cy0),
+      scale: sc, closed: on, ratio: s.ratio, reverse: s.reverse,
+      I: sol.I, sign: sol.sign, recN: s.records.length,
+      panel: { x: panel.x, y: panel.y, w: panel.w, h: panel.h },
+    }
   }
 
-  function drawPalette(ctx, x, y, w, h) {
-    const s = S.current
-    ctx.fillStyle = '#fafafa'; ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('电学器材', x + w / 2, y + 10)
-
-    const items = [
-      { type: 'battery', name: '电源 6V' },
-      { type: 'switch', name: '开关' },
-      { type: 'wire3d', name: '直导线' },
-      { type: 'bulb', name: '小灯泡（干扰）' },
-      { type: 'rheostat', name: '滑动变阻器（干扰）' },
-      { type: 'ammeter', name: '电流表 A（干扰）' },
-      { type: 'resistor', name: '定值电阻（干扰）' },
-      { type: 'magnet', name: '小磁针若干' },
+  /* ── 知识卡片（7 节，第 7 节是本次记录）── */
+  function buildSections(records) {
+    const rows = records.map((r, i) => [
+      [`第 ${i + 1} 次：`],
+      [`I = ${r.i.toFixed(2)} A`, '#C2410C', 1],
+      ['，电流'],
+      [`${r.sign > 0 ? '向外 ⊙' : '向里 ⊗'}`, '#7C3AED', 1],
+      ['，磁针 N 极偏转 '],
+      [`${Math.round(Math.abs(r.ang) * 180 / Math.PI)}°`, '#B45309', 1],
+      [`（${r.sign > 0 ? '逆时针' : '顺时针'}绕导线）`],
+    ])
+    if (records.length >= 2) {
+      const a = records[0], b = records[records.length - 1]
+      if (a.sign !== b.sign) {
+        rows.push([
+          ['对照：电流方向相反 → 磁针偏转方向也相反（'],
+          ['安培定则', '#7C3AED', 1],
+          ['），这就是"电生磁"的方向规律。'],
+        ])
+      } else if (Math.abs(b.i - a.i) > 0.05) {
+        rows.push([
+          ['对照：电流 '], [`${a.i.toFixed(2)} → ${b.i.toFixed(2)} A`, '#C2410C', 1],
+          ['（' + (b.i / Math.max(a.i, 0.01)).toFixed(1) + ' 倍），磁感线更密 → B 更强。'],
+        ])
+      }
+    }
+    return [
+      {
+        title: '① 实验目的',
+        lines: [
+          [['1820 年奥斯特发现：'], ['通电导线周围存在磁场', '#7C3AED', 1], ['—— 这是人类第一次看到"电"与"磁"的联系。']],
+          [['本实验要看到两件事：① 通电后'], ['小磁针偏转', '#C2410C', 1], ['（磁场确实存在）；② 改变电流方向，'], ['磁针反向偏转', '#C2410C', 1], ['（磁场方向由电流方向决定）。']],
+          [['注意：这里只研究'], ['一段直导线', '#7C3AED', 1], ['周围的磁场，'], ['不涉及线圈匝数、也不涉及铁芯', '#DC2626', 1], ['。']],
+        ],
+      },
+      {
+        title: '② 实验器材',
+        lines: [
+          [[''], ['电池组（3 V）', '#EA8C1B', 1], ['、开关、'], ['电流表', '#EA8C1B', 1], ['、'], ['滑动变阻器（20 Ω 2 A）', '#EA8C1B', 1], ['、导线若干。']],
+          [[''], ['小磁针（指南针）', '#C2410C', 1], [' 一支 —— 用来"显示"磁场方向（转换法：看不见的磁场，用磁针的指向显示出来）。']],
+          [['本专题另备'], ['「奥斯特实验板」', '#7C3AED', 1], ['（Tab2 器材栏）：板上那段直导线垂直穿过板面，周围四支小磁针同时偏转。']],
+        ],
+      },
+      {
+        title: '③ 实验步骤',
+        lines: [
+          [['① 连接电路：电源、开关、电流表、滑动变阻器、直导线串成一个回路，'], ['闭合前滑片放在阻值最大处', '#DC2626', 1], ['。']],
+          [['② 把导线'], ['沿南北方向', '#15803D', 1], ['水平放置，小磁针放在导线'], ['正下方', '#15803D', 1], ['，等磁针静止、指向南北。']],
+          [['③ '], ['闭合开关', '#DC2626', 1], ['，观察磁针：它从指南北偏到'], ['指东西', '#C2410C', 1], ['—— 说明导线周围有了磁场。']],
+          [['④ 断开开关，磁针回指南北；'], ['改变电流方向（对调电源两极）', '#DC2626', 1], ['，再闭合，磁针向'], ['相反方向', '#C2410C', 1], ['偏转。']],
+          [['⑤ 移动滑片改变电流大小，磁针偏转角变化；记几组数据做对照。']],
+        ],
+      },
+      {
+        title: '④ 电路与接法',
+        lines: [
+          [['电流表'], ['串联', '#15803D', 1], ['在回路里（＋柱进、−柱出），量程 0～0.6 A 足够。']],
+          [['滑动变阻器'], ['「一上一下」', '#15803D', 1], ['接入：既改变电流，又起保护作用；闭合前滑片放阻值最大处。']],
+          [['导线为什么必须'], ['南北放置', '#DC2626', 1], ['：地磁场本来就让磁针指南北，若导线东西放，通电后磁针的偏转会被地磁"盖住"，看不出效果。']],
+          [['通电时间要短'], ['：导线发热会改变电阻，也会烫手；本实验电流 0.1～0.3 A 即可。']],
+        ],
+      },
+      {
+        title: '⑤ 为什么"电生磁"',
+        lines: [
+          [['电流是'], ['电荷的定向移动', '#7C3AED', 1], ['，运动的电荷周围会产生磁场 —— 这就是"电生磁"的本质。']],
+          [['磁感线是'], ['闭合的圆', '#7C3AED', 1], ['：以导线为圆心、一圈圈套在导线上，'], ['没有 N 极也没有 S 极', '#DC2626', 1], ['（这一点与条形磁铁、电磁铁完全不同）。']],
+          [['离导线越远，圆越大 → 磁感线越稀 → '], ['B 越小', '#C2410C', 1], ['；电流越大 → 磁感线越密 → '], ['B 越强', '#C2410C', 1], ['。']],
+          [['所以直导线的磁场只有"'], ['强弱', '#15803D', 1], ['"和"'], ['方向', '#15803D', 1], ['"两件事可讲，不像电磁铁那样有 N/S 极和匝数。']],
+        ],
+      },
+      {
+        title: '⑥ 安培定则（右手螺旋定则）',
+        lines: [
+          [['用右手握住导线，'], ['拇指指向电流方向', '#C2410C', 1], ['，'], ['四指弯曲的方向就是磁感线的环绕方向', '#7C3AED', 1], ['（也就是小磁针 N 极所指的方向）。']],
+          [['本实验的等效画法：导线垂直纸面时，电流向外记作 '], ['⊙', '#DC2626', 1], ['，向里记作 '], ['⊗', '#1565C0', 1], ['；'], ['⊙ → 磁感线逆时针，⊗ → 顺时针', '#7C3AED', 1], ['。']],
+          [['口诀：'], ['"拇指引电流，四指绕磁场"', '#15803D', 1], ['。']],
+          [['与电磁铁的区别：电磁铁用同一定则判'], ['螺线管的 N/S 极', '#7C3AED', 1], ['（握线圈、四指随电流、拇指指 N 极）；直导线没有磁极，只判'], ['磁感线的环绕方向', '#7C3AED', 1], ['。']],
+        ],
+      },
+      {
+        title: '⑦ 本次记录',
+        lines: rows.length ? rows : [[['点「记录一组数据」，记下电流大小、电流方向和磁针偏转角（最多 ' + MAX_REC + ' 组）。']]],
+      },
+      {
+        title: '⚠ 注意事项',
+        lines: [
+          [['连、拆电路时开关必须'], ['断开', '#DC2626', 1], ['；闭合前滑片放阻值最大处。']],
+          [['通电时间不宜太长，'], ['电流不要超过 0.6 A', '#DC2626', 1], ['（会烧坏电流表、烫坏导线）。']],
+          [['电表正负柱不能接反'], ['（安培表），接反指针会反偏、可能打弯。']],
+          [['比较时只改变一个因素'], ['：研究电流方向就保持电流大小不变，研究强弱就保持方向不变。']],
+        ],
+      },
     ]
-    const itemH = 30
-    for (let i = 0; i < items.length; i++) {
-      const iy = y + 32 + i * (itemH + 3)
-      if (iy + itemH > y + h - 75) break
-      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#ccc'
-      ctx.beginPath(); ctx.roundRect(x + 6, iy, w - 12, itemH, 5); ctx.fill(); ctx.stroke()
-      drawPaletteIcon(ctx, x + 18, iy + itemH / 2, items[i].type)
-      ctx.fillStyle = '#333'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(items[i].name, x + 34, iy + itemH / 2)
-      canvasRef.current._palAreas.push({ x: x + 6, y: iy, w: w - 12, h: itemH, type: items[i].type })
-    }
-    const palColorBase = y + 32 + items.length * (itemH + 3) + 4
-    ctx.fillStyle = '#666'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('导线颜色：', x + 10, y + 35 + items.length * (itemH + 4) + 5)
-    const colors = [['#F44336', '红'], ['#FFC107', '黄'], ['#4CAF50', '绿']]
-    for (let i = 0; i < 3; i++) {
-      const cy = palColorBase + 18 + i * 20
-      ctx.fillStyle = colors[i][0]
-      ctx.fillRect(x + 10, cy, 36, 14)
-      ctx.strokeStyle = s.wireColor === colors[i][0] ? '#333' : '#ccc'
-      ctx.strokeRect(x + 10, cy, 36, 14)
-      ctx.fillStyle = '#333'; ctx.font = '10px sans-serif'
-      ctx.fillText(colors[i][1], x + 52, cy + 2)
-      canvasRef.current._palAreas.push({ x: x + 8, y: cy - 2, w: w - 16, h: 18, action: 'color', color: colors[i][0] })
-    }
-    ctx.textBaseline = 'alphabetic'
   }
 
-  function drawPaletteIcon(ctx, x, y, type) {
-    ctx.save(); ctx.translate(x, y)
-    if (type === 'battery') {
-      ctx.fillStyle = '#4CAF50'; ctx.strokeStyle = '#2E7D32'
-      ctx.fillRect(-10, -7, 20, 14); ctx.strokeRect(-10, -7, 20, 14)
-    } else if (type === 'switch') {
-      ctx.strokeStyle = '#666'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.moveTo(-7, 0); ctx.lineTo(5, -4); ctx.stroke()
-      ctx.fillStyle = '#666'; ctx.beginPath(); ctx.arc(-7, 0, 2, 0, Math.PI * 2); ctx.fill()
-      ctx.beginPath(); ctx.arc(7, 0, 2, 0, Math.PI * 2); ctx.fill()
-    } else if (type === 'wire3d') {
-      ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 3
-      ctx.beginPath(); ctx.moveTo(-10, 0); ctx.lineTo(10, 0); ctx.stroke()
-    } else if (type === 'bulb') {
-      ctx.fillStyle = '#FFF9C4'; ctx.strokeStyle = '#F9A825'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.arc(0, -1, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    } else if (type === 'rheostat') {
-      ctx.fillStyle = '#D7CCC8'; ctx.strokeStyle = '#8D6E63'
-      ctx.fillRect(-10, -4, 20, 8); ctx.strokeRect(-10, -4, 20, 8)
-    } else if (type === 'ammeter') {
-      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#E53935'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#E53935'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText('A', 0, 2)
-    } else if (type === 'resistor') {
-      ctx.fillStyle = '#D7CCC8'; ctx.strokeStyle = '#8D6E63'
-      ctx.fillRect(-9, -4, 18, 8); ctx.strokeRect(-9, -4, 18, 8)
-    } else if (type === 'magnet') {
-      ctx.fillStyle = '#E53935'; ctx.fillRect(-8, -3, 8, 6)
-      ctx.fillStyle = '#1565C0'; ctx.fillRect(0, -3, 8, 6)
-    }
-    ctx.restore()
-  }
+  /* ── 事件 ── */
+  const getPos = (e) => eventToCanvas(canvasRef.current, e)
 
-  function getTermPos(comp, portIndex) {
-    if (comp.type === 'battery') return { x: comp.x + (portIndex === 0 ? -18 : 18), y: comp.y }
-    if (comp.type === 'switch') return { x: comp.x + (portIndex === 0 ? -15 : 15), y: comp.y }
-    if (comp.type === 'wire3d') return { x: comp.x + (portIndex === 0 ? -20 : 20), y: comp.y }
-    return { x: comp.x, y: comp.y }
-  }
-
-  function drawComp(ctx, comp) {
-    ctx.save(); ctx.translate(comp.x, comp.y)
-    if (comp.type === 'battery') {
-      ctx.fillStyle = '#4CAF50'; ctx.strokeStyle = '#2E7D32'
-      ctx.beginPath(); ctx.roundRect(-18, -11, 36, 22, 3); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText('6V', 0, 3)
-    } else if (comp.type === 'switch') {
-      ctx.strokeStyle = comp.closed ? '#4CAF50' : '#F44336'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(-15, 0); ctx.lineTo(10, comp.closed ? 0 : -10); ctx.stroke()
-      ctx.lineCap = 'butt'
-      ctx.fillStyle = '#333'
-      ctx.beginPath(); ctx.arc(-15, 0, 3, 0, Math.PI * 2); ctx.fill()
-      ctx.beginPath(); ctx.arc(15, 0, 3, 0, Math.PI * 2); ctx.fill()
-    } else if (comp.type === 'wire3d') {
-      ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 4; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(-20, 0); ctx.lineTo(20, 0); ctx.stroke()
-      ctx.lineCap = 'butt'
-    }
-    const t1 = getTermPos({ ...comp, x: 0, y: 0 }, 0)
-    const t2 = getTermPos({ ...comp, x: 0, y: 0 }, 1)
-    for (const t of [t1, t2]) {
-      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#666'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.arc(t.x, t.y, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    }
-    ctx.restore()
-  }
-
-  // ================================================================
-  //  交互事件
-  // ================================================================
-  function getPos(e) {
-    return eventToCanvas(canvasRef.current, e)
-  }
-  function findTerm(x, y) {
-    for (const comp of S.current.components) {
-      for (let i = 0; i < 2; i++) {
-        const t = getTermPos(comp, i)
-        if (Math.abs(x - t.x) < 10 && Math.abs(y - t.y) < 10) {
-          return { compId: comp.id, portIndex: i }
-        }
-      }
-    }
-    return null
-  }
-
-  function handleMouseDown(e) {
+  const handleMouseDown = useCallback((e) => {
     if (e.button !== 0) return
-    const s = S.current; const { x, y } = getPos(e)
-    if (s.tab === 1) {
-      for (const a of canvasRef.current._clickAreas) {
-        if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(x, y); return }
-      }
+    if (S.current.tab !== 1) return
+    const { x, y } = getPos(e)
+    const box = canvasRef.current._cardBox
+    if (box && box.maxScroll > 0 && x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h) {
+      S.current.cardDrag = { y0: y, s0: S.current.cardScroll }
       return
     }
-    for (const a of canvasRef.current._clickAreas || []) {
-      if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(); return }
-    }
-    for (const a of canvasRef.current._palAreas) {
+    for (const a of canvasRef.current._clickAreas) {
       if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) {
-        if (a.action === 'color') { s.wireColor = a.color; forceUpdate(n => n + 1); return }
-        if (a.type) {
-          const id = s.nextId++
-          s.components.push({ id, type: a.type, x, y, closed: a.type === 'switch' ? false : true, props: {} })
-          s.dragId = id; forceUpdate(n => n + 1); return
-        }
+        S.current.dragging = !!a.onDrag
+        a.onClick?.(x)
+        return
       }
     }
-    const term = findTerm(x, y)
-    if (term) { s.connecting = { ...term, mx: x, my: y }; forceUpdate(n => n + 1); return }
-    for (const comp of s.components) {
-      if (Math.abs(x - comp.x) < 30 && Math.abs(y - comp.y) < 25) {
-        s.dragId = comp.id; s.dragOffX = x - comp.x; s.dragOffY = y - comp.y
-        forceUpdate(n => n + 1); return
-      }
-    }
-  }
+  }, [])
 
-  function handleMouseMove(e) {
-    const s = S.current; const { x, y } = getPos(e)
-    if (s.connecting) { s.connecting.mx = x; s.connecting.my = y; forceUpdate(n => n + 1); return }
-    if (s.dragId == null) return
-    const comp = s.components.find(c => c.id === s.dragId)
-    if (comp) { comp.x = x - s.dragOffX; comp.y = y - s.dragOffY; forceUpdate(n => n + 1) }
-  }
-
-  function handleMouseUp(e) {
-    const s = S.current; const { x, y } = getPos(e)
-    if (s.connecting) {
-      const term = findTerm(x, y)
-      if (term && !(term.compId === s.connecting.compId && term.portIndex === s.connecting.portIndex)) {
-        const exists = s.wires.some(w =>
-          (w.from.compId === s.connecting.compId && w.from.portIndex === s.connecting.portIndex && w.to.compId === term.compId && w.to.portIndex === term.portIndex) ||
-          (w.to.compId === s.connecting.compId && w.to.portIndex === s.connecting.portIndex && w.from.compId === term.compId && w.from.portIndex === term.portIndex)
-        )
-        if (!exists) s.wires.push({ id: s.wires.length + 1, from: { ...s.connecting }, to: term, color: s.wireColor })
-      }
-      s.connecting = null; forceUpdate(n => n + 1); return
-    }
-    s.dragId = null
-  }
-
-  function handleDoubleClick(e) {
-    const s = S.current; const { x, y } = getPos(e)
-    const comp = s.components.find(c => Math.abs(x - c.x) < 25 && Math.abs(y - c.y) < 25 && c.type === 'switch')
-    if (comp) { comp.closed = !comp.closed; forceUpdate(n => n + 1) }
-  }
-
-  function handleContextMenu(e) {
-    e.preventDefault()
-    const s = S.current; const { x, y } = getPos(e)
-    const idx = s.components.findIndex(c => Math.abs(x - c.x) < 30 && Math.abs(y - c.y) < 25)
-    if (idx >= 0) {
-      const id = s.components[idx].id
-      s.components.splice(idx, 1)
-      s.wires = s.wires.filter(w => w.from.compId !== id && w.to.compId !== id)
+  const handleMouseMove = useCallback((e) => {
+    if (S.current.tab !== 1) return
+    const { x, y } = getPos(e)
+    if (S.current.cardDrag) {
+      const box = canvasRef.current._cardBox
+      const b = S.current.cardDrag
+      S.current.cardScroll = Math.max(0, Math.min(box?.maxScroll || 0, b.s0 - (y - b.y0)))
       forceUpdate(n => n + 1)
+      return
     }
-  }
+    if (!S.current.dragging) return
+    const a = canvasRef.current._clickAreas.find((k) => k.onDrag)
+    a?.onDrag?.(x)
+  }, [])
+
+  const handleMouseUp = useCallback(() => {
+    S.current.dragging = false
+    S.current.cardDrag = null
+  }, [])
+
+  const handleWheel = useCallback((e) => {
+    const box = canvasRef.current?._cardBox
+    if (!box || !box.maxScroll) return
+    const { x, y } = getPos(e)
+    if (x < box.x || x > box.x + box.w || y < box.y || y > box.y + box.h) return
+    S.current.cardScroll = Math.max(0, Math.min(box.maxScroll, S.current.cardScroll + e.deltaY))
+    forceUpdate(n => n + 1)
+  }, [])
+
+  const handleReset = useCallback(() => {
+    S.current.switchClosed = false
+    S.current.ratio = 1
+    S.current.reverse = false
+    S.current.records = []
+    S.current.cardScroll = 0
+    S.current.needles = [0, 1, 2, 3].map(() => ({ ang: -Math.PI / 2, vel: 0 }))
+    builderRef.current?.reset()
+    forceUpdate(n => n + 1)
+  }, [])
+
+  const handleAddFromPalette = useCallback((type) => { builderRef.current?.add(type) }, [])
+  const handleDropFromPalette = useCallback((type, clientX, clientY) => { builderRef.current?.addAt(type, clientX, clientY) }, [])
+  const handlePickColor = useCallback((color) => { S.current.wireColor = color; forceUpdate(v => v + 1) }, [])
 
   return (
     <SceneShell
       title="电生磁（奥斯特实验）"
       tab={tab}
-      onTabChange={(t) => { S.current.tab = t; setTab(t); forceUpdate(n => n + 1) }}
-      tab1Label="📊 实验演示"
+      onTabChange={(t) => { S.current.tab = t; setTab(t) }}
+      tab1Label="📖 电路演示"
       tab2Label="🔧 自己动手"
+      onReset={handleReset}
+      desc={tab === 1 ? (
+        <>
+          <b>电生磁（奥斯特实验）</b>
+          <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
+            通电直导线周围产生环形磁场 · 磁针偏转显示 B 的方向 · 改电流大小 / 换向看磁感线疏密与绕向
+          </span>
+        </>
+      ) : null}
     >
-      <canvas
-      ref={canvasRef}
-      style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onDoubleClick={handleDoubleClick}
-      onContextMenu={handleContextMenu}
-      />
+      <div style={{ display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0, width: '100%' }}>
+        <canvas
+          ref={canvasRef}
+          className="canvas-fill"
+          style={{ width: '100%', flex: 1, minHeight: 0, display: tab === 1 ? 'block' : 'none', touchAction: 'none' }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onWheel={handleWheel}
+        />
+        {tab === 2 && (
+          <BuilderSVG ref={builderRef} wireColor={S.current.wireColor} />
+        )}
+        {tab === 1 ? (
+          <InfoDock
+            align="left"
+            offset={{ left: 22, top: 18 }}
+            purpose="探究通电导线周围是否存在磁场、磁场方向跟电流方向的关系（奥斯特实验 / 电生磁）。"
+            steps={[
+              '滑片先放阻值最大处，点开关闭合',
+              '看右边放大图：导线截面周围出现同心圆磁感线，4 支磁针 N 极转到切向',
+              '看电流 ⊙ 向外还是 ⊗ 向里，对照磁感线是逆时针还是顺时针',
+              '移动滑片改变电流大小，看磁感线变密/变稀',
+              '点「电流换向」，看磁针与箭头整体反向',
+              '点「记录一组数据」，凑几组不同条件做对照',
+            ]}
+            hint="安培定则：右手握导线，拇指指电流方向，四指弯曲方向就是磁感线环绕方向（＝磁针 N 极指向）。"
+          />
+        ) : (
+          <InfoDock
+            align="left"
+            offset={{ left: 26, top: 26 }}
+            hint="点右侧器材加入 → 拖拽移动 → 点接线柱连线。轻点开关通断，双击电表看读数。把「奥斯特板」串进回路，板上 4 支小磁针会随电流方向偏转、随电流大小改变偏角；一键透视可看板内直导线与电流方向。注意：直导线本身只有 0.02 Ω，必须串上滑动变阻器限流，否则电池会被短路。"
+            hintTitle="操作说明"
+          />
+        )}
+        {tab === 2 && (
+          <BuilderPalette side="right"
+            items={[
+              { type: 'battery', name: '电池组', icon: thumb('battery') },
+              { type: 'accumulator', name: '蓄电池', icon: thumb('accumulator') },
+              { type: 'bulb', name: '灯泡', icon: thumb('bulb') },
+              { type: 'switch', name: '开关', icon: thumb('switch') },
+              { type: 'resistor5', name: '电阻', icon: thumb('resistor5') },
+              { type: 'rheostat', name: '滑变', icon: thumb('rheostat') },
+              { type: 'ammeter', name: '电流表', icon: thumb('ammeter') },
+              { type: 'ammeterA', name: '安培表', icon: thumb('ammeterA') },
+              { type: 'voltmeter', name: '电压表', icon: thumb('voltmeter') },
+              // 本专题专用：通电直导线 + 4 支小磁针（奥斯特实验板）
+              { type: 'ostersBoard', name: '奥斯特板', icon: thumb('ostersBoard') },
+            ]}
+            wireColor={S.current.wireColor}
+            onPickColor={handlePickColor}
+            onAdd={handleAddFromPalette}
+            onDropAt={handleDropFromPalette}
+            hint="点选或拖到桌面加入"
+          />
+        )}
+      </div>
     </SceneShell>
   )
+}
+
+/* ─────────────── 画法工具 ─────────────── */
+
+function drawLine(ctx, x1, y1, x2, y2, color, w) {
+  ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = 'round'
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
+}
+
+/** 电流截面标记：⊙ 向外 / ⊗ 向里（未通电时是一段灰铜） */
+function drawWireDot(ctx, x, y, r, sign, opt = {}) {
+  ctx.save()
+  /* 铜色导线截面 */
+  const g = ctx.createRadialGradient(x - r * 0.3, y - r * 0.35, 1, x, y, r)
+  g.addColorStop(0, '#E8B06A'); g.addColorStop(1, '#B87333')
+  ctx.fillStyle = g
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
+  ctx.strokeStyle = '#8C5A2B'; ctx.lineWidth = opt.big ? 2 : 1.4
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke()
+  /* ⊙ / ⊗ */
+  if (sign !== 0) {
+    /* 铜截面里再嵌一块深色底，白 ⊙ / ⊗ 才像教材上的符号，不显"眼睛" */
+    ctx.fillStyle = '#1E293B'
+    ctx.beginPath(); ctx.arc(x, y, r * 0.80, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = '#0F172A'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.arc(x, y, r * 0.80, 0, Math.PI * 2); ctx.stroke()
+    ctx.strokeStyle = '#F8FAFC'
+    ctx.lineWidth = Math.max(1.4, r * 0.16)
+    if (sign > 0) {
+      ctx.beginPath(); ctx.arc(x, y, r * 0.46, 0, Math.PI * 2); ctx.stroke()
+      ctx.fillStyle = '#F8FAFC'
+      ctx.beginPath(); ctx.arc(x, y, r * 0.15, 0, Math.PI * 2); ctx.fill()
+    } else {
+      const d = r * 0.46
+      ctx.beginPath(); ctx.moveTo(x - d * 0.7, y - d * 0.7); ctx.lineTo(x + d * 0.7, y + d * 0.7); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(x + d * 0.7, y - d * 0.7); ctx.lineTo(x - d * 0.7, y + d * 0.7); ctx.stroke()
+    }
+  } else {
+    /* 未通电：只留铜色截面 + 一圈细环，不写任何符号 */
+    ctx.strokeStyle = '#8C5A2B'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.arc(x, y, r * 0.55, 0, Math.PI * 2); ctx.stroke()
+  }
+  ctx.restore()
+}
+
+/** 一支指南针：白盘 + 刻度 + 红(N)/蓝(S) 针 + 中心轴 */
+function drawCompass(ctx, x, y, r, ang, opt = {}) {
+  ctx.save()
+  /* 盘面 */
+  const g = ctx.createRadialGradient(x - r * 0.35, y - r * 0.4, 2, x, y, r)
+  g.addColorStop(0, '#FFFDF8'); g.addColorStop(1, '#F1E7D3')
+  ctx.fillStyle = g
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill()
+  ctx.strokeStyle = opt.live ? '#C08A3E' : '#C9B18A'; ctx.lineWidth = 1.5
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke()
+  ctx.strokeStyle = '#D8C6A8'; ctx.lineWidth = 1
+  ctx.beginPath(); ctx.arc(x, y, r * 0.78, 0, Math.PI * 2); ctx.stroke()
+  /* 刻度（8 道） */
+  ctx.strokeStyle = '#C9B18A'; ctx.lineWidth = 0.9
+  for (let i = 0; i < 8; i++) {
+    const a = i * Math.PI / 4
+    ctx.beginPath()
+    ctx.moveTo(x + Math.cos(a) * r * 0.80, y + Math.sin(a) * r * 0.80)
+    ctx.lineTo(x + Math.cos(a) * r * 0.94, y + Math.sin(a) * r * 0.94)
+    ctx.stroke()
+  }
+  /* N（红）/ S（蓝） */
+  const L = r * 0.74
+  const wdt = r * 0.19
+  const nx = x + Math.cos(ang) * L, ny = y + Math.sin(ang) * L
+  const sx = x - Math.cos(ang) * L, sy = y - Math.sin(ang) * L
+  const perp = ang + Math.PI / 2
+  const pxc = Math.cos(perp) * wdt, pyc = Math.sin(perp) * wdt
+  ctx.fillStyle = '#E5484D'
+  ctx.beginPath(); ctx.moveTo(nx, ny)
+  ctx.lineTo(x + pxc, y + pyc)
+  ctx.lineTo(x - pxc, y - pyc)
+  ctx.closePath(); ctx.fill()
+  ctx.fillStyle = '#2563EB'
+  ctx.beginPath(); ctx.moveTo(sx, sy)
+  ctx.lineTo(x + pxc, y + pyc)
+  ctx.lineTo(x - pxc, y - pyc)
+  ctx.closePath(); ctx.fill()
+  /* N 标记 */
+  ctx.fillStyle = '#B91C1C'
+  ctx.font = `bold ${Math.max(8, Math.round(r * 0.4))}px "Microsoft YaHei", sans-serif`
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  ctx.fillText('N', x + Math.cos(ang) * (L + r * 0.20), y + Math.sin(ang) * (L + r * 0.20))
+  /* 中心轴 */
+  ctx.fillStyle = '#B8860B'
+  ctx.beginPath(); ctx.arc(x, y, r * 0.13, 0, Math.PI * 2); ctx.fill()
+  ctx.strokeStyle = '#7A5A0B'; ctx.lineWidth = 0.8
+  ctx.beginPath(); ctx.arc(x, y, r * 0.13, 0, Math.PI * 2); ctx.stroke()
+  ctx.restore()
+}
+
+/** 小三角箭头（用于磁感线切向） */
+function arrowAt(ctx, x, y, ang, size, color) {
+  ctx.save()
+  ctx.translate(x, y); ctx.rotate(ang)
+  ctx.fillStyle = color
+  ctx.beginPath()
+  ctx.moveTo(size, 0)
+  ctx.lineTo(-size * 0.55, -size * 0.55)
+  ctx.lineTo(-size * 0.55, size * 0.55)
+  ctx.closePath(); ctx.fill()
+  ctx.restore()
+}
+
+/** 电子流动：沿折线匀速跑黄点 */
+function drawFlow(ctx, points, time, color) {
+  let total = 0
+  const segs = []
+  for (let i = 0; i < points.length - 1; i++) {
+    const dx = points[i + 1].x - points[i].x, dy = points[i + 1].y - points[i].y
+    const len = Math.hypot(dx, dy)
+    segs.push({ p: points[i], q: points[i + 1], len, acc: total })
+    total += len
+  }
+  const gap = 30
+  const phase = ((time * 46) % gap)
+  ctx.fillStyle = color
+  for (let d = phase; d < total; d += gap) {
+    let seg = segs[0]
+    for (const sg of segs) { if (d >= sg.acc) seg = sg }
+    const t = seg.len ? (d - seg.acc) / seg.len : 0
+    const x = seg.p.x + (seg.q.x - seg.p.x) * t
+    const y = seg.p.y + (seg.q.y - seg.p.y) * t
+    ctx.beginPath(); ctx.arc(x, y, 2.6, 0, Math.PI * 2); ctx.fill()
+  }
 }

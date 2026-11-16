@@ -480,3 +480,59 @@ describe('滑动变阻器「一上一下」接法', () => {
     expect(Math.abs(out[3]._I)).toBeLessThan(1e-6)
   })
 })
+
+describe('奥斯特实验板（通电直导线）', () => {
+  it('TERM_IDS 注册 a/b 两柱', () => {
+    expect(TERM_IDS.ostersBoard).toEqual(['a', 'b'])
+  })
+
+  it('串 10Ω 限流：I = 3/(0.02+10+0.1)，_I 取绝对值、_sign=+1', () => {
+    const out = loop(
+      [{ id: 1, type: 'battery' }, { id: 2, type: 'ostersBoard' }, { id: 3, type: 'resistor10' }],
+      [
+        { id: 1, a: '1:p', b: '2:a' },
+        { id: 2, a: '2:b', b: '3:a' },
+        { id: 3, a: '3:b', b: '1:n' },
+      ])
+    const I = 3 / (CFG.OSTER_WIRE_R + 10 + CFG.VS.r)
+    expect(out[2]._I).toBeCloseTo(I, 9)
+    expect(out[2]._bmag).toBeCloseTo(I, 9)
+    expect(out[2]._sign).toBe(1)
+    expect(out[2]._R).toBeCloseTo(CFG.OSTER_WIRE_R, 9)
+  })
+
+  it('电池反接：电流大小不变、_sign 变 −1（磁针反向偏转的依据）', () => {
+    const wires = (rev) => [
+      { id: 1, a: rev ? '1:n' : '1:p', b: '2:a' },
+      { id: 2, a: '2:b', b: '3:a' },
+      { id: 3, a: '3:b', b: rev ? '1:p' : '1:n' },
+    ]
+    const fwd = loop([{ id: 1, type: 'battery' }, { id: 2, type: 'ostersBoard' }, { id: 3, type: 'resistor10' }], wires(false))
+    const rev = loop([{ id: 1, type: 'battery' }, { id: 2, type: 'ostersBoard' }, { id: 3, type: 'resistor10' }], wires(true))
+    expect(rev[2]._I).toBeCloseTo(fwd[2]._I, 9)
+    expect(fwd[2]._sign * rev[2]._sign).toBe(-1)
+  })
+
+  it('断开开关：_I = 0、_sign = 0（磁感线消失）', () => {
+    const out = loop(
+      [{ id: 1, type: 'battery' }, { id: 2, type: 'switch', closed: false }, { id: 3, type: 'ostersBoard' }],
+      [
+        { id: 1, a: '1:p', b: '2:a' },
+        { id: 2, a: '2:b', b: '3:a' },
+        { id: 3, a: '3:b', b: '1:n' },
+      ])
+    expect(Math.abs(out[3]._I)).toBeLessThan(1e-6)
+    expect(out[3]._sign).toBe(0)
+  })
+
+  it('不串限流电阻就是短路：I≈3/(0.02+0.1)=25A，detectMisuse 会报', () => {
+    const out = loop(
+      [{ id: 1, type: 'battery' }, { id: 2, type: 'ostersBoard' }],
+      [
+        { id: 1, a: '1:p', b: '2:a' },
+        { id: 2, a: '2:b', b: '1:n' },
+      ])
+    expect(out[2]._I).toBeCloseTo(3 / (CFG.OSTER_WIRE_R + CFG.VS.r), 6)
+    expect(out[2]._I).toBeGreaterThan(2.5)
+  })
+})

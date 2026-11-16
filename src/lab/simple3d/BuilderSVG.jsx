@@ -477,6 +477,9 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     if (c.type === 'electromagnet') {
       return { I: o._I || 0, pins: o._pins || 0, strength: o._strength || 0, nside: o._Nside || 0 }
     }
+    if (c.type === 'ostersBoard') {
+      return { I: o._I || 0, sign: o._sign || 0, bmag: o._bmag || 0 }
+    }
     if (c.type === 'bulb') {
       const p = o._P || 0
       return { bright: p > 0 ? Math.min(1, p / CFG.BULB_RATED) : 0, over: p > CFG.BULB_RATED * 1.02 }
