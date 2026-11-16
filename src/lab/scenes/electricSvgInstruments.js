@@ -1916,10 +1916,10 @@ export const TYPES = {
       const poles = (on && core) ? `
         <text x="${coreX + (nRight ? coreLen - 9 : 9)}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#DC2626">N</text>
         <text x="${coreX + (nRight ? 9 : coreLen - 9)}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#2563EB">S</text>` : ''
-      /* 大头针：吸在铁芯一端（磁极）下方，向两侧散开 */
-      const pinX = 26
+      /* 大头针：吸在 N 极那一侧（磁极处磁性最强），下方散开 —— N 在哪边针就挂在哪边 */
+      const pinX = nRight ? 105 + coreLen / 2 - 16 : 105 - coreLen / 2 + 16
       const pinY0 = core ? axisY + coreH / 2 : axisY + coilH / 2 - 2
-      const gapPin = pins > 1 ? Math.min(3.4, 44 / (pins - 1)) : 0
+      const gapPin = pins > 1 ? Math.min(3.0, 34 / (pins - 1)) : 0
       const pinMarks = Array.from({ length: pins }, (_, i) => {
         const off = (i - (pins - 1) / 2) * gapPin
         const tipY = pinY0 + 11 + Math.abs(off) * 0.3
