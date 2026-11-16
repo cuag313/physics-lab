@@ -1892,7 +1892,7 @@ export const TYPES = {
       for (let x = xStart; x <= xEnd + 0.01; x += 0.8) {
         const th = (2 * Math.PI * (x - xStart)) / gapX + phase0
         const sy = Math.sin(th), cz = Math.cos(th)
-        if (cz < 0 && Math.abs(sy) < rCore / Rcoil) { pen = false; continue }
+        if (core && cz < 0 && Math.abs(sy) < rCore / Rcoil) { pen = false; continue }   // 铁芯抽出后无遮挡，整圈补全
         dPath += (pen ? ' L' : ' M') + x.toFixed(1) + ' ' + (axisY - Rcoil * sy).toFixed(1)
         pen = true
       }
@@ -1928,36 +1928,49 @@ export const TYPES = {
         <circle cx="${(pinX + off).toFixed(1)}" cy="${(tipY + 1.2).toFixed(1)}" r="1.6" fill="#B9C3CE" stroke="#5b6470" stroke-width="0.5"/>
       </g>`
       }).join('')
-      /* 通电时铁芯外部磁力线：从 N（右端面）出发向上/下张成拱、回到 S（左端面），箭头由右指向左 */
+      /* 通电时铁芯外部磁力线（照教材标准螺线管图）：上下各两族闭合椭圆环，
+         环的两端收在铁芯端面处；N 极处向外延伸、S 极处向里收；环上箭头由 N 指向 S */
       const field = (on && core) ? [-1, 1].map((dir) => [0, 1].map((k) => {
-        const a = (coreLen / 2 - 2) + k * 15
-        const y0 = coreH * 0.78
-        const b = y0 + (14 + k * 14)
+        const a = (coreLen / 2 + 2) + k * 14
+        const b = 26 + k * 18
         let d = ''
-        for (let i = 0; i <= 24; i++) {
-          const t = (Math.PI * i) / 24
+        for (let i = 0; i <= 28; i++) {
+          const t = (Math.PI * i) / 28
           const x = 105 + a * Math.cos(t)
-          const y = axisY + dir * (y0 + (b - y0) * Math.sin(t))
+          const y = axisY + dir * b * Math.sin(t)
           d += (i ? ' L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1)
         }
         const fill = `rgba(124,58,237,${(0.5 + 0.3 * hot).toFixed(2)})`
-        const tri = (x, y, u) => `<polygon points="${(x - 2.3).toFixed(1)},${y.toFixed(1)} ${(x + 2.3).toFixed(1)},${y.toFixed(1)} ${x.toFixed(1)},${(y + u * 3.6).toFixed(1)}" fill="${fill}"/>`
         const tipY = axisY + dir * b
-        const endY = axisY + dir * (y0 + 4)
         return `<path d="${d}" fill="none" stroke="rgba(124,58,237,${(0.34 + 0.2 * hot).toFixed(2)})" stroke-width="1.1" stroke-dasharray="4 3"/>
-        <polygon points="${(105 - src * 3.3).toFixed(1)},${tipY.toFixed(1)} ${(105 + src * 3.3).toFixed(1)},${(tipY - 2.6).toFixed(1)} ${(105 + src * 3.3).toFixed(1)},${(tipY + 2.6).toFixed(1)}" fill="${fill}"/>
-        ${tri(105 + src * a, endY, dir)}${tri(105 - src * a, endY, -dir)}`
+        <polygon points="${(105 - src * 3.3).toFixed(1)},${tipY.toFixed(1)} ${(105 + src * 3.3).toFixed(1)},${(tipY - 2.6).toFixed(1)} ${(105 + src * 3.3).toFixed(1)},${(tipY + 2.6).toFixed(1)}" fill="${fill}"/>`
       }).join('')).join('') : ''
+      /* N/S 极高度处的短水平线：N 极向外张、S 极向里收（照参考图） */
+      const fieldEnds = (on && core) ? [-1, 1].map((dir) => {
+        const fill = `rgba(124,58,237,${(0.5 + 0.3 * hot).toFixed(2)})`
+        const stroke = `rgba(124,58,237,${(0.34 + 0.2 * hot).toFixed(2)})`
+        const yy = (axisY + dir * (coreH / 2 + 4)).toFixed(1)
+        const xN = 105 + src * (coreLen / 2 + 1.5), xN2 = 105 + src * (coreLen / 2 + 14)
+        const xS = 105 - src * (coreLen / 2 + 1.5), xS2 = 105 - src * (coreLen / 2 + 14)
+        const triX = (x, u) => `<polygon points="${x.toFixed(1)},${yy} ${(x - u * 4).toFixed(1)},${(+yy - 2.4).toFixed(1)} ${(x - u * 4).toFixed(1)},${(+yy + 2.4).toFixed(1)}" fill="${fill}"/>`
+        return `<line x1="${xN.toFixed(1)}" y1="${yy}" x2="${xN2.toFixed(1)}" y2="${yy}" stroke="${stroke}" stroke-width="1.1" stroke-dasharray="4 3"/>
+        ${triX(xN2, src)}
+        <line x1="${xS.toFixed(1)}" y1="${yy}" x2="${xS2.toFixed(1)}" y2="${yy}" stroke="${stroke}" stroke-width="1.1" stroke-dasharray="4 3"/>
+        ${triX(xS2, -src)}`
+      }).join('') : ''
       return `
     <svg width="210" height="200" viewBox="0 0 210 200">
       ${coreSvg}
       ${poles}
       ${!core ? `<text x="105" y="${axisY + liftY + coreH / 2 + 16}" text-anchor="middle" font-size="8" font-weight="700" fill="#DC2626">铁芯已抽出（磁性骤减）</text>` : ''}
-      <!-- 左引出线从上沿斜穿铁芯；右引出线只画铁芯下沿以外的可见段（穿过那截被挡住） -->
+      <!-- 左引出线从上沿斜穿铁芯；右引出线：铁芯插着只画下沿以外，抽出后整段画 -->
       <path d="M${cL.toFixed(1)} ${(axisY - rCore).toFixed(1)} L48 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
-      <path d="M${(xEnd + (162 - xEnd) * ((2 * rCore) / (148 - axisY + rCore))).toFixed(1)} ${(axisY + rCore).toFixed(1)} L162 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
+      ${core
+        ? `<path d="M${(xEnd + (162 - xEnd) * ((2 * rCore) / (148 - axisY + rCore))).toFixed(1)} ${(axisY + rCore).toFixed(1)} L162 148" fill="none" stroke="#8D96A1" stroke-width="2"/>`
+        : `<path d="M${xEnd.toFixed(1)} ${(axisY - rCore).toFixed(1)} L162 148" fill="none" stroke="#8D96A1" stroke-width="2"/>`}
       ${coil}
       ${field}
+      ${fieldEnds}
       ${pinMarks}
       ${termDotSVG(48, 148, true, '−')}
       ${termDotSVG(162, 148, false, '+')}

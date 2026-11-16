@@ -500,7 +500,7 @@ export default function ElectromagnetScene() {
           [['电流越大，磁场越强：'], ['磁性 ∝ I', '#15803D', 1], ['（同一个线圈，电流加倍 → 磁性约加倍）。']],
           [['插入'], ['软铁芯', '#15803D', 1], ['后铁芯被磁化，磁性可增大'], ['几倍到十几倍', '#DC2626', 1], ['；抽出铁芯磁性骤减；两端放小磁针可判磁极。']],
           [['磁性 ∝ N × I × μ', '#DC2626', 1], ['；绕向定磁极：电流从 '], ['右端接线柱流入线圈', '#C2410C', 1], ['，右手四指顺电流环绕握住线圈，拇指指向'], ['右端 = N 极', '#C2410C', 1], ['（左端为 S 极）；反接电池电流反向，N、S 互换。']],
-          [['磁力线走向：'], ['外部由 N 极出发回到 S 极', '#15803D', 1], ['（图中铁芯上下的紫色虚线拱弧，箭头由右向左），'], ['铁芯内部由 S 极指向 N 极', '#7C3AED', 1], ['（铁芯里的蓝色虚线箭头，向右）。']],
+          [['磁力线走向：'], ['外部由 N 极出发回到 S 极', '#15803D', 1], ['（铁芯上下各两族紫色虚线闭合椭圆环，环上箭头由右向左；两端还有向外延伸的短水平线），'], ['铁芯内部由 S 极指向 N 极', '#7C3AED', 1], ['（铁芯里的蓝色虚线箭头，向右）。']],
           [['小磁针怎么转：接通的瞬间磁针转动，磁针 S 极被吸向电磁铁 N 极（'], ['异名磁极相吸', '#C2410C', 1], ['）。']],
         ],
       },
@@ -734,7 +734,8 @@ function drawEM(ctx, cx, baseY, o) {
     const th = (2 * Math.PI * (x - cL)) / gapX + phase0
     const sy = Math.sin(th), cz = Math.cos(th)
     const yy = cy - Rcoil * sy
-    const hidden = cz < 0 && Math.abs(sy) < kRatio
+    // 铁芯插在里面时，背面那段被铁芯挡住 → 断开不画；铁芯抽出后没有遮挡，整圈补全
+    const hidden = core && cz < 0 && Math.abs(sy) < kRatio
     if (hidden) { pen = false; continue }
     if (!pen) { ctx.moveTo(x, yy); pen = true } else { ctx.lineTo(x, yy) }
   }
@@ -750,7 +751,9 @@ function drawEM(ctx, cx, baseY, o) {
     ctx.beginPath(); ctx.moveTo(xb, yBot); ctx.lineTo(x1, y1); ctx.stroke()
   }
   ctx.beginPath(); ctx.moveTo(cL, cy - rCore); ctx.lineTo(g.lp.x, g.lp.y); ctx.stroke()
-  leadFrom(xEnd, cy - rCore, g.rp.x, g.rp.y)
+  // 铁芯插着：右引线在铁芯下沿以上那截被挡住，只画下沿以外；铁芯抽出后无遮挡 → 整段画出
+  if (core) leadFrom(xEnd, cy - rCore, g.rp.x, g.rp.y)
+  else { ctx.beginPath(); ctx.moveTo(xEnd, cy - rCore); ctx.lineTo(g.rp.x, g.rp.y); ctx.stroke() }
 
   // ── 磁极标记：铁芯以上、两端各一个（右手螺旋：电流从右端入线圈 ⇒ 右 N 红、左 S 蓝）
   if (on && core) {
@@ -762,13 +765,13 @@ function drawEM(ctx, cx, baseY, o) {
     ctx.fillStyle = '#DC2626'; ctx.fillText('N', cx + px, ccy - coreH / 2 - 9 * sc)
   }
 
-  // ── 外部磁力线：按条形磁铁的标准画法——从 N 极（右端面）出发，向上/向下张扬成拱，回到 S 极（左端面）；
-  //    弧上箭头沿"右→左"（N→S）。铁芯内部则由 S 指向 N（朝右）。
-  //    端点上下错开（不落中线），因此上下两条弧不闭合，不会被误读成"绕圈"。
+  // ── 外部磁力线（照教材标准螺线管图）：上下各两族**闭合椭圆环**，环的两端收在铁芯端面处，
+  //    N 极（右端面）处的磁力线向外延伸、S 极（左端面）处的磁力线收进去；
+  //    环上箭头从 N 走向 S（右 → 左）。铁芯内部则由 S 指向 N（朝右）。
   if (on && core) {
     const ph = 0.5 + 0.5 * Math.sin(time * 2.2)
-    const aBase = coreLen / 2 - 2 * sc
-    const y0 = coreH * 0.78                     // 弧端点离中线的距离（落在端面上下角附近）
+    const src = 1                                // N 极所在的一侧（Tab1 固定：右端为 N）
+    const aBase = coreLen / 2 + 2 * sc
     const arrowAt = (x, y, ang) => {
       ctx.save(); ctx.translate(x, y); ctx.rotate(ang)
       ctx.beginPath()
@@ -778,33 +781,40 @@ function drawEM(ctx, cx, baseY, o) {
       ctx.closePath(); ctx.fill()
       ctx.restore()
     }
+    const towardS = src > 0 ? Math.PI : 0        // 环上箭头：指向 S（左）
+    const awayFromN = src > 0 ? 0 : Math.PI      // N 极处：向外张
+    const intoS = src > 0 ? Math.PI : 0          // S 极处：朝 S 收
     ctx.strokeStyle = `rgba(124,58,237,${(0.36 + 0.2 * ph * (0.4 + hot)).toFixed(2)})`
     ctx.fillStyle = `rgba(124,58,237,${Math.min(0.92, 0.6 + 0.3 * ph).toFixed(2)})`
     ctx.lineWidth = 1.15 * sc
     ctx.setLineDash([4 * sc, 3.4 * sc])
-    for (const dir of [-1, 1]) {                // -1 = 上方，1 = 下方
+    for (const dir of [-1, 1]) {                // -1 = 上方环，1 = 下方环
       for (let k = 0; k < 2; k++) {
-        const a = aBase + k * 16 * sc           // 外张程度
-        const b = y0 + (26 + k * 18) * sc       // 拱起高度（顶点离中线）
+        const a = aBase + k * 14 * sc
+        const b = (26 + k * 18) * sc
         ctx.beginPath()
-        for (let i = 0; i <= 44; i++) {
-          const t = (Math.PI * i) / 44
+        for (let i = 0; i <= 52; i++) {
+          const t = (Math.PI * i) / 52
           const x = cx + a * Math.cos(t)
-          const y = ccy + dir * (y0 + (b - y0) * Math.sin(t))
+          const y = ccy + dir * b * Math.sin(t)  // 两端收在中线（端面处），形成闭合环
           if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
         }
         ctx.stroke()
         ctx.setLineDash([])
-        // 右端：从 N 极面竖直向外张出
-        arrowAt(cx + a, ccy + dir * (y0 + 3.4 * sc), dir < 0 ? -Math.PI / 2 : Math.PI / 2)
-        // 弧顶：沿弧走向 S（左）
-        arrowAt(cx, ccy + dir * b, Math.PI)
-        // 左端：竖直向内收进 S 极面
-        arrowAt(cx - a, ccy + dir * (y0 + 3.4 * sc), dir < 0 ? Math.PI / 2 : -Math.PI / 2)
+        arrowAt(cx, ccy + dir * b, towardS)      // 环顶：沿环由 N 走向 S
         ctx.setLineDash([4 * sc, 3.4 * sc])
       }
     }
     ctx.setLineDash([])
+    // 两端磁极处的短水平线 + 端部箭头（N 极向外张、S 极朝内收）；放在铁芯上下沿外侧，避开小磁针
+    for (const yy of [ccy - (coreH / 2 + 3.2 * sc), ccy + (coreH / 2 + 3.2 * sc)]) {
+      const xN = cx + src * (coreLen / 2 + 1.5 * sc), xN2 = cx + src * (coreLen / 2 + 15 * sc)
+      ctx.beginPath(); ctx.moveTo(xN, yy); ctx.lineTo(xN2, yy); ctx.stroke()
+      arrowAt(xN2, yy, awayFromN)
+      const xS = cx - src * (coreLen / 2 + 1.5 * sc), xS2 = cx - src * (coreLen / 2 + 15 * sc)
+      ctx.beginPath(); ctx.moveTo(xS, yy); ctx.lineTo(xS2, yy); ctx.stroke()
+      arrowAt(xS2, yy, intoS)
+    }
   }
 
   // ── 抽出铁芯的提示（此时不标磁极）
