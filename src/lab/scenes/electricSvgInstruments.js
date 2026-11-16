@@ -1916,17 +1916,31 @@ export const TYPES = {
       const poles = (on && core) ? `
         <text x="${coreX + (nRight ? coreLen - 9 : 9)}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#DC2626">N</text>
         <text x="${coreX + (nRight ? 9 : coreLen - 9)}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#2563EB">S</text>` : ''
-      /* 桌上的一盒大头针：常驻在电磁铁下方（未吸起的针躺在桌上，与铁芯分开） */
-      const bedMarks = Array.from({ length: 8 }, (_, i) => {
-        const row = Math.floor(i / 4), col = i % 4
-        const bx = 78 + col * 13 + (row ? 4 : 0)
-        const by = 152 + row * 6
-        const dy = i % 2 ? 1.3 : -1.2
-        return `<g>
-        <line x1="${bx}" y1="${by}" x2="${bx + 11}" y2="${(by + dy).toFixed(1)}" stroke="#727C89" stroke-width="1.35" stroke-linecap="round"/>
+      /* 桌上散落的大头针：以线圈轴线为基准由近到远 3 排 × 5 槽（合计 15 根 = 上限）
+         磁性越强先吸走最近的一排，被吸走的槽位就空出来（桌上的针变少） */
+      const bedMarks = (() => {
+        const slotX = [-24, -12, 0, 12, 24]
+        const bedDys = [13, 27, 41]
+        let left = Math.max(0, Math.min(15, pins))
+        let s = ''
+        for (let r = 0; r < bedDys.length; r++) {
+          const take = Math.min(5, left)
+          left -= take
+          const remain = 5 - take
+          if (remain <= 0) continue
+          const start = Math.floor((5 - remain) / 2)
+          const by = axisY + coreH / 2 + bedDys[r]
+          for (let i = start; i < start + remain; i++) {
+            const bx = 105 + slotX[i]
+            const dy = i % 2 ? 1.3 : -1.2
+            s += `<g>
+        <line x1="${bx}" y1="${(by + (r % 2 ? 1.2 : -1.1)).toFixed(1)}" x2="${bx + 11}" y2="${(by + dy).toFixed(1)}" stroke="#727C89" stroke-width="1.35" stroke-linecap="round"/>
         <circle cx="${(bx + 12.2).toFixed(1)}" cy="${(by + dy).toFixed(1)}" r="1.5" fill="#B9C3CE" stroke="#5b6470" stroke-width="0.5"/>
       </g>`
-      }).join('')
+          }
+        }
+        return s
+      })()
       /* 大头针：被吸起后吸在 N 极那一侧（磁极处磁性最强），下方散开 —— N 在哪边针就挂在哪边 */
       const pinX = nRight ? 105 + coreLen / 2 - 16 : 105 - coreLen / 2 + 16
       const pinY0 = core ? axisY + coreH / 2 : axisY + coilH / 2 - 2

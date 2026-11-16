@@ -892,25 +892,34 @@ function drawEM(ctx, cx, baseY, o) {
     ctx.fillText('铁芯已抽出（磁性骤减）', cx, ccy - coreH / 2 - 10 * sc)
   }
 
-  // ── 桌上的一盒大头针：常驻画在电磁铁下方一段距离处（未吸起的针就躺在桌上，与铁芯明显分开）
+  // ── 桌上散落的大头针：以线圈轴线为基准由近到远排 3 排（每排 5 根 = 最多能吸 15 根）
+  //    磁性越强，先被吸上去的是最近的一排；被吸走的针从桌上消失，剩下的往远处退
   {
-    const bedX = cx - 30 * sc, bedY = cy + coreH / 2 + 32 * sc
-    const nBed = 8
-    for (let i = 0; i < nBed; i++) {
-      const row = Math.floor(i / 4), col = i % 4
-      const bx = bedX + (col - 1.5) * 13 * sc + (row ? 4 * sc : 0)
-      const by = bedY + row * 5 * sc
-      const ang = (row ? 0.22 : -0.16) + (i % 2 ? 0.06 : -0.05)
-      const L = 11 * sc
-      ctx.save()
-      ctx.translate(bx, by); ctx.rotate(ang)
-      ctx.strokeStyle = '#6B7280'; ctx.lineWidth = 1.35 * sc; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(-L / 2, 0); ctx.lineTo(L / 2, 0); ctx.stroke()
-      ctx.fillStyle = '#94A3B8'
-      ctx.beginPath(); ctx.arc(L / 2 + 0.9 * sc, 0, 1.7 * sc, 0, Math.PI * 2); ctx.fill()
-      ctx.strokeStyle = '#5B6470'; ctx.lineWidth = 0.5 * sc
-      ctx.beginPath(); ctx.arc(L / 2 + 0.9 * sc, 0, 1.7 * sc, 0, Math.PI * 2); ctx.stroke()
-      ctx.restore()
+    const bedPerRow = 5
+    const bedDys = [13, 27, 41]              // 离铁芯下沿的距离（由近到远）
+    const slotX = [-24, -12, 0, 12, 24]      // 每排 5 个槽位，居中对称
+    let leftLift = Math.max(0, Math.min(15, pins))
+    for (let r = 0; r < bedDys.length; r++) {
+      const take = Math.min(bedPerRow, leftLift)
+      leftLift -= take
+      const remain = bedPerRow - take
+      if (remain <= 0) continue
+      const start = Math.floor((bedPerRow - remain) / 2)  // 剩下的针居中留在桌上
+      const by = cy + coreH / 2 + bedDys[r] * sc
+      for (let i = start; i < start + remain; i++) {
+        const bx = cx + slotX[i] * sc
+        const ang = (r % 2 ? 0.20 : -0.14) + (i % 2 ? 0.07 : -0.05)
+        const L = 11 * sc
+        ctx.save()
+        ctx.translate(bx, by); ctx.rotate(ang)
+        ctx.strokeStyle = '#6B7280'; ctx.lineWidth = 1.35 * sc; ctx.lineCap = 'round'
+        ctx.beginPath(); ctx.moveTo(-L / 2, 0); ctx.lineTo(L / 2, 0); ctx.stroke()
+        ctx.fillStyle = '#94A3B8'
+        ctx.beginPath(); ctx.arc(L / 2 + 0.9 * sc, 0, 1.7 * sc, 0, Math.PI * 2); ctx.fill()
+        ctx.strokeStyle = '#5B6470'; ctx.lineWidth = 0.5 * sc
+        ctx.beginPath(); ctx.arc(L / 2 + 0.9 * sc, 0, 1.7 * sc, 0, Math.PI * 2); ctx.stroke()
+        ctx.restore()
+      }
     }
     ctx.lineCap = 'butt'
   }
