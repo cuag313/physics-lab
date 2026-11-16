@@ -177,10 +177,14 @@ export default function ElectricEnergyScene() {
     const hSw = symHalf('switch', 1)
     const half = LOADS[s.load].half
 
-    /* 导线：上边从 L 到表左端子，表右端子到 R */
+    /* 导线：上边从 L 到表左端子，表右端子到 R；
+       左竖边在中间让位给**交流电源符号**（教材画法：圆圈 + 圆内正弦波 + 旁标 220 V） */
+    const midY = (T + B) / 2
+    const srcR = 18
     drawLine(ctx, L, T, mx - MW / 2, T, wc, lw)
     drawLine(ctx, mx + MW / 2, T, R, T, wc, lw)
-    drawLine(ctx, L, T, L, B, wc, lw)
+    drawLine(ctx, L, T, L, midY - srcR, wc, lw)
+    drawLine(ctx, L, midY + srcR, L, B, wc, lw)
     drawLine(ctx, R, T, R, B, wc, lw)
     drawLine(ctx, L, B, loadX - half, B, wc, lw)
     drawLine(ctx, loadX + half, B, swX - hSw, B, wc, lw)
@@ -245,15 +249,8 @@ export default function ElectricEnergyScene() {
     ctx.textBaseline = 'top'
     ctx.fillText('开关', swX, B + 22)
 
-    /* ─── 市电标注（左竖边）─── */
-    ctx.save()
-    ctx.translate(L - 4, (T + B) / 2)
-    ctx.rotate(-Math.PI / 2)
-    ctx.fillStyle = '#1565C0'
-    ctx.font = `bold ${FS(9.5)}px "Microsoft YaHei", sans-serif`
-    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-    ctx.fillText('市电 220 V', 0, 0)
-    ctx.restore()
+    /* ─── 交流电源符号（左竖边中部）─── */
+    drawACSource(ctx, L, midY, srcR, { on, FS })
 
     /* ─── 电能表特写区 ─── */
     drawMeterZoom(ctx, D.zx, D.zy, D.zw, D.zh, {
@@ -478,6 +475,7 @@ export default function ElectricEnergyScene() {
           [['单相电能表', '#7C3AED', 1], ['（220 V 10(40)A，铭牌 600 r/kW·h）、'], ['用电器', '#EA8C1B', 1], ['（白炽灯 100 W / 电热水壶 800 W / 电饭锅 1500 W）、开关、导线。']],
           [['计时用'], ['秒表', '#0EA5E9', 1], ['（本仿真把它做成"时间倍速"：真实 1 小时太长，600× 时 6 秒 = 1 小时）。']],
           [['注意：本实验'], ['不用电流表、不用滑动变阻器', '#DC2626', 1], ['—— 电能表本身就串在干路上，量的就是干路电流。']],
+          [['电源符号：'], ['圆圈 + 圆内正弦波（~）+ 旁标 220 V', '#1565C0', 1], [' 是交流电源的标准画法；电池的长短线符号是直流，本实验不可用电池代替。']],
         ],
       },
       {
@@ -690,6 +688,39 @@ export default function ElectricEnergyScene() {
 /* ══════════════════════════════════════════════════════════════
    绘制辅助
    ══════════════════════════════════════════════════════════════ */
+
+/** 交流电源符号（教材标准画法）：圆圈 + 圆内正弦波 + 旁标 220 V / 50 Hz
+ *  上下各引一段导线接入回路（引线由调用方画，这里只管符号本体 + 标注）。
+ *  注意：不能画成电池（长线短线）—— 那是直流电源符号。 */
+function drawACSource(ctx, cx, cy, r, o) {
+  const { on, FS } = o
+  const ink = on ? '#1565C0' : '#8AA0B0'
+  // 圆
+  ctx.fillStyle = on ? '#FFFFFF' : '#F7FAFC'
+  ctx.strokeStyle = ink
+  ctx.lineWidth = 2
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+  // 圆内一个完整周期的正弦波
+  const w = r * 0.62, amp = r * 0.34
+  ctx.strokeStyle = ink
+  ctx.lineWidth = 1.7
+  ctx.beginPath()
+  ctx.moveTo(cx - w, cy)
+  ctx.bezierCurveTo(cx - w * 0.55, cy - amp * 1.7, cx - w * 0.15, cy - amp * 1.7, cx, cy)
+  ctx.bezierCurveTo(cx + w * 0.15, cy + amp * 1.7, cx + w * 0.55, cy + amp * 1.7, cx + w, cy)
+  ctx.stroke()
+  // 旁标（三行左对齐）
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+  ctx.fillStyle = on ? '#5D4037' : '#A08E76'
+  ctx.font = `${FS(9)}px "Microsoft YaHei", sans-serif`
+  ctx.fillText('市电', cx + r + 9, cy - 19)
+  ctx.fillStyle = ink
+  ctx.font = `bold ${FS(12.5)}px "Microsoft YaHei", sans-serif`
+  ctx.fillText('220 V', cx + r + 9, cy - 3)
+  ctx.fillStyle = on ? '#B45309' : '#98A6B2'
+  ctx.font = `bold ${FS(9.5)}px "Microsoft YaHei", sans-serif`
+  ctx.fillText('交流 ~ 50 Hz', cx + r + 9, cy + 12)
+}
 
 /** 回路中的电能表（符号化：铭牌条 + 铝盘 + 6 位计数器 + 600 r/kW·h） */
 function drawMeterSym(ctx, cx, cy, MW, MH, o) {
