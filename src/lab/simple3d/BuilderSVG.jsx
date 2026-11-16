@@ -505,6 +505,8 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     }
     // 小电动机：I 驱动风扇叶片（通电才转）
     if (c.type === 'motor') return { I: Math.abs(o._I || 0) }
+    // 灵敏电流计：中央零点，带符号（正偏 / 反偏），满偏 0.15 A
+    if (c.type === 'galvanometer') return { frac: (o._I || 0) / (o._fs || CFG.GALV_FS) }
     if (c.type === 'bulb') {
       const p = o._P || 0
       return { bright: p > 0 ? Math.min(1, p / CFG.BULB_RATED) : 0, over: p > CFG.BULB_RATED * 1.02 }
@@ -538,6 +540,15 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       return {
         text: `I = ${fmt(o._I || 0)} A${tag}`,
         color: bad || par || o._over ? '#fb7185' : '#4ade80',
+      }
+    }
+    if (c.type === 'galvanometer') {
+      const I = o._I || 0
+      return {
+        text: I > 1e-6 ? `I = ${(I * 1000).toFixed(0)} mA → 右偏`
+          : I < -1e-6 ? `I = ${(I * 1000).toFixed(0)} mA ← 左偏`
+            : '指针居中 · 无电流',
+        color: Math.abs(I) > (o._fs || CFG.GALV_FS) ? '#fb7185' : I !== 0 ? '#4ade80' : '#94a3b8',
       }
     }
     if (c.type === 'voltmeter') {

@@ -67,6 +67,9 @@ export const CFG = {
   EM_CORE_MU: 0.25,             // 无铁芯时的等效倍率（软铁芯磁导率远大于空气，抽出后磁性骤减）
   EM_PIN_K: 1.8,                // N·A → 能吸住的大头针数（1 针 ≈ 1.8 N·A）
   EM_PIN_MAX: 4,                // 显示上限；实验只备 4 枚大头针
+  // 灵敏电流计（电磁感应／法拉第实验专用）：中央零点、指针左右都能偏
+  GALV_R: 50,                   // 表头内阻（Ω，教学简化值）
+  GALV_FS: 0.15,                // 满偏电流（A）；3V + 50Ω 约 40% 偏转，刚好看着舒服
   // 奥斯特实验（电生磁）：板上那段直导线近似理想导线，磁场强弱 ∝ 电流
   OSTER_WIRE_R: 0.02,           // 直导线电阻（Ω）
 }
@@ -106,6 +109,7 @@ export const TERM_IDS = {
   jouleSet: ['a1', 'a2', 'b1', 'b2'], // 焦耳定律演示器：A 组（a1-a2）、B 组（b1-b2）两段电阻各一对柱
   electromagnet: ['a', 'b'],         // 电磁铁（线圈 + 软铁芯）：线圈两端两接线柱
   ostersBoard: ['a', 'b'],           // 奥斯特实验板（通电直导线 + 小磁针）：直导线两端两接线柱
+  galvanometer: ['neg', 'pos'],      // 灵敏电流计（中央零点，两柱）：电磁感应实验专用
 }
 
 const keyOf = (cid, tid) => cid + ':' + tid
@@ -265,6 +269,12 @@ export function solveCircuit(comps, wires, opts) {
       const R = c._probeR ?? CFG.AMM_R // 探针求解开路电压/短路电流时覆盖内阻
       stampR(A, a, bb, R)
       els.push({ kind: 'R', a, b: bb, R, comp: c, tA: tap, tB: 'neg', fs: tap === 'full' ? 3 : tap === 'pos' ? CFG.AMM_FS_2 : CFG.AMM_FS })
+    } else if (c.type === 'galvanometer') {
+      // 灵敏电流计：中央零点，正反都能偏（内阻较大，串在电路里几乎不改变电流）
+      const a = netOf(c, 'pos')
+      const bb = netOf(c, 'neg')
+      stampR(A, a, bb, CFG.GALV_R)
+      els.push({ kind: 'R', a, b: bb, R: CFG.GALV_R, comp: c, tA: 'pos', tB: 'neg', fs: CFG.GALV_FS })
     } else if (c.type === 'voltmeter') {
       const tap = meterRangeTap(c, wires)
       const a = netOf(c, tap) // 接入的量程柱（+ 端）
@@ -465,6 +475,10 @@ export function solveCircuit(comps, wires, opts) {
     if (c.type === 'bulb') {
       o._I = Math.abs(I)
       o._P = I * I * CFG.BULB_R
+    } else if (c.type === 'galvanometer') {
+      o._I = I // 电流由「+」柱流入为正（中央零点，负值就是指针往另一边偏）
+      o._fs = e.fs ?? CFG.GALV_FS
+      o._over = Math.abs(I) > o._fs * 1.001
     } else if ((c.type === 'ammeter' || c.type === 'ammeterA')) {
       o._I = I // 电流由接入的量程柱（+ 端）流入为正
       o._Vd = v[e.a] - v[e.b] // 电流表两端电压差

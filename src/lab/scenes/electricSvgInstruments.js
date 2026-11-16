@@ -2100,6 +2100,87 @@ export const TYPES = {
     on ? '#C4B5FD' : '#94a3b8', 148)}
     </svg>` }
   },
+
+  /* ── 灵敏电流计（本专题专用）：中央零点，指针左右都能偏 ──
+   * 电磁感应／法拉第实验的核心仪表：指针居中 = 没有电流；
+   * 指针偏左 / 偏右 = 电流方向相反 —— 交流电方向来回变，就是指针左右摆。
+   * 表盘照真实教学表画：弧刻度 −50…0…+50，中央零位加粗红；
+   * 透视（.inner）里露出上下磁钢 + 线圈，说明指针为什么会被电流"推"动。 */
+  galvanometer: {
+    label: '灵敏电流计', w: 176, h: 132, meter: true,
+    terminals: [
+      { id: 'neg', label: '−', name: '黑柱（−）', x: 38, y: 112 },
+      { id: 'pos', label: '+', name: '红柱（+）', x: 138, y: 112 },
+    ],
+    render(c, dyn = {}) {
+      const frac = Math.max(-1, Math.min(1, Number(dyn.frac) || 0))
+      const over = Math.abs(frac) >= 0.995
+      const PX = 88, PY = 100, R = 56, NEEDLE = 50, SWEEP = 46 * Math.PI / 180
+
+      const f = (v) => v.toFixed(1)
+      const pt = (ang, r) => [PX + Math.cos(ang) * r, PY + Math.sin(ang) * r]
+
+      // 刻度弧：-46° … +46°（以"向上"为 0）
+      const aL = -Math.PI / 2 - SWEEP, aR = -Math.PI / 2 + SWEEP
+      const [lx, ly] = pt(aL, R), [rx, ry] = pt(aR, R)
+
+      let ticks = ''
+      for (let i = -5; i <= 5; i++) {
+        const a = -Math.PI / 2 + (i / 5) * SWEEP
+        const r0 = i === 0 ? 44 : 48
+        const [x0, y0] = pt(a, r0), [x1, y1] = pt(a, R)
+        const zero = i === 0
+        ticks += `<line x1="${f(x0)}" y1="${f(y0)}" x2="${f(x1)}" y2="${f(y1)}"
+          stroke="${zero ? '#DC2626' : '#64748B'}" stroke-width="${zero ? 1.9 : 1}"/>`
+      }
+
+      // 指针（中央零点 → 按 frac 左右偏）
+      const aN = -Math.PI / 2 + frac * SWEEP
+      const [nx, ny] = pt(aN, NEEDLE)
+      const needle = `<line x1="${PX}" y1="${PY}" x2="${f(nx)}" y2="${f(ny)}"
+        stroke="${over ? '#DC2626' : '#111827'}" stroke-width="2.2" stroke-linecap="round"/>
+        <circle cx="${PX}" cy="${PY}" r="3.6" fill="#334155"/>`
+
+      const inner = `<g class="inner">
+        <rect x="26" y="14" width="124" height="13" rx="3" fill="#C0392B" opacity="0.6"/>
+        <text x="88" y="24" text-anchor="middle" font-size="8" font-weight="700" fill="#7F1D1D">N 磁钢</text>
+        <rect x="26" y="78" width="124" height="13" rx="3" fill="#1D4ED8" opacity="0.5"/>
+        <text x="88" y="88" text-anchor="middle" font-size="8" font-weight="700" fill="#1E3A8A">S 磁钢</text>
+        <rect x="62" y="36" width="52" height="42" rx="5" fill="#B45309" opacity="0.78"/>
+        <path d="M 64 40 H 112 M 64 48 H 112 M 64 56 H 112 M 64 64 H 112 M 64 72 H 112"
+          stroke="#F59E0B" stroke-width="1.3" opacity="0.92"/>
+        <text class="plabel" x="88" y="118">表头：磁钢 + 线圈</text>
+      </g>`
+
+      const dial = `<g class="esb-dial">
+        <rect x="10" y="6" width="156" height="106" rx="9" fill="#FBFDFF" stroke="#CBD5E1" stroke-width="1.2"/>
+        <path d="M ${f(lx)} ${f(ly)} A ${R} ${R} 0 0 1 ${f(rx)} ${f(ry)}"
+          fill="none" stroke="#94A3B8" stroke-width="1"/>
+        ${ticks}
+        <text x="88" y="33" text-anchor="middle" font-size="10" font-weight="700" fill="#64748B">0</text>
+        <text x="34" y="70" text-anchor="middle" font-size="9" font-weight="600" fill="#64748B">−50</text>
+        <text x="142" y="70" text-anchor="middle" font-size="9" font-weight="600" fill="#64748B">+50</text>
+        <text x="150" y="104" text-anchor="middle" font-size="10" font-weight="700" fill="#94A3B8">G</text>
+        <text x="24" y="104" text-anchor="middle" font-size="9" font-weight="600" fill="#94A3B8">mA</text>
+        ${needle}
+      </g>`
+
+      return `
+    <svg width="176" height="132" viewBox="0 0 176 132">
+      <defs>
+        <linearGradient id="galv-shell" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#64748B"/><stop offset="0.45" stop-color="#4B5563"/>
+          <stop offset="1" stop-color="#334155"/>
+        </linearGradient>
+      </defs>
+      <rect class="casing" x="1" y="1" width="174" height="122" rx="12" fill="url(#galv-shell)" stroke="#1E293B" stroke-width="1.6"/>
+      <rect x="5" y="3" width="166" height="6" rx="3" fill="rgba(255,255,255,0.16)"/>
+      ${inner}
+      ${dial}
+      ${termDotSVG(38, 112, true, '−')}
+      ${termDotSVG(138, 112, false, '+')}
+    </svg>` }
+  },
 }
 
 /** 一支小磁针（SVG 片段）：白盘 + 红(N)/蓝(S) 针；ang 为 N 极方向（屏幕坐标，y 向下） */
