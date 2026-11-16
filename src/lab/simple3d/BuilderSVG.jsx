@@ -391,6 +391,13 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     if (!c) return
     if (c.type === 'switch') {
       setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, closed: !x.closed } : x)))
+    } else if (c.type === 'electromagnet' && ev && ev.shiftKey) {
+      // Shift + 单击电磁铁：匝数 +1（5 → 20 循环），线圈会一圈一圈重新画（优先于双击，避免连点被当成双击）
+      setComps((cs) => cs.map((x) => {
+        if (x.id !== c.id) return x
+        const t0 = Math.max(3, Math.round(Number(x.turns) || 10))
+        return { ...x, turns: t0 >= 20 ? 5 : t0 + 1 }
+      }))
     } else if (c.type === 'electromagnet' && isDouble) {
       // 双击电磁铁：插 / 抽软铁芯（磁性强弱对比实验的关键一步）
       setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, core: x.core === false } : x)))

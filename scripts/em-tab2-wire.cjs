@@ -68,6 +68,18 @@ const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
   const recText = await p.evaluate(() => document.querySelector('.esb-record, .esb-log, [class*="record"]')?.innerText || '(no record panel)')
   console.log('record:', JSON.stringify(recText).slice(0, 300))
 
+  // Shift + 单击：改匝数（5→20 循环）—— 点 3 次应变成 13 匝
+  const emB0 = await setBox(0)
+  await p.keyboard.down('Shift')
+  for (let i = 0; i < 3; i++) {
+    await p.mouse.click(emB0.x + emB0.width / 2, emB0.y + emB0.height / 2)
+    await sleep(120)
+  }
+  await p.keyboard.up('Shift')
+  await sleep(700)
+  await p.screenshot({ path: `${OUT}/em-tab2-turns13-zoom.png`, clip: await setBox(0) })
+  console.log('after shift-clicks:', JSON.stringify(await p.evaluate(() => [...document.querySelectorAll('.esb-comp')][0].innerText)))
+
   // 双击抽铁芯
   const emB = await setBox(0)
   await p.mouse.click(emB.x + emB.width / 2, emB.y + emB.height / 2)

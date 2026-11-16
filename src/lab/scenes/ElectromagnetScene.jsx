@@ -16,7 +16,7 @@ import { symBattery, symSwitch, symRheostat, symMeter, symHalf, SYM_INK } from '
  *   Tab1 📖 电路演示 —— 暖色底 + 标准符号回路：
  *                        上边 滑变（左）+ 电流表（右）串联
  *                        下边 电源 → 电磁铁（线圈 + 软铁芯 + 吸起的头针）→ 开关
- *                        控制变量法：① 改滑片 ⇒ I 变（线圈固定 10 匝）② 抽/插软铁芯 ⇒ μ 变
+ *                        控制变量法：① 改滑片 ⇒ I 变 ② 改匝数（5~20）⇒ N 变 ③ 抽/插软铁芯 ⇒ μ 变
  *                        磁性强弱 = N·I·μ，用「吸住大头针的枚数」读数（转换法）
  *   Tab2 🔧 自己动手 —— 与简单电路同一套 1:1 SVG 器材（9 件基础器材 + 本专题专用「电磁铁」）+
  *                        一键透视内部结构 + 实验记录表（都在 BuilderSVG 里）
@@ -36,7 +36,9 @@ function thumb(type) {
 }
 
 const RHEO_MAX = 20          // 20Ω 2A 滑动变阻器
-const TURNS = 10             // 本实验固定 10 匝（线圈画满 10 圈，学生可以直接数圈）
+const TURNS_MIN = 5          // 匝数下限（线圈画得出来、圈数数得清）
+const TURNS_MAX = 20         // 匝数上限
+const TURNS_DEF = 10         // 默认 10 匝
 const R_PER_TURN = 0.12      // 每匝线圈电阻 Ω
 const CORE_MU = 0.25         // 无铁芯时的磁性倍率
 const PIN_K = 1.2            // 1.2 N·A ≈ 能吸住 1 枚大头针
@@ -53,6 +55,7 @@ export default function ElectromagnetScene() {
     switchClosed: false,
     time: 0,                // 动画时间（电子流动 / 磁感线脉动）
     ratio: 1,               // 滑片位置：1 = 阻值最大（右端）
+    turns: TURNS_DEF,        // 匝数（5~20 连续可调）
     core: true,             // 软铁芯是否插在线圈里
     records: [],            // [{ i, n, core, rr, pins }]
     wireColor: '#F44336',
@@ -99,7 +102,7 @@ export default function ElectromagnetScene() {
   /** 物理：线圈 + 滑变 + 电流表内阻 + 电源内阻串联；磁性 ∝ N·I·μ */
   function solve() {
     const s = S.current
-    const turns = TURNS
+    const turns = s.turns
     const Rr = Math.round(s.ratio * RHEO_MAX * 10) / 10
     const Rc = R_PER_TURN * turns
     const Rtot = Rc + Rr + CFG.AMM_R + CFG.VS.r
@@ -258,15 +261,47 @@ export default function ElectromagnetScene() {
     canvasRef.current._clickAreas.push({ ...sliderArea, onClick: slideTo, onDrag: slideTo })
     canvasRef.current._sliderArea = sliderArea
 
-    // ─── 铁芯按钮 + 记录按钮（单行；匝数固定 10 匝，不再给切换按钮）───
-    const chipFont = Math.max(10, Math.round(12 * scale))
+    // ─── 匝数旋钮 + 铁芯按钮 + 记录按钮（单行）───
     const bh = 28 * scale
     const bY = y1 + 40 * scale
     const b2Y = bY
-    const turnBtns = []
     const coreW2 = 136 * scale, recW = 172 * scale, recH = bh
-    const coreX = midX - 8 * scale - coreW2
-    const recX = midX + 8 * scale
+    const tnW = 132 * scale
+    // 三件（匝数 | 铁芯 | 记录）整行以电磁铁为中心排布
+    const rowGap = 8 * scale
+    const rowW = tnW + rowGap + coreW2 + rowGap + recW
+    const tnX = emX - rowW / 2
+    const coreX = tnX + tnW + rowGap
+    const recX = coreX + coreW2 + rowGap
+    const turnBtns = []
+
+    // 匝数：[-]  N 匝  [+]，点一次改 1 匝（5~20），中间显示当前值
+    ctx.save()
+    ctx.fillStyle = '#EEF4FB'
+    ctx.strokeStyle = '#94A3B8'
+    ctx.lineWidth = 1.3
+    ctx.beginPath(); ctx.roundRect(tnX, b2Y, tnW, recH, recH / 2); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = '#1E3A8A'
+    ctx.font = `bold ${Math.max(10, Math.round(11.5 * scale))}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText(`N = ${s.turns} 匝`, tnX + tnW / 2, b2Y + recH / 2)
+    ctx.fillStyle = '#F59E0B'
+    ctx.beginPath(); ctx.arc(tnX + recH / 2, b2Y + recH / 2, recH / 2 - 2.5 * scale, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath(); ctx.arc(tnX + tnW - recH / 2, b2Y + recH / 2, recH / 2 - 2.5 * scale, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#fff'
+    ctx.font = `bold ${Math.max(11, Math.round(14 * scale))}px "Microsoft YaHei", sans-serif`
+    ctx.fillText('−', tnX + recH / 2, b2Y + recH / 2 - 0.5 * scale)
+    ctx.fillText('+', tnX + tnW - recH / 2, b2Y + recH / 2 - 0.5 * scale)
+    ctx.restore()
+    const setTurns = (d) => {
+      S.current.turns = Math.max(TURNS_MIN, Math.min(TURNS_MAX, S.current.turns + d))
+      forceUpdate(n => n + 1)
+    }
+    turnBtns.push(
+      { x: tnX, y: b2Y, w: recH * 1.3, h: recH, onClick: () => setTurns(-1) },
+      { x: tnX + tnW - recH * 1.3, y: b2Y, w: recH * 1.3, h: recH, onClick: () => setTurns(1) },
+    )
+    canvasRef.current._clickAreas.push(...turnBtns)
     ctx.save()
     ctx.fillStyle = s.core ? '#EAF3E6' : '#F3F1EC'
     ctx.strokeStyle = s.core ? '#15803D' : '#CFC6B6'
@@ -317,6 +352,7 @@ export default function ElectromagnetScene() {
       swX, swY: y1, rheoX, rheoY: y0, hRheo, hSw, emX, scale,
       turnBtn: turnBtns, coreBtn: { x: coreX + coreW2 / 2, y: b2Y + recH / 2 },
       recX: recX + recW / 2, recY: b2Y + recH / 2,
+      turnsCtl: { minusX: tnX + recH * 0.65, plusX: tnX + tnW - recH * 0.65, y: b2Y + recH / 2 },
       closed: on, ratio: s.ratio, turns: sol.turns, core: s.core,
       I: sol.I, pins: sol.pins, strength: sol.strength, recN: recount,
     }
@@ -434,7 +470,7 @@ export default function ElectromagnetScene() {
       ['针（N·I = ' + r.strength.toFixed(1) + '）'],
     ])
     if (records.length >= 2) {
-      // 匝数固定 10 匝，可比的一对只剩「同 N 不同 I」和「同 N、I 不同铁芯」
+      // 匝数也可以改（5~20），所以「同 N 不同 I」「同 N、I 不同铁芯」「同 I 不同 N」三类对照都能记
       const a = records[0], last = records[records.length - 1]
       if (last.n === a.n && Math.abs(last.i - a.i) > 0.05 && a.core === last.core) {
         rows.push([
@@ -464,15 +500,15 @@ export default function ElectromagnetScene() {
         items: [
           [['探究电磁铁的'], ['磁性强弱', '#C2410C', 1], ['与哪些因素有关，得出 '], ['磁性 ∝ 匝数 N × 电流 I × 铁芯', '#DC2626', 1], ['。']],
           [['学会用'], ['转换法', '#15803D', 1], ['：磁性看不见，用「'], ['吸住大头针的枚数', '#C2410C', 1], ['」来比较磁性强弱。']],
-          [['学会用'], ['控制变量法', '#15803D', 1], ['：研究一个因素时，其余因素必须保持不变（本实验线圈固定 10 匝，只改电流或插拔铁芯）。']],
-          [['学会看'], ['磁力线的疏密', '#7C3AED', 1], ['：线越密磁场越强 —— 两头的线最密（磁场最强）、插铁芯比抽出铁芯密、电流调大也会变密。']],
+          [['学会用'], ['控制变量法', '#15803D', 1], ['：研究一个因素时其余不变 —— 研究电流时匝数不动；研究匝数时先用滑片把'], ['电流调回同一数值', '#C2410C', 1], ['；研究铁芯时 N、I 都要保持相同。']],
+          [['学会看'], ['磁力线的疏密', '#7C3AED', 1], ['：线越密磁场越强 —— 两头的线最密（磁场最强）、插铁芯比抽出铁芯密、电流调大或匝数增多也会变密。']],
         ],
       },
       {
         t: '实验器材', c: '#C98A12',
         items: [
           [['干电池组（3 V）、开关、'], ['电流表', '#C2410C', 1], ['、'], ['滑动变阻器（20 Ω 2 A）', '#EA8C1B', 1], ['、导线若干。']],
-          [[''], ['电磁铁', '#EA8C1B', 1], ['：一个'], ['10 匝线圈', '#EA8C1B', 1], ['（线一圈一圈绕满 10 圈，可以数）+ 一根'], ['软铁芯', '#EA8C1B', 1], ['。']],
+          [[''], ['电磁铁', '#EA8C1B', 1], ['：一个'], ['5～20 匝可调的线圈', '#EA8C1B', 1], ['（线一圈一圈绕，圈数能数出来；面板上点 [-] [+] 改匝数）+ 一根'], ['软铁芯', '#EA8C1B', 1], ['。']],
           [[''], ['大头针', '#C2410C', 1], ['（或小铁钉）一盒 —— 用来"读"磁性强弱。']],
         ],
       },
@@ -482,7 +518,8 @@ export default function ElectromagnetScene() {
           [['① 按图连线：电源、开关、'], ['电流表（串联）', '#15803D', 1], ['、滑动变阻器、电磁铁线圈串成一个回路，闭合前滑片在'], ['阻值最大处', '#DC2626', 1], ['。']],
           [['② 把铁芯'], ['插入线圈', '#15803D', 1], ['，闭合开关，读出电流 I，把电磁铁下端靠近大头针，数'], ['吸住几枚', '#C2410C', 1], ['。']],
           [['③ 保持'], ['匝数、铁芯不变', '#DC2626', 1], ['，移动滑片改变电流，重做 2～3 次 ⇒ 看磁性怎样随电流变。']],
-          [['④ 保持'], ['匝数、电流不变', '#DC2626', 1], ['，'], ['抽出铁芯', '#DC2626', 1], ['重做 ⇒ 看磁性怎样变。断开开关，整理器材。']],
+          [['④ 保持'], ['电流、铁芯不变', '#DC2626', 1], ['，点 [-] / [+] 改变匝数（5～20），并用滑片'], ['把电流调回原值', '#DC2626', 1], ['重做 ⇒ 看磁性怎样随匝数变。']],
+          [['⑤ 保持'], ['匝数、电流不变', '#DC2626', 1], ['，'], ['抽出铁芯', '#DC2626', 1], ['重做 ⇒ 看磁性怎样变。断开开关，整理器材。']],
         ],
       },
       {
@@ -490,7 +527,7 @@ export default function ElectromagnetScene() {
         items: [
           [['电流表'], ['串联', '#15803D', 1], ['在回路里（'], ['+ 柱进、− 柱出', '#DC2626', 1], ['），本实验约 0.2～0.5 A，用 0～0.6 A 档。']],
           [['滑动变阻器接法「'], ['一上一下', '#15803D', 1], ['」串入电路：既改变电流，又起保护作用。']],
-          [['本实验线圈'], ['固定 10 匝', '#C2410C', 1], ['（0.12 Ω/匝 ≈ 1.2 Ω）；线圈匝数越多电阻越大，因此真实器材换匝数后电流会变，要重新调滑片。']],
+          [['本实验线圈'], ['5～20 匝连续可调', '#C2410C', 1], ['（0.12 Ω/匝）；匝数一变电阻就变、电流跟着变 —— 严格比较磁性时，换完匝数要用滑片'], ['把电流调回同一数值', '#DC2626', 1], ['。']],
           [['线圈的两个接线柱接到电路里；'], ['铁芯插在线圈中间', '#DC2626', 1], ['，插拔时先断开开关。']],
         ],
       },
@@ -511,8 +548,8 @@ export default function ElectromagnetScene() {
           [['磁力线'], ['越密，磁场越强', '#7C3AED', 1], ['；越疏，磁场越弱。图里紫色椭圆环的'], ['条数、外张范围、浓淡', '#C2410C', 1], ['就是按磁性大小画的。']],
           [['两端（磁极）最密 → 磁场最强', '#15803D', 1], ['：环贴着铁芯处密、往外越走越疏，所以两头的线挤在一起，线圈中段最稀。']],
           [['插铁芯 vs 抽出铁芯'], ['同一电流下对比', '#C2410C', 1], ['：插着铁芯时有 3～5 圈磁力线；抽出铁芯（μ 只剩 0.25）就只剩 1 圈稀淡的线 —— 磁性明显变弱，大头针也吸不住。']],
-          [['改电流对比'], ['同一个线圈（10 匝）、铁芯不动', '#C2410C', 1], ['：滑片向阻值小处移 → 电流大 → 环数增多、外张变大、线更实；电流小则变稀变淡。']],
-          [['匝数的影响'], ['匝数增多，同样电流下磁力线也更密（磁性 ∝ N·I）', '#15803D', 1], ['；本实验线圈固定 10 匝，所以图上只演示"电流"和"铁芯"两个变量，匝数一栏留给公式说明。']],
+          [['改电流对比'], ['匝数不动、铁芯不动', '#C2410C', 1], ['：滑片向阻值小处移 → 电流大 → 环数增多、外张变大、线更实；电流小则变稀变淡。']],
+          [['改匝数对比'], ['面板点 [-] / [+]，5～20 匝连续调', '#15803D', 1], ['（Tab2 里 Shift + 单击线圈也能改）：圈数在变、磁力线也跟着变密；但匝数一变电阻变、电流跟着变，要严格比较'], ['得先把电流调回同一数值', '#DC2626', 1], ['。']],
         ],
       },
       { t: '本次测量记录', c: '#15803D', items: rows },
@@ -522,7 +559,7 @@ export default function ElectromagnetScene() {
           [['连线、插拔铁芯时开关必须'], ['断开', '#DC2626', 1], ['；闭合前滑片在'], ['阻值最大处', '#DC2626', 1], ['。']],
           [['通电时间不宜过长 —— 线圈'], ['发热会烧坏漆包线', '#DC2626', 1], ['，也不要用大电流长时间通电。']],
           [['电表'], ['正负柱不能接反', '#DC2626', 1], ['、量程不能超；先试触再闭合。']],
-          [['比较磁性大小时，'], ['只改变一个因素', '#DC2626', 1], ['，其余必须相同（本实验匝数固定，只改电流或插拔铁芯）。']],
+          [['比较磁性大小时，'], ['只改变一个因素', '#DC2626', 1], ['，其余必须相同（匝数、电流、铁芯三者，每次只动一个）。']],
         ],
       },
     ]
@@ -585,7 +622,7 @@ export default function ElectromagnetScene() {
   const handleReset = useCallback(() => {
     S.current.switchClosed = false
     S.current.ratio = 1
-    S.current.ti = 1
+    S.current.turns = TURNS_DEF
     S.current.core = true
     S.current.records = []
     S.current.cardScroll = 0
@@ -610,7 +647,7 @@ export default function ElectromagnetScene() {
         <>
           <b>探究电磁铁的磁性</b>
           <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
-            电路演示：改变电流 / 插拔铁芯 · 吸住大头针数就是磁性强弱
+            电路演示：改变电流 / 匝数（5～20）/ 插拔铁芯 · 磁力线疏密 + 吸住大头针数就是磁性强弱
           </span>
         </>
       ) : null}
@@ -633,22 +670,23 @@ export default function ElectromagnetScene() {
           <InfoDock
             align="left"
             offset={{ left: 22, top: 18 }}
-            purpose="探究电磁铁的磁性强弱与电流大小、铁芯有无的关系（线圈固定 10 匝）。"
+            purpose="探究电磁铁的磁性强弱与电流大小、匝数多少、铁芯有无的关系（线圈 5～20 匝可调）。"
             steps={[
               '滑片先放阻值最大处，再点开关闭合',
-              '看电磁铁两端标注的 N / S 和铁芯上的磁力线',
+              '看电磁铁两端标注的 N / S，以及磁力线的疏密（越密磁性越强）',
               '看电磁铁下端吸住几枚大头针',
-              '移动滑片改变电流，看针数变化',
+              '移动滑片改变电流，看针数和磁力线变化',
+              '点 [-] / [+] 改匝数（圈数会变），再用滑片把电流调回同一值',
               '点「铁芯」按钮抽插铁芯，再看针数变化',
               '点「记录一组数据」，凑齐几组不同条件做对照',
             ]}
-            hint="磁性 ∝ N × I × μ：本实验线圈固定 10 匝，只改电流或插拔铁芯。"
+            hint="磁性 ∝ N × I × μ：改电流、改匝数（5～20）、插拔铁芯，三者每次只动一个。"
           />
         ) : (
           <InfoDock
             align="left"
             offset={{ left: 26, top: 26 }}
-            hint="点右侧器材加入 → 拖拽移动 → 点接线柱连线。轻点开关通断，双击电表看读数；双击电磁铁插/抽铁芯，双击其它器材或按 Delete 删除。"
+            hint="点右侧器材加入 → 拖拽移动 → 点接线柱连线。轻点开关通断，双击电表看读数；双击电磁铁插/抽铁芯，Shift + 单击电磁铁改匝数（5→20 循环，线圈圈数跟着变）。"
             hintTitle="操作说明"
           />
         )}
@@ -931,11 +969,11 @@ function drawCurrentFlow(ctx, points, time, speed, skipRect) {
 function emGeom(cx, baseY, sc, turns) {
   const cy = baseY - 66 * sc
   const coreLen = 160 * sc, coreH = 26 * sc
-  const coilW = 132 * sc                 // 固定 10 圈，每圈之间留缝隙能看到铁芯
+  const coilW = 132 * sc                 // 线圈占的长度固定，匝数一变就是"绕得更密 / 更疏"
   const coilH = 44 * sc
   const cL = cx - coilW / 2, cR = cx + coilW / 2
   const cT = cy - coilH / 2, cB = cy + coilH / 2
-  const loops = 10                       // 线圈圈数 = 匝数，学生能一圈一圈数出来
+  const loops = Math.max(3, Math.round(turns) || 10)   // 线圈圈数 = 匝数，学生能一圈一圈数出来
   const gapX = coilW / loops
   const Rcoil = coreH / 2 + 3 * sc
   const rCore = coreH / 2

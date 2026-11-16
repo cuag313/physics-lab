@@ -1856,7 +1856,7 @@ export const TYPES = {
       { id: 'b', label: '+', name: '线圈右端接线柱（红）', x: 162, y: 148 },
     ],
     render(c, dyn = {}) {
-      const turns = 10                        // 本专题固定 10 匝，线圈画满 10 圈可数
+      const turns = Math.max(3, Math.round(Number(c.turns) || 10))   // 匝数 5~20 可调，线圈圈数跟着变
       const core = c.core !== false
       const I = Math.max(0, Number(dyn.I) || 0)
       const pins = Number.isFinite(dyn.pins) ? dyn.pins : 0
@@ -1879,7 +1879,7 @@ export const TYPES = {
       const coreBody = core ? '#9DA8B4' : '#CDD5DE'
       const coreLine = core ? '#6B7684' : '#A9B5C0'
       /* 一条连续螺旋线的侧视投影（正弦波）：前面可见；背面且落在铁芯轮廓内的一段被挡住 → 断开不画 */
-      const loops = 10
+      const loops = Math.max(3, Math.round(turns) || 10)   // 圈数 = 匝数（5~20 可调）
       const gapX = coilW / loops
       const Rcoil = coreH / 2 + 3
       const rCore = coreH / 2
