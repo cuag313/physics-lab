@@ -411,7 +411,7 @@ export function solveCircuit(comps, wires, opts) {
     } else if (c.type === 'electromagnet') {
       // 电磁铁：整支线圈就是一段电阻（匝数越多导线越长、电阻越大）
       const a = netOf(c, 'a'), bb = netOf(c, 'b')
-      const R = CFG.EM_R_PER_TURN * (c.turns || 20)
+      const R = CFG.EM_R_PER_TURN * (c.turns || 10)
       stampR(A, a, bb, R)
       els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
     }
@@ -552,7 +552,7 @@ export function solveCircuit(comps, wires, opts) {
       o._I = Math.max(o._I || 0, Math.abs(I))
     } else if (c.type === 'electromagnet') {
       // 磁性强弱 ∝ N·I；插着软铁芯时铁芯被磁化，磁性大得多（抽出后骤减）
-      const turns = c.turns || 20
+      const turns = c.turns || 10
       const core = c.core !== false
       o._I = Math.abs(I)
       o._R = e.R
@@ -696,7 +696,9 @@ function computeWireCurrents(comps, wires, els) {
 function detectMisuse(comps, wires, out) {
   const diag = { short: false, ammeterParallel: false, voltmeterSeries: false }
   for (const c of comps) {
-    if ((c.type === 'battery' || c.type === 'accumulator') && Math.abs(out[c.id]?._I || 0) > 1.2) diag.short = true
+    // 短路：外电路几乎无电阻时电流会到 20 A 量级；电磁铁线圈本身只有 1.2 Ω（10 匝），
+    // 电池 + 电磁铁 ≈ 2.3 A 属于正常实验回路，不能误报 → 阈值放到 2.5 A
+    if ((c.type === 'battery' || c.type === 'accumulator') && Math.abs(out[c.id]?._I || 0) > 2.5) diag.short = true
     if (c.type === 'mains' && Math.abs(out[c.id]?._I || 0) > 15) diag.short = true
     if ((c.type === 'ammeter' || c.type === 'ammeterA')) {
       // 未串在支路（与另一元件同节点对 = 被并联在元件两端）且两端电位差 > 0.5V

@@ -394,13 +394,6 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     } else if (c.type === 'electromagnet' && isDouble) {
       // 双击电磁铁：插 / 抽软铁芯（磁性强弱对比实验的关键一步）
       setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, core: x.core === false } : x)))
-    } else if (c.type === 'electromagnet' && ev && ev.shiftKey) {
-      // Shift + 单击：换线圈（10 → 20 → 30 → 10 匝循环），线圈电阻随之改变
-      setComps((cs) => cs.map((x) => {
-        if (x.id !== c.id) return x
-        const t = x.turns || 20
-        return { ...x, turns: t === 10 ? 20 : t === 20 ? 30 : 10 }
-      }))
     } else if (T(c) && T(c).meter && isDouble) {
       setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, showRead: !x.showRead } : x)))
     } else {
@@ -597,7 +590,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     const lit = comps.filter((c) => c.type === 'bulb' && (solved[c.id]?._P || 0) > 0.001).length
     const num = (v) => (Math.abs(v) < 5e-4 ? '0.000' : (v < 0 ? '\u2212' : '') + Math.abs(v).toFixed(3))
     const emNote = em && on
-      ? `${em.turns || 20} 匝 吸 ${solved[em.id]?._pins ?? 0} 针${em.core === false ? '（无铁芯）' : ''}`
+      ? `${em.turns || 10} 匝 吸 ${solved[em.id]?._pins ?? 0} 针${em.core === false ? '（无铁芯）' : ''}`
       : ''
     const note = d.short ? '电源短路'
       : d.ammeterParallel ? '电流表并联（误接）'

@@ -1856,7 +1856,7 @@ export const TYPES = {
       { id: 'b', label: '+', name: '线圈右端接线柱（红）', x: 162, y: 148 },
     ],
     render(c, dyn = {}) {
-      const turns = c.turns || 20
+      const turns = 10                        // 本专题固定 10 匝，线圈画满 10 圈可数
       const core = c.core !== false
       const I = Math.max(0, Number(dyn.I) || 0)
       const pins = Number.isFinite(dyn.pins) ? dyn.pins : 0
@@ -1865,7 +1865,7 @@ export const TYPES = {
       /* 横躺、无底座：铁芯水平穿过线圈，引出线直接接线圈两端 */
       const axisY = 104
       const coreX = 20, coreLen = 170, coreH = 26
-      const coilW = 70 + (turns - 10) * 3   // 10/20/30 匝 → 70/100/130
+      const coilW = 132                        // 10 圈，圈间留缝露出铁芯
       const coilH = 56
       const cL = 105 - coilW / 2, cR = cL + coilW
       const cT = axisY - coilH / 2, cB = cT + coilH
@@ -1876,7 +1876,7 @@ export const TYPES = {
       const coreBody = core ? '#9DA8B4' : '#CDD5DE'
       const coreLine = core ? '#6B7684' : '#A9B5C0'
       /* 一条连续螺旋线的侧视投影（正弦波）：前面可见；背面且落在铁芯轮廓内的一段被挡住 → 断开不画 */
-      const loops = turns <= 10 ? 5 : turns <= 20 ? 7 : 9
+      const loops = 10
       const gapX = coilW / loops
       const Rcoil = coreH / 2 + 3
       const rCore = coreH / 2
@@ -1894,13 +1894,25 @@ export const TYPES = {
         pen = true
       }
       const coil = `<path d="${dPath}" fill="none" stroke="${wire}" stroke-width="2.6" stroke-linecap="round"/>`
-      /* 铁芯：一根水平圆柱棒（两端不收缩、不画端面圆） */
+      /* 铁芯：一根水平圆柱棒（两端不收缩、不画端面圆）；内部磁力线 S→N 画在铁芯之上、线圈之下 */
       const coreSvg = `<g transform="translate(0,${liftY})">
         <rect x="${coreX}" y="${axisY - coreH / 2}" width="${coreLen}" height="${coreH}" rx="${coreH / 2}"
               fill="${coreBody}" stroke="${coreLine}" stroke-width="1.1"/>
         <rect x="${coreX + 9}" y="${axisY - coreH / 2 + 4}" width="${coreLen - 18}" height="3.6" rx="1.8"
               fill="#F0F4F9" opacity="0.48"/>
+        ${(on && core) ? [-1, 0, 1].map((k) => (
+        `<line x1="${coreX + coreLen - 7}" y1="${(axisY + k * coreH * 0.24).toFixed(1)}"
+              x2="${coreX + 7}" y2="${(axisY + k * coreH * 0.24).toFixed(1)}"
+              stroke="rgba(37,99,235,${(0.30 + 0.20 * hot).toFixed(2)})" stroke-width="1.1" stroke-dasharray="3 3"/>`
+      )).join('') + (on && core ? [-26, 20].map((dx) => (
+        `<polygon points="${(105 + dx - 4.4).toFixed(1)},${axisY} ${(105 + dx + 4.4).toFixed(1)},${axisY - 4} ${(105 + dx + 4.4).toFixed(1)},${axisY + 4}"
+              fill="rgba(37,99,235,${(0.5 + 0.3 * hot).toFixed(2)})"/>`
+      )).join('') : '') : ''}
       </g>`
+      /* 磁极标注：铁芯以上、两端各一个（左 N 红、右 S 蓝） */
+      const poles = (on && core) ? `
+        <text x="${coreX + 9}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#DC2626">N</text>
+        <text x="${coreX + coreLen - 9}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#2563EB">S</text>` : ''
       /* 大头针：吸在 N 极（铁芯左端）下方，向两侧散开 */
       const pinX = 26
       const pinY0 = core ? axisY + coreH / 2 : axisY + coilH / 2 - 2
@@ -1914,13 +1926,14 @@ export const TYPES = {
       </g>`
       }).join('')
       /* 通电时铁芯两端的磁感线（环绕端部） */
-      const field = (on && core) ? [-1, 1].map((s) => [0, 1].map((k) => (
-        `<ellipse cx="${(105 + s * (coreLen / 2 + 0.5)).toFixed(1)}" cy="${axisY}" rx="4.8" ry="${23 + k * 8}"
+      const field = (on && core) ? [-1, 1].map((s) => [0, 1, 2].map((k) => (
+        `<ellipse cx="${(105 + s * (coreLen / 2 + 0.5)).toFixed(1)}" cy="${axisY}" rx="${(5.2 + k * 1.4).toFixed(1)}" ry="${23 + k * 9}"
               fill="none" stroke="rgba(37,99,235,${(0.24 + 0.18 * hot).toFixed(2)})" stroke-width="1.2" stroke-dasharray="4 3"/>`
       )).join('')).join('') : ''
       return `
     <svg width="210" height="200" viewBox="0 0 210 200">
       ${coreSvg}
+      ${poles}
       ${!core ? `<text x="105" y="${axisY + liftY + coreH / 2 + 16}" text-anchor="middle" font-size="8" font-weight="700" fill="#DC2626">铁芯已抽出（磁性骤减）</text>` : ''}
       <!-- 左引出线从上沿斜穿铁芯；右引出线只画铁芯下沿以外的可见段（穿过那截被挡住） -->
       <path d="M${cL.toFixed(1)} ${(axisY - rCore).toFixed(1)} L48 148" fill="none" stroke="#8D96A1" stroke-width="2"/>
