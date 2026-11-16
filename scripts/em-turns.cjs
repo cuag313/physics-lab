@@ -69,10 +69,11 @@ const H = Number(process.argv[4] || 1000)
   console.log('turns min:', t5.turns, 'I', t5.I.toFixed(3), 'pins', t5.pins, 'strength', t5.strength.toFixed(2))
   await p.screenshot({ path: `${OUT}/em-turns5.png`, clip: { x: box.x + d0.emX - 200, y: box.y + d0.swY - 195, width: 400, height: 265 } })
 
-  // 回 10 匝
+  // 回 10 匝（同一滑片位置，公平对比）
   for (let i = 0; i < 5; i++) await click(plus.turnsCtl.plusX, plus.turnsCtl.y)
   const t10 = await dbg()
-  console.log('back to:', t10.turns)
+  console.log('back to:', t10.turns, 'I', t10.I.toFixed(3), 'pins', t10.pins, 'strength', t10.strength.toFixed(2))
+  await p.screenshot({ path: `${OUT}/em-t10.png`, clip: { x: box.x + d0.emX - 200, y: box.y + d0.swY - 195, width: 400, height: 265 } })
   console.log('errors:', errors.length ? errors.slice(0, 4) : '(none)')
   await b.close()
 })()
