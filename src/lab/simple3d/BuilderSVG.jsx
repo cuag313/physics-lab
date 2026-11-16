@@ -203,6 +203,9 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   /* 焦耳定律演示器的热量累积（每件器材各一份 qA/qB，单位 J）：引擎只给瞬时功率，
    * 热量必须按时间积分 —— 这正是本实验要演示的 Q = P·t。 */
   const heatRef = useRef(new Map())
+  /* 电能表的电功累积（kWh）：引擎只给瞬时电流，W = ∫U·I·dt 只能由前端积分。
+   * 计数器读数、铝盘转速、记录表都取自这里（机械表本来就只"看见"电流）。 */
+  const kwhRef = useRef(new Map())
   compsRef.current = comps
   wiresRef.current = wires
 
@@ -293,6 +296,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       setComps([]); setWires([]); setSelected(null); setPending(null)
       previewTipRef.current = null
       heatRef.current.clear()
+      kwhRef.current.clear()
     },
   }), [addComp])
 
@@ -445,7 +449,8 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     const id = setInterval(() => {
       const cs = compsRef.current || []
       const sets = cs.filter((c) => c.type === 'jouleSet')
-      if (!sets.length) return
+      const ms = cs.filter((c) => c.type === 'energyMeter')
+      if (!sets.length && !ms.length) return
       const sv = solvedRef.current || {}
       const CV = 0.15                       // J/℃：与 Tab1 同一标度
       const QMAX = (95 - 20) * CV           // 11.25 J：上限，再高就"沸腾"了
@@ -460,6 +465,20 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         h.qB = Math.min(QMAX, Math.max(0, h.qB + (o._P_B || 0) * dt - h.qB * 0.025 * dt))
         heatRef.current.set(c.id, h)
         if (Math.abs(h.qA - a0) > 0.008 || Math.abs(h.qB - b0) > 0.008) dirty = true
+      }
+      /* 电能表：W = U_电源 · I · dt（表本身量不出功率，只能"看见"相线电流，
+         电压取所在电路的电源口径 —— 市电 220 V / 蓄电池 / 电池组）。 */
+      for (const c of ms) {
+        const o = sv[c.id] || {}
+        const I = Math.abs(o._I || 0)
+        const srcV = cs.some((x) => x.type === 'mains') ? CFG.MAINS_V
+          : cs.some((x) => x.type === 'accumulator') ? CFG.ACC_V
+            : cs.some((x) => x.type === 'battery') ? CFG.VS.V : 0
+        const h = kwhRef.current.get(c.id) || { kwh: 0 }
+        const k0 = h.kwh
+        h.kwh = k0 + (srcV * I / 1000) * (dt / 3600)   // kW · h
+        kwhRef.current.set(c.id, h)
+        if (Math.abs(h.kwh - k0) > 1e-9) dirty = true
       }
       if (dirty) forceUpdate((n) => n + 1)
     }, 250)
@@ -479,6 +498,10 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     }
     if (c.type === 'ostersBoard') {
       return { I: o._I || 0, sign: o._sign || 0, bmag: o._bmag || 0 }
+    }
+    if (c.type === 'energyMeter') {
+      const h = kwhRef.current.get(c.id) || { kwh: 0 }
+      return { kwh: h.kwh || 0, I: Math.abs(o._I || 0) }
     }
     if (c.type === 'bulb') {
       const p = o._P || 0
@@ -522,6 +545,22 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       return {
         text: `U = ${fmt(o._V || 0)} V${tag}`,
         color: bad || ser || o._over ? '#fb7185' : '#4ade80',
+      }
+    }
+    if (c.type === 'energyMeter') {
+      const h = kwhRef.current.get(c.id) || { kwh: 0 }
+      const I = Math.abs(o._I || 0)
+      const coils = [...wiresRef.current].filter((w) => w.a.startsWith(c.id + ':') || w.b.startsWith(c.id + ':'))
+      const wired1 = coils.some((w) => w.a === c.id + ':i1' || w.b === c.id + ':i1')
+      const wired3 = coils.some((w) => w.a === c.id + ':o1' || w.b === c.id + ':o1')
+      if (!wired1 || !wired3) {
+        return { text: '进线 1 / 出线 3 未接全（表的电流线圈在 1-3 之间）', color: '#fbbf24' }
+      }
+      return {
+        text: I > 1e-3
+          ? `W = ${h.kwh.toFixed(4)} kW·h · I = ${I.toFixed(3)} A`
+          : '无电流 · 铝盘停转',
+        color: I > 1e-3 ? '#4ade80' : '#94a3b8',
       }
     }
     return null

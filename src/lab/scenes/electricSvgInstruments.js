@@ -277,19 +277,26 @@ const INNER = {
       <text class="plabel" x="85" y="118">进户线 · 220V 50Hz</text>`
   },
   energyMeter() {
+    /* 透视层：元件旁标小圆编号、图例集中放在底部两行 —— 避免标签自己压在一起
+       （第一版把"电流线圈 / 电压线圈 / 制动磁铁 / 齿轮计数器"四段文字分散贴元件，
+         在 190×150 的表体上互相重叠，还压住铭牌条） */
+    const badge = (x, y, n, fill) => `
+      <circle cx="${x}" cy="${y}" r="5.6" fill="${fill}" opacity=".95"/>
+      <text x="${x}" y="${y + 2.6}" text-anchor="middle" font-size="7.4" font-weight="700" fill="#fff">${n}</text>`
     return `
       <!-- 电能表剖视：电流线圈 / 电压线圈 + 铝转盘 + 制动磁铁 + 计数器齿轮 -->
       <rect x="30" y="34" width="14" height="30" rx="3" fill="#b45309" stroke="#78350f" stroke-width="1.2"/>
-      <path d="M37 34 V24 M37 64 V74" stroke="#b45309" stroke-width="2"/>
-      <text class="plabel" x="37" y="20">电流线圈</text>
-      <rect x="46" y="34" width="10" height="26" rx="2" fill="#a16207" stroke="#78350f" stroke-width="1"/>
-      <text class="plabel" x="52" y="20">电压线圈</text>
+      <path d="M37 34 V26 M37 64 V74" stroke="#b45309" stroke-width="2"/>
+      ${badge(26, 31, '1', '#b45309')}
+      <rect x="46" y="34" width="12" height="26" rx="2" fill="#a16207" stroke="#78350f" stroke-width="1"/>
+      ${badge(52, 72, '2', '#a16207')}
       <circle cx="95" cy="66" r="28" fill="none" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="4 3"/>
-      <text class="plabel" x="95" y="104">铝转盘（涡流驱动力矩）</text>
+      ${badge(95, 90, '3', '#2563eb')}
       <rect x="118" y="44" width="12" height="44" rx="2" fill="#e11d48" opacity=".75"/>
-      <text class="plabel" x="124" y="40">制动磁铁</text>
+      ${badge(124, 96, '4', '#e11d48')}
       <path d="M130 66 H152" stroke="#8a6a3c" stroke-width="2"/>
-      <text class="plabel" x="156" y="70" text-anchor="end">齿轮 → 计数器</text>`
+      <text x="95" y="112" text-anchor="middle" font-size="7.2" fill="#334155">① 电流线圈（串在 1-3 之间）· ② 电压线圈（并联）</text>
+      <text x="95" y="122" text-anchor="middle" font-size="7.2" fill="#334155">③ 铝转盘（涡流驱动力矩）· ④ 制动磁铁 → 齿轮驱动计数器</text>`
   },
   jouleTube() {
     return `
