@@ -14,7 +14,7 @@ describe('TERM_IDS 注册', () => {
   it('全部新类型都有接线柱定义', () => {
     for (const t of ['resistor5', 'resistor10', 'resistor15', 'switch2', 'motor', 'diode',
       'fuse', 'testPencil', 'electroscope', 'resBox', 'multimeter', 'relay', 'mains', 'energyMeter',
-      'jouleTube', 'accumulator', 'jouleSet']) {
+      'jouleTube', 'accumulator', 'jouleSet', 'homeLoad']) {
       expect(TERM_IDS[t], t).toBeTruthy()
       expect(TERM_IDS[t].length).toBeGreaterThan(1)
     }
@@ -534,5 +534,45 @@ describe('奥斯特实验板（通电直导线）', () => {
       ])
     expect(out[2]._I).toBeCloseTo(3 / (CFG.OSTER_WIRE_R + CFG.VS.r), 6)
     expect(out[2]._I).toBeGreaterThan(2.5)
+  })
+})
+
+describe('家用负载（100 / 800 / 1500 W，R = U²/P）', () => {
+  it('TERM_IDS 注册 a/b 两柱', () => {
+    expect(TERM_IDS.homeLoad).toEqual(['a', 'b'])
+  })
+
+  /* 家庭电路：市电 l(火)→负载 a，负载 b→n(零)。engine 里市电内阻 0.1 Ω 串在回路中。 */
+  const mainsLoop = (p) => loop(
+    [{ id: 1, type: 'mains' }, { id: 2, type: 'homeLoad', p }],
+    [
+      { id: 1, a: '1:l', b: '2:a' },
+      { id: 2, a: '2:b', b: '1:n' },
+    ])
+
+  it('三档电阻按 220²/P 定：100 W→484 Ω、800 W→60.5 Ω、1500 W→32.27 Ω', () => {
+    expect(mainsLoop(100)[2]._R).toBeCloseTo(484, 6)
+    expect(mainsLoop(800)[2]._R).toBeCloseTo(60.5, 6)
+    expect(mainsLoop(1500)[2]._R).toBeCloseTo(48400 / 1500, 6)
+  })
+
+  it('接市电 220V：I = 220/(R+0.1) ≈ P/U，实际功率回到额定值', () => {
+    for (const p of [100, 800, 1500]) {
+      const o = mainsLoop(p)[2]
+      const R = 48400 / p
+      expect(o._I).toBeCloseTo(220 / (R + CFG.MAINS_R), 6)
+      expect(o._P / p).toBeCloseTo(1, 1)   // 内阻 0.1 Ω 带来的偏差 ≤ 5%
+    }
+  })
+
+  it('只接 3 V 电池组时电流与功率都极小（这正是「表不走字」的根因）', () => {
+    const out = loop(
+      [{ id: 1, type: 'battery' }, { id: 2, type: 'homeLoad', p: 800 }],
+      [
+        { id: 1, a: '1:p', b: '2:a' },
+        { id: 2, a: '2:b', b: '1:n' },
+      ])
+    expect(out[2]._I).toBeLessThan(0.06)
+    expect(out[2]._P).toBeLessThan(2)   // 60.5 Ω 上 3 V 只有 0.15 W
   })
 })

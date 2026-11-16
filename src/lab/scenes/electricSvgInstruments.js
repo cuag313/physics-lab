@@ -276,6 +276,19 @@ const INNER = {
       <text class="plabel" x="85" y="76">接地线（黄绿）</text>
       <text class="plabel" x="85" y="118">进户线 · 220V 50Hz</text>`
   },
+  homeLoad() {
+    /* 剖视：用电器里真正"用电"的只有一段发热电阻 —— 两根柱之间串的就是它。
+       P = U²/R：额定 220 V 下 R 一改，功率就变，电能表走字快慢也跟着变。
+       只画这一段 + 一枚温控片：150×132 的表体上再贴四五条文字就互相压字了
+       （第一版挂了"双金属温控片（到温断开）"，字正好压在底板与接线柱上）。 */
+    return `
+      <!-- 两根柱之间串着发热电阻 -->
+      <path d="M42 96 V82 Q42 76 50 76 M108 96 V82 Q108 76 100 76" stroke="#9aa3ad" stroke-width="3"/>
+      <rect x="52" y="54" width="46" height="20" rx="4" fill="#fecaca" opacity=".8" stroke="#b91c1c" stroke-width="1.1"/>
+      <path d="M58 64 q6 -8 12 0 q6 8 12 0 q6 -8 12 0" fill="none" stroke="#b45309" stroke-width="2"/>
+      <text class="plabel" x="75" y="48">发热电阻丝（P = U²/R）</text>
+      <rect x="62" y="80" width="26" height="7" rx="2" fill="#f59e0b" opacity=".85"/>`
+  },
   energyMeter() {
     /* 透视层：元件旁标小圆编号、图例集中放在底部两行 —— 避免标签自己压在一起
        （第一版把"电流线圈 / 电压线圈 / 制动磁铁 / 齿轮计数器"四段文字分散贴元件，
@@ -1532,9 +1545,76 @@ export const TYPES = {
     </svg>` }
   },
 
+  /* ── 家用负载（家庭电路里真正"用电"的那件器材；双击在 100 / 800 / 1500 W 之间换档） ──
+   * 为什么要单列一件：电池组只有 3 V，干路电流零点几安，电能表的铝盘与计数器几乎不动，
+   * 「转数法测电功」在 Tab2 里演不出来。换成市电 220 V + 这件负载，I = P/U 才有
+   * 0.45 / 3.64 / 6.82 A，配右上「走字倍速」才看得见转盘快慢与计数器跳字。
+   * 三档都按 R = U²/P 定阻：100 W → 484 Ω、800 W → 60.5 Ω、1500 W → 32.3 Ω。 */
+  homeLoad: {
+    label: '家用负载', w: 150, h: 132,
+    terminals: [
+      { id: 'a', label: '1', name: '接线柱 1', x: 42, y: 110 },
+      { id: 'b', label: '2', name: '接线柱 2', x: 108, y: 110 },
+    ],
+    render(c, dyn = {}) {
+      const P = Number(c.p) || 800
+      const I = Math.abs(Number(dyn.I) || 0)
+      const on = I > 0.001                 // 有电流才点灯/加热，静止时不发光
+      const R0 = (220 * 220) / P           // 额定电压下的电阻（前端只作展示用）
+      const kind = P <= 200 ? 'lamp' : P <= 1000 ? 'kettle' : 'cooker'
+
+      const lamp = `
+        <rect x="66" y="84" width="18" height="8" rx="2.5" fill="#cbd5e1" stroke="#94a3b8" stroke-width="1.2"/>
+        <rect x="68" y="74" width="14" height="11" rx="2" fill="#cbd5e1" stroke="#94a3b8" stroke-width="1"/>
+        ${on ? '<circle cx="75" cy="56" r="31" fill="#fbbf24" opacity=".16"/>' : ''}
+        <ellipse cx="75" cy="56" rx="16" ry="18" fill="${on ? '#fde68a' : '#f1f5f9'}" stroke="#94a3b8" stroke-width="1.4"/>
+        <path d="M68 62 q2 -6 4 0 q2 6 4 0 q2 -6 4 0" fill="none"
+          stroke="${on ? '#ea580c' : '#94a3b8'}" stroke-width="1.2"/>`
+
+      const kettle = `
+        <path d="M58 46 L46 30 L50 27 L62 42 Z" fill="${on ? '#f8fafc' : '#e8edf3'}" stroke="#94a3b8" stroke-width="1.3"/>
+        <path d="M57 44 L93 44 L90 92 L60 92 Z" fill="${on ? '#f8fafc' : '#e8edf3'}" stroke="#94a3b8" stroke-width="1.4"/>
+        <rect x="54" y="39" width="42" height="6" rx="3" fill="#cbd5e1" stroke="#94a3b8" stroke-width="1.1"/>
+        <path d="M93 52 Q110 54 110 68 Q110 82 93 84" fill="none" stroke="#94a3b8" stroke-width="2"/>
+        <rect x="64" y="58" width="24" height="26" rx="3"
+          fill="${on ? 'rgba(59,130,246,0.30)' : 'rgba(148,163,184,0.22)'}"/>
+        ${on ? '<path d="M67 64 H85 M67 72 H85 M67 80 H85" stroke="#dc2626" stroke-width="1.6"/>' : ''}
+        <circle cx="67" cy="49" r="2.6" fill="${on ? '#dc2626' : '#e2e8f0'}" stroke="#94a3b8" stroke-width="1"/>`
+
+      const cooker = `
+        ${on ? '<rect x="50" y="62" width="50" height="26" rx="5" fill="rgba(220,38,38,0.16)"/>' : ''}
+        <rect x="46" y="58" width="58" height="34" rx="7" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.4"/>
+        <rect x="44" y="44" width="62" height="15" rx="5" fill="#eef2f7" stroke="#94a3b8" stroke-width="1.3"/>
+        <path d="M52 45 Q75 33 98 45" fill="none" stroke="#94a3b8" stroke-width="2"/>
+        <circle cx="75" cy="42" r="3" fill="#cbd5e1" stroke="#94a3b8" stroke-width="1"/>
+        <circle cx="93" cy="70" r="2.7" fill="${on ? '#dc2626' : '#e2e8f0'}" stroke="#94a3b8" stroke-width="1"/>
+        <circle cx="93" cy="81" r="2.4" fill="${on ? '#f59e0b' : '#e2e8f0'}" stroke="#94a3b8" stroke-width="1"/>`
+
+      const cap = on
+        ? `${P} W 额定 · I = ${I.toFixed(2)} A`
+        : `${P} W 额定 · R = ${R0 >= 100 ? Math.round(R0) : R0.toFixed(1)} Ω`
+
+      return `
+    <svg width="150" height="132" viewBox="0 0 150 132">
+      ${fitInner(150, 132, 150, 132, INNER.homeLoad())}
+      <g class="casing">
+        <rect x="6" y="1" width="138" height="15" rx="4" fill="#334155"/>
+        <text x="75" y="11.5" text-anchor="middle" font-size="9" fill="#dbeafe"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">家用负载 · 220 V 交流</text>
+        ${kind === 'lamp' ? lamp : kind === 'kettle' ? kettle : cooker}
+        <rect x="31" y="92" width="88" height="13" rx="4" fill="#d8dee7" stroke="#a9b3c0" stroke-width="1.2"/>
+      </g>
+      ${termDotSVG(42, 110, true)}
+      ${termDotSVG(108, 110, false)}
+      <text x="75" y="125" text-anchor="middle" font-size="8.5" fill="#475569"
+        font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${cap}</text>
+    </svg>` }
+  },
+
   /* ── 单相电能表（仓库无实拍图，按实物 1:1 绘：铝转盘窗 + 6 位计数器 + 1/2/3/4 四柱） ── */
   energyMeter: {
     label: '电能表', w: 190, h: 150,
+    meter: true,     // 双击弹读数条（W = … kW·h · I = … A）——BuilderSVG 只给 meter 类器材挂 readout
     terminals: [
       { id: 'i1', label: '1', name: '进线 1（相线）', x: 40, y: 132 },
       { id: 'i2', label: '2', name: '进线 2（零线）', x: 76, y: 132 },

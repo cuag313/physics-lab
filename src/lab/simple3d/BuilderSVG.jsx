@@ -189,6 +189,9 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   const [, forceUpdate] = useState(0)
   const [records, setRecords] = useState([])
   const [dissect, setDissect] = useState(false)   // 一键透视：外壳半透明、露出 .inner 内部结构
+  /* 电能表走字倍速：真实时间里 100 W 点一小时才 1 度电，肉眼看不到转盘与计数器在动；
+   * 1× 用来说明"真表就是走得很慢"，60× / 600× 才能把 W = Pt 演出来。 */
+  const [meterSpeed, setMeterSpeed] = useState(1)
   const seqRef = useRef(0)
 
   const uidRef = useRef(1)
@@ -206,6 +209,8 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   /* 电能表的电功累积（kWh）：引擎只给瞬时电流，W = ∫U·I·dt 只能由前端积分。
    * 计数器读数、铝盘转速、记录表都取自这里（机械表本来就只"看见"电流）。 */
   const kwhRef = useRef(new Map())
+  const meterSpeedRef = useRef(1)
+  meterSpeedRef.current = meterSpeed
   compsRef.current = comps
   wiresRef.current = wires
 
@@ -224,7 +229,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       id: uidRef.current++, type,
       x: Math.max(0, Math.min(CW - t.w, Math.round(x))),
       y: Math.max(0, Math.min(CH - t.h, Math.round(y))),
-      closed: false, showRead: false, f: 0.4, rmax: CFG.RHEO_MAX,
+      closed: false, showRead: false, f: 0.4, rmax: CFG.RHEO_MAX, p: 800,
     }
     setComps((cs) => cs.concat(c))
     return c
@@ -405,6 +410,13 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     } else if (c.type === 'electromagnet' && isDouble) {
       // 双击电磁铁：插 / 抽软铁芯（磁性强弱对比实验的关键一步）
       setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, core: x.core === false } : x)))
+    } else if (c.type === 'homeLoad' && isDouble) {
+      // 双击家用负载：100 W → 800 W → 1500 W 循环换档（R = U²/P 跟着改，电流与走字快慢一起变）
+      setComps((cs) => cs.map((x) => {
+        if (x.id !== c.id) return x
+        const p0 = Number(x.p) || 800
+        return { ...x, p: p0 >= 1500 ? 100 : p0 >= 800 ? 1500 : 800 }
+      }))
     } else if (T(c) && T(c).meter && isDouble) {
       setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, showRead: !x.showRead } : x)))
     } else {
@@ -474,9 +486,10 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         const srcV = cs.some((x) => x.type === 'mains') ? CFG.MAINS_V
           : cs.some((x) => x.type === 'accumulator') ? CFG.ACC_V
             : cs.some((x) => x.type === 'battery') ? CFG.VS.V : 0
+        const sp = meterSpeedRef.current || 1
         const h = kwhRef.current.get(c.id) || { kwh: 0 }
         const k0 = h.kwh
-        h.kwh = k0 + (srcV * I / 1000) * (dt / 3600)   // kW · h
+        h.kwh = k0 + (srcV * I / 1000) * (dt * sp / 3600)   // kW · h（sp = 走字倍速）
         kwhRef.current.set(c.id, h)
         if (Math.abs(h.kwh - k0) > 1e-9) dirty = true
       }
@@ -499,6 +512,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     if (c.type === 'ostersBoard') {
       return { I: o._I || 0, sign: o._sign || 0, bmag: o._bmag || 0 }
     }
+    if (c.type === 'homeLoad') return { I: Math.abs(o._I || 0), P: o._P || 0, R: o._R || 0 }
     if (c.type === 'energyMeter') {
       const h = kwhRef.current.get(c.id) || { kwh: 0 }
       return { kwh: h.kwh || 0, I: Math.abs(o._I || 0) }
@@ -581,10 +595,11 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
 
   /* ── 电路状态摘要（通路 / 断路 / 短路 / 误接）── */
   const status = useMemo(() => {
-    const bat = comps.find((c) => c.type === 'battery')
+    // 电源三种都要认：电池组 / 蓄电池 / 市电 —— 家庭电路那一套只接市电，不能因为"没电池"就报未开始
+    const src = comps.find((c) => c.type === 'battery' || c.type === 'accumulator' || c.type === 'mains')
     const bulbs = comps.filter((c) => c.type === 'bulb')
     const d = solved.diagnostics || {}
-    if (!bat) return { tone: 'warn', text: '从右侧拖入电源和灯泡，开始搭电路' }
+    if (!src) return { tone: 'warn', text: '从右侧拖入电源和用电器，开始搭电路' }
     // 先报"接法错误"这个根因，再报它造成的后果（短路）
     if (d.ammeterParallel) return { tone: 'bad', text: '⚠ 电流表并联在元件两端，会烧坏电表！电流表应串联在电路中' }
     if (d.short) return { tone: 'bad', text: '⚠ 电源短路！请立即断开电源' }
@@ -596,10 +611,16 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       const nm = revs.map((c) => (c.type === 'voltmeter' ? '电压表' : '电流表')).join('、')
       return { tone: 'bad', text: `⚠ ${nm}接反了：指针反偏（读数前的负号）。应让电流从「+」量程柱流入、「−」柱流出` }
     }
-    const batI = Math.abs(solved[bat.id]?._I || 0)
+    const batI = Math.abs(solved[src.id]?._I || 0)
     if (batI > 1e-4) {
       const lit = bulbs.filter((b) => (solved[b.id]?._P || 0) > 0.001)
-      return { tone: 'ok', text: lit.length ? `✅ 通路 · ${lit.length} 只灯泡发光` : '✅ 电路接通' }
+      if (lit.length) return { tone: 'ok', text: `✅ 通路 · ${lit.length} 只灯泡发光` }
+      const loads = comps.filter((c) => c.type === 'homeLoad' && Math.abs(solved[c.id]?._I || 0) > 0.005)
+      if (loads.length) {
+        const P = Math.round(Number(loads[0].p) || 800)
+        return { tone: 'ok', text: `✅ 家庭电路接通 · 用电器 ${P} W 工作，电能表走字` }
+      }
+      return { tone: 'ok', text: '✅ 电路接通' }
     }
     const opened = comps.find((c) => c.type === 'switch' && !c.closed)
     if (opened) return { tone: 'warn', text: '开关断开 · 电路不通' }
@@ -726,6 +747,13 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
           box-shadow:0 6px 18px rgba(2,6,23,.14);transition:background .15s,border-color .15s,color .15s}
         .esb-dissect:hover{background:#f8fafc;border-color:#c7d2e0}
         .esb-dissect.on{background:#fff7ed;border-color:#f59e0b;color:#b45309}
+        /* 电能表走字倍速：真表走得太慢（100 W 要 1 小时才 1 度），只有加快时间才看得出转盘与计数器在动 */
+        .esb-speed{position:absolute;right:18px;top:58px;z-index:22;display:inline-flex;align-items:center;gap:6px;
+          padding:7px 13px;border-radius:10px;border:1px solid #dbe3ec;background:rgba(255,255,255,.96);
+          color:#1e293b;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;
+          box-shadow:0 6px 18px rgba(2,6,23,.14);transition:background .15s,border-color .15s,color .15s}
+        .esb-speed:hover{background:#f8fafc;border-color:#c7d2e0}
+        .esb-speed.on{background:#ecfdf5;border-color:#10b981;color:#047857}
         .esb-comp.selected .esb-boxhl{opacity:1}
         .esb-boxhl{position:absolute;inset:-6px;border:2px dashed #2563eb;border-radius:12px;
           opacity:0;pointer-events:none;transition:opacity .15s}
@@ -899,6 +927,17 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       >
         {dissect ? '🔍 内部结构（开）' : '🔍 内部结构（透视）'}
       </button>
+
+      {/* 电能表走字倍速：只有场景里存在电能表时才出现（别的专题用不到） */}
+      {comps.some((c) => c.type === 'energyMeter') && (
+        <button
+          className={`esb-speed${meterSpeed > 1 ? ' on' : ''}`}
+          title="电能表走字倍速：1× 是真实时间（100 W 亮 1 小时才 0.1 度，肉眼看不到走字）；点一下 60× / 600×"
+          onClick={() => setMeterSpeed((v) => (v === 1 ? 60 : v === 60 ? 600 : 1))}
+        >
+          ⏩ 走字 {meterSpeed}×
+        </button>
+      )}
 
       {/* 状态浮层（贴在可视区左下，跟画布滚动无关） */}
         <div

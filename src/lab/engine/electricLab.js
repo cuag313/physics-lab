@@ -110,6 +110,7 @@ export const TERM_IDS = {
   electromagnet: ['a', 'b'],         // 电磁铁（线圈 + 软铁芯）：线圈两端两接线柱
   ostersBoard: ['a', 'b'],           // 奥斯特实验板（通电直导线 + 小磁针）：直导线两端两接线柱
   galvanometer: ['neg', 'pos'],      // 灵敏电流计（中央零点，两柱）：电磁感应实验专用
+  homeLoad: ['a', 'b'],              // 家用负载（100/800/1500 W 三档，R = U²/P）：两接线柱
 }
 
 const keyOf = (cid, tid) => cid + ':' + tid
@@ -260,6 +261,16 @@ export function solveCircuit(comps, wires, opts) {
       const a = netOf(c, 'a')
       const bb = netOf(c, 'b')
       const R = c.closed ? 0.001 : 1e8
+      stampR(A, a, bb, R)
+      els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
+    } else if (c.type === 'homeLoad') {
+      // 家用负载：额定功率 P 定阻（R = U²/P，按 220 V 额定电压标定）
+      // 100 W → 484 Ω、800 W → 60.5 Ω、1500 W → 32.3 Ω；
+      // 接 220 V 时 I = P/U = 0.45 / 3.64 / 6.82 A —— 电能表的转盘快慢就由它决定。
+      const a = netOf(c, 'a')
+      const bb = netOf(c, 'b')
+      const P0 = Number(c.p) || 800
+      const R = (CFG.MAINS_V * CFG.MAINS_V) / P0
       stampR(A, a, bb, R)
       els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
     } else if ((c.type === 'ammeter' || c.type === 'ammeterA')) {
@@ -504,6 +515,11 @@ export function solveCircuit(comps, wires, opts) {
       // 取两者较大值：滑块停在某端时另一段的电流≈0，若直接覆盖会把「线圈有电流」抹成 0
       o._I = Math.max(o._I || 0, Math.abs(I))
     } else if (c.type === 'resistor5' || c.type === 'resistor10' || c.type === 'resistor15') {
+      o._I = Math.abs(I)
+      o._R = e.R
+      o._P = I * I * e.R
+    } else if (c.type === 'homeLoad') {
+      // 实际电流 + 实际功率（换档只改 c.p，电流由电路自己算出来）
       o._I = Math.abs(I)
       o._R = e.R
       o._P = I * I * e.R

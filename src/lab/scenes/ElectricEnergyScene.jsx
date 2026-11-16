@@ -653,7 +653,7 @@ export default function ElectricEnergyScene() {
           <InfoDock
             align="left"
             offset={{ left: 26, top: 26 }}
-            hint="点右侧器材加入 → 拖拽移动 → 点接线柱连线。电能表：1、2 接进线（相线/零线），3、4 接出线去用电器。轻点开关通断，双击电表看读数。"
+            hint="点右侧器材加入 → 拖拽移动 → 点接线柱连线。家庭电路接法：市电 L→表 1、N→表 2、表 3→开关 a、开关 b→负载 1、负载 2→表 4。双击家用负载换 100/800/1500 W；右上「走字倍速」加快时间才看得见计数器跳字。"
             hintTitle="操作说明"
           />
         )}
@@ -663,6 +663,11 @@ export default function ElectricEnergyScene() {
             items={[
               { type: 'battery', name: '电池组', icon: thumb('battery') },
               { type: 'accumulator', name: '蓄电池', icon: thumb('accumulator') },
+              // 家庭电路两件（本专题补遗留新增）：市电 220 V + 家用负载
+              // 电池组只有 3 V，干路电流零点几安，电功几乎为 0、表不走字；
+              // 换成市电 + 家用负载才有 I = P/U = 0.45~6.82 A，配右上「走字倍速」看得见读数在跳
+              { type: 'mains', name: '市电 220V', icon: thumb('mains') },
+              { type: 'homeLoad', name: '家用负载', icon: thumb('homeLoad') },
               { type: 'bulb', name: '灯泡', icon: thumb('bulb') },
               { type: 'switch', name: '开关', icon: thumb('switch') },
               { type: 'resistor5', name: '电阻', icon: thumb('resistor5') },
