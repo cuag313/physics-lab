@@ -1862,6 +1862,9 @@ export const TYPES = {
       const pins = Number.isFinite(dyn.pins) ? dyn.pins : 0
       const on = I > 1e-3
       const hot = on ? Math.min(1, I / 0.6) : 0
+      // 磁极所在端：电流从右端接线柱（b）流入 ⇒ N 在右（nside = 1）；反接电池则 N 移到左端
+      const nRight = (Number(dyn.nside) || 1) > 0
+      const src = nRight ? 1 : -1            // N 极所在的一侧（+1 = 右端）
       /* 横躺、无底座：铁芯水平穿过线圈，引出线直接接线圈两端 */
       const axisY = 104
       const coreX = 20, coreLen = 170, coreH = 26
@@ -1905,15 +1908,15 @@ export const TYPES = {
               x2="${coreX + 7}" y2="${(axisY + k * coreH * 0.24).toFixed(1)}"
               stroke="rgba(37,99,235,${(0.30 + 0.20 * hot).toFixed(2)})" stroke-width="1.1" stroke-dasharray="3 3"/>`
       )).join('') + (on && core ? [-26, 20].map((dx) => (
-        `<polygon points="${(105 + dx + 4.4).toFixed(1)},${axisY} ${(105 + dx - 4.4).toFixed(1)},${axisY - 4} ${(105 + dx - 4.4).toFixed(1)},${axisY + 4}"
+        `<polygon points="${(105 + dx + 4.4 * src).toFixed(1)},${axisY} ${(105 + dx - 4.4 * src).toFixed(1)},${axisY - 4} ${(105 + dx - 4.4 * src).toFixed(1)},${axisY + 4}"
               fill="rgba(37,99,235,${(0.5 + 0.3 * hot).toFixed(2)})"/>`
       )).join('') : '') : ''}
       </g>`
-      /* 磁极标注：铁芯以上、两端各一个（左 N 红、右 S 蓝） */
+      /* 磁极标注：铁芯以上、两端各一个（通电时按电流方向定：右端进电流 ⇒ 右 N 红、左 S 蓝） */
       const poles = (on && core) ? `
-        <text x="${coreX + 9}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#2563EB">S</text>
-        <text x="${coreX + coreLen - 9}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#DC2626">N</text>` : ''
-      /* 大头针：吸在 N 极（铁芯左端）下方，向两侧散开 */
+        <text x="${coreX + (nRight ? coreLen - 9 : 9)}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#DC2626">N</text>
+        <text x="${coreX + (nRight ? 9 : coreLen - 9)}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#2563EB">S</text>` : ''
+      /* 大头针：吸在铁芯一端（磁极）下方，向两侧散开 */
       const pinX = 26
       const pinY0 = core ? axisY + coreH / 2 : axisY + coilH / 2 - 2
       const gapPin = pins > 1 ? Math.min(3.4, 44 / (pins - 1)) : 0
@@ -1925,11 +1928,26 @@ export const TYPES = {
         <circle cx="${(pinX + off).toFixed(1)}" cy="${(tipY + 1.2).toFixed(1)}" r="1.6" fill="#B9C3CE" stroke="#5b6470" stroke-width="0.5"/>
       </g>`
       }).join('')
-      /* 通电时铁芯两端的磁感线（环绕端部） */
-      const field = (on && core) ? [-1, 1].map((s) => [0, 1, 2].map((k) => (
-        `<ellipse cx="${(105 + s * (coreLen / 2 + 0.5)).toFixed(1)}" cy="${axisY}" rx="${(5.2 + k * 1.4).toFixed(1)}" ry="${23 + k * 9}"
-              fill="none" stroke="rgba(37,99,235,${(0.24 + 0.18 * hot).toFixed(2)})" stroke-width="1.2" stroke-dasharray="4 3"/>`
-      )).join('')).join('') : ''
+      /* 通电时铁芯外部磁力线：从 N（右端面）出发向上/下张成拱、回到 S（左端面），箭头由右指向左 */
+      const field = (on && core) ? [-1, 1].map((dir) => [0, 1].map((k) => {
+        const a = (coreLen / 2 - 2) + k * 15
+        const y0 = coreH * 0.78
+        const b = y0 + (14 + k * 14)
+        let d = ''
+        for (let i = 0; i <= 24; i++) {
+          const t = (Math.PI * i) / 24
+          const x = 105 + a * Math.cos(t)
+          const y = axisY + dir * (y0 + (b - y0) * Math.sin(t))
+          d += (i ? ' L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1)
+        }
+        const fill = `rgba(124,58,237,${(0.5 + 0.3 * hot).toFixed(2)})`
+        const tri = (x, y, u) => `<polygon points="${(x - 2.3).toFixed(1)},${y.toFixed(1)} ${(x + 2.3).toFixed(1)},${y.toFixed(1)} ${x.toFixed(1)},${(y + u * 3.6).toFixed(1)}" fill="${fill}"/>`
+        const tipY = axisY + dir * b
+        const endY = axisY + dir * (y0 + 4)
+        return `<path d="${d}" fill="none" stroke="rgba(124,58,237,${(0.34 + 0.2 * hot).toFixed(2)})" stroke-width="1.1" stroke-dasharray="4 3"/>
+        <polygon points="${(105 - src * 3.3).toFixed(1)},${tipY.toFixed(1)} ${(105 + src * 3.3).toFixed(1)},${(tipY - 2.6).toFixed(1)} ${(105 + src * 3.3).toFixed(1)},${(tipY + 2.6).toFixed(1)}" fill="${fill}"/>
+        ${tri(105 + src * a, endY, dir)}${tri(105 - src * a, endY, -dir)}`
+      }).join('')).join('') : ''
       return `
     <svg width="210" height="200" viewBox="0 0 210 200">
       ${coreSvg}

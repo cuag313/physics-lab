@@ -499,8 +499,8 @@ export default function ElectromagnetScene() {
           [['通电导线周围有磁场；把导线绕成'], ['线圈', '#15803D', 1], ['，每一匝的磁场叠加，'], ['匝数越多磁场越强', '#C2410C', 1], ['。']],
           [['电流越大，磁场越强：'], ['磁性 ∝ I', '#15803D', 1], ['（同一个线圈，电流加倍 → 磁性约加倍）。']],
           [['插入'], ['软铁芯', '#15803D', 1], ['后铁芯被磁化，磁性可增大'], ['几倍到十几倍', '#DC2626', 1], ['；抽出铁芯磁性骤减；两端放小磁针可判磁极。']],
-          [['磁性 ∝ N × I × μ', '#DC2626', 1], ['；绕向定磁极：电流从 '], ['右端接线柱流入线圈', '#C2410C', 1], ['，右手四指顺电流环绕握住线圈，拇指指向'], ['右端 = N 极', '#C2410C', 1], ['（左端为 S 极）。']],
-          [['磁力线走向：'], ['外部由 N 极出发回到 S 极', '#15803D', 1], ['（图中绕铁芯两端的虚线），'], ['铁芯内部由 S 极指向 N 极', '#7C3AED', 1], ['（图中铁芯里的虚线箭头，向右）。']],
+          [['磁性 ∝ N × I × μ', '#DC2626', 1], ['；绕向定磁极：电流从 '], ['右端接线柱流入线圈', '#C2410C', 1], ['，右手四指顺电流环绕握住线圈，拇指指向'], ['右端 = N 极', '#C2410C', 1], ['（左端为 S 极）；反接电池电流反向，N、S 互换。']],
+          [['磁力线走向：'], ['外部由 N 极出发回到 S 极', '#15803D', 1], ['（图中铁芯上下的紫色虚线拱弧，箭头由右向左），'], ['铁芯内部由 S 极指向 N 极', '#7C3AED', 1], ['（铁芯里的蓝色虚线箭头，向右）。']],
           [['小磁针怎么转：接通的瞬间磁针转动，磁针 S 极被吸向电磁铁 N 极（'], ['异名磁极相吸', '#C2410C', 1], ['）。']],
         ],
       },
@@ -762,17 +762,46 @@ function drawEM(ctx, cx, baseY, o) {
     ctx.fillStyle = '#DC2626'; ctx.fillText('N', cx + px, ccy - coreH / 2 - 9 * sc)
   }
 
-  // ── 磁感线：两端环绕（通电 + 插着铁芯；抽芯后磁性骤减不再画）
+  // ── 外部磁力线：按条形磁铁的标准画法——从 N 极（右端面）出发，向上/向下张扬成拱，回到 S 极（左端面）；
+  //    弧上箭头沿"右→左"（N→S）。铁芯内部则由 S 指向 N（朝右）。
+  //    端点上下错开（不落中线），因此上下两条弧不闭合，不会被误读成"绕圈"。
   if (on && core) {
     const ph = 0.5 + 0.5 * Math.sin(time * 2.2)
-    ctx.strokeStyle = `rgba(37,99,235,${0.24 + 0.18 * ph * (0.4 + hot)})`
-    ctx.lineWidth = 1.2 * sc
-    ctx.setLineDash([3.5 * sc, 3 * sc])
-    for (const s of [-1, 1]) {
-      for (let k = 0; k < 3; k++) {
+    const aBase = coreLen / 2 - 2 * sc
+    const y0 = coreH * 0.78                     // 弧端点离中线的距离（落在端面上下角附近）
+    const arrowAt = (x, y, ang) => {
+      ctx.save(); ctx.translate(x, y); ctx.rotate(ang)
+      ctx.beginPath()
+      ctx.moveTo(3.3 * sc, 0)
+      ctx.lineTo(-2.6 * sc, -2.6 * sc)
+      ctx.lineTo(-2.6 * sc, 2.6 * sc)
+      ctx.closePath(); ctx.fill()
+      ctx.restore()
+    }
+    ctx.strokeStyle = `rgba(124,58,237,${(0.36 + 0.2 * ph * (0.4 + hot)).toFixed(2)})`
+    ctx.fillStyle = `rgba(124,58,237,${Math.min(0.92, 0.6 + 0.3 * ph).toFixed(2)})`
+    ctx.lineWidth = 1.15 * sc
+    ctx.setLineDash([4 * sc, 3.4 * sc])
+    for (const dir of [-1, 1]) {                // -1 = 上方，1 = 下方
+      for (let k = 0; k < 2; k++) {
+        const a = aBase + k * 16 * sc           // 外张程度
+        const b = y0 + (26 + k * 18) * sc       // 拱起高度（顶点离中线）
         ctx.beginPath()
-        ctx.ellipse(cx + s * (coreLen / 2 + 0.5 * sc), ccy, (5.2 + k * 1.4) * sc, (22 + k * 9) * sc, 0, 0, Math.PI * 2)
+        for (let i = 0; i <= 44; i++) {
+          const t = (Math.PI * i) / 44
+          const x = cx + a * Math.cos(t)
+          const y = ccy + dir * (y0 + (b - y0) * Math.sin(t))
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
+        }
         ctx.stroke()
+        ctx.setLineDash([])
+        // 右端：从 N 极面竖直向外张出
+        arrowAt(cx + a, ccy + dir * (y0 + 3.4 * sc), dir < 0 ? -Math.PI / 2 : Math.PI / 2)
+        // 弧顶：沿弧走向 S（左）
+        arrowAt(cx, ccy + dir * b, Math.PI)
+        // 左端：竖直向内收进 S 极面
+        arrowAt(cx - a, ccy + dir * (y0 + 3.4 * sc), dir < 0 ? Math.PI / 2 : -Math.PI / 2)
+        ctx.setLineDash([4 * sc, 3.4 * sc])
       }
     }
     ctx.setLineDash([])

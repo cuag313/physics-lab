@@ -555,6 +555,9 @@ export function solveCircuit(comps, wires, opts) {
       const turns = c.turns || 10
       const core = c.core !== false
       o._I = Math.abs(I)
+      // 磁极在哪一端：探针实测「b 端接 + 极（电流从右端流入）⇒ I < 0」，此时右手螺旋定 N 在右端；
+      // 故 N 在右 ⇔ I < 0。反接电池则 I > 0，N 移到左端。
+      o._Nside = Math.abs(I) < 1e-5 ? 0 : (I > 0 ? -1 : 1)
       o._R = e.R
       o._turns = turns
       o._core = core

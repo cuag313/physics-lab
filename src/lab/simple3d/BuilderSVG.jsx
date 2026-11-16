@@ -468,7 +468,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       return { tempA: 20 + h.qA / CV, tempB: 20 + h.qB / CV }
     }
     if (c.type === 'electromagnet') {
-      return { I: o._I || 0, pins: o._pins || 0, strength: o._strength || 0 }
+      return { I: o._I || 0, pins: o._pins || 0, strength: o._strength || 0, nside: o._Nside || 0 }
     }
     if (c.type === 'bulb') {
       const p = o._P || 0
