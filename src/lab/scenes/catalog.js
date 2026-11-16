@@ -814,77 +814,7 @@ export const EXPERIMENT_CATALOG = [
     examLevel: '★★★',
   },
 
-  // ==================== 高中·电磁学（6个）====================
-  {
-    key: 'voltAmpereMethodHS',
-    name: '伏安法测电阻（内接/外接）',
-    description: '根据待测电阻阻值选择电流表内接法或外接法，分析系统误差来源（高中进阶版，初中基础伏安法见九年级）',
-    category: 'electric',
-    subCategory: '高中电磁学',
-    difficulty: 3,
-    grade: '高二',
-    tags: ['内接法', '外接法', '系统误差'],
-    examLevel: '★★★',
-    preset: 'voltAmpereMethod',
-  },
-  {
-    key: 'bulbIVCurve',
-    name: '测绘小灯泡伏安特性曲线',
-    description: '分压式接法，绘制I-V曲线，分析非线性原因（高中进阶版，初中测功率见九年级）',
-    category: 'electric',
-    subCategory: '高中电磁学',
-    difficulty: 3,
-    grade: '高二',
-    tags: ['分压式', '伏安特性', '非线性', '温度影响'],
-    examLevel: '★★★',
-    preset: 'rheostatCurrentLimit',
-  },
-  {
-    key: 'emfInternalResistance',
-    name: '测量电源电动势和内阻',
-    description: '两种电路方案，U-I图像截距与斜率，分析系统误差来源（重测量方法；规律探究见闭合电路欧姆定律）',
-    category: 'electric',
-    subCategory: '高中电磁学',
-    difficulty: 3,
-    grade: '高二',
-    tags: ['电动势', '内阻', 'U-I图像', '系统误差'],
-    examLevel: '★★★',
-  },
-  {
-    key: 'multimeter',
-    name: '练习使用多用电表',
-    description: '欧姆调零、档位选择、二极管测量',
-    category: 'electric',
-    subCategory: '高中电磁学',
-    difficulty: 2,
-    grade: '高二',
-    tags: ['多用电表', '欧姆档', '二极管'],
-    examLevel: '★★',
-  },
-  {
-    key: 'ampereForce',
-    name: '探究安培力影响因素',
-    description: '探究电流大小、导线长度、磁场强弱对安培力的影响',
-    category: 'electric',
-    subCategory: '高中电磁学',
-    difficulty: 2,
-    grade: '高二',
-    tags: ['安培力', 'F=BIL', '左手定则'],
-    examLevel: '★',
-  },
-  {
-    key: 'lenzLaw',
-    name: '楞次定律探究',
-    description: '探究感应电流的方向：来拒去留',
-    category: 'electric',
-    subCategory: '高中电磁学',
-    difficulty: 2,
-    grade: '高二',
-    tags: ['楞次定律', '感应电流', '磁通量变化'],
-    examLevel: '★★',
-  },
-
-  // ==================== 高中·静电学（4个）====================
+  // ==================== 高中·静电场（必修三 第 9 章） ====================
   {
     key: 'coulombLaw',
     name: '库仑定律探究',
@@ -929,8 +859,19 @@ export const EXPERIMENT_CATALOG = [
     tags: ['电容器', '充放电', 'C=Q/U', 'RC时间常数'],
     examLevel: '★★',
   },
+  {
+    key: 'electricFieldDeflection',
+    name: '带电粒子在电场中的偏转',
+    description: '带电粒子垂直进入匀强电场做类平抛运动，示波管原理，速度选择器',
+    category: 'electric',
+    subCategory: '高中电磁学',
+    difficulty: 3,
+    grade: '高三',
+    tags: ['电场偏转', '类平抛', '示波管', '速度选择器'],
+    examLevel: '★★★',
+  },
 
-  // ==================== 高中·电路分析（2个）====================
+  // ==================== 高中·恒定电流与电路实验（必修三 第 10 章） ====================
   {
     key: 'closedCircuitOhm',
     name: '闭合电路欧姆定律',
@@ -943,6 +884,18 @@ export const EXPERIMENT_CATALOG = [
     examLevel: '★★★',
   },
   {
+    key: 'voltAmpereMethodHS',
+    name: '伏安法测电阻（内接/外接）',
+    description: '根据待测电阻阻值选择电流表内接法或外接法，分析系统误差来源（高中进阶版，初中基础伏安法见九年级）',
+    category: 'electric',
+    subCategory: '高中电磁学',
+    difficulty: 3,
+    grade: '高二',
+    tags: ['内接法', '外接法', '系统误差'],
+    examLevel: '★★★',
+    preset: 'voltAmpereMethod',
+  },
+  {
     key: 'meterConversion',
     name: '电表改装与校准',
     description: '电流表改装为电压表/大量程电流表，校准刻度',
@@ -953,8 +906,77 @@ export const EXPERIMENT_CATALOG = [
     tags: ['电表改装', '分流', '分压', '校准'],
     examLevel: '★★★',
   },
+  {
+    key: 'bulbIVCurve',
+    name: '测绘小灯泡伏安特性曲线',
+    description: '分压式接法，绘制I-V曲线，分析非线性原因（高中进阶版，初中测功率见九年级）',
+    category: 'electric',
+    subCategory: '高中电磁学',
+    difficulty: 3,
+    grade: '高二',
+    tags: ['分压式', '伏安特性', '非线性', '温度影响'],
+    examLevel: '★★★',
+    preset: 'rheostatCurrentLimit',
+  },
+  {
+    key: 'multimeter',
+    name: '练习使用多用电表',
+    description: '欧姆调零、档位选择、二极管测量',
+    category: 'electric',
+    subCategory: '高中电磁学',
+    difficulty: 2,
+    grade: '高二',
+    tags: ['多用电表', '欧姆档', '二极管'],
+    examLevel: '★★',
+  },
+  {
+    key: 'emfInternalResistance',
+    name: '测量电源电动势和内阻',
+    description: '两种电路方案，U-I图像截距与斜率，分析系统误差来源（重测量方法；规律探究见闭合电路欧姆定律）',
+    category: 'electric',
+    subCategory: '高中电磁学',
+    difficulty: 3,
+    grade: '高二',
+    tags: ['电动势', '内阻', 'U-I图像', '系统误差'],
+    examLevel: '★★★',
+  },
 
-  // ==================== 高中·电磁感应（3个）====================
+  // ==================== 高中·磁场（必修三 第 11 章） ====================
+  {
+    key: 'ampereForce',
+    name: '探究安培力影响因素',
+    description: '探究电流大小、导线长度、磁场强弱对安培力的影响',
+    category: 'electric',
+    subCategory: '高中电磁学',
+    difficulty: 2,
+    grade: '高二',
+    tags: ['安培力', 'F=BIL', '左手定则'],
+    examLevel: '★',
+  },
+  {
+    key: 'lorentzForce',
+    name: '洛伦兹力与带电粒子偏转',
+    description: '带电粒子在磁场中做圆周运动，计算半径和周期',
+    category: 'electric',
+    subCategory: '高中电磁学',
+    difficulty: 3,
+    grade: '高三',
+    tags: ['洛伦兹力', 'qvB', '圆周运动', '质谱仪', '回旋加速器'],
+    examLevel: '★★★',
+  },
+
+  // ==================== 高中·电磁感应（选择性必修二 第 12 章） ====================
+  {
+    key: 'lenzLaw',
+    name: '楞次定律探究',
+    description: '探究感应电流的方向：来拒去留',
+    category: 'electric',
+    subCategory: '高中电磁学',
+    difficulty: 2,
+    grade: '高二',
+    tags: ['楞次定律', '感应电流', '磁通量变化'],
+    examLevel: '★★',
+  },
   {
     key: 'faradayLaw',
     name: '法拉第电磁感应定律',
@@ -977,6 +999,8 @@ export const EXPERIMENT_CATALOG = [
     tags: ['自感', '互感', '自感系数', '楞次定律'],
     examLevel: '★★',
   },
+
+  // ==================== 高中·交变电流（选择性必修二 第 13 章） ====================
   {
     key: 'alternatingCurrent',
     name: '交流电的产生与描述',
@@ -986,30 +1010,6 @@ export const EXPERIMENT_CATALOG = [
     difficulty: 3,
     grade: '高二',
     tags: ['交流电', '正弦交流电', '有效值', '频率', '发电机'],
-    examLevel: '★★★',
-  },
-
-  // ==================== 高中·电磁应用（2个）====================
-  {
-    key: 'lorentzForce',
-    name: '洛伦兹力与带电粒子偏转',
-    description: '带电粒子在磁场中做圆周运动，计算半径和周期',
-    category: 'electric',
-    subCategory: '高中电磁学',
-    difficulty: 3,
-    grade: '高三',
-    tags: ['洛伦兹力', 'qvB', '圆周运动', '质谱仪', '回旋加速器'],
-    examLevel: '★★★',
-  },
-  {
-    key: 'electricFieldDeflection',
-    name: '带电粒子在电场中的偏转',
-    description: '带电粒子垂直进入匀强电场做类平抛运动，示波管原理，速度选择器',
-    category: 'electric',
-    subCategory: '高中电磁学',
-    difficulty: 3,
-    grade: '高三',
-    tags: ['电场偏转', '类平抛', '示波管', '速度选择器'],
     examLevel: '★★★',
   },
   {
@@ -1023,6 +1023,8 @@ export const EXPERIMENT_CATALOG = [
     tags: ['变压器', '匝数比', '远距离输电', '能量损耗', '互感'],
     examLevel: '★★',
   },
+
+  // ==================== 超纲拓展 ====================
   {
     key: 'hallEffect',
     name: '霍尔效应',
