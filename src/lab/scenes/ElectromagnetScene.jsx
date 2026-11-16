@@ -59,7 +59,7 @@ export default function ElectromagnetScene() {
     dragging: false,
     cardScroll: 0,
     cardDrag: null,
-    needle: { ang: 0, vel: 0 },  // 两端小磁针的指针角度（0 = N 朝右；通电后转到 π = N 朝左）
+    needle: { ang: Math.PI, vel: 0 },  // 两端小磁针的指针（π = N 朝左，断开位；通电后转到 0 = N 朝右）
   })
 
   const [tab, setTab] = useState(1)
@@ -82,7 +82,8 @@ export default function ElectromagnetScene() {
       const s = S.current
       s.time += 1 / 60
       // 小磁针：通电且有铁芯时受磁场作用转到"异名磁极相吸"的方向（阻尼摆动）
-      const tgt = (s.switchClosed && s.core) ? Math.PI : 0
+      // 铁芯左端 S、右端 N ⇒ 两端磁针的 N 极都被拉向右：左端 N 被 S 吸、右端 S 被 N 吸 → 都转到 0（N 朝右）
+      const tgt = (s.switchClosed && s.core) ? 0 : Math.PI
       const nd = s.needle
       nd.vel += (tgt - nd.ang) * 0.055
       nd.vel *= 0.885
@@ -498,7 +499,8 @@ export default function ElectromagnetScene() {
           [['通电导线周围有磁场；把导线绕成'], ['线圈', '#15803D', 1], ['，每一匝的磁场叠加，'], ['匝数越多磁场越强', '#C2410C', 1], ['。']],
           [['电流越大，磁场越强：'], ['磁性 ∝ I', '#15803D', 1], ['（同一个线圈，电流加倍 → 磁性约加倍）。']],
           [['插入'], ['软铁芯', '#15803D', 1], ['后铁芯被磁化，磁性可增大'], ['几倍到十几倍', '#DC2626', 1], ['；抽出铁芯磁性骤减；两端放小磁针可判磁极。']],
-          [['磁性 ∝ N × I × μ', '#DC2626', 1], ['；绕向定磁极：右手四指顺电流环绕握住线圈，拇指所指即 N 极（本实验 '], ['左端为 N 极', '#C2410C', 1], ['）。']],
+          [['磁性 ∝ N × I × μ', '#DC2626', 1], ['；绕向定磁极：电流从 '], ['右端接线柱流入线圈', '#C2410C', 1], ['，右手四指顺电流环绕握住线圈，拇指指向'], ['右端 = N 极', '#C2410C', 1], ['（左端为 S 极）。']],
+          [['磁力线走向：'], ['外部由 N 极出发回到 S 极', '#15803D', 1], ['（图中绕铁芯两端的虚线），'], ['铁芯内部由 S 极指向 N 极', '#7C3AED', 1], ['（图中铁芯里的虚线箭头，向右）。']],
           [['小磁针怎么转：接通的瞬间磁针转动，磁针 S 极被吸向电磁铁 N 极（'], ['异名磁极相吸', '#C2410C', 1], ['）。']],
         ],
       },
@@ -576,7 +578,7 @@ export default function ElectromagnetScene() {
     S.current.core = true
     S.current.records = []
     S.current.cardScroll = 0
-    S.current.needle = { ang: 0, vel: 0 }
+    S.current.needle = { ang: Math.PI, vel: 0 }
     builderRef.current?.reset()
     forceUpdate(n => n + 1)
   }, [])
@@ -702,13 +704,13 @@ function drawEM(ctx, cx, baseY, o) {
       ctx.beginPath(); ctx.moveTo(mx1, yy); ctx.lineTo(mx0, yy); ctx.stroke()
     }
     ctx.setLineDash([])
-    // 中轴上的箭头：内部磁力线由 S 极指向 N 极，即右 → 左
+    // 中轴上的箭头：内部磁力线由 S 极指向 N 极，即左 → 右
     ctx.fillStyle = `rgba(37,99,235,${Math.min(0.9, al + 0.28).toFixed(2)})`
     for (const ax of [cx - 26 * sc, cx + 20 * sc]) {
       ctx.beginPath()
-      ctx.moveTo(ax - 4.4 * sc, ccy)
-      ctx.lineTo(ax + 4.4 * sc, ccy - 4.2 * sc)
-      ctx.lineTo(ax + 4.4 * sc, ccy + 4.2 * sc)
+      ctx.moveTo(ax + 3.0 * sc, ccy)
+      ctx.lineTo(ax - 3.0 * sc, ccy - 2.9 * sc)
+      ctx.lineTo(ax - 3.0 * sc, ccy + 2.9 * sc)
       ctx.closePath(); ctx.fill()
     }
   }
@@ -750,14 +752,14 @@ function drawEM(ctx, cx, baseY, o) {
   ctx.beginPath(); ctx.moveTo(cL, cy - rCore); ctx.lineTo(g.lp.x, g.lp.y); ctx.stroke()
   leadFrom(xEnd, cy - rCore, g.rp.x, g.rp.y)
 
-  // ── 磁极标记：铁芯以上、两端各一个（左 N 红、右 S 蓝）
+  // ── 磁极标记：铁芯以上、两端各一个（右手螺旋：电流从右端入线圈 ⇒ 右 N 红、左 S 蓝）
   if (on && core) {
     const fz = Math.max(11, Math.round(13 * sc))
     const px = coreLen / 2 - 7 * sc
     ctx.font = `bold ${fz}px "Microsoft YaHei", sans-serif`
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillStyle = '#DC2626'; ctx.fillText('N', cx - px, ccy - coreH / 2 - 9 * sc)
-    ctx.fillStyle = '#2563EB'; ctx.fillText('S', cx + px, ccy - coreH / 2 - 9 * sc)
+    ctx.fillStyle = '#2563EB'; ctx.fillText('S', cx - px, ccy - coreH / 2 - 9 * sc)
+    ctx.fillStyle = '#DC2626'; ctx.fillText('N', cx + px, ccy - coreH / 2 - 9 * sc)
   }
 
   // ── 磁感线：两端环绕（通电 + 插着铁芯；抽芯后磁性骤减不再画）
@@ -783,7 +785,7 @@ function drawEM(ctx, cx, baseY, o) {
     ctx.fillText('铁芯已抽出（磁性骤减）', cx, ccy - coreH / 2 - 10 * sc)
   }
 
-  // ── 大头针：吸在 N 极（左端）下方散开
+  // ── 大头针：吸在铁芯一端（磁极处磁性最强）下方散开
   if (pins > 0) {
     const pinX = cx - (coreLen / 2 - 6 * sc)
     const pinY0 = core ? cy + coreH / 2 : cy + coilH / 2 - 2 * sc
@@ -801,7 +803,7 @@ function drawEM(ctx, cx, baseY, o) {
     ctx.lineCap = 'butt'
   }
 
-  // ── 铁芯两端的小磁针：断开时指向地磁北（画面朝右），通电后转到"异名磁极相吸"（红 N 端朝左）
+  // ── 铁芯两端的小磁针：断开时 N 朝左（地磁北），通电后按异名磁极相吸都转到 N 朝右
   for (const n of [g.nL, g.nR]) {
     const r = g.nr
     ctx.fillStyle = 'rgba(252,249,241,0.94)'

@@ -1905,14 +1905,14 @@ export const TYPES = {
               x2="${coreX + 7}" y2="${(axisY + k * coreH * 0.24).toFixed(1)}"
               stroke="rgba(37,99,235,${(0.30 + 0.20 * hot).toFixed(2)})" stroke-width="1.1" stroke-dasharray="3 3"/>`
       )).join('') + (on && core ? [-26, 20].map((dx) => (
-        `<polygon points="${(105 + dx - 4.4).toFixed(1)},${axisY} ${(105 + dx + 4.4).toFixed(1)},${axisY - 4} ${(105 + dx + 4.4).toFixed(1)},${axisY + 4}"
+        `<polygon points="${(105 + dx + 4.4).toFixed(1)},${axisY} ${(105 + dx - 4.4).toFixed(1)},${axisY - 4} ${(105 + dx - 4.4).toFixed(1)},${axisY + 4}"
               fill="rgba(37,99,235,${(0.5 + 0.3 * hot).toFixed(2)})"/>`
       )).join('') : '') : ''}
       </g>`
       /* 磁极标注：铁芯以上、两端各一个（左 N 红、右 S 蓝） */
       const poles = (on && core) ? `
-        <text x="${coreX + 9}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#DC2626">N</text>
-        <text x="${coreX + coreLen - 9}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#2563EB">S</text>` : ''
+        <text x="${coreX + 9}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#2563EB">S</text>
+        <text x="${coreX + coreLen - 9}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#DC2626">N</text>` : ''
       /* 大头针：吸在 N 极（铁芯左端）下方，向两侧散开 */
       const pinX = 26
       const pinY0 = core ? axisY + coreH / 2 : axisY + coilH / 2 - 2
