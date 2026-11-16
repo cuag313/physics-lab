@@ -1916,28 +1916,27 @@ export const TYPES = {
       const poles = (on && core) ? `
         <text x="${coreX + (nRight ? coreLen - 9 : 9)}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#DC2626">N</text>
         <text x="${coreX + (nRight ? 9 : coreLen - 9)}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#2563EB">S</text>` : ''
-      /* 桌上散落的大头针：以线圈轴线为基准由近到远 3 排 × 5 槽（合计 15 根 = 上限）
-         磁性越强先吸走最近的一排，被吸走的槽位就空出来（桌上的针变少） */
+      /* 桌上散落的大头针：竖立（针尖朝上），以 N 极下方吸附点为中心由近到远 3 圈 × 5 槽（15 根 = 上限）
+         被吸起时按到吸附点的距离由近到远一根根收走，收走的槽位空出来 */
+      const bedAnchorX = 105 + (nRight ? 1 : -1) * coreLen * 0.20
       const bedMarks = (() => {
-        const slotX = [-24, -12, 0, 12, 24]
-        const bedDys = [13, 27, 41]
-        let left = Math.max(0, Math.min(15, pins))
-        let s = ''
+        const slotX = [-14, -7, 0, 7, 14]
+        const bedDys = [30, 40, 50]
+        const cells = []
         for (let r = 0; r < bedDys.length; r++) {
-          const take = Math.min(5, left)
-          left -= take
-          const remain = 5 - take
-          if (remain <= 0) continue
-          const start = Math.floor((5 - remain) / 2)
-          const by = axisY + coreH / 2 + bedDys[r]
-          for (let i = start; i < start + remain; i++) {
-            const bx = 105 + slotX[i]
-            const dy = i % 2 ? 1.3 : -1.2
-            s += `<g>
-        <line x1="${bx}" y1="${(by + (r % 2 ? 1.2 : -1.1)).toFixed(1)}" x2="${bx + 11}" y2="${(by + dy).toFixed(1)}" stroke="#727C89" stroke-width="1.35" stroke-linecap="round"/>
-        <circle cx="${(bx + 12.2).toFixed(1)}" cy="${(by + dy).toFixed(1)}" r="1.5" fill="#B9C3CE" stroke="#5b6470" stroke-width="0.5"/>
+          for (let i = 0; i < slotX.length; i++) cells.push({ r, i, d: Math.hypot(slotX[i], bedDys[r]) })
+        }
+        cells.sort((a, b) => a.d - b.d)
+        const lift = new Set(cells.slice(0, Math.max(0, Math.min(15, pins))).map((c) => `${c.r}-${c.i}`))
+        let s = ''
+        for (const c of cells) {
+          if (lift.has(`${c.r}-${c.i}`)) continue
+          const bx = bedAnchorX + slotX[c.i]
+          const byBot = axisY + coreH / 2 + bedDys[c.r]
+          s += `<g>
+        <line x1="${bx}" y1="${byBot}" x2="${bx}" y2="${byBot - 11}" stroke="#4B5563" stroke-width="1.4" stroke-linecap="round"/>
+        <circle cx="${bx}" cy="${(byBot + 0.6).toFixed(1)}" r="1.5" fill="#B9C3CE" stroke="#5b6470" stroke-width="0.5"/>
       </g>`
-          }
         }
         return s
       })()
@@ -1947,7 +1946,7 @@ export const TYPES = {
       const gapPin = pins > 1 ? Math.min(3.0, 34 / (pins - 1)) : 0
       const pinMarks = Array.from({ length: pins }, (_, i) => {
         const off = (i - (pins - 1) / 2) * gapPin
-        const tipY = pinY0 + 11 + Math.abs(off) * 0.3
+        const tipY = pinY0 + 9 + Math.abs(off) * 0.26
         return `<g>
         <line x1="${(pinX + off * 0.18).toFixed(1)}" y1="${pinY0 + 1}" x2="${(pinX + off).toFixed(1)}" y2="${tipY.toFixed(1)}" stroke="#727C89" stroke-width="1.4"/>
         <circle cx="${(pinX + off).toFixed(1)}" cy="${(tipY + 1.2).toFixed(1)}" r="1.6" fill="#B9C3CE" stroke="#5b6470" stroke-width="0.5"/>

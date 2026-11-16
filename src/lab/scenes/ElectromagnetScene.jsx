@@ -892,34 +892,36 @@ function drawEM(ctx, cx, baseY, o) {
     ctx.fillText('铁芯已抽出（磁性骤减）', cx, ccy - coreH / 2 - 10 * sc)
   }
 
-  // ── 桌上散落的大头针：以线圈轴线为基准由近到远排 3 排（每排 5 根 = 最多能吸 15 根）
-  //    磁性越强，先被吸上去的是最近的一排；被吸走的针从桌上消失，剩下的往远处退
+  // ── 桌上散落的大头针：全部"竖立"（针尖朝上、指向上方的电磁铁），
+  //    以 N 极正下方的吸附点为中心由近到远排开（3 圈 × 5 个槽位 = 上限 15 根）；
+  //    被吸起时严格按"离吸附点的距离"由近到远一根根收走，收走的槽位立刻空出来
   {
-    const bedPerRow = 5
-    const bedDys = [13, 27, 41]              // 离铁芯下沿的距离（由近到远）
-    const slotX = [-24, -12, 0, 12, 24]      // 每排 5 个槽位，居中对称
-    let leftLift = Math.max(0, Math.min(15, pins))
+    const bedDys = [22, 33, 44]              // 针底离铁芯下沿的距离（由近到远）
+    const slotX = [-20, -10, 0, 10, 20]      // 每圈 5 个槽位，围绕吸附点左右对称
+    const anchorX = cx + coreLen * 0.20      // 吸附点 = N 极下方（Tab1 里 N 在右端）
+    const pinLen = 11 * sc
+    const cells = []
     for (let r = 0; r < bedDys.length; r++) {
-      const take = Math.min(bedPerRow, leftLift)
-      leftLift -= take
-      const remain = bedPerRow - take
-      if (remain <= 0) continue
-      const start = Math.floor((bedPerRow - remain) / 2)  // 剩下的针居中留在桌上
-      const by = cy + coreH / 2 + bedDys[r] * sc
-      for (let i = start; i < start + remain; i++) {
-        const bx = cx + slotX[i] * sc
-        const ang = (r % 2 ? 0.20 : -0.14) + (i % 2 ? 0.07 : -0.05)
-        const L = 11 * sc
-        ctx.save()
-        ctx.translate(bx, by); ctx.rotate(ang)
-        ctx.strokeStyle = '#6B7280'; ctx.lineWidth = 1.35 * sc; ctx.lineCap = 'round'
-        ctx.beginPath(); ctx.moveTo(-L / 2, 0); ctx.lineTo(L / 2, 0); ctx.stroke()
-        ctx.fillStyle = '#94A3B8'
-        ctx.beginPath(); ctx.arc(L / 2 + 0.9 * sc, 0, 1.7 * sc, 0, Math.PI * 2); ctx.fill()
-        ctx.strokeStyle = '#5B6470'; ctx.lineWidth = 0.5 * sc
-        ctx.beginPath(); ctx.arc(L / 2 + 0.9 * sc, 0, 1.7 * sc, 0, Math.PI * 2); ctx.stroke()
-        ctx.restore()
+      for (let i = 0; i < slotX.length; i++) {
+        cells.push({ r, i, d: Math.hypot(slotX[i], bedDys[r]) })
       }
+    }
+    cells.sort((a, b) => a.d - b.d)
+    const lifted = new Set(cells.slice(0, Math.max(0, Math.min(15, pins))).map((c) => `${c.r}-${c.i}`))
+    for (const c of cells) {
+      if (lifted.has(`${c.r}-${c.i}`)) continue
+      const bx = anchorX + slotX[c.i] * sc
+      const byBot = cy + coreH / 2 + bedDys[c.r] * sc
+      const tilt = (c.i - 2) * 0.03             // 略微外倾，像散落在桌面上的真针
+      ctx.save()
+      ctx.translate(bx, byBot); ctx.rotate(tilt)
+      ctx.strokeStyle = '#4B5563'; ctx.lineWidth = 1.4 * sc; ctx.lineCap = 'round'
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -pinLen); ctx.stroke()
+      ctx.fillStyle = '#94A3B8'                  // 针帽在下面
+      ctx.beginPath(); ctx.arc(0, 0.6 * sc, 1.6 * sc, 0, Math.PI * 2); ctx.fill()
+      ctx.strokeStyle = '#5B6470'; ctx.lineWidth = 0.5 * sc
+      ctx.beginPath(); ctx.arc(0, 0.6 * sc, 1.6 * sc, 0, Math.PI * 2); ctx.stroke()
+      ctx.restore()
     }
     ctx.lineCap = 'butt'
   }
@@ -931,7 +933,7 @@ function drawEM(ctx, cx, baseY, o) {
     const gPin = Math.min(3.2, 30 / Math.max(1, pins - 1)) * sc
     for (let i = 0; i < pins; i++) {
       const off = (i - (pins - 1) / 2) * gPin
-      const y2 = pinY0 + (11 + Math.abs(off) / sc * 0.30) * sc
+      const y2 = pinY0 + (9 + Math.abs(off) / sc * 0.26) * sc
       ctx.strokeStyle = '#6B7280'; ctx.lineWidth = 1.4 * sc; ctx.lineCap = 'round'
       ctx.beginPath(); ctx.moveTo(pinX + off * 0.18, pinY0 + 1 * sc); ctx.lineTo(pinX + off, y2); ctx.stroke()
       ctx.fillStyle = '#94A3B8'
