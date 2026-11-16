@@ -1928,11 +1928,22 @@ export const TYPES = {
         <circle cx="${(pinX + off).toFixed(1)}" cy="${(tipY + 1.2).toFixed(1)}" r="1.6" fill="#B9C3CE" stroke="#5b6470" stroke-width="0.5"/>
       </g>`
       }).join('')
-      /* 通电时铁芯外部磁力线（照教材标准螺线管图）：上下各两族闭合椭圆环，
-         环的两端收在铁芯端面处；N 极处向外延伸、S 极处向里收；环上箭头由 N 指向 S */
-      const field = (on && core) ? [-1, 1].map((dir) => [0, 1].map((k) => {
-        const a = (coreLen / 2 + 2) + k * 14
-        const b = 26 + k * 18
+      /* 通电时铁芯外部磁力线（照教材标准螺线管图）：上下各若干族闭合椭圆环，两端收在铁芯端面处；
+         ★ 用疏密表示强弱：环的条数 / 外张范围 / 浓淡 都随 磁性强弱 = N·I·μ 变化，径向按 k^1.8 递疏
+         （贴铁芯处密、远处疏 ⇒ 两端磁极处最密）；抽芯 μ=0.25 后不消失，只变成一两圈稀淡的线 */
+      const strength = Math.abs(I) * turns * (core ? 1 : 0.25)
+      const layers = core ? Math.min(5, 1 + Math.ceil(pins / 3.5)) : Math.min(2, 1 + Math.round(pins / 8))
+      const sNorm = Math.min(1, strength / 24)
+      const bMin = coreH / 2 + 6
+      const aExtra = Math.min(18, 6 + strength * 1.0)
+      const bMax = Math.max(bMin + 8, Math.min(70, 34 + strength * 2)) * (core ? 1 : 0.78)
+      const ringList = []
+      for (let k = 0; k < layers; k++) ringList.push(k)
+      const field = on ? [-1, 1].map((dir) => ringList.map((k) => {
+        const f = Math.pow((k + 1) / layers, 1.8)
+        const a = (coreLen / 2 + 2) + aExtra * f
+        const b = bMin + (bMax - bMin) * f
+        const op = (0.34 + 0.4 * sNorm) * (1 - 0.08 * k)
         let d = ''
         for (let i = 0; i <= 28; i++) {
           const t = (Math.PI * i) / 28
@@ -1940,18 +1951,19 @@ export const TYPES = {
           const y = axisY + dir * b * Math.sin(t)
           d += (i ? ' L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1)
         }
-        const fill = `rgba(124,58,237,${(0.5 + 0.3 * hot).toFixed(2)})`
+        const fill = `rgba(124,58,237,${Math.min(0.94, op + 0.24).toFixed(2)})`
         const tipY = axisY + dir * b
-        return `<path d="${d}" fill="none" stroke="rgba(124,58,237,${(0.34 + 0.2 * hot).toFixed(2)})" stroke-width="1.1" stroke-dasharray="4 3"/>
+        return `<path d="${d}" fill="none" stroke="rgba(124,58,237,${op.toFixed(2)})" stroke-width="1.1" stroke-dasharray="4 3"/>
         <polygon points="${(105 - src * 3.3).toFixed(1)},${tipY.toFixed(1)} ${(105 + src * 3.3).toFixed(1)},${(tipY - 2.6).toFixed(1)} ${(105 + src * 3.3).toFixed(1)},${(tipY + 2.6).toFixed(1)}" fill="${fill}"/>`
       }).join('')).join('') : ''
-      /* N/S 极高度处的短水平线：N 极向外张、S 极向里收（照参考图） */
-      const fieldEnds = (on && core) ? [-1, 1].map((dir) => {
-        const fill = `rgba(124,58,237,${(0.5 + 0.3 * hot).toFixed(2)})`
-        const stroke = `rgba(124,58,237,${(0.34 + 0.2 * hot).toFixed(2)})`
+      /* N/S 极高度处的短水平线：N 极向外张、S 极向里收；长度随磁场强弱变化 */
+      const leadLen = Math.min(15, 6 + strength * 0.6)
+      const fieldEnds = on ? [-1, 1].map((dir) => {
+        const fill = `rgba(124,58,237,${Math.min(0.94, 0.55 + 0.35 * sNorm).toFixed(2)})`
+        const stroke = `rgba(124,58,237,${(0.32 + 0.4 * sNorm).toFixed(2)})`
         const yy = (axisY + dir * (coreH / 2 + 4)).toFixed(1)
-        const xN = 105 + src * (coreLen / 2 + 1.5), xN2 = 105 + src * (coreLen / 2 + 14)
-        const xS = 105 - src * (coreLen / 2 + 1.5), xS2 = 105 - src * (coreLen / 2 + 14)
+        const xN = 105 + src * (coreLen / 2 + 1.5), xN2 = 105 + src * (coreLen / 2 + 1.5 + leadLen)
+        const xS = 105 - src * (coreLen / 2 + 1.5), xS2 = 105 - src * (coreLen / 2 + 1.5 + leadLen)
         const triX = (x, u) => `<polygon points="${x.toFixed(1)},${yy} ${(x - u * 4).toFixed(1)},${(+yy - 2.4).toFixed(1)} ${(x - u * 4).toFixed(1)},${(+yy + 2.4).toFixed(1)}" fill="${fill}"/>`
         return `<line x1="${xN.toFixed(1)}" y1="${yy}" x2="${xN2.toFixed(1)}" y2="${yy}" stroke="${stroke}" stroke-width="1.1" stroke-dasharray="4 3"/>
         ${triX(xN2, src)}

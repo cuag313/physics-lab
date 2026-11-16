@@ -465,6 +465,7 @@ export default function ElectromagnetScene() {
           [['探究电磁铁的'], ['磁性强弱', '#C2410C', 1], ['与哪些因素有关，得出 '], ['磁性 ∝ 匝数 N × 电流 I × 铁芯', '#DC2626', 1], ['。']],
           [['学会用'], ['转换法', '#15803D', 1], ['：磁性看不见，用「'], ['吸住大头针的枚数', '#C2410C', 1], ['」来比较磁性强弱。']],
           [['学会用'], ['控制变量法', '#15803D', 1], ['：研究一个因素时，其余因素必须保持不变（本实验线圈固定 10 匝，只改电流或插拔铁芯）。']],
+          [['学会看'], ['磁力线的疏密', '#7C3AED', 1], ['：线越密磁场越强 —— 两头的线最密（磁场最强）、插铁芯比抽出铁芯密、电流调大也会变密。']],
         ],
       },
       {
@@ -500,8 +501,18 @@ export default function ElectromagnetScene() {
           [['电流越大，磁场越强：'], ['磁性 ∝ I', '#15803D', 1], ['（同一个线圈，电流加倍 → 磁性约加倍）。']],
           [['插入'], ['软铁芯', '#15803D', 1], ['后铁芯被磁化，磁性可增大'], ['几倍到十几倍', '#DC2626', 1], ['；抽出铁芯磁性骤减；两端放小磁针可判磁极。']],
           [['磁性 ∝ N × I × μ', '#DC2626', 1], ['；绕向定磁极：电流从 '], ['右端接线柱流入线圈', '#C2410C', 1], ['，右手四指顺电流环绕握住线圈，拇指指向'], ['右端 = N 极', '#C2410C', 1], ['（左端为 S 极）；反接电池电流反向，N、S 互换。']],
-          [['磁力线走向：'], ['外部由 N 极出发回到 S 极', '#15803D', 1], ['（铁芯上下各两族紫色虚线闭合椭圆环，环上箭头由右向左；两端还有向外延伸的短水平线），'], ['铁芯内部由 S 极指向 N 极', '#7C3AED', 1], ['（铁芯里的蓝色虚线箭头，向右）。']],
+          [['磁力线走向：'], ['外部由 N 极出发回到 S 极', '#15803D', 1], ['（铁芯上下各若干族紫色虚线闭合椭圆环，环上箭头由右向左；两端还有向外延伸的短水平线），'], ['铁芯内部由 S 极指向 N 极', '#7C3AED', 1], ['（铁芯里的蓝色虚线箭头，向右）。']],
           [['小磁针怎么转：接通的瞬间磁针转动，磁针 S 极被吸向电磁铁 N 极（'], ['异名磁极相吸', '#C2410C', 1], ['）。']],
+        ],
+      },
+      {
+        t: '磁力线的疏密 = 磁场强弱', c: '#7C3AED',
+        items: [
+          [['磁力线'], ['越密，磁场越强', '#7C3AED', 1], ['；越疏，磁场越弱。图里紫色椭圆环的'], ['条数、外张范围、浓淡', '#C2410C', 1], ['就是按磁性大小画的。']],
+          [['两端（磁极）最密 → 磁场最强', '#15803D', 1], ['：环贴着铁芯处密、往外越走越疏，所以两头的线挤在一起，线圈中段最稀。']],
+          [['插铁芯 vs 抽出铁芯'], ['同一电流下对比', '#C2410C', 1], ['：插着铁芯时有 3～5 圈磁力线；抽出铁芯（μ 只剩 0.25）就只剩 1 圈稀淡的线 —— 磁性明显变弱，大头针也吸不住。']],
+          [['改电流对比'], ['同一个线圈（10 匝）、铁芯不动', '#C2410C', 1], ['：滑片向阻值小处移 → 电流大 → 环数增多、外张变大、线更实；电流小则变稀变淡。']],
+          [['匝数的影响'], ['匝数增多，同样电流下磁力线也更密（磁性 ∝ N·I）', '#15803D', 1], ['；本实验线圈固定 10 匝，所以图上只演示"电流"和"铁芯"两个变量，匝数一栏留给公式说明。']],
         ],
       },
       { t: '本次测量记录', c: '#15803D', items: rows },
@@ -691,16 +702,19 @@ function drawEM(ctx, cx, baseY, o) {
   ctx.fillStyle = 'rgba(240,246,252,0.48)'
   ctx.beginPath(); ctx.roundRect(cx - coreLen / 2 + 9 * sc, ccy - coreH / 2 + 4 * sc, coreLen - 18 * sc, 3.6 * sc, 1.8 * sc); ctx.fill()
 
-  // ── 铁芯内部的磁力线（S → N，画在铁芯之上、线圈之下：圈间缝隙里能看到）
-  if (on && core) {
+  // ── 内部的磁力线（S → N，向左画到右）：插着铁芯时画在铁芯上、线圈圈间的缝隙里能看到；
+  //    抽出铁芯后铁芯不在了，就画在线圈内部空腔里（同样是 S → N）
+  if (on) {
     const ph = 0.5 + 0.5 * Math.sin(time * 2.2)
     const al = 0.34 + 0.20 * ph * (0.4 + hot)
+    const innerY = core ? ccy : cy
+    const innerH = core ? coreH : coilH * 0.52
     const mx0 = cx - coreLen / 2 + 7 * sc, mx1 = cx + coreLen / 2 - 7 * sc
     ctx.strokeStyle = `rgba(37,99,235,${al.toFixed(2)})`
     ctx.lineWidth = 1.15 * sc
     ctx.setLineDash([3.2 * sc, 2.8 * sc])
     for (const k of [-1, 0, 1]) {
-      const yy = ccy + k * coreH * 0.24
+      const yy = innerY + k * innerH * 0.24
       ctx.beginPath(); ctx.moveTo(mx1, yy); ctx.lineTo(mx0, yy); ctx.stroke()
     }
     ctx.setLineDash([])
@@ -708,9 +722,9 @@ function drawEM(ctx, cx, baseY, o) {
     ctx.fillStyle = `rgba(37,99,235,${Math.min(0.9, al + 0.28).toFixed(2)})`
     for (const ax of [cx - 26 * sc, cx + 20 * sc]) {
       ctx.beginPath()
-      ctx.moveTo(ax + 3.0 * sc, ccy)
-      ctx.lineTo(ax - 3.0 * sc, ccy - 2.9 * sc)
-      ctx.lineTo(ax - 3.0 * sc, ccy + 2.9 * sc)
+      ctx.moveTo(ax + 3.0 * sc, innerY)
+      ctx.lineTo(ax - 3.0 * sc, innerY - 2.9 * sc)
+      ctx.lineTo(ax - 3.0 * sc, innerY + 2.9 * sc)
       ctx.closePath(); ctx.fill()
     }
   }
@@ -756,22 +770,33 @@ function drawEM(ctx, cx, baseY, o) {
   else { ctx.beginPath(); ctx.moveTo(xEnd, cy - rCore); ctx.lineTo(g.rp.x, g.rp.y); ctx.stroke() }
 
   // ── 磁极标记：铁芯以上、两端各一个（右手螺旋：电流从右端入线圈 ⇒ 右 N 红、左 S 蓝）
-  if (on && core) {
+  //    铁芯抽出后线圈仍在通电、仍是 N/S 两端（只是弱得多），标记照留
+  if (on) {
     const fz = Math.max(11, Math.round(13 * sc))
     const px = coreLen / 2 - 7 * sc
     ctx.font = `bold ${fz}px "Microsoft YaHei", sans-serif`
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillStyle = '#2563EB'; ctx.fillText('S', cx - px, ccy - coreH / 2 - 9 * sc)
-    ctx.fillStyle = '#DC2626'; ctx.fillText('N', cx + px, ccy - coreH / 2 - 9 * sc)
+    ctx.fillStyle = '#2563EB'; ctx.fillText('S', cx - px, cy - coreH / 2 - 9 * sc)
+    ctx.fillStyle = '#DC2626'; ctx.fillText('N', cx + px, cy - coreH / 2 - 9 * sc)
   }
 
-  // ── 外部磁力线（照教材标准螺线管图）：上下各两族**闭合椭圆环**，环的两端收在铁芯端面处，
+  // ── 外部磁力线（照教材标准螺线管图）：上下各若干族**闭合椭圆环**，环的两端收在铁芯端面处，
   //    N 极（右端面）处的磁力线向外延伸、S 极（左端面）处的磁力线收进去；
   //    环上箭头从 N 走向 S（右 → 左）。铁芯内部则由 S 指向 N（朝右）。
-  if (on && core) {
+  //    ★ 用"疏密"表示磁场强弱：环的**条数**、**外张范围**、**浓淡**都由 磁性强弱 = N·I·μ 决定，
+  //      且径向按 k^1.8 分布 —— 贴着铁芯处密、远处疏，两端（磁极）最密 ⇒ 两头磁场最强。
+  //      插铁芯 μ=1、抽出 μ=0.25，所以同样电流下抽芯后只剩稀稀一两圈淡线；
+  //      电流调大则圈数增多、范围变大、线更实。
+  if (on) {
     const ph = 0.5 + 0.5 * Math.sin(time * 2.2)
     const src = 1                                // N 极所在的一侧（Tab1 固定：右端为 N）
-    const aBase = coreLen / 2 + 2 * sc
+    const strength = Math.abs(I) * turns * (core ? 1 : 0.25)
+    // 环的条数跟着"吸起的大头针数"走（转换法读数）：针越多 → 环越密；铁芯抽出后磁性只剩零头，最多两圈淡线
+    const layers = core ? Math.min(5, 1 + Math.ceil(pins / 3.5)) : Math.min(2, 1 + Math.round(pins / 8))
+    const sNorm = Math.min(1, strength / 24)
+    const bMin = coreH / 2 + 6 * sc
+    const aExtra = Math.min(26 * sc, (6 + strength * 1.0) * sc)
+    const bMax = Math.max(bMin + 8 * sc, Math.min(60 * sc, (34 + strength * 2) * sc)) * (core ? 1 : 0.8)
     const arrowAt = (x, y, ang) => {
       ctx.save(); ctx.translate(x, y); ctx.rotate(ang)
       ctx.beginPath()
@@ -784,34 +809,39 @@ function drawEM(ctx, cx, baseY, o) {
     const towardS = src > 0 ? Math.PI : 0        // 环上箭头：指向 S（左）
     const awayFromN = src > 0 ? 0 : Math.PI      // N 极处：向外张
     const intoS = src > 0 ? Math.PI : 0          // S 极处：朝 S 收
-    ctx.strokeStyle = `rgba(124,58,237,${(0.36 + 0.2 * ph * (0.4 + hot)).toFixed(2)})`
-    ctx.fillStyle = `rgba(124,58,237,${Math.min(0.92, 0.6 + 0.3 * ph).toFixed(2)})`
     ctx.lineWidth = 1.15 * sc
-    ctx.setLineDash([4 * sc, 3.4 * sc])
     for (const dir of [-1, 1]) {                // -1 = 上方环，1 = 下方环
-      for (let k = 0; k < 2; k++) {
-        const a = aBase + k * 14 * sc
-        const b = (26 + k * 18) * sc
+      for (let k = 0; k < layers; k++) {
+        const t = (k + 1) / layers
+        const f = Math.pow(t, 1.8)               // 径向递疏：越外越稀
+        const a = coreLen / 2 + 2 * sc + aExtra * f
+        const b = bMin + (bMax - bMin) * f
+        const op = (0.34 + 0.4 * sNorm) * (1 - 0.08 * k)
+        ctx.strokeStyle = `rgba(124,58,237,${(op * (0.82 + 0.24 * ph)).toFixed(2)})`
+        ctx.fillStyle = `rgba(124,58,237,${Math.min(0.94, op + 0.24).toFixed(2)})`
+        ctx.setLineDash([4 * sc, 3.4 * sc])
         ctx.beginPath()
         for (let i = 0; i <= 52; i++) {
-          const t = (Math.PI * i) / 52
-          const x = cx + a * Math.cos(t)
-          const y = ccy + dir * b * Math.sin(t)  // 两端收在中线（端面处），形成闭合环
+          const th = (Math.PI * i) / 52
+          const x = cx + a * Math.cos(th)
+          const y = cy + dir * b * Math.sin(th)   // 两端收在磁极（端面）高度，形成闭合环
           if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y)
         }
         ctx.stroke()
         ctx.setLineDash([])
-        arrowAt(cx, ccy + dir * b, towardS)      // 环顶：沿环由 N 走向 S
-        ctx.setLineDash([4 * sc, 3.4 * sc])
+        arrowAt(cx, cy + dir * b, towardS)      // 环顶：沿环由 N 走向 S
       }
     }
     ctx.setLineDash([])
     // 两端磁极处的短水平线 + 端部箭头（N 极向外张、S 极朝内收）；放在铁芯上下沿外侧，避开小磁针
-    for (const yy of [ccy - (coreH / 2 + 3.2 * sc), ccy + (coreH / 2 + 3.2 * sc)]) {
-      const xN = cx + src * (coreLen / 2 + 1.5 * sc), xN2 = cx + src * (coreLen / 2 + 15 * sc)
+    const lead = Math.min(15 * sc, (6 + strength * 0.6) * sc)
+    ctx.strokeStyle = `rgba(124,58,237,${(0.32 + 0.4 * sNorm).toFixed(2)})`
+    ctx.fillStyle = `rgba(124,58,237,${Math.min(0.94, 0.55 + 0.35 * sNorm).toFixed(2)})`
+    for (const yy of [cy - (coreH / 2 + 3.2 * sc), cy + (coreH / 2 + 3.2 * sc)]) {
+      const xN = cx + src * (coreLen / 2 + 1.5 * sc), xN2 = cx + src * (coreLen / 2 + 1.5 * sc + lead)
       ctx.beginPath(); ctx.moveTo(xN, yy); ctx.lineTo(xN2, yy); ctx.stroke()
       arrowAt(xN2, yy, awayFromN)
-      const xS = cx - src * (coreLen / 2 + 1.5 * sc), xS2 = cx - src * (coreLen / 2 + 15 * sc)
+      const xS = cx - src * (coreLen / 2 + 1.5 * sc), xS2 = cx - src * (coreLen / 2 + 1.5 * sc + lead)
       ctx.beginPath(); ctx.moveTo(xS, yy); ctx.lineTo(xS2, yy); ctx.stroke()
       arrowAt(xS2, yy, intoS)
     }
