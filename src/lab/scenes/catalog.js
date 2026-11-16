@@ -145,7 +145,16 @@ export const EXPERIMENT_CATALOG = [
     examLevel: '★★',
   },
 
-  // ==================== 初中·电学（7个）====================
+  // ==================== 初中·电学（12个）====================
+  // 排列依据：人教版九年级全一册章节顺序（同章内按实验出现先后），不按难度或改造时间排。
+  //   15 章 电流和电路 → simpleCircuit / seriesParallel
+  //   16 章 电压 电阻   → practiceRheostat
+  //   17 章 欧姆定律     → voltAmpereResistor
+  //   18 章 电功率       → electricEnergy(18.1) / bulbPower(18.3) / jouleLaw(18.4)
+  //   20 章 电与磁       → ostersExperiment(20.2) / electromagnet(20.3) /
+  //                        electricMotor(20.4) / electromagneticInduction(20.5)
+  // ⚠ 电生磁(20.2) 必须排在电磁铁(20.3) 之前：先讲"电流周围有没有磁场、朝哪个方向"，
+  //   再讲"绕成线圈 + 塞铁芯后磁性有多强"，顺序反了学生会先接受 N/S 极再回头补直导线。
   {
     key: 'simpleCircuit',
     name: '简单电路',
@@ -157,28 +166,6 @@ export const EXPERIMENT_CATALOG = [
     tags: ['电路基础', '通路/断路'],
     examLevel: '★★',
     preset: 'simpleCircuit',
-  },
-  {
-    key: 'practiceRheostat',
-    name: '练习使用滑动变阻器',
-    description: '认识四接线柱结构，掌握「一上一下」限流接法；闭合前滑片置最大，观察 I、U 与灯泡亮度随接入阻值变化',
-    category: 'electric',
-    subCategory: '初中电学',
-    difficulty: 1,
-    grade: '九年级',
-    tags: ['滑动变阻器', '一上一下', '限流接法', '20Ω 2A'],
-    examLevel: '★★★',
-  },
-  {
-    key: 'voltAmpereResistor',
-    name: '伏安法测定值电阻',
-    description: '滑动变阻器改变U和I，多次测量求平均值，R=U/I，数据表格+误差分析',
-    category: 'electric',
-    subCategory: '初中电学',
-    difficulty: 2,
-    grade: '九年级',
-    tags: ['伏安法', 'R=U/I', '多次测量', '平均值'],
-    examLevel: '★★★',
   },
   {
     key: 'seriesParallel',
@@ -193,6 +180,17 @@ export const EXPERIMENT_CATALOG = [
     preset: 'seriesCircuit',
   },
   {
+    key: 'practiceRheostat',
+    name: '练习使用滑动变阻器',
+    description: '认识四接线柱结构，掌握「一上一下」限流接法；闭合前滑片置最大，观察 I、U 与灯泡亮度随接入阻值变化',
+    category: 'electric',
+    subCategory: '初中电学',
+    difficulty: 1,
+    grade: '九年级',
+    tags: ['滑动变阻器', '一上一下', '限流接法', '20Ω 2A'],
+    examLevel: '★★★',
+  },
+  {
     key: 'ohmsLaw',
     name: '探究电流与电压、电阻的关系',
     description: '控制变量法：保持R不变改变U，保持U不变改变R，验证I=U/R，绘制I-U和I-R图像',
@@ -202,6 +200,29 @@ export const EXPERIMENT_CATALOG = [
     grade: '九年级',
     tags: ['欧姆定律', '控制变量', '滑动变阻器', 'I-U曲线'],
     examLevel: '★★★',
+  },
+  {
+    key: 'voltAmpereResistor',
+    name: '伏安法测定值电阻',
+    description: '滑动变阻器改变U和I，多次测量求平均值，R=U/I，数据表格+误差分析',
+    category: 'electric',
+    subCategory: '初中电学',
+    difficulty: 2,
+    grade: '九年级',
+    tags: ['伏安法', 'R=U/I', '多次测量', '平均值'],
+    examLevel: '★★★',
+  },
+  {
+    key: 'electricEnergy',
+    name: '电功与电能表',
+    description: '认识电能表、计算电费、理解电功 W=UIt',
+    category: 'electric',
+    subCategory: '初中电学',
+    difficulty: 1,
+    grade: '九年级',
+    tags: ['电功', '电能表', 'W=UIt', '千瓦时'],
+    examLevel: '★★',
+    book: '人教版九年级全一册 18.1 电能 电功',
   },
   {
     key: 'bulbPower',
@@ -226,28 +247,6 @@ export const EXPERIMENT_CATALOG = [
     examLevel: '★★',
   },
   {
-    key: 'electromagnet',
-    name: '电磁铁磁性影响因素',
-    description: '探究匝数和电流大小对电磁铁磁性强弱的影响',
-    category: 'electric',
-    subCategory: '初中电学',
-    difficulty: 1,
-    grade: '九年级',
-    tags: ['奥斯特实验', '电磁铁', '控制变量'],
-    examLevel: '★★',
-  },
-  {
-    key: 'electricEnergy',
-    name: '电功与电能表',
-    description: '认识电能表、计算电费、理解电功 W=UIt',
-    category: 'electric',
-    subCategory: '初中电学',
-    difficulty: 1,
-    grade: '九年级',
-    tags: ['电功', '电能表', 'W=UIt', '千瓦时'],
-    examLevel: '★★',
-  },
-  {
     key: 'ostersExperiment',
     name: '电生磁（奥斯特实验）',
     description: '通电导线周围产生磁场，电流方向与磁针偏转方向的关系',
@@ -255,8 +254,21 @@ export const EXPERIMENT_CATALOG = [
     subCategory: '初中电学',
     difficulty: 1,
     grade: '九年级',
-    tags: ['奥斯特', '电生磁', '安培定则'],
+    tags: ['奥斯特', '电生磁', '安培定则', '右手螺旋定则'],
     examLevel: '★★',
+    book: '人教版九年级全一册 20.2 电生磁',
+  },
+  {
+    key: 'electromagnet',
+    name: '电磁铁磁性影响因素',
+    description: '探究匝数和电流大小对电磁铁磁性强弱的影响',
+    category: 'electric',
+    subCategory: '初中电学',
+    difficulty: 1,
+    grade: '九年级',
+    tags: ['电磁铁', '控制变量', '匝数', '铁芯'],
+    examLevel: '★★',
+    book: '人教版九年级全一册 20.3 电磁铁 电磁继电器',
   },
   {
     key: 'electricMotor',
