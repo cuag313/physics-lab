@@ -404,7 +404,7 @@ describe('电磁铁（线圈 + 软铁芯）', () => {
   })
 
   it('同一电路下匝数越多磁性越强（滑变不动也能看出差别）', () => {
-    // 串一个 10Ω 定值电阻代替滑变，限住电流，避免三档都吸满（封顶 15 针）
+    // 串一个 10Ω 定值电阻代替滑变，限住电流，避免三档都吸满（封顶 4 针）
     const emR = (turns) => loop(
       [{ id: 1, type: 'battery' }, { id: 2, type: 'electromagnet', turns, core: true }, { id: 3, type: 'resistor10' }],
       [
@@ -419,7 +419,7 @@ describe('电磁铁（线圈 + 软铁芯）', () => {
     expect(p30).toBeGreaterThan(p20)
   })
 
-  it('磁性 ∝ N·I，针数 = floor(N·I / 1.2)；抽出铁芯后只剩 1/4', () => {
+  it('磁性 ∝ N·I，针数 = floor(N·I / 1.8)，最多 4 枚；抽出铁芯后只剩 1/4', () => {
     const withCore = em(20, true)
     const noCore = em(20, false)
     const s1 = withCore[2]._strength, s2 = noCore[2]._strength

@@ -1916,25 +1916,18 @@ export const TYPES = {
       const poles = (on && core) ? `
         <text x="${coreX + (nRight ? coreLen - 9 : 9)}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#DC2626">N</text>
         <text x="${coreX + (nRight ? 9 : coreLen - 9)}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#2563EB">S</text>` : ''
-      /* 桌上散落的大头针：竖立（针尖朝上），以 N 极下方吸附点为中心由近到远 3 圈 × 5 槽（15 根 = 上限）
-         被吸起时按到吸附点的距离由近到远一根根收走，收走的槽位空出来 */
+      /* 桌上备着 4 根竖立的大头针：一列，从吸附点正下方由近到远往下排；通电后从最近那根开始被吸走 */
       const bedAnchorX = 105 + (nRight ? 1 : -1) * coreLen * 0.20
       const bedMarks = (() => {
-        const slotX = [-14, -7, 0, 7, 14]
-        const bedDys = [30, 40, 50]
-        const cells = []
-        for (let r = 0; r < bedDys.length; r++) {
-          for (let i = 0; i < slotX.length; i++) cells.push({ r, i, d: Math.hypot(slotX[i], bedDys[r]) })
-        }
-        cells.sort((a, b) => a.d - b.d)
-        const lift = new Set(cells.slice(0, Math.max(0, Math.min(15, pins))).map((c) => `${c.r}-${c.i}`))
+        const bedDys = [30, 42, 54, 66]
+        const liftN = Math.max(0, Math.min(bedDys.length, pins))
         let s = ''
-        for (const c of cells) {
-          if (lift.has(`${c.r}-${c.i}`)) continue
-          const bx = bedAnchorX + slotX[c.i]
-          const byBot = axisY + coreH / 2 + bedDys[c.r]
+        const bedDxs = [0, 6, -5, 3]
+        for (let i = liftN; i < bedDys.length; i++) {
+          const bx = bedAnchorX + bedDxs[i]
+          const byBot = axisY + coreH / 2 + bedDys[i]
           s += `<g>
-        <line x1="${bx}" y1="${byBot}" x2="${bx}" y2="${byBot - 11}" stroke="#4B5563" stroke-width="1.4" stroke-linecap="round"/>
+        <line x1="${bx}" y1="${byBot}" x2="${bx}" y2="${byBot - 8}" stroke="#4B5563" stroke-width="1.4" stroke-linecap="round"/>
         <circle cx="${bx}" cy="${(byBot + 0.6).toFixed(1)}" r="1.5" fill="#B9C3CE" stroke="#5b6470" stroke-width="0.5"/>
       </g>`
         }
@@ -1956,7 +1949,7 @@ export const TYPES = {
          ★ 用疏密表示强弱：环的条数 / 外张范围 / 浓淡 都随 磁性强弱 = N·I·μ 变化，径向按 k^1.8 递疏
          （贴铁芯处密、远处疏 ⇒ 两端磁极处最密）；抽芯 μ=0.25 后不消失，只变成一两圈稀淡的线 */
       const strength = Math.abs(I) * turns * (core ? 1 : 0.25)
-      const layers = core ? Math.min(5, 1 + Math.ceil(pins / 3.5)) : Math.min(2, 1 + Math.round(pins / 8))
+      const layers = core ? Math.min(5, 1 + pins) : Math.min(2, 1 + Math.round(pins / 2))
       const sNorm = Math.min(1, strength / 24)
       const bMin = coreH / 2 + 6
       const aExtra = Math.min(18, 6 + strength * 1.0)

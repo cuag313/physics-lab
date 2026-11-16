@@ -41,8 +41,8 @@ const TURNS_MAX = 20         // 匝数上限
 const TURNS_DEF = 10         // 默认 10 匝
 const R_PER_TURN = 0.12      // 每匝线圈电阻 Ω
 const CORE_MU = 0.25         // 无铁芯时的磁性倍率
-const PIN_K = 1.2            // 1.2 N·A ≈ 能吸住 1 枚大头针
-const PIN_MAX = 15           // 显示上限
+const PIN_K = 1.8            // 1.8 N·A ≈ 能吸住 1 枚大头针
+const PIN_MAX = 4            // 实验只备 4 枚大头针
 const MAX_REC = 4
 
 export default function ElectromagnetScene() {
@@ -509,7 +509,7 @@ export default function ElectromagnetScene() {
         items: [
           [['干电池组（3 V）、开关、'], ['电流表', '#C2410C', 1], ['、'], ['滑动变阻器（20 Ω 2 A）', '#EA8C1B', 1], ['、导线若干。']],
           [[''], ['电磁铁', '#EA8C1B', 1], ['：一个'], ['5～20 匝可调的线圈', '#EA8C1B', 1], ['（线一圈一圈绕，圈数能数出来；面板上点 [-] [+] 改匝数）+ 一根'], ['软铁芯', '#EA8C1B', 1], ['。']],
-          [[''], ['大头针', '#C2410C', 1], ['（或小铁钉）一盒 —— 用来"读"磁性强弱。']],
+          [[''], ['大头针', '#C2410C', 1], ['（或小铁钉）4 枚 —— 用来"读"磁性强弱。']],
         ],
       },
       {
@@ -547,7 +547,7 @@ export default function ElectromagnetScene() {
         items: [
           [['磁力线'], ['越密，磁场越强', '#7C3AED', 1], ['；越疏，磁场越弱。图里紫色椭圆环的'], ['条数、外张范围、浓淡', '#C2410C', 1], ['就是按磁性大小画的。']],
           [['两端（磁极）最密 → 磁场最强', '#15803D', 1], ['：环贴着铁芯处密、往外越走越疏，所以两头的线挤在一起，线圈中段最稀。']],
-          [['插铁芯 vs 抽出铁芯'], ['同一电流下对比', '#C2410C', 1], ['：插着铁芯时有 3～5 圈磁力线；抽出铁芯（μ 只剩 0.25）就只剩 1 圈稀淡的线 —— 磁性明显变弱，大头针也吸不住。']],
+          [['插铁芯 vs 抽出铁芯'], ['同一电流下对比', '#C2410C', 1], ['：插着铁芯时有 1～5 圈磁力线；抽出铁芯（μ 只剩 0.25）就只剩 1 圈稀淡的线 —— 磁性明显变弱，大头针也吸不住。']],
           [['改电流对比'], ['匝数不动、铁芯不动', '#C2410C', 1], ['：滑片向阻值小处移 → 电流大 → 环数增多、外张变大、线更实；电流小则变稀变淡。']],
           [['改匝数对比'], ['面板点 [-] / [+]，5～20 匝连续调', '#15803D', 1], ['（Tab2 里 Shift + 单击线圈也能改）：圈数在变、磁力线也跟着变密；但匝数一变电阻变、电流跟着变，要严格比较'], ['得先把电流调回同一数值', '#DC2626', 1], ['。']],
         ],
@@ -830,7 +830,7 @@ function drawEM(ctx, cx, baseY, o) {
     const src = 1                                // N 极所在的一侧（Tab1 固定：右端为 N）
     const strength = Math.abs(I) * turns * (core ? 1 : 0.25)
     // 环的条数跟着"吸起的大头针数"走（转换法读数）：针越多 → 环越密；铁芯抽出后磁性只剩零头，最多两圈淡线
-    const layers = core ? Math.min(5, 1 + Math.ceil(pins / 3.5)) : Math.min(2, 1 + Math.round(pins / 8))
+    const layers = core ? Math.min(5, 1 + pins) : Math.min(2, 1 + Math.round(pins / 2))
     const sNorm = Math.min(1, strength / 24)
     const bMin = coreH / 2 + 6 * sc
     const aExtra = Math.min(26 * sc, (6 + strength * 1.0) * sc)
@@ -892,29 +892,19 @@ function drawEM(ctx, cx, baseY, o) {
     ctx.fillText('铁芯已抽出（磁性骤减）', cx, ccy - coreH / 2 - 10 * sc)
   }
 
-  // ── 桌上散落的大头针：全部"竖立"（针尖朝上、指向上方的电磁铁），
-  //    以 N 极正下方的吸附点为中心由近到远排开（3 圈 × 5 个槽位 = 上限 15 根）；
-  //    被吸起时严格按"离吸附点的距离"由近到远一根根收走，收走的槽位立刻空出来
+  // ── 桌上备着 4 根竖立的大头针（针尖朝上、指着上方的电磁铁）：只摆一列，
+  //    从吸附点正下方由近到远往下排；横向轻微错开一点，让人一眼能数出是 4 根；
+  //    通电后从最近那根开始依次被吸走，吸走的位置立刻空出来
   {
-    const bedDys = [22, 33, 44]              // 针底离铁芯下沿的距离（由近到远）
-    const slotX = [-20, -10, 0, 10, 20]      // 每圈 5 个槽位，围绕吸附点左右对称
-    const anchorX = cx + coreLen * 0.20      // 吸附点 = N 极下方（Tab1 里 N 在右端）
-    const pinLen = 11 * sc
-    const cells = []
-    for (let r = 0; r < bedDys.length; r++) {
-      for (let i = 0; i < slotX.length; i++) {
-        cells.push({ r, i, d: Math.hypot(slotX[i], bedDys[r]) })
-      }
-    }
-    cells.sort((a, b) => a.d - b.d)
-    const lifted = new Set(cells.slice(0, Math.max(0, Math.min(15, pins))).map((c) => `${c.r}-${c.i}`))
-    for (const c of cells) {
-      if (lifted.has(`${c.r}-${c.i}`)) continue
-      const bx = anchorX + slotX[c.i] * sc
-      const byBot = cy + coreH / 2 + bedDys[c.r] * sc
-      const tilt = (c.i - 2) * 0.03             // 略微外倾，像散落在桌面上的真针
+    const bedDys = [21, 33, 45, 57]          // 4 根的针底离铁芯下沿的距离（由近到远）
+    const bedDxs = [0, 5, -4, 2]             // 横向的小错落（相对吸附点）
+    const anchorX = cx + coreLen * 0.20      // 吸附点 = N 极正下方（Tab1 里 N 在右端）
+    const pinLen = 8 * sc
+    const liftedN = Math.max(0, Math.min(bedDys.length, pins))
+    for (let i = liftedN; i < bedDys.length; i++) {
+      const byBot = cy + coreH / 2 + bedDys[i] * sc
       ctx.save()
-      ctx.translate(bx, byBot); ctx.rotate(tilt)
+      ctx.translate(anchorX + bedDxs[i] * sc, byBot)
       ctx.strokeStyle = '#4B5563'; ctx.lineWidth = 1.4 * sc; ctx.lineCap = 'round'
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -pinLen); ctx.stroke()
       ctx.fillStyle = '#94A3B8'                  // 针帽在下面
@@ -933,7 +923,7 @@ function drawEM(ctx, cx, baseY, o) {
     const gPin = Math.min(3.2, 30 / Math.max(1, pins - 1)) * sc
     for (let i = 0; i < pins; i++) {
       const off = (i - (pins - 1) / 2) * gPin
-      const y2 = pinY0 + (9 + Math.abs(off) / sc * 0.26) * sc
+      const y2 = pinY0 + (7 + Math.abs(off) / sc * 0.24) * sc
       ctx.strokeStyle = '#6B7280'; ctx.lineWidth = 1.4 * sc; ctx.lineCap = 'round'
       ctx.beginPath(); ctx.moveTo(pinX + off * 0.18, pinY0 + 1 * sc); ctx.lineTo(pinX + off, y2); ctx.stroke()
       ctx.fillStyle = '#94A3B8'
