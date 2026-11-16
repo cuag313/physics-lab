@@ -503,6 +503,8 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       const h = kwhRef.current.get(c.id) || { kwh: 0 }
       return { kwh: h.kwh || 0, I: Math.abs(o._I || 0) }
     }
+    // 小电动机：I 驱动风扇叶片（通电才转）
+    if (c.type === 'motor') return { I: Math.abs(o._I || 0) }
     if (c.type === 'bulb') {
       const p = o._P || 0
       return { bright: p > 0 ? Math.min(1, p / CFG.BULB_RATED) : 0, over: p > CFG.BULB_RATED * 1.02 }

@@ -1,41 +1,78 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
-import { symBattery, symSwitch, symHalf, SYM_INK } from '../render/symbols.js'
+import InfoDock from '../ui/InfoDock'
+import BuilderPalette from '../ui/BuilderPalette'
+import { drawKnowledgeCard } from '../ui/knowledgeCard'
+import BuilderSVG from '../simple3d/BuilderSVG.jsx'
+import { TYPES } from './electricSvgInstruments.js'
+import { symSwitch, symHalf, symBattery, SYM_INK } from '../render/symbols.js'
 
 /**
- * ElectricMotorScene — 电动机原理
+ * ElectricMotorScene — 电动机（第 10 个按「简单电路」模板改造的初中电学实验）
  *
- * 通电线圈在磁场中受安培力转动，换向器每半周改变电流方向维持持续转动
+ *  教材 20.4《电动机》的三件事：
+ *    ① 磁场对通电导线有力的作用（安培力，左手定则）
+ *    ② 通电线圈在磁场中受力转动，但转到**平衡位置**（线圈平面与磁感线垂直）转矩为零，
+ *       不换向就只能在那儿来回摆几下停住
+ *    ③ **换向器**（两个半圆铜片 + 电刷）每半圈把线圈里的电流方向翻转，
+ *       转矩方向就恒为同一侧 → 连续转动
  *
- * Step1: 安培力 — 线圈两侧受力方向相反（左手定则），产生转矩
- * Step2: 换向器 — 每转半周自动改变电流方向，保持同向转矩
- * Step3: 转速与电流 — I 越大转速越快
+ *  Tab1 📖 电路演示 —— 暖色底 + 标准符号回路（电池 / 开关 / 电刷引线接到换向器）
+ *                       上方是电动机剖面：两块磁极（N 红 / S 蓝）+ 水平磁感线 + 可旋转线圈
+ *                       + 换向器（随线圈同步转的半圆铜片）+ 两个电刷
+ *                       右下是 τ–θ 实时曲线：拆掉换向器就能看到 τ 一半正一半负、净功为零
+ *   Tab2 🔧 自己动手 —— 9 件基础器材 + 本专题专用「小电动机」（风扇随电流转）
  */
+function thumb(type) {
+  const t = TYPES[type]
+  if (!t) return null
+  const svg = t.render({ id: `pal-${type}`, f: 0.4 }, { I: 0, bright: 0.5, frac: 0 })
+  return <span dangerouslySetInnerHTML={{ __html: svg }} />
+}
+
+/* 设计坐标系（整体等比缩放 + 居中） */
+const D = {
+  cx: 292, cy: 244,          // 电动机剖面中心
+  aH: 66,                    // 线圈半宽（θ=0 时）
+  bH: 50,                    // 线圈半高
+  magL: 152, magLw: 54,      // 左磁极（N）
+  magR: 378, magRw: 54,      // 右磁极（S）
+  egy: 368, egyR: 22,        // 换向器中心 / 半径
+  brushDx: 27,               // 两电刷离轴的距离
+  L: 118, R: 468, T: 424, B: 574,   // 回路矩形
+  batX: 196, swX: 350,
+  row1: 624, row2: 680,
+  chX: 596, chY: 456, chW: 256, chH: 132,   // τ–θ 曲线
+  VW: 900, VH: 730,
+}
+
+const TAU_K = 10          // 转矩系数（K·I·cos θ）
+const DAMP = 1.15         // 阻尼（无换向器时靠它把摆动停下来）
+const MAX_REC = 4
+
 export default function ElectricMotorScene() {
   const canvasRef = useRef(null)
   const animRef = useRef(null)
+  const builderRef = useRef(null)
 
   const S = useRef({
     tab: 1,
-    step: 1,
     switchClosed: false,
-    current: 3,
-    angle: 0,
+    I: 0.6,                 // 电流 0.2 ~ 1.0 A
+    commutator: true,       // 换向器是否接入（拆掉 → 只摆几下就停）
+    field: true,            // true = N 在左（磁感线向右）；false 反向
+    theta: 0,               // 线圈转角（rad）：0 = 线圈平面落在屏幕内
+    omega: 0,               // 角速度（rad/s）
+    time: 0,
     records: [],
-    // Tab2
-    components: [],
-    wires: [],
-    dragId: null,
-    dragOffX: 0, dragOffY: 0,
-    connecting: null,
-    nextId: 1,
     wireColor: '#F44336',
-    _guideOpen: false,
+    cardScroll: 0,
+    cardDrag: null,
+    dragging: false,
   })
 
   const [tab, setTab] = useState(1)
-  const [, setStep] = useState(1)
   const [, forceUpdate] = useState(0)
 
   useEffect(() => {
@@ -54,700 +91,862 @@ export default function ElectricMotorScene() {
 
     let last = performance.now()
     const loop = (now) => {
-      const dt = Math.min((now - last) / 1000, 0.05); last = now
+      const dtReal = Math.min(0.05, (now - last) / 1000); last = now
       const s = S.current
-      if (s.switchClosed) s.angle += s.current * 2 * dt
+      s.time += dtReal
+      /* 转矩 τ = K·I·cosθ·sgn —— 有换向器时 cosθ 换成 |cosθ|（电流每半圈翻转一次） */
+      const c = Math.cos(s.theta)
+      const sgn = s.field ? 1 : -1
+      const tau = s.switchClosed ? TAU_K * s.I * (s.commutator ? Math.abs(c) : c) * sgn : 0
+      s.omega += (tau - DAMP * s.omega) * dtReal
+      s.theta += s.omega * dtReal
+      if (Math.abs(s.omega) < 0.002 && !s.switchClosed) s.omega = 0
+
       render(R)
       animRef.current = requestAnimationFrame(loop)
     }
     animRef.current = requestAnimationFrame(loop)
     window.addEventListener('resize', R.resize.bind(R))
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // 转速 rpm
-  function rpmOf(s) {
-    return s.current * 2 / (2 * Math.PI) * 60
-  }
-
   function render(R) {
-    try {
-      const ctx = R.ctx, W = R.W, H = R.H
-      ctx.clearRect(0, 0, W, H)
-      ctx.fillStyle = '#f0f4f8'; ctx.fillRect(0, 0, W, H)
-      canvasRef.current._clickAreas = []
-      canvasRef.current._palAreas = []
-      if (S.current.tab === 1) renderDemo(ctx, W, H)
-      else renderBuilder(ctx, W, H)
-    } catch (e) { console.error('render error:', e) }
+    const ctx = R.ctx, W = R.W, H = R.H
+    ctx.clearRect(0, 0, W, H)
+    const bg = ctx.createLinearGradient(0, 0, W * 0.35, H)
+    bg.addColorStop(0, '#FFFCF5'); bg.addColorStop(0.55, '#FDF4E6'); bg.addColorStop(1, '#FBEDD9')
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H)
+    canvasRef.current._clickAreas = []
+    if (S.current.tab === 1) renderDemo(ctx, W, H)
   }
 
-  // ================================================================
-  //  Tab 1：实验演示
-  // ================================================================
+  /* ══════════════════════════════════════════════════════════════
+     Tab 1
+     ══════════════════════════════════════════════════════════════ */
   function renderDemo(ctx, W, H) {
     const s = S.current
     const on = s.switchClosed
+    const rpm = Math.abs(s.omega) * 60 / (2 * Math.PI)
 
-    // 顶部步骤标签
-    const labels = ['① 安培力', '② 换向器', '③ 转速与电流']
-    const bw = 105, bh = 28, gap = 8
-    const totalW = bw * 3 + gap * 2
-    const bx0 = (W - totalW) / 2
-    for (let i = 0; i < 3; i++) {
-      const x = bx0 + i * (bw + gap), y = 10
-      ctx.fillStyle = s.step === i + 1 ? '#FF9800' : '#fff'
-      ctx.strokeStyle = s.step === i + 1 ? '#E65100' : '#999'
-      ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.roundRect(x, y, bw, bh, 6); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = s.step === i + 1 ? '#fff' : '#555'
-      ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText(labels[i], x + bw / 2, y + bh / 2)
-      canvasRef.current._clickAreas.push({
-        x: x - 3, y: y - 3, w: bw + 6, h: bh + 6,
-        onClick: () => {
-          S.current.step = i + 1
-          S.current.records = []
-          S.current.angle = 0
-          setStep(i + 1)
-          forceUpdate(n => n + 1)
-        }
-      })
-    }
-    ctx.textBaseline = 'alphabetic'
+    /* 右侧知识卡面板 */
+    const RAIL = 46
+    const pw = Math.max(300, Math.min(W * 0.40, 700))
+    const panel = { x: W - 16 - RAIL - pw, y: 10, w: pw, h: H - 38 }
+    const viewW = panel.x - 16
 
-    const subs = {
-      1: '线圈两侧在磁场中受安培力，方向相反形成转矩（左手定则）',
-      2: '换向器每半周自动改变电流方向，保持转矩方向不变',
-      3: '改变电流大小，观察转速变化',
-    }
-    ctx.fillStyle = '#666'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center'
-    ctx.fillText(subs[s.step], W / 2, 52)
-    ctx.fillStyle = '#1565C0'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText('🎯 实验目的：理解通电线圈在磁场中受力转动原理及换向器的作用', W / 2, 70)
+    /* 设计坐标 → 屏幕坐标 */
+    const sc = Math.max(0.5, Math.min(1.12, Math.min(viewW / D.VW, H / D.VH)))
+    const ox = (viewW - D.VW * sc) / 2
+    const oy = (H - D.VH * sc) / 2
+    const TX = (x) => ox + x * sc
+    const TY = (y) => oy + y * sc
+    const FS = (n) => Math.max(9, Math.round(n * sc))
 
-    // ─── 电动机主视觉 ───
-    const cx = W * 0.30, cy = H * 0.42
-    drawMotor(ctx, cx, cy, s, on)
-
-    // ─── 电路（矩形回路）───
-    const circL = 60, circR = W * 0.52
-    const span = circR - circL
-    const circTop = H * 0.72, circBottom = H - 55
-    const wc = on ? '#1565C0' : '#999'
-
-    const battX = circL + span * 0.28
-    const swX = circL + span * 0.72
-
-    // 电动机电刷接线柱（线圈经电刷接入电路，电流流过线圈才受安培力）
-    const brushLX = cx - 28, brushRX = cx + 28
-
-    // 标准电路符号：导线断开留缺口，横平竖直
-    const scale = 1
-    const lw = 2 * scale + 0.6
-    const hBat = symHalf('battery', scale, 3)
-    const hSw = symHalf('switch', scale)
-    const ink = on ? SYM_INK : '#7c8a93'
-    ctx.strokeStyle = wc; ctx.lineWidth = lw; ctx.lineCap = 'round'
-    // 顶边左段：circL → 左电刷接线柱
-    ctx.beginPath(); ctx.moveTo(circL, circTop); ctx.lineTo(brushLX, circTop); ctx.stroke()
-    // 顶边右段：右电刷接线柱 → circR
-    ctx.beginPath(); ctx.moveTo(brushRX, circTop); ctx.lineTo(circR, circTop); ctx.stroke()
-    // 左连接线：左电刷接线柱 → 左电刷
-    ctx.beginPath(); ctx.moveTo(brushLX, circTop); ctx.lineTo(brushLX, cy); ctx.stroke()
-    // 右连接线：右电刷接线柱 → 右电刷
-    ctx.beginPath(); ctx.moveTo(brushRX, circTop); ctx.lineTo(brushRX, cy); ctx.stroke()
-    // 右边
-    ctx.beginPath(); ctx.moveTo(circR, circTop); ctx.lineTo(circR, circBottom); ctx.stroke()
-    // 底边：电源+开关
-    ctx.beginPath(); ctx.moveTo(circR, circBottom); ctx.lineTo(swX + hSw, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(swX - hSw, circBottom); ctx.lineTo(battX + hBat, circBottom); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(battX - hBat, circBottom); ctx.lineTo(circL, circBottom); ctx.stroke()
-    // 左边
-    ctx.beginPath(); ctx.moveTo(circL, circBottom); ctx.lineTo(circL, circTop); ctx.stroke()
-    ctx.lineCap = 'butt'
-
-    if (on) {
-      const path = [
-        { x: battX + hBat, y: circBottom }, { x: swX, y: circBottom },
-        { x: circR, y: circBottom }, { x: circR, y: circTop },
-        { x: brushRX, y: circTop }, { x: brushRX, y: cy },
-        { x: brushLX, y: cy }, { x: brushLX, y: circTop },
-        { x: circL, y: circTop }, { x: circL, y: circBottom },
-        { x: battX - hBat, y: circBottom },
-      ]
-      drawCurrentFlow(ctx, path)
-    }
-
-    // 电源 + 开关（标准电路符号）
-    symBattery(ctx, battX, circBottom, { n: 3, scale, ink, flip: true })
-    ctx.fillStyle = '#555'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('电池组 6V', battX, circBottom + 18)
-    ctx.textBaseline = 'alphabetic'
-    symSwitch(ctx, swX, circBottom, { closed: on, scale, ink })
-    canvasRef.current._clickAreas.push({
-      x: swX - hSw - 10, y: circBottom - 22, w: (hSw + 10) * 2, h: 44,
-      onClick: () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) }
-    })
-
-    // ─── 电流调节（底部）───
-    const barY = H - 26
-    ctx.fillStyle = '#1976D2'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-    ctx.fillText(`电流 I = ${s.current.toFixed(1)} A`, 70, barY)
-    drawMiniSlider(ctx, 185, barY, 110, (s.current - 0.5) / 7.5, (r) => {
-      S.current.current = Math.round((0.5 + r * 7.5) * 10) / 10
-      forceUpdate(n => n + 1)
-    })
-    ctx.fillStyle = '#E65100'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText(`转速 ${rpmOf(s).toFixed(0)} rpm`, 320, barY)
-    ctx.textBaseline = 'alphabetic'
-
-    // 右侧面板
-    drawRightPanel(ctx, W * 0.56, 70, W - W * 0.56 - 25, H - 100, s)
-  }
-
-  // ─── 电动机结构 ───
-  function drawMotor(ctx, cx, cy, s, on) {
-    const angle = s.angle
-
-    // 磁铁 N（左红）/ S（右蓝）
-    ctx.fillStyle = '#E53935'
-    ctx.fillRect(cx - 170, cy - 110, 42, 220)
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText('N', cx - 149, cy)
-
-    ctx.fillStyle = '#1565C0'
-    ctx.fillRect(cx + 128, cy - 110, 42, 220)
-    ctx.fillStyle = '#fff'
-    ctx.fillText('S', cx + 149, cy)
-
-    // 磁感线（N→S）
-    ctx.strokeStyle = 'rgba(100,100,100,0.22)'; ctx.lineWidth = 1
-    for (let i = -3; i <= 3; i++) {
-      ctx.beginPath(); ctx.moveTo(cx - 128, cy + i * 32); ctx.lineTo(cx + 128, cy + i * 32); ctx.stroke()
-      ctx.fillStyle = 'rgba(100,100,100,0.32)'
-      ctx.beginPath()
-      ctx.moveTo(cx + 128, cy + i * 32)
-      ctx.lineTo(cx + 119, cy + i * 32 - 4.5)
-      ctx.lineTo(cx + 119, cy + i * 32 + 4.5)
-      ctx.closePath(); ctx.fill()
-    }
-
-    // 线圈（旋转）
     ctx.save()
-    ctx.translate(cx, cy)
-    ctx.rotate(angle)
+    ctx.translate(ox, oy); ctx.scale(sc, sc)
 
-    // 线圈竖边
-    ctx.strokeStyle = '#E65100'; ctx.lineWidth = 4
-    ctx.beginPath()
-    ctx.moveTo(-22, -62); ctx.lineTo(-22, 62)
-    ctx.moveTo(22, -62); ctx.lineTo(22, 62)
-    ctx.stroke()
-    // 上下横边
-    ctx.strokeStyle = '#BF360C'; ctx.lineWidth = 3
-    ctx.beginPath()
-    ctx.moveTo(-22, -62); ctx.lineTo(22, -62)
-    ctx.moveTo(-22, 62); ctx.lineTo(22, 62)
-    ctx.stroke()
+    const wc = on ? '#1565C0' : '#9aa7b1'
+    const ink = on ? SYM_INK : '#7c8a93'
+    const lw = 2.6
 
-    // Step1：标注两侧安培力方向
-    if (s.step === 1 && on) {
-      drawForceArrow(ctx, -22, -30, -1, 'F')
-      drawForceArrow(ctx, 22, -30, 1, 'F')
+    /* ─── 回路（电池 + 开关，经电刷进换向器）─── */
+    const { L, R, T, B, cx, cy, egy, brushDx } = D
+    const hSw = symHalf('switch', 1)
+    const hBat = symHalf('battery', 1, 2)
+    drawLine(ctx, L, T, cx - brushDx, T, wc, lw)
+    drawLine(ctx, cx + brushDx, T, R, T, wc, lw)
+    drawLine(ctx, L, T, L, B, wc, lw)
+    drawLine(ctx, R, T, R, B, wc, lw)
+    drawLine(ctx, L, B, D.batX - hBat, B, wc, lw)
+    drawLine(ctx, D.batX + hBat, B, D.swX - hSw, B, wc, lw)
+    drawLine(ctx, D.swX + hSw, B, R, B, wc, lw)
+
+    /* 电刷 → 回路顶边的引线（竖直） */
+    drawLine(ctx, cx - brushDx, egy, cx - brushDx, T, wc, lw)
+    drawLine(ctx, cx + brushDx, egy, cx + brushDx, T, wc, lw)
+
+    /* 电流流动示意（正极 → 开关 → 右电刷；换向器 → 左电刷 → 左竖边 → 负极） */
+    if (on) {
+      drawFlow(ctx, [
+        { x: D.batX + hBat, y: B }, { x: D.swX - hSw, y: B },
+      ], s.time, '#FBBF24')
+      drawFlow(ctx, [
+        { x: D.swX + hSw, y: B }, { x: R, y: B }, { x: R, y: T },
+        { x: cx + brushDx, y: T }, { x: cx + brushDx, y: egy },
+      ], s.time, '#FBBF24')
+      drawFlow(ctx, [
+        { x: cx - brushDx, y: egy }, { x: cx - brushDx, y: T },
+        { x: L, y: T }, { x: L, y: B }, { x: D.batX - hBat, y: B },
+      ], s.time, '#FBBF24')
     }
-    // Step2：标注电流方向（上⊙下⊗ 或随换向器切换）
-    if (s.step === 2 && on) {
-      ctx.fillStyle = '#E53935'; ctx.font = 'bold 15px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      const flip = Math.floor(angle / Math.PI) % 2 === 0
-      ctx.fillText(flip ? '⊙' : '⊗', 0, -48)
-      ctx.fillText(flip ? '⊗' : '⊙', 0, 48)
-    }
 
-    // 转轴
-    ctx.fillStyle = '#666'
-    ctx.beginPath(); ctx.arc(0, 0, 5, 0, Math.PI * 2); ctx.fill()
+    /* ─── 电动机剖面 ─── */
+    drawMotorBody(ctx, {
+      cx, cy, theta: s.theta, on, I: s.I, field: s.field, commutator: s.commutator, FS, time: s.time,
+    })
 
-    // 换向器（半圆环，两片）
-    ctx.strokeStyle = '#888'; ctx.lineWidth = 3
-    ctx.beginPath(); ctx.arc(0, 0, 16, 0.15, Math.PI - 0.15); ctx.stroke()
-    ctx.beginPath(); ctx.arc(0, 0, 16, Math.PI + 0.15, Math.PI * 2 - 0.15); ctx.stroke()
-    // 换向器间隙高亮（Step2）
-    if (s.step === 2) {
-      ctx.strokeStyle = '#FF9800'; ctx.lineWidth = 2.5
-      ctx.beginPath(); ctx.arc(0, 0, 20, -0.12, 0.12); ctx.stroke()
-      ctx.beginPath(); ctx.arc(0, 0, 20, Math.PI - 0.12, Math.PI + 0.12); ctx.stroke()
-    }
+    /* ─── 电池 / 开关 ─── */
+    symBattery(ctx, D.batX, B, { n: 2, scale: 1, ink })
+    symSwitch(ctx, D.swX, B, { closed: on, scale: 1, ink })
+    ctx.fillStyle = '#5D4037'
+    ctx.font = `bold ${FS(10.5)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText('电池组', D.batX, B + 20)
+    ctx.fillText('开关（点击）', D.swX, B + 20)
+
+    /* ─── τ–θ 曲线 ─── */
+    drawTauChart(ctx, D.chX, D.chY, D.chW, D.chH, {
+      theta: s.theta, I: s.I, commutator: s.commutator, field: s.field, on, FS,
+    })
+
+    /* ─── 控件第一行：电流滑条 + 换向器 ─── */
+    const r1 = D.row1
+    ctx.fillStyle = '#5A4636'
+    ctx.font = `bold ${FS(10.5)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    ctx.fillText(`电流 I = ${s.I.toFixed(2)} A`, 44, r1 - 20)
+    const barX = 54, barW = 190
+    ctx.strokeStyle = '#D7C4A8'; ctx.lineWidth = 4
+    ctx.beginPath(); ctx.moveTo(barX, r1 + 6); ctx.lineTo(barX + barW, r1 + 6); ctx.stroke()
+    const px = barX + ((s.I - 0.2) / 0.8) * barW
+    ctx.fillStyle = '#0EA5E9'
+    ctx.beginPath(); ctx.arc(px, r1 + 6, 8, 0, Math.PI * 2); ctx.fill()
+    canvasRef.current._clickAreas.push({
+      x: TX(barX - 12), y: TY(r1 - 30), w: (barW + 24) * sc, h: 56 * sc,
+      onClick: (mxp) => {
+        const v = ((mxp - ox) / sc - barX) / barW
+        S.current.I = Math.round((0.2 + Math.max(0, Math.min(1, v)) * 0.8) * 100) / 100
+        forceUpdate(n => n + 1)
+      },
+      onDrag: (mxp) => {
+        const v = ((mxp - ox) / sc - barX) / barW
+        S.current.I = Math.round((0.2 + Math.max(0, Math.min(1, v)) * 0.8) * 100) / 100
+        forceUpdate(n => n + 1)
+      },
+    })
+
+    /* 换向器开关按钮（本实验最关键的一个开关） */
+    const cX = 300, cW = 172, cY = r1 - 16, cH = 32
+    const cOn = s.commutator
+    ctx.fillStyle = cOn ? '#ECFDF5' : '#FEF2F2'
+    ctx.strokeStyle = cOn ? '#15803D' : '#DC2626'
+    ctx.lineWidth = 1.8
+    ctx.beginPath(); ctx.roundRect(cX, cY, cW, cH, 16); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = cOn ? '#15803D' : '#B91C1C'
+    ctx.font = `bold ${FS(10.5)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText(cOn ? '✓ 换向器已接入' : '✗ 换向器已拆掉', cX + cW / 2, cY + cH / 2)
+    canvasRef.current._clickAreas.push({
+      x: TX(cX), y: TY(cY - 2), w: cW * sc, h: (cH + 4) * sc,
+      onClick: () => { S.current.commutator = !S.current.commutator; forceUpdate(n => n + 1) },
+    })
+
+    /* 转速显示（按钮右） */
+    ctx.fillStyle = '#5A4636'
+    ctx.font = `bold ${FS(10.5)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'left'
+    ctx.fillText(`转速 ${Math.round(rpm)} r/min`, cX + cW + 16, r1)
+    ctx.fillStyle = '#8D6E63'
+    ctx.font = `${FS(9)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText(`ω = ${Math.abs(s.omega).toFixed(2)} rad/s · 转向 ${s.omega >= 0 ? '顺时针' : '逆时针'}`, cX + cW + 16, r1 + 18)
+
+    /* ─── 控件第二行：磁场换向 + 复位 ─── */
+    const r2 = D.row2
+    ctx.fillStyle = '#5A4636'
+    ctx.font = `bold ${FS(10.5)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    ctx.fillText('磁场', 44, r2)
+    const fX = 118, fW = 168
+    ctx.fillStyle = '#FFFFFF'; ctx.strokeStyle = '#D7C4A8'; ctx.lineWidth = 1.6
+    ctx.beginPath(); ctx.roundRect(fX, r2 - 15, fW, 30, 15); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = s.field ? '#B91C1C' : '#1D4ED8'
+    ctx.font = `bold ${FS(10)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'
+    ctx.fillText(s.field ? 'N 在左 → 磁感线向右' : 'S 在左 ← 磁感线向左', fX + fW / 2, r2)
+    canvasRef.current._clickAreas.push({
+      x: TX(fX), y: TY(r2 - 17), w: fW * sc, h: 34 * sc,
+      onClick: () => { S.current.field = !S.current.field; forceUpdate(n => n + 1) },
+    })
+
+    /* 记录按钮 */
+    const recX = 316, recW = 176
+    const recOn = on && Math.abs(s.omega) > 0.05 && s.records.length < MAX_REC
+    ctx.fillStyle = recOn ? '#FFF7ED' : '#F5F0E8'
+    ctx.strokeStyle = recOn ? '#EA580C' : '#D7C4A8'
+    ctx.lineWidth = 1.8
+    ctx.beginPath(); ctx.roundRect(recX, r2 - 17, recW, 34, 17); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = recOn ? '#B45309' : '#A08E76'
+    ctx.font = `bold ${FS(10.5)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'
+    ctx.fillText(`📋 记录一组（${s.records.length}/${MAX_REC}）`, recX + recW / 2, r2)
+    canvasRef.current._clickAreas.push({
+      x: TX(recX), y: TY(r2 - 19), w: recW * sc, h: 38 * sc,
+      onClick: () => {
+        if (!recOn) return
+        S.current.records.push({
+          I: S.current.I, comm: S.current.commutator, field: S.current.field,
+          rpm: Math.abs(S.current.omega) * 60 / (2 * Math.PI),
+          dir: S.current.omega >= 0 ? '顺时针' : '逆时针',
+        })
+        forceUpdate(n => n + 1)
+      },
+    })
+
+    /* 复位 */
+    const rstX = 512, rstW = 150
+    ctx.fillStyle = '#FFFFFF'; ctx.strokeStyle = '#D7C4A8'; ctx.lineWidth = 1.6
+    ctx.beginPath(); ctx.roundRect(rstX, r2 - 16, rstW, 32, 16); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = '#7A5C3E'
+    ctx.font = `bold ${FS(10)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'
+    ctx.fillText('↻ 线圈归零重测', rstX + rstW / 2, r2)
+    canvasRef.current._clickAreas.push({
+      x: TX(rstX), y: TY(r2 - 18), w: rstW * sc, h: 36 * sc,
+      onClick: () => {
+        S.current.theta = 0; S.current.omega = 0; S.current.records = []
+        S.current.cardScroll = 0
+        forceUpdate(n => n + 1)
+      },
+    })
 
     ctx.restore()
 
-    // 电刷（固定不动，压在换向器两侧；电流经电刷→换向器→线圈）
-    ctx.fillStyle = '#333'
-    ctx.fillRect(cx - 28, cy - 3, 12, 6)
-    ctx.fillRect(cx + 16, cy - 3, 12, 6)
-    // 电刷接线柱（接入外电路）
-    for (const bx of [cx - 28, cx + 28]) {
-      ctx.fillStyle = '#333'
-      ctx.beginPath(); ctx.arc(bx, cy, 4, 0, Math.PI * 2); ctx.fill()
-    }
-
-    // 标注
-    ctx.fillStyle = '#5D4037'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('通电线圈（转子）', cx, cy + 132)
-    if (s.step === 2) {
-      ctx.fillStyle = '#E65100'; ctx.font = '10px sans-serif'
-      ctx.fillText('换向器（每半周自动换向）', cx, cy + 148)
-    }
-    ctx.textBaseline = 'alphabetic'
-  }
-
-  // 力箭头
-  function drawForceArrow(ctx, x, y, dir, label) {
-    ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + dir * 38, y); ctx.stroke()
-    ctx.lineCap = 'butt'
-    ctx.fillStyle = '#4CAF50'
-    ctx.beginPath()
-    ctx.moveTo(x + dir * 38, y)
-    ctx.lineTo(x + dir * 30, y - 5)
-    ctx.lineTo(x + dir * 30, y + 5)
-    ctx.closePath(); ctx.fill()
-    ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-    ctx.fillText(label, x + dir * 20, y - 8)
-    ctx.textBaseline = 'alphabetic'
-  }
-
-  function drawMiniSlider(ctx, x, y, w, ratio, onChange) {
-    ctx.strokeStyle = '#bbb'; ctx.lineWidth = 3
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w, y); ctx.stroke()
-    const kx = x + Math.max(0, Math.min(1, ratio)) * w
-    ctx.fillStyle = '#FF9800'
-    ctx.beginPath(); ctx.arc(kx, y, 6, 0, Math.PI * 2); ctx.fill()
+    /* 开关命中区（屏幕坐标） */
     canvasRef.current._clickAreas.push({
-      x: x - 8, y: y - 14, w: w + 16, h: 28,
-      onClick: (mx) => onChange(Math.max(0, Math.min(1, (mx - x) / w)))
-    })
-  }
-
-  function drawCurrentFlow(ctx, path) {
-    const t = (performance.now() / 1000) % 1
-    let segLens = [], total = 0
-    for (let i = 0; i < path.length - 1; i++) {
-      const d = Math.hypot(path[i + 1].x - path[i].x, path[i + 1].y - path[i].y)
-      segLens.push(d); total += d
-    }
-    const N = 5
-    for (let k = 0; k < N; k++) {
-      let dist = ((t + k / N) % 1) * total
-      for (let i = 0; i < segLens.length; i++) {
-        if (dist <= segLens[i]) {
-          const r = dist / segLens[i]
-          const x = path[i].x + (path[i + 1].x - path[i].x) * r
-          const y = path[i].y + (path[i + 1].y - path[i].y) * r
-          ctx.fillStyle = 'rgba(255,193,7,0.9)'
-          ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill()
-          break
-        }
-        dist -= segLens[i]
-      }
-    }
-  }
-
-  // ─── 右侧面板 ───
-  function drawRightPanel(ctx, x, y, w, h, s) {
-    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill(); ctx.stroke()
-
-    ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('🎯 电动机原理 — 磁场对电流的作用', x + 12, y + 12)
-
-    ctx.font = '10px sans-serif'; ctx.fillStyle = '#444'
-    ctx.fillText(`电流 I = ${s.current.toFixed(1)} A`, x + 12, y + 32)
-    ctx.fillStyle = '#E65100'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText(`转速 n = ${rpmOf(s).toFixed(0)} rpm`, x + 12, y + 50)
-
-    // 公式
-    ctx.fillStyle = '#FF6F00'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText('F = BIL（安培力）', x + 12, y + 72)
-    ctx.font = '10px sans-serif'; ctx.fillStyle = '#5D4037'
-    ctx.fillText('左手定则：磁感线穿掌心，', x + 12, y + 90)
-    ctx.fillText('四指指电流，拇指指受力方向', x + 12, y + 106)
-
-    // 操作步骤
-    let ky = y + 132
-    const guideSteps = s.step === 1
-      ? ['① 闭合开关通电', '② 观察线圈两侧受力', '③ 左右受力方向相反', '④ 形成转矩使线圈转动']
-      : s.step === 2
-        ? ['① 观察换向器结构', '② 每半周自动改变电流方向', '③ 转矩方向保持不变', '④ 线圈持续旋转']
-        : ['① 拖动滑条改变电流', '② 转速随电流变化', '③ 记录数据', '④ 结论：I 越大转速越快']
-    ctx.fillStyle = '#5D4037'; ctx.font = 'bold 10px sans-serif'
-    ctx.fillText('📋 操作步骤', x + 12, ky); ky += 16
-    ctx.font = '10px sans-serif'; ctx.fillStyle = '#5D4037'
-    for (let i = 0; i < guideSteps.length; i++) {
-      ctx.fillText(guideSteps[i], x + 12, ky + i * 14)
-    }
-    ky += guideSteps.length * 14 + 6
-
-    // 注意事项
-    ctx.fillStyle = '#C62828'; ctx.font = 'bold 10px sans-serif'
-    ctx.fillText('⚠ 注意事项', x + 12, ky); ky += 14
-    ctx.font = '9px sans-serif'; ctx.fillStyle = '#B71C1C'
-    const notes = s.step === 1
-      ? ['• 左手定则：磁感线穿掌心，四指指电流，拇指指受力', '• 线圈两侧受力方向相反，形成转矩', '• 电流方向不变时线圈只能转半圈']
-      : s.step === 2
-        ? ['• 换向器每半周自动改变电流方向', '• 转矩方向保持不变，线圈持续旋转', '• 换向器是直流电动机的核心部件']
-        : ['• 只改变电流大小观察转速', '• 电流越大转速越快', '• 注意电流不宜过大，避免烧毁线圈']
-    for (let i = 0; i < notes.length; i++) ctx.fillText(notes[i], x + 12, ky + i * 12)
-    ky += notes.length * 12 + 8
-
-    // 数据表
-    if (s.records.length > 0) {
-      ctx.fillStyle = '#333'; ctx.font = 'bold 11px sans-serif'
-      ctx.fillText('📊 实验数据', x + 12, ky); ky += 18
-      ctx.fillStyle = '#FFB74D'
-      ctx.fillRect(x + 12, ky, w - 24, 18)
-      ctx.fillStyle = '#333'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center'
-      const c1 = x + 32, c2 = x + 85, c3 = x + 148
-      ctx.fillText('序号', c1, ky + 3)
-      ctx.fillText('I(A)', c2, ky + 3)
-      ctx.fillText('n(rpm)', c3, ky + 3)
-      ky += 18
-      for (let i = 0; i < s.records.length; i++) {
-        const r = s.records[i]
-        if (i % 2 === 0) { ctx.fillStyle = '#FFF8E1'; ctx.fillRect(x + 12, ky, w - 24, 16) }
-        ctx.fillStyle = '#333'; ctx.font = '10px monospace'; ctx.textAlign = 'center'
-        ctx.fillText(String(i + 1), c1, ky + 2)
-        ctx.fillText(r.I.toFixed(1), c2, ky + 2)
-        ctx.fillText(r.rpm.toFixed(0), c3, ky + 2)
-        ky += 16
-      }
-      ctx.textAlign = 'left'
-    }
-
-    // 按钮
-    const btnY = y + h - 42
-    const btnW = 68, btnH = 26, gap = 8
-    const bx = x + 12
-    ctx.fillStyle = '#4CAF50'; ctx.strokeStyle = '#2E7D32'
-    ctx.beginPath(); ctx.roundRect(bx, btnY, btnW, btnH, 5); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'center'
-    ctx.fillText('📝 记录', bx + btnW / 2, btnY + 9)
-    canvasRef.current._clickAreas.push({
-      x: bx, y: btnY, w: btnW, h: btnH,
+      x: TX(D.swX - hSw - 12), y: TY(B - 22), w: (hSw + 12) * 2 * sc, h: 44 * sc,
       onClick: () => {
-        const s2 = S.current
-        s2.records.push({ I: s2.current, rpm: rpmOf(s2) })
+        S.current.switchClosed = !S.current.switchClosed
         forceUpdate(n => n + 1)
-      }
+      },
     })
-    ctx.fillStyle = '#FF9800'; ctx.strokeStyle = '#E65100'
-    ctx.beginPath(); ctx.roundRect(bx + btnW + gap, btnY, btnW, btnH, 5); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText('🗑 清除', bx + btnW + gap + btnW / 2, btnY + 9)
-    canvasRef.current._clickAreas.push({
-      x: bx + btnW + gap, y: btnY, w: btnW, h: btnH,
-      onClick: () => { S.current.records = []; forceUpdate(n => n + 1) }
+
+    /* ─── 知识卡 ─── */
+    const SEC_COLORS = ['#E0761F', '#C98A12', '#CA8A04', '#C2410C', '#B45309', '#15803D', '#7C3AED', '#DC2626']
+    const SECTIONS = buildSections(s.records, { I: s.I, comm: s.commutator, field: s.field, rpm, on }).map((sec, i) => ({
+      t: sec.title, c: SEC_COLORS[i % SEC_COLORS.length], items: sec.lines,
+    }))
+    const cardOut = drawKnowledgeCard(ctx, panel, SECTIONS, {
+      title: '📖 电动机知识',
+      scroll: s.cardScroll,
+      tip: (c, tx, ty) => {
+        c.fillStyle = on ? '#B45309' : '#B08954'
+        c.fillText(
+          on
+            ? `● 通电中｜I = ${s.I.toFixed(2)} A｜τ ≈ ${(TAU_K * s.I * (s.commutator ? Math.abs(Math.cos(s.theta)) : Math.cos(s.theta)) * (s.field ? 1 : -1)).toFixed(1)}｜${Math.round(rpm)} r/min｜${s.commutator ? '换向器接入' : '换向器拆掉（摆几下就停）'}`
+            : `○ 开关断开：线圈不受安培力，转速按阻尼慢慢减为 0`,
+          tx, ty + 10
+        )
+      },
     })
-    ctx.fillStyle = '#9E9E9E'; ctx.strokeStyle = '#616161'
-    ctx.beginPath(); ctx.roundRect(bx + (btnW + gap) * 2, btnY, btnW, btnH, 5); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 11px sans-serif'
-    ctx.fillText('↺ 重置', bx + (btnW + gap) * 2 + btnW / 2, btnY + 9)
-    canvasRef.current._clickAreas.push({
-      x: bx + (btnW + gap) * 2, y: btnY, w: btnW, h: btnH,
-      onClick: () => {
-        S.current.current = 3; S.current.angle = 0
-        S.current.records = []; S.current.switchClosed = false
-        forceUpdate(n => n + 1)
-      }
-    })
-    ctx.textBaseline = 'alphabetic'
-  }
-
-  // ================================================================
-  //  Tab 2：自己动手
-  // ================================================================
-  function renderBuilder(ctx, W, H) {
-    const s = S.current
-    const palW = 150
-    const palX = W - palW - 10
-
-    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#e0e0e0'
-    ctx.beginPath(); ctx.roundRect(10, 10, palX - 25, H - 20, 8); ctx.fill(); ctx.stroke()
-
-    for (const wire of s.wires) {
-      const c1 = s.components.find(c => c.id === wire.from.compId)
-      const c2 = s.components.find(c => c.id === wire.to.compId)
-      if (!c1 || !c2) continue
-      const p1 = getTermPos(c1, wire.from.portIndex)
-      const p2 = getTermPos(c2, wire.to.portIndex)
-      ctx.strokeStyle = wire.color || s.wireColor; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke()
-      ctx.lineCap = 'butt'
-    }
-    if (s.connecting) {
-      const c1 = s.components.find(c => c.id === s.connecting.compId)
-      if (c1) {
-        const p1 = getTermPos(c1, s.connecting.portIndex)
-        ctx.strokeStyle = '#FF9800'; ctx.lineWidth = 2; ctx.setLineDash([5, 4])
-        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(s.connecting.mx, s.connecting.my); ctx.stroke()
-        ctx.setLineDash([])
-      }
-    }
-
-    for (const comp of s.components) drawComp(ctx, comp)
-
-    const bx = 22, by = H - 130, bw2 = palX - 50
-    ctx.fillStyle = 'rgba(255,252,240,0.95)'; ctx.strokeStyle = '#ddd'
-    ctx.beginPath(); ctx.roundRect(bx, by, bw2, s._guideOpen ? 118 : 36, 6); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#5D4037'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-    ctx.fillText('📋 操作说明', bx + 10, by + 18)
-    ctx.textAlign = 'right'
-    ctx.fillText(s._guideOpen ? '收起 ▲' : '展开 ▼', bx + bw2 - 10, by + 18)
-    canvasRef.current._clickAreas.push({ x: bx - 5, y: by - 3, w: bw2 + 10, h: 42, onClick: () => { s._guideOpen = !s._guideOpen; forceUpdate(n => n + 1) } })
-    if (s._guideOpen) {
-      ctx.textAlign = 'left'; ctx.font = '10px sans-serif'
-      const lines = [
-        '① 拖入器材到画布',
-        '② 点击接线柱连线',
-        '③ 双击开关通断',
-        '④ 右键删除器材',
-        '⑤ 观察电动机转动',
-      ]
-      for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], bx + 10, by + 40 + i * 15)
-    }
+    canvasRef.current._cardBox = cardOut
+      ? { x: panel.x, y: panel.y + 2, w: panel.w, h: cardOut.cardH, maxScroll: cardOut.maxScroll, scroll: cardOut.scroll }
+      : null
     ctx.textBaseline = 'alphabetic'
 
-    drawPalette(ctx, palX, 10, palW, H - 20)
+    /* 验收钩子 */
+    canvasRef.current._dbg = {
+      swX: TX(D.swX), swY: TY(B),
+      sliderX0: TX(barX), sliderX1: TX(barX + barW), sliderY: TY(r1 + 6),
+      commBtn: { x: TX(cX + cW / 2), y: TY(cY + cH / 2) },
+      fieldBtn: { x: TX(fX + fW / 2), y: TY(r2) },
+      recBtn: { x: TX(recX + recW / 2), y: TY(r2) },
+      scale: sc, closed: on, I: s.I, comm: s.commutator, field: s.field,
+      omega: s.omega, rpm, theta: s.theta, recN: s.records.length,
+      panel: { x: panel.x, y: panel.y, w: panel.w, h: panel.h },
+    }
   }
 
-  function drawPalette(ctx, x, y, w, h) {
-    const s = S.current
-    ctx.fillStyle = '#fafafa'; ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#333'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('电学器材', x + w / 2, y + 10)
-
-    const items = [
-      { type: 'battery', name: '电源 6V' },
-      { type: 'switch', name: '开关' },
-      { type: 'motor', name: '电动机' },
-      { type: 'rheostat', name: '滑动变阻器（干扰）' },
-      { type: 'ammeter', name: '电流表 A（干扰）' },
-      { type: 'bulb', name: '小灯泡（干扰）' },
-      { type: 'resistor', name: '定值电阻（干扰）' },
-      { type: 'magnet', name: '磁铁 N-S' },
+  /* ── 知识卡（8 节）── */
+  function buildSections(records, cur) {
+    const rows = records.map((r, i) => [
+      [`第 ${i + 1} 组：`],
+      [`I = ${r.I.toFixed(2)} A`, '#0EA5E9', 1],
+      ['，'],
+      [r.comm ? '换向器接入' : '换向器拆掉', r.comm ? '#15803D' : '#DC2626', 1],
+      ['，'],
+      [r.field ? 'N 在左' : 'S 在左', r.field ? '#B91C1C' : '#1D4ED8', 1],
+      ['，稳定转速 '],
+      [`${Math.round(r.rpm)} r/min`, '#7C3AED', 1],
+      ['（'],
+      [`${r.dir}`, '#B45309', 1],
+      ['）。'],
+    ])
+    if (records.length >= 2) {
+      const a = records[0], b = records[records.length - 1]
+      let note
+      if (a.comm !== b.comm) {
+        note = ['对照：拆掉换向器后线圈只摆几下就停 —— 靠 ']
+        note.push(['换向器', '#15803D', 1])
+        note.push([' 每半圈翻转电流才能连续转。'])
+      } else if (a.field !== b.field) {
+        note = ['对照：只把磁场方向反一下，']
+        note.push(['转向就反了', '#B45309', 1])
+        note.push(['（不换电池、不换线圈）。'])
+      } else if (Math.abs(a.I - b.I) > 0.01) {
+        note = ['对照：I 从 ']
+        note.push([`${a.I.toFixed(2)} → ${b.I.toFixed(2)} A`, '#0EA5E9', 1])
+        note.push(['，转速也跟着变 —— 转矩 '])
+        note.push(['τ ∝ I', '#B45309', 1])
+        note.push(['。'])
+      }
+      if (note) rows.push(note)
+    }
+    return [
+      {
+        title: '① 实验目的',
+        lines: [
+          [['认识'], ['磁场对通电导线有力的作用', '#C2410C', 1], ['（安培力），并看懂'], ['通电线圈在磁场中转动', '#C2410C', 1], ['的原理。']],
+          [['搞清'], ['换向器', '#15803D', 1], [' 为什么必须有 —— 没有它，线圈只能摆到'], ['平衡位置', '#7C3AED', 1], [' 就停住。']],
+          [['弄明白'], ['转向', '#B45309', 1], [' 和'], ['转速', '#0EA5E9', 1], [' 各由什么决定。']],
+        ],
+      },
+      {
+        title: '② 实验器材',
+        lines: [
+          [['电源（电池组）、开关、导线；'], ['蹄形磁铁（N 红 / S 蓝）', '#C2410C', 1], ['、矩形线圈、'], ['换向器 + 电刷', '#15803D', 1], ['。']],
+          [['换向器由两个'], ['半圆铜片', '#B45309', 1], [' 拼成、随线圈一起转；两个'], ['电刷', '#64748B', 1], [' 固定不动，贴着铜片滑动取电。']],
+          [['真实电动机的定子就是磁极、转子就是线圈 —— 本仿真把外壳剖开画给你看。']],
+        ],
+      },
+      {
+        title: '③ 通电线圈为什么会转',
+        lines: [
+          [['线圈两侧在磁场中都受安培力，方向'], ['相反', '#DC2626', 1], ['、不在同一直线上 → 形成'], ['转矩', '#B45309', 1], ['，线圈就转起来。']],
+          [['安培力方向用'], ['左手定则', '#7C3AED', 1], ['：四指指电流方向，让磁感线穿入手心，拇指就是受力方向。']],
+          [['τ = K·I·cos θ', '#B45309', 1], ['：线圈平面与磁感线'], ['平行', '#15803D', 1], ['时转矩'], ['最大', '#15803D', 1], ['；'], ['垂直', '#DC2626', 1], ['时转矩为零。']],
+        ],
+      },
+      {
+        title: '④ 为什么必须有换向器（本实验的核心）',
+        lines: [
+          [['线圈转到'], ['平衡位置', '#7C3AED', 1], ['（平面与磁感线垂直）时，两侧安培力在同一直线上、方向相反 → 转矩为零，'], ['再转不过去', '#DC2626', 1], ['。']],
+          [['拆掉换向器：线圈在平衡位置附近'], ['来回摆动几下就停住', '#DC2626', 1], ['（右下 τ–θ 曲线上一半正、一半负，净功为零）。']],
+          [['换向器每半圈把线圈里的'], ['电流方向翻转一次', '#15803D', 1], ['，转矩方向就永远是同一侧 → 连续转动。']],
+          [['点「换向器」按钮拆掉它，就是本实验最直观的一次对比。']],
+        ],
+      },
+      {
+        title: '⑤ 转速由什么决定',
+        lines: [
+          [['电流越大 → 转矩越大 → 转速越高：本仿真里 '], ['ω ∝ I', '#0EA5E9', 1], ['（I 从 0.2 到 1.0 A）。']],
+          [['磁场越强（磁极越强）→ 转矩越大 → 转得越快；线圈匝数越多也一样。']],
+          [['负载越重 → 转速越低（真实电动机带负载会掉速），本仿真在空载下演示。']],
+        ],
+      },
+      {
+        title: '⑥ 转向由什么决定',
+        lines: [
+          [['只要改变'], ['电流方向', '#0EA5E9', 1], [' 或 '], ['磁场方向', '#B91C1C', 1], [' 中的'], ['任意一个', '#DC2626', 1], ['，转向就反过来。']],
+          [['两个同时改变 → 转向不变（左手定则里两个方向都反一次，拇指方向不变）。']],
+        ],
+      },
+      {
+        title: '⑦ 本次记录',
+        lines: [
+          ...rows,
+          ...(records.length
+            ? [[
+              ['当前：'], [`I = ${cur.I.toFixed(2)} A`, '#0EA5E9', 1],
+              ['，'], [cur.comm ? '换向器接入' : '换向器拆掉', cur.comm ? '#15803D' : '#DC2626', 1],
+              ['，稳定转速 '], [`${Math.round(cur.rpm)} r/min`, '#7C3AED', 1],
+            ]]
+            : [[['转起来以后点「记录一组」，把电流、换向器有没有、转向、稳定转速记下来（最多 ' + MAX_REC + ' 组）。']]]),
+        ],
+      },
+      {
+        title: '⚠ 注意事项',
+        lines: [
+          [['本实验是'], ['磁场对电流的作用', '#DC2626', 1], ['（电动机原理），'], ['不是电磁感应', '#7C3AED', 1], ['—— 别和「磁生电」搞混。']],
+          [['换向器与交流电是两回事：换向器是'], ['机械换向', '#B45309', 1], ['，把外部直流"切成"线圈内的交变电流。']],
+          [['真实电动机有多个线圈、多组换向片，转过平衡位置更平稳；本仿真只画一组，方便看清原理。']],
+          [['线圈卡住（转不动）时电流很大，会把线圈烧坏 —— 真实电动机不允许长时间堵转。']],
+        ],
+      },
     ]
-    const itemH = 30
-    for (let i = 0; i < items.length; i++) {
-      const iy = y + 32 + i * (itemH + 3)
-      if (iy + itemH > y + h - 75) break
-      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#ccc'
-      ctx.beginPath(); ctx.roundRect(x + 6, iy, w - 12, itemH, 5); ctx.fill(); ctx.stroke()
-      drawPaletteIcon(ctx, x + 18, iy + itemH / 2, items[i].type)
-      ctx.fillStyle = '#333'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(items[i].name, x + 34, iy + itemH / 2)
-      canvasRef.current._palAreas.push({ x: x + 6, y: iy, w: w - 12, h: itemH, type: items[i].type })
-    }
-    const palColorBase = y + 32 + items.length * (itemH + 3) + 4
-    ctx.fillStyle = '#666'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
-    ctx.fillText('导线颜色：', x + 10, y + 35 + items.length * (itemH + 4) + 5)
-    const colors = [['#F44336', '红'], ['#FFC107', '黄'], ['#4CAF50', '绿']]
-    for (let i = 0; i < 3; i++) {
-      const cy = palColorBase + 18 + i * 20
-      ctx.fillStyle = colors[i][0]
-      ctx.fillRect(x + 10, cy, 36, 14)
-      ctx.strokeStyle = s.wireColor === colors[i][0] ? '#333' : '#ccc'
-      ctx.strokeRect(x + 10, cy, 36, 14)
-      ctx.fillStyle = '#333'; ctx.font = '10px sans-serif'
-      ctx.fillText(colors[i][1], x + 52, cy + 2)
-      canvasRef.current._palAreas.push({ x: x + 8, y: cy - 2, w: w - 16, h: 18, action: 'color', color: colors[i][0] })
-    }
-    ctx.textBaseline = 'alphabetic'
   }
 
-  function drawPaletteIcon(ctx, x, y, type) {
-    ctx.save(); ctx.translate(x, y)
-    if (type === 'battery') {
-      ctx.fillStyle = '#4CAF50'; ctx.strokeStyle = '#2E7D32'
-      ctx.fillRect(-10, -7, 20, 14); ctx.strokeRect(-10, -7, 20, 14)
-    } else if (type === 'switch') {
-      ctx.strokeStyle = '#666'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.moveTo(-7, 0); ctx.lineTo(5, -4); ctx.stroke()
-      ctx.fillStyle = '#666'; ctx.beginPath(); ctx.arc(-7, 0, 2, 0, Math.PI * 2); ctx.fill()
-      ctx.beginPath(); ctx.arc(7, 0, 2, 0, Math.PI * 2); ctx.fill()
-    } else if (type === 'motor') {
-      ctx.fillStyle = '#FFF9C4'; ctx.strokeStyle = '#F9A825'
-      ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#E65100'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText('M', 0, 3)
-    } else if (type === 'rheostat') {
-      ctx.fillStyle = '#D7CCC8'; ctx.strokeStyle = '#8D6E63'
-      ctx.fillRect(-10, -4, 20, 8); ctx.strokeRect(-10, -4, 20, 8)
-    } else if (type === 'ammeter') {
-      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#E53935'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#E53935'; ctx.font = 'bold 9px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText('A', 0, 2)
-    } else if (type === 'bulb') {
-      ctx.fillStyle = '#FFF9C4'; ctx.strokeStyle = '#F9A825'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.arc(0, -1, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    } else if (type === 'resistor') {
-      ctx.fillStyle = '#D7CCC8'; ctx.strokeStyle = '#8D6E63'
-      ctx.fillRect(-9, -4, 18, 8); ctx.strokeRect(-9, -4, 18, 8)
-    } else if (type === 'magnet') {
-      ctx.fillStyle = '#E53935'; ctx.fillRect(-10, -6, 10, 12)
-      ctx.fillStyle = '#1565C0'; ctx.fillRect(0, -6, 10, 12)
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 7px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText('N', -5, 2); ctx.fillText('S', 5, 2)
-    }
-    ctx.restore()
-  }
+  /* ── 事件 ── */
+  const getPos = (e) => eventToCanvas(canvasRef.current, e)
 
-  function getTermPos(comp, portIndex) {
-    if (comp.type === 'battery') return { x: comp.x + (portIndex === 0 ? -18 : 18), y: comp.y }
-    if (comp.type === 'switch') return { x: comp.x + (portIndex === 0 ? -15 : 15), y: comp.y }
-    if (comp.type === 'motor') return { x: comp.x + (portIndex === 0 ? -18 : 18), y: comp.y }
-    return { x: comp.x, y: comp.y }
-  }
-
-  function drawComp(ctx, comp) {
-    ctx.save(); ctx.translate(comp.x, comp.y)
-    if (comp.type === 'battery') {
-      ctx.fillStyle = '#4CAF50'; ctx.strokeStyle = '#2E7D32'
-      ctx.beginPath(); ctx.roundRect(-18, -11, 36, 22, 3); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 8px sans-serif'; ctx.textAlign = 'center'
-      ctx.fillText('6V', 0, 3)
-    } else if (comp.type === 'switch') {
-      ctx.strokeStyle = comp.closed ? '#4CAF50' : '#F44336'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(-15, 0); ctx.lineTo(10, comp.closed ? 0 : -10); ctx.stroke()
-      ctx.lineCap = 'butt'
-      ctx.fillStyle = '#333'
-      ctx.beginPath(); ctx.arc(-15, 0, 3, 0, Math.PI * 2); ctx.fill()
-      ctx.beginPath(); ctx.arc(15, 0, 3, 0, Math.PI * 2); ctx.fill()
-    } else if (comp.type === 'motor') {
-      ctx.fillStyle = '#FFF9C4'; ctx.strokeStyle = '#F9A825'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#E65100'; ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('M', 0, 0)
-    }
-    const t1 = getTermPos({ ...comp, x: 0, y: 0 }, 0)
-    const t2 = getTermPos({ ...comp, x: 0, y: 0 }, 1)
-    for (const t of [t1, t2]) {
-      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#666'; ctx.lineWidth = 1.5
-      ctx.beginPath(); ctx.arc(t.x, t.y, 4, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    }
-    ctx.restore()
-  }
-
-  // ================================================================
-  //  交互事件
-  // ================================================================
-  function getPos(e) {
-    return eventToCanvas(canvasRef.current, e)
-  }
-  function findTerm(x, y) {
-    for (const comp of S.current.components) {
-      for (let i = 0; i < 2; i++) {
-        const t = getTermPos(comp, i)
-        if (Math.abs(x - t.x) < 10 && Math.abs(y - t.y) < 10) {
-          return { compId: comp.id, portIndex: i }
-        }
-      }
-    }
-    return null
-  }
-
-  function handleMouseDown(e) {
+  const handleMouseDown = useCallback((e) => {
     if (e.button !== 0) return
-    const s = S.current; const { x, y } = getPos(e)
-    if (s.tab === 1) {
-      for (const a of canvasRef.current._clickAreas) {
-        if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(x, y); return }
-      }
+    if (S.current.tab !== 1) return
+    const { x, y } = getPos(e)
+    const box = canvasRef.current._cardBox
+    if (box && box.maxScroll > 0 && x >= box.x && x <= box.x + box.w && y >= box.y && y <= box.y + box.h) {
+      S.current.cardDrag = { y0: y, s0: S.current.cardScroll }
       return
     }
-    for (const a of canvasRef.current._clickAreas || []) {
-      if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) { a.onClick(); return }
-    }
-    for (const a of canvasRef.current._palAreas) {
+    for (const a of canvasRef.current._clickAreas) {
       if (x >= a.x && x <= a.x + a.w && y >= a.y && y <= a.y + a.h) {
-        if (a.action === 'color') { s.wireColor = a.color; forceUpdate(n => n + 1); return }
-        if (a.type) {
-          const id = s.nextId++
-          s.components.push({ id, type: a.type, x, y, closed: a.type === 'switch' ? false : true, props: {} })
-          s.dragId = id; forceUpdate(n => n + 1); return
-        }
+        S.current.dragging = !!a.onDrag
+        a.onClick?.(x)
+        return
       }
     }
-    const term = findTerm(x, y)
-    if (term) { s.connecting = { ...term, mx: x, my: y }; forceUpdate(n => n + 1); return }
-    for (const comp of s.components) {
-      if (Math.abs(x - comp.x) < 30 && Math.abs(y - comp.y) < 25) {
-        s.dragId = comp.id; s.dragOffX = x - comp.x; s.dragOffY = y - comp.y
-        forceUpdate(n => n + 1); return
-      }
-    }
-  }
+  }, [])
 
-  function handleMouseMove(e) {
-    const s = S.current; const { x, y } = getPos(e)
-    if (s.connecting) { s.connecting.mx = x; s.connecting.my = y; forceUpdate(n => n + 1); return }
-    if (s.dragId == null) return
-    const comp = s.components.find(c => c.id === s.dragId)
-    if (comp) { comp.x = x - s.dragOffX; comp.y = y - s.dragOffY; forceUpdate(n => n + 1) }
-  }
-
-  function handleMouseUp(e) {
-    const s = S.current; const { x, y } = getPos(e)
-    if (s.connecting) {
-      const term = findTerm(x, y)
-      if (term && !(term.compId === s.connecting.compId && term.portIndex === s.connecting.portIndex)) {
-        const exists = s.wires.some(w =>
-          (w.from.compId === s.connecting.compId && w.from.portIndex === s.connecting.portIndex && w.to.compId === term.compId && w.to.portIndex === term.portIndex) ||
-          (w.to.compId === s.connecting.compId && w.to.portIndex === s.connecting.portIndex && w.from.compId === term.compId && w.from.portIndex === term.portIndex)
-        )
-        if (!exists) s.wires.push({ id: s.wires.length + 1, from: { ...s.connecting }, to: term, color: s.wireColor })
-      }
-      s.connecting = null; forceUpdate(n => n + 1); return
-    }
-    s.dragId = null
-  }
-
-  function handleDoubleClick(e) {
-    const s = S.current; const { x, y } = getPos(e)
-    const comp = s.components.find(c => Math.abs(x - c.x) < 25 && Math.abs(y - c.y) < 25 && c.type === 'switch')
-    if (comp) { comp.closed = !comp.closed; forceUpdate(n => n + 1) }
-  }
-
-  function handleContextMenu(e) {
-    e.preventDefault()
-    const s = S.current; const { x, y } = getPos(e)
-    const idx = s.components.findIndex(c => Math.abs(x - c.x) < 30 && Math.abs(y - c.y) < 25)
-    if (idx >= 0) {
-      const id = s.components[idx].id
-      s.components.splice(idx, 1)
-      s.wires = s.wires.filter(w => w.from.compId !== id && w.to.compId !== id)
+  const handleMouseMove = useCallback((e) => {
+    if (S.current.tab !== 1) return
+    const { x, y } = getPos(e)
+    if (S.current.cardDrag) {
+      const box = canvasRef.current._cardBox
+      const b = S.current.cardDrag
+      S.current.cardScroll = Math.max(0, Math.min(box?.maxScroll || 0, b.s0 - (y - b.y0)))
       forceUpdate(n => n + 1)
+      return
     }
-  }
+    if (!S.current.dragging) return
+    const a = canvasRef.current._clickAreas.find((k) => k.onDrag)
+    a?.onDrag?.(x)
+  }, [])
+
+  const handleMouseUp = useCallback(() => {
+    S.current.dragging = false
+    S.current.cardDrag = null
+  }, [])
+
+  const handleWheel = useCallback((e) => {
+    const box = canvasRef.current?._cardBox
+    if (!box || !box.maxScroll) return
+    const { x, y } = getPos(e)
+    if (x < box.x || x > box.x + box.w || y < box.y || y > box.y + box.h) return
+    S.current.cardScroll = Math.max(0, Math.min(box.maxScroll, S.current.cardScroll + e.deltaY))
+    forceUpdate(n => n + 1)
+  }, [])
+
+  const handleReset = useCallback(() => {
+    const s = S.current
+    s.switchClosed = false
+    s.I = 0.6
+    s.commutator = true
+    s.field = true
+    s.theta = 0; s.omega = 0
+    s.records = []
+    s.cardScroll = 0
+    builderRef.current?.reset()
+    forceUpdate(n => n + 1)
+  }, [])
+
+  const handleAddFromPalette = useCallback((type) => { builderRef.current?.add(type) }, [])
+  const handleDropFromPalette = useCallback((type, clientX, clientY) => { builderRef.current?.addAt(type, clientX, clientY) }, [])
+  const handlePickColor = useCallback((color) => { S.current.wireColor = color; forceUpdate(v => v + 1) }, [])
 
   return (
     <SceneShell
-      title="电动机原理"
+      title="电动机"
       tab={tab}
-      onTabChange={(t) => { S.current.tab = t; setTab(t); forceUpdate(n => n + 1) }}
-      tab1Label="📊 实验演示"
+      onTabChange={(t) => { S.current.tab = t; setTab(t) }}
+      tab1Label="📖 电路演示"
       tab2Label="🔧 自己动手"
+      onReset={handleReset}
+      desc={tab === 1 ? (
+        <>
+          <b>电动机</b>
+          <span style={{ marginLeft: 12, color: '#555', fontSize: 13 }}>
+            磁场对通电线圈有力的作用 · 换向器每半圈翻转电流 · 拆掉换向器只摆几下就停 · 改变电流/磁场看转向与转速
+          </span>
+        </>
+      ) : null}
     >
-      <canvas
-      ref={canvasRef}
-      style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onDoubleClick={handleDoubleClick}
-      onContextMenu={handleContextMenu}
-      />
+      <div style={{ display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0, width: '100%' }}>
+        <canvas
+          ref={canvasRef}
+          className="canvas-fill"
+          style={{ width: '100%', flex: 1, minHeight: 0, display: tab === 1 ? 'block' : 'none', touchAction: 'none' }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          onWheel={handleWheel}
+        />
+        {tab === 2 && (
+          <BuilderSVG ref={builderRef} wireColor={S.current.wireColor} />
+        )}
+        {tab === 1 ? (
+          <InfoDock
+            align="left"
+            offset={{ left: 22, top: 18 }}
+            purpose="看懂通电线圈在磁场中转动、换向器为什么必须有，以及转向和转速各由什么决定。"
+            steps={[
+              '先看两块磁极：N 红在左、S 蓝在右，中间是水平磁感线',
+              '点开关闭合，线圈转起来；观察线圈宽度在"忽宽忽窄"地翻转',
+              '看右下 τ–θ 曲线：换向器接入时 τ 恒为正（|cosθ|）',
+              '点「✗ 换向器已接入」拆掉它，线圈摆几下就停在平衡位置',
+              '把电流 I 调大或调小，看转速跟着变',
+              '点「磁场」把 N/S 对调，看转向反过来',
+            ]}
+            hint="转矩 τ = K·I·cosθ；换向器每半圈翻转电流 → τ 恒同向；改变电流方向或磁场方向任一 → 转向反。"
+          />
+        ) : (
+          <InfoDock
+            align="left"
+            offset={{ left: 26, top: 26 }}
+            hint="点右侧器材加入 → 拖拽移动 → 点接线柱连线。小电动机：两柱分别接电池两极（经开关），通电后风扇叶片会转；双击可看内部（定子磁极 + 转子线圈 + 换向片）。"
+            hintTitle="操作说明"
+          />
+        )}
+        {tab === 2 && (
+          <BuilderPalette
+            side="right"
+            items={[
+              { type: 'battery', name: '电池组', icon: thumb('battery') },
+              { type: 'accumulator', name: '蓄电池', icon: thumb('accumulator') },
+              { type: 'bulb', name: '灯泡', icon: thumb('bulb') },
+              { type: 'switch', name: '开关', icon: thumb('switch') },
+              { type: 'resistor5', name: '电阻', icon: thumb('resistor5') },
+              { type: 'rheostat', name: '滑变', icon: thumb('rheostat') },
+              { type: 'ammeter', name: '电流表', icon: thumb('ammeter') },
+              { type: 'ammeterA', name: '安培表', icon: thumb('ammeterA') },
+              { type: 'voltmeter', name: '电压表', icon: thumb('voltmeter') },
+              // 本专题专用：小电动机（风扇 + 内部换向器剖视）
+              { type: 'motor', name: '小电动机', icon: thumb('motor') },
+            ]}
+            wireColor={S.current.wireColor}
+            onPickColor={handlePickColor}
+            onAdd={handleAddFromPalette}
+            onDropAt={handleDropFromPalette}
+            hint="点选或拖到桌面加入"
+          />
+        )}
+      </div>
     </SceneShell>
   )
+}
+
+/* ══════════════════════════════════════════════════════════════
+   绘制辅助
+   ══════════════════════════════════════════════════════════════ */
+
+function drawLine(ctx, x1, y1, x2, y2, color, lw) {
+  ctx.strokeStyle = color
+  ctx.lineWidth = lw
+  ctx.lineCap = 'round'
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
+}
+
+/** 电流小圆点流动 */
+function drawFlow(ctx, path, t, color, reverse) {
+  let total = 0
+  const segs = []
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = path[i], b = path[i + 1]
+    const d = Math.hypot(b.x - a.x, b.y - a.y)
+    segs.push({ a, b, d, s0: total })
+    total += d
+  }
+  if (!total) return
+  const n = Math.max(3, Math.round(total / 26))
+  ctx.fillStyle = color
+  for (let k = 0; k < n; k++) {
+    let u = ((k / n) + (t % 1) + (reverse ? 0.5 : 0)) % 1
+    const pos = u * total
+    const sg = segs.find((s) => pos >= s.s0 && pos <= s.s0 + s.d) || segs[segs.length - 1]
+    const f = sg.d ? (pos - sg.s0) / sg.d : 0
+    ctx.beginPath()
+    ctx.arc(sg.a.x + (sg.b.x - sg.a.x) * f, sg.a.y + (sg.b.y - sg.a.y) * f, 2.4, 0, Math.PI * 2)
+    ctx.fill()
+  }
+}
+
+/** 箭头 */
+function drawArrow(ctx, x1, y1, x2, y2, color, w, headLen = 9) {
+  const a = Math.atan2(y2 - y1, x2 - x1)
+  ctx.strokeStyle = color; ctx.lineWidth = w; ctx.lineCap = 'round'
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
+  ctx.fillStyle = color
+  const h = headLen, sp = 0.42
+  ctx.beginPath()
+  ctx.moveTo(x2, y2)
+  ctx.lineTo(x2 - h * Math.cos(a - sp), y2 - h * Math.sin(a - sp))
+  ctx.lineTo(x2 - h * Math.cos(a + sp), y2 - h * Math.sin(a + sp))
+  ctx.closePath(); ctx.fill()
+}
+
+/* ─── 电动机剖面：磁极 + 磁感线 + 线圈 + 转轴 + 换向器 + 电刷 ─── */
+function drawMotorBody(ctx, o) {
+  const { cx, cy, theta, on, I, field, commutator, FS } = o
+  const c = Math.cos(theta)
+  const aH = D.aH, bH = D.bH
+  const magL = D.magL, magLw = D.magLw, magR = D.magR, magRw = D.magRw
+  const egy = D.egy, egyR = D.egyR, brushDx = D.brushDx
+
+  /* 磁极（左 N 红 / 右 S 蓝；field=false 时互换颜色与字母） */
+  const leftIsN = field
+  const lc = leftIsN ? '#DC2626' : '#2563EB'
+  const rc = leftIsN ? '#2563EB' : '#DC2626'
+  const lPole = leftIsN ? 'N' : 'S'
+  const rPole = leftIsN ? 'S' : 'N'
+
+  for (const [x0, w0, col, pole] of [
+    [magL, magLw, lc, lPole],
+    [magR, magRw, rc, rPole],
+  ]) {
+    const g = ctx.createLinearGradient(x0, 0, x0 + w0, 0)
+    g.addColorStop(0, shade(col, 0.28))
+    g.addColorStop(0.45, col)
+    g.addColorStop(1, shade(col, -0.25))
+    ctx.fillStyle = g
+    ctx.strokeStyle = shade(col, -0.35); ctx.lineWidth = 1.6
+    ctx.beginPath(); ctx.roundRect(x0, cy - 108, w0, 216, 7); ctx.fill(); ctx.stroke()
+    // 极面高光
+    ctx.fillStyle = shade(col, 0.42)
+    ctx.fillRect(pole === 'N' ? x0 + w0 - 7 : x0, cy - 104, 7, 208)
+    // 极标
+    ctx.fillStyle = '#FFFFFF'
+    ctx.font = `900 ${FS(26)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText(pole, x0 + w0 / 2, cy - 56)
+    ctx.font = `${FS(8.5)}px "Microsoft YaHei", sans-serif`
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'
+    ctx.fillText('磁极', x0 + w0 / 2, cy + 62)
+  }
+
+  /* 磁感线：从 N 极面水平指向 S 极面（永磁体，一直在） */
+  const ys = [-84, -50, -17, 17, 50, 84]
+  ctx.strokeStyle = on ? 'rgba(100,116,139,0.62)' : 'rgba(120,134,146,0.45)'
+  ctx.lineWidth = 1.3
+  for (const y of ys) {
+    ctx.setLineDash([5, 5])
+    ctx.beginPath(); ctx.moveTo(magL + magLw, cy + y); ctx.lineTo(magR, cy + y); ctx.stroke()
+    ctx.setLineDash([])
+    // 箭头（指向 S 极）
+    const ax = leftIsN ? magR - 6 : magL + magLw + 6
+    drawArrow(ctx, leftIsN ? magR - 16 : magL + magLw + 16, cy + y, ax, cy + y,
+      on ? 'rgba(71,85,105,0.75)' : 'rgba(120,134,146,0.45)', 1.2, 7)
+  }
+
+  /* 转轴（竖直，在屏幕平面内 —— 线圈绕它旋转） */
+  ctx.strokeStyle = '#94A3B8'; ctx.lineWidth = 2.4
+  ctx.beginPath(); ctx.moveTo(cx, cy - bH - 14); ctx.lineTo(cx, egy + 6); ctx.stroke()
+
+  /* 线圈：宽度随 cosθ 收缩（侧视时"转出屏幕"的那一半变细变淡） */
+  const halfW = aH * Math.abs(c)
+  const frontIsRight = c >= 0
+  const xl = cx - halfW, xr = cx + halfW
+  const frontW = 4.2, backW = 2.2
+
+  // 上下两条边
+  ctx.strokeStyle = on ? '#B45309' : '#8A7A66'
+  ctx.lineWidth = 3
+  ctx.beginPath(); ctx.moveTo(xl, cy - bH); ctx.lineTo(xr, cy - bH); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(xl, cy + bH); ctx.lineTo(xr, cy + bH); ctx.stroke()
+
+  // 左右两条竖边（前边粗、后边细）
+  const lwL = frontIsRight ? backW : frontW
+  const lwR = frontIsRight ? frontW : backW
+  const colF = on ? '#C2410C' : '#8A7A66'
+  const colB = on ? '#D9A18A' : '#B3A797'
+  ctx.strokeStyle = frontIsRight ? colB : colF
+  ctx.lineWidth = lwL
+  ctx.beginPath(); ctx.moveTo(xl, cy - bH); ctx.lineTo(xl, cy + bH); ctx.stroke()
+  ctx.strokeStyle = frontIsRight ? colF : colB
+  ctx.lineWidth = lwR
+  ctx.beginPath(); ctx.moveTo(xr, cy - bH); ctx.lineTo(xr, cy + bH); ctx.stroke()
+
+  // 线圈里的电流方向（有电流时画箭头 + 流动点）
+  const dirSign = field ? 1 : -1
+  if (on && Math.abs(I) > 0.001) {
+    const col = '#F59E0B'
+    const ay = bH - 16
+    // 左（或右）边电流一个向上、一个向下
+    if (halfW > 8) {
+      const upOnRight = dirSign > 0
+      if (upOnRight) {
+        drawArrow(ctx, xr, cy + ay, xr, cy - ay, col, 2.2, 8)
+        drawArrow(ctx, xl, cy - ay, xl, cy + ay, col, 2.2, 8)
+      } else {
+        drawArrow(ctx, xr, cy - ay, xr, cy + ay, col, 2.2, 8)
+        drawArrow(ctx, xl, cy + ay, xl, cy - ay, col, 2.2, 8)
+      }
+      ctx.fillStyle = col
+      ctx.font = `bold ${FS(9)}px "Microsoft YaHei", sans-serif`
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText('I', cx, cy + 3)
+    }
+  }
+
+  /* 两侧安培力：侧视图里力垂直于纸面 → 用 ⊙（朝纸外）/ ⊗（朝纸内）表达，
+     一边朝里、一边朝外，正好形成转矩（这是教科书画侧视图的标准做法） */
+  const tauSign = (commutator ? Math.abs(c) : c) * dirSign
+  if (on) {
+    const col = '#7C3AED'
+    const fx = 5
+    const lOut = tauSign >= 0            // 左边朝纸外（⊙）、右边朝纸内（⊗）
+    const drawDot = (x, y, out) => {
+      ctx.strokeStyle = col; ctx.lineWidth = 1.8
+      ctx.beginPath(); ctx.arc(x, y, fx + 1.4, 0, Math.PI * 2); ctx.stroke()
+      if (out) {
+        ctx.fillStyle = col
+        ctx.beginPath(); ctx.arc(x, y, 2.2, 0, Math.PI * 2); ctx.fill()
+      } else {
+        const d = (fx + 1.4) * 0.62
+        ctx.beginPath()
+        ctx.moveTo(x - d, y - d); ctx.lineTo(x + d, y + d)
+        ctx.moveTo(x + d, y - d); ctx.lineTo(x - d, y + d)
+        ctx.stroke()
+      }
+    }
+    // 符号放在线圈外侧（线圈转到很窄时也不至于压在线条上）
+    const dotDx = Math.max(halfW, 12) + 7
+    drawDot(cx - dotDx, cy, lOut)
+    drawDot(cx + dotDx, cy, !lOut)
+    ctx.fillStyle = col
+    ctx.font = `bold ${FS(9)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
+    ctx.fillText('F', cx - dotDx, cy - fx - 4)
+    ctx.fillText('F', cx + dotDx, cy - fx - 4)
+  }
+
+  /* 转向标记（转轴顶端） */
+  if (on && Math.abs(I) > 0.001) {
+    const col = tauSign >= 0 ? '#15803D' : '#7C3AED'
+    ctx.fillStyle = col
+    ctx.font = `bold ${FS(17)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText(tauSign >= 0 ? '↻' : '↺', cx, cy - bH - 26)
+  }
+
+  /* 平衡位置提示（θ ≈ ±90° 且没换向器）：两行短句放在磁极上方，不压磁铁 */
+  if (Math.abs(c) < 0.09 && on && !commutator) {
+    ctx.fillStyle = '#DC2626'
+    ctx.font = `bold ${FS(8.6)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
+    ctx.fillText('平衡位置：线圈平面 ⊥ 磁感线', cx, cy - 116)
+    ctx.fillText('两侧 F 共线反向 → τ = 0，转不过去', cx, cy - 104)
+  }
+
+  /* 换向器（两个半圆铜片随线圈一起转）+ 两个电刷 */
+  const copper = '#B45309', copperHi = '#F59E0B'
+  // 铜片 A：θ → θ+π；拆掉换向器时只留灰色虚线轮廓（表示"拆了、不导电"）
+  ctx.save(); ctx.translate(cx, egy)
+  if (!commutator) {
+    ctx.strokeStyle = '#94A3B8'; ctx.lineWidth = 1.2; ctx.setLineDash([4, 3])
+    ctx.beginPath(); ctx.arc(0, 0, egyR, 0, Math.PI * 2); ctx.stroke()
+    ctx.beginPath(); ctx.arc(0, 0, egyR - 7, 0, Math.PI * 2); ctx.stroke()
+    ctx.setLineDash([])
+  }
+  for (let k = 0; k < 2 && commutator; k++) {
+    const a0 = theta + k * Math.PI
+    ctx.fillStyle = k === 0 ? copper : shade(copper, 0.18)
+    ctx.beginPath()
+    ctx.arc(0, 0, egyR, a0, a0 + Math.PI)
+    ctx.arc(0, 0, egyR - 7, a0 + Math.PI, a0, true)
+    ctx.closePath(); ctx.fill()
+    ctx.strokeStyle = shade(copper, -0.3); ctx.lineWidth = 1.2; ctx.stroke()
+    // 高光弧
+    ctx.strokeStyle = copperHi; ctx.lineWidth = 1.4
+    ctx.beginPath(); ctx.arc(0, 0, egyR - 2, a0 + 0.15, a0 + Math.PI - 0.15); ctx.stroke()
+  }
+  // 绝缘缝
+  if (commutator) {
+    ctx.strokeStyle = '#7C2D12'; ctx.lineWidth = 1.6
+    ctx.beginPath()
+    ctx.moveTo(Math.cos(theta) * (egyR - 7), Math.sin(theta) * (egyR - 7))
+    ctx.lineTo(Math.cos(theta) * egyR, Math.sin(theta) * egyR)
+    ctx.moveTo(Math.cos(theta + Math.PI) * (egyR - 7), Math.sin(theta + Math.PI) * (egyR - 7))
+    ctx.lineTo(Math.cos(theta + Math.PI) * egyR, Math.sin(theta + Math.PI) * egyR)
+    ctx.stroke()
+  }
+  ctx.restore()
+
+  // 两个电刷（固定不转）：贴着铜片的小方块 + 引线
+  for (const sx of [-brushDx, brushDx]) {
+    const bx = cx + sx
+    ctx.fillStyle = commutator ? '#475569' : '#94A3B8'
+    ctx.strokeStyle = '#334155'; ctx.lineWidth = 1.2
+    ctx.beginPath()
+    ctx.roundRect(sx < 0 ? bx - 2 : bx - 3, egy - 6, 5, 12, 2)
+    ctx.fill(); ctx.stroke()
+    // 弹簧 / 引线（示意电刷压紧铜片）
+    ctx.strokeStyle = '#94A3B8'; ctx.lineWidth = 1.2
+    ctx.beginPath()
+    ctx.moveTo(bx, egy)
+    ctx.lineTo(bx, egy + 12)
+    ctx.stroke()
+  }
+  ctx.fillStyle = commutator ? '#5D4037' : '#94A3B8'
+  ctx.font = `bold ${FS(9)}px "Microsoft YaHei", sans-serif`
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+  ctx.fillText(commutator ? '换向器（两个半圆铜片）' : '换向器（已拆掉）', cx, egy + egyR + 6)
+  if (!commutator) {
+    ctx.fillStyle = '#DC2626'
+    ctx.font = `bold ${FS(8.8)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText('铜片断开 → 半圈后电流不换向', cx, egy + egyR + 21)
+  }
+  // 电刷标注
+  ctx.fillStyle = '#64748B'
+  ctx.font = `${FS(8.5)}px "Microsoft YaHei", sans-serif`
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+  ctx.fillText('电刷', cx + brushDx + 8, egy - 14)
+  ctx.textAlign = 'right'
+  ctx.fillText('电刷', cx - brushDx - 8, egy - 14)
+}
+
+/** 颜色明暗调整（比例 -1..1） */
+function shade(hex, k) {
+  const n = parseInt(hex.slice(1), 16)
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255
+  const f = (v) => Math.max(0, Math.min(255, Math.round(k > 0 ? v + (255 - v) * k : v * (1 + k))))
+  return `rgb(${f(r)},${f(g)},${f(b)})`
+}
+
+/** τ–θ 曲线：横轴 0..360°，纵轴转矩。接入换向器时取 |cos|（全正），
+ *  拆掉时取 cos（一正一负 → 净功为零，正是"摆动停住"的根源） */
+function drawTauChart(ctx, x, y, w, h, o) {
+  const { theta, I, commutator, field, on, FS } = o
+  const px = x + 34, py = y + 34, pw = w - 48, ph = h - 48
+  ctx.fillStyle = '#FFFDF9'
+  ctx.strokeStyle = '#E8DCC8'; ctx.lineWidth = 1.6
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, 12); ctx.fill(); ctx.stroke()
+
+  ctx.fillStyle = '#5D4037'
+  ctx.font = `bold ${FS(10)}px "Microsoft YaHei", sans-serif`
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+  ctx.fillText(commutator ? 'τ–θ 曲线：换向器接入 → τ 恒为正' : 'τ–θ 曲线：换向器拆掉 → 一半正一半负', x + 12, y + 8)
+
+  // 坐标轴（y=0 在中线）
+  const y0 = py + ph / 2
+  ctx.strokeStyle = '#D7C4A8'; ctx.lineWidth = 1.2
+  ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px, py + ph); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(px, y0); ctx.lineTo(px + pw, y0); ctx.stroke()
+  // 刻度
+  ctx.fillStyle = '#A08E76'
+  ctx.font = `${FS(8)}px "Microsoft YaHei", sans-serif`
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+  for (const d of [0, 90, 180, 270, 360]) {
+    const tx = px + (d / 360) * pw
+    ctx.fillText(`${d}°`, tx, py + ph + 3)
+  }
+
+  // 曲线
+  const amp = ph / 2 - 3
+  const maxTau = TAU_K * 1.0
+  ctx.strokeStyle = commutator ? '#15803D' : '#B45309'
+  ctx.lineWidth = 2.2
+  ctx.beginPath()
+  for (let i = 0; i <= pw; i++) {
+    const tt = (i / pw) * Math.PI * 2
+    const v = (commutator ? Math.abs(Math.cos(tt)) : Math.cos(tt))
+    const yy = y0 - (v * TAU_K * I / maxTau) * amp
+    if (i === 0) ctx.moveTo(px, yy); else ctx.lineTo(px + i, yy)
+  }
+  ctx.stroke()
+
+  // 当前点
+  const cur = ((theta % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2)
+  const cv = (commutator ? Math.abs(Math.cos(cur)) : Math.cos(cur))
+  const dotX = px + (cur / (Math.PI * 2)) * pw
+  const dotY = y0 - (cv * TAU_K * I / maxTau) * amp
+  ctx.fillStyle = '#DC2626'
+  ctx.beginPath(); ctx.arc(dotX, dotY, 4.5, 0, Math.PI * 2); ctx.fill()
+  ctx.strokeStyle = 'rgba(220,38,38,0.35)'; ctx.lineWidth = 1
+  ctx.beginPath(); ctx.moveTo(dotX, y0); ctx.lineTo(dotX, dotY); ctx.stroke()
+
+  // 说明
+  ctx.fillStyle = on ? '#7C2D12' : '#A08E76'
+  ctx.font = `bold ${FS(9)}px "Microsoft YaHei", sans-serif`
+  ctx.textAlign = 'right'; ctx.textBaseline = 'bottom'
+  ctx.fillText(commutator ? '平均 τ > 0 → 连续转' : '正负相抵 → 平均 τ = 0 → 停住', px + pw, py - 2)
 }
