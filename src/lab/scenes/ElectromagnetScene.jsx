@@ -892,7 +892,30 @@ function drawEM(ctx, cx, baseY, o) {
     ctx.fillText('铁芯已抽出（磁性骤减）', cx, ccy - coreH / 2 - 10 * sc)
   }
 
-  // ── 大头针：挂在 N 极那一侧（磁极处磁性最强）、铁芯下沿往下垂；避开两端的引线与小磁针
+  // ── 桌上的一盒大头针：常驻画在电磁铁下方一段距离处（未吸起的针就躺在桌上，与铁芯明显分开）
+  {
+    const bedX = cx - 30 * sc, bedY = cy + coreH / 2 + 32 * sc
+    const nBed = 8
+    for (let i = 0; i < nBed; i++) {
+      const row = Math.floor(i / 4), col = i % 4
+      const bx = bedX + (col - 1.5) * 13 * sc + (row ? 4 * sc : 0)
+      const by = bedY + row * 5 * sc
+      const ang = (row ? 0.22 : -0.16) + (i % 2 ? 0.06 : -0.05)
+      const L = 11 * sc
+      ctx.save()
+      ctx.translate(bx, by); ctx.rotate(ang)
+      ctx.strokeStyle = '#6B7280'; ctx.lineWidth = 1.35 * sc; ctx.lineCap = 'round'
+      ctx.beginPath(); ctx.moveTo(-L / 2, 0); ctx.lineTo(L / 2, 0); ctx.stroke()
+      ctx.fillStyle = '#94A3B8'
+      ctx.beginPath(); ctx.arc(L / 2 + 0.9 * sc, 0, 1.7 * sc, 0, Math.PI * 2); ctx.fill()
+      ctx.strokeStyle = '#5B6470'; ctx.lineWidth = 0.5 * sc
+      ctx.beginPath(); ctx.arc(L / 2 + 0.9 * sc, 0, 1.7 * sc, 0, Math.PI * 2); ctx.stroke()
+      ctx.restore()
+    }
+    ctx.lineCap = 'butt'
+  }
+
+  // ── 被吸起的大头针：挂在 N 极那一侧（磁极处磁性最强）、铁芯下沿往下垂；避开两端的引线与小磁针
   if (pins > 0) {
     const pinX = cx + coreLen * 0.20          // Tab1 里 N 固定在右端，针就挂在右侧
     const pinY0 = core ? cy + coreH / 2 : cy + coilH / 2 - 2 * sc

@@ -1916,7 +1916,18 @@ export const TYPES = {
       const poles = (on && core) ? `
         <text x="${coreX + (nRight ? coreLen - 9 : 9)}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#DC2626">N</text>
         <text x="${coreX + (nRight ? 9 : coreLen - 9)}" y="${axisY - coreH / 2 - 6}" text-anchor="middle" font-size="12" font-weight="700" fill="#2563EB">S</text>` : ''
-      /* 大头针：吸在 N 极那一侧（磁极处磁性最强），下方散开 —— N 在哪边针就挂在哪边 */
+      /* 桌上的一盒大头针：常驻在电磁铁下方（未吸起的针躺在桌上，与铁芯分开） */
+      const bedMarks = Array.from({ length: 8 }, (_, i) => {
+        const row = Math.floor(i / 4), col = i % 4
+        const bx = 78 + col * 13 + (row ? 4 : 0)
+        const by = 152 + row * 6
+        const dy = i % 2 ? 1.3 : -1.2
+        return `<g>
+        <line x1="${bx}" y1="${by}" x2="${bx + 11}" y2="${(by + dy).toFixed(1)}" stroke="#727C89" stroke-width="1.35" stroke-linecap="round"/>
+        <circle cx="${(bx + 12.2).toFixed(1)}" cy="${(by + dy).toFixed(1)}" r="1.5" fill="#B9C3CE" stroke="#5b6470" stroke-width="0.5"/>
+      </g>`
+      }).join('')
+      /* 大头针：被吸起后吸在 N 极那一侧（磁极处磁性最强），下方散开 —— N 在哪边针就挂在哪边 */
       const pinX = nRight ? 105 + coreLen / 2 - 16 : 105 - coreLen / 2 + 16
       const pinY0 = core ? axisY + coreH / 2 : axisY + coilH / 2 - 2
       const gapPin = pins > 1 ? Math.min(3.0, 34 / (pins - 1)) : 0
@@ -1984,6 +1995,7 @@ export const TYPES = {
       ${field}
       ${fieldEnds}
       ${pinMarks}
+      ${bedMarks}
       ${termDotSVG(48, 148, true, '−')}
       ${termDotSVG(162, 148, false, '+')}
       ${noteChipSVG(105, 14, `${turns} 匝 · ${I.toFixed(2)} A · 吸 ${pins} 针`,
