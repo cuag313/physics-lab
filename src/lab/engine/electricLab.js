@@ -106,6 +106,11 @@ export const TERM_IDS = {
   relay: ['ct1', 'ct2', 'ck1', 'ck2'], // 触点 ×2 + 线圈 ×2
   energyMeter: ['i1', 'i2', 'o1', 'o2'], // 单相电能表：1/2 进线，3/4 出线（1-3 电流线圈，2-4 零线直通）
   mains: ['n', 'l'],                 // 家用交流电（三孔插座）：零线 N / 火线 L
+  acSource: ['l', 'n', 'e'],         // 交流电源（圆 + 正弦符号）：相线 L / 零线 N / 接地 E
+  breaker: ['li', 'ni', 'lo', 'no'], // 空气开关（双极 C16）：L进 / N进 / L出 / N出
+  wallSwitch: ['a', 'b'],            // 墙上面板开关：两柱
+  socket2: ['l', 'n'],               // 两孔插座：火 L / 零 N（电器插脚插进来即并联）
+  socket3: ['l', 'e', 'n'],          // 三孔插座：火 L / 地 E / 零 N
   washer: ['a', 'b'],                // 洗衣机（500 W，R = U²/P）：两接线柱
   kettle: ['a', 'b'],                // 电热水壶（1500 W，R = U²/P）：两接线柱
   jouleTube: ['a', 'b'],             // 焦耳定律 U 形管：左管 R1、右管 R2 串联，a/b 两接线柱
@@ -193,6 +198,18 @@ function buildNets(comps, wires) {
   for (const c of comps) {
     if (c.type === 'rheostat') uni(idx.get(keyOf(c.id, 'tl')), idx.get(keyOf(c.id, 'tr')))
   }
+  /* 电器插在插座上（c.plug = 插座 id）：插脚 a/b 与插座的 L / N 就是同一个节点，
+   * 不需要再拉两根导线 —— 这就是"把电器挪到插孔上就自动连上"的电路口径。 */
+  for (const c of comps) {
+    if (!c.plug) continue
+    const host = comps.find((x) => x.id === c.plug)
+    if (!host) continue
+    const link = (t1, t2) => {
+      const i1 = idx.get(keyOf(c.id, t1)); const i2 = idx.get(keyOf(host.id, t2))
+      if (i1 !== undefined && i2 !== undefined) uni(i1, i2)
+    }
+    link('a', 'l'); link('b', 'n')
+  }
   for (const w of wires) {
     const ia = idx.get(w.a)
     const ib = idx.get(w.b)
@@ -259,7 +276,7 @@ export function solveCircuit(comps, wires, opts) {
       const bb = netOf(c, 'b')
       stampR(A, a, bb, CFG.BULB_R)
       els.push({ kind: 'R', a, b: bb, R: CFG.BULB_R, comp: c, tA: 'a', tB: 'b' })
-    } else if (c.type === 'switch') {
+    } else if (c.type === 'switch' || c.type === 'wallSwitch') {
       const a = netOf(c, 'a')
       const bb = netOf(c, 'b')
       const R = c.closed ? 0.001 : 1e8
@@ -275,7 +292,16 @@ export function solveCircuit(comps, wires, opts) {
       const R = (CFG.MAINS_V * CFG.MAINS_V) / P0
       stampR(A, a, bb, R)
       els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
-    } else if ((c.type === 'ammeter' || c.type === 'ammeterA')) {
+    } else if (c.type === 'breaker') {
+      // 空气开关：双极，两条彼此独立（L 进↔L 出、N 进↔N 出），合闸一起合、分闸一起断
+      const R = c.closed ? 0.001 : 1e8
+      const li = netOf(c, 'li'); const lo = netOf(c, 'lo')
+      const ni = netOf(c, 'ni'); const no = netOf(c, 'no')
+      stampR(A, li, lo, R)
+      els.push({ kind: 'R', a: li, b: lo, R, comp: c, tA: 'li', tB: 'lo', role: 'poleL' })
+      stampR(A, ni, no, R)
+      els.push({ kind: 'R', a: ni, b: no, R, comp: c, tA: 'ni', tB: 'no', role: 'poleN' })
+    } else if (c.type === 'ammeter' || c.type === 'ammeterA') {
       const tap = meterRangeTap(c, wires)
       const a = netOf(c, tap) // 接入的量程柱（+ 端）
       const bb = netOf(c, 'neg')
@@ -399,8 +425,8 @@ export function solveCircuit(comps, wires, opts) {
       const Rc = closed ? CFG.RELAY_CONTACT_R : 1e8
       stampR(A, s1, s2, Rc)
       els.push({ kind: 'R', a: s1, b: s2, R: Rc, comp: c, tA: 'ct1', tB: 'ct2', role: 'contact' })
-    } else if (c.type === 'mains') {
-      // 家庭电源 220V（有效值，按直流等效）：l=火线、n=零线
+    } else if (c.type === 'mains' || c.type === 'acSource') {
+      // 家庭电源 220V（有效值，按直流等效）：l=火线、n=零线（acSource 的 e 只是接地端，不参与回路）
       const a = netOf(c, 'n')
       const bb = netOf(c, 'l')
       const g = 1 / CFG.MAINS_R
@@ -504,14 +530,18 @@ export function solveCircuit(comps, wires, opts) {
       o._rev = o._V < -1e-6
       o._fs = e.fs ?? CFG.VOLT_FS
       o._over = Math.abs(o._V) > o._fs * 1.001
-    } else if (c.type === 'battery' || c.type === 'accumulator' || c.type === 'mains') {
+    } else if (c.type === 'battery' || c.type === 'accumulator' || c.type === 'mains' || c.type === 'acSource') {
       o._I = I
       // 端电压 = 电动势 − 内阻分压；短路时 I 很大，端电压趋近 0（这是「短路为什么危险」的教学点）
-      const emf = c.type === 'mains' ? CFG.MAINS_V : c.type === 'accumulator' ? CFG.ACC_V : CFG.VS.V
-      const rIn = c.type === 'mains' ? CFG.MAINS_R : CFG.VS.r
+      const isAC = c.type === 'mains' || c.type === 'acSource'
+      const emf = isAC ? CFG.MAINS_V : c.type === 'accumulator' ? CFG.ACC_V : CFG.VS.V
+      const rIn = isAC ? CFG.MAINS_R : CFG.VS.r
       o._V = Math.abs(v[e.b] - v[e.a])
       o._Ir = Math.abs(I) * rIn
       o._emf = emf
+    } else if (c.type === 'breaker') {
+      // 双极各一条支路，读数取两路中较大的那个（合闸后两路一样）
+      o._I = Math.max(o._I || 0, Math.abs(I))
     } else if (c.type === 'rheostat') {
       // 滑变被拆成 R1(bl→杆) / R2(杆→br) 两个串联电阻，逐段写回；
       // 取两者较大值：滑块停在某端时另一段的电流≈0，若直接覆盖会把「线圈有电流」抹成 0
@@ -751,7 +781,7 @@ function detectMisuse(comps, wires, out) {
     // 短路：外电路几乎无电阻时电流会到 20 A 量级；电磁铁线圈本身只有 1.2 Ω（10 匝），
     // 电池 + 电磁铁 ≈ 2.3 A 属于正常实验回路，不能误报 → 阈值放到 2.5 A
     if ((c.type === 'battery' || c.type === 'accumulator') && Math.abs(out[c.id]?._I || 0) > 2.5) diag.short = true
-    if (c.type === 'mains' && Math.abs(out[c.id]?._I || 0) > 15) diag.short = true
+    if ((c.type === 'mains' || c.type === 'acSource') && Math.abs(out[c.id]?._I || 0) > 15) diag.short = true
     if ((c.type === 'ammeter' || c.type === 'ammeterA')) {
       // 未串在支路（与另一元件同节点对 = 被并联在元件两端）且两端电位差 > 0.5V
       const par = sharesPair(comps, wires, c)
@@ -817,7 +847,7 @@ function probeSolve(comps, wires, compId, probeR) {
 
 /** 状态栏摘要（纯文本片段，与源实验的状态条语义一致） */
 export function circuitStatus(comps, wires, out) {
-  const bat = comps.filter((c) => c.type === 'battery' || c.type === 'accumulator' || c.type === 'mains')
+  const bat = comps.filter((c) => c.type === 'battery' || c.type === 'accumulator' || c.type === 'mains' || c.type === 'acSource')
   const switches = comps.filter((c) => c.type === 'switch')
   const bulbs = comps.filter((c) => c.type === 'bulb')
   const amms = comps.filter((c) => (c.type === 'ammeter' || c.type === 'ammeterA'))
@@ -829,7 +859,7 @@ export function circuitStatus(comps, wires, out) {
 
   let shorted = false
   for (const c of bat) {
-    const lim = c.type === 'mains' ? 15 : 1.2
+    const lim = (c.type === 'mains' || c.type === 'acSource') ? 15 : 1.2
     if (Math.abs(out[c.id]?._I || 0) > lim) shorted = true
   }
   if (shorted) parts.push({ tone: 'bad', text: '⚠ 电源短路！电流过大，请检查导线连接' })

@@ -92,36 +92,42 @@ function applianceSVG(kind, c, dyn = {}) {
   const on = I > 0.001
   const R = Number(dyn.R) || (220 * 220) / P
   const U = on ? I * R : 0
+  const plugged = !!c.plug
   // 家用电器是并联在 220 V 两端用的：通电后直接把两端实际电压写出来，
   // 学生自己把两台串起来时会看到"串联分压 · U = 165.2 V"，这个反差就是教学点。
   const conn = !on
-    ? '并联接在 220 V 两端'
+    ? (plugged ? '插在插座上 · 等合闸' : '插头未插入')
     : U > 200 ? `并联 · U = ${U.toFixed(1)} V`
       : `串联分压 · U = ${U.toFixed(1)} V`
   const cap = on ? `${P} W 额定 · I = ${I.toFixed(2)} A` : `${P} W 额定 · R = ${R.toFixed(1)} Ω`
+  /* 不再画"实验台底座"（用户要求：家用电器就该是一台整机，不带底座）：
+   * 机体下面是两根**插脚**，把电器拖到插座的孔上一放就自动插上（见 BuilderSVG 的吸附逻辑）。 */
   return `
-    <svg width="150" height="172" viewBox="0 0 150 172">
-      ${fitInner(150, 172, 150, 172, INNER.homeLoad())}
+    <svg width="150" height="168" viewBox="0 0 150 168">
+      ${fitInner(150, 168, 150, 168, INNER.homeLoad())}
       <g class="casing">
         <rect x="6" y="1" width="138" height="15" rx="4" fill="#334155"/>
         <text x="75" y="11.5" text-anchor="middle" font-size="9" fill="#dbeafe"
           font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${art.label} · 220 V</text>
-        <image href="${figURL(art.file)}" x="24" y="18" width="102" height="90"
+        <image href="${figURL(art.file)}" x="22" y="18" width="106" height="92"
           preserveAspectRatio="xMidYMid meet"/>
-        <rect x="31" y="110" width="88" height="13" rx="4" fill="#d8dee7" stroke="#a9b3c0" stroke-width="1.2"/>
-        <circle cx="37" cy="116.5" r="3" fill="${on ? '#dc2626' : '#e2e8f0'}" stroke="#94a3b8" stroke-width="1"/>
         ${on ? `<g>
-          <rect x="108" y="20" width="34" height="12" rx="6" fill="#fee2e2" stroke="#f87171" stroke-width=".9"/>
-          <circle cx="114.5" cy="26" r="2.2" fill="#dc2626"/>
-          <text x="129" y="29.2" text-anchor="middle" font-size="6.5" fill="#b91c1c"
+          <rect x="106" y="20" width="34" height="12" rx="6" fill="#fee2e2" stroke="#f87171" stroke-width=".9"/>
+          <circle cx="112.5" cy="26" r="2.2" fill="#dc2626"/>
+          <text x="127" y="29.2" text-anchor="middle" font-size="6.5" fill="#b91c1c"
             font-family="system-ui,-apple-system,'Segoe UI',sans-serif">运行中</text>
         </g>` : ''}
+        <!-- 插脚（两根黄铜片，直接插进插座的两个孔） -->
+        <rect x="62" y="142" width="6" height="18" rx="1.4" fill="#c8a165" stroke="#8f6f38" stroke-width=".9"/>
+        <rect x="82" y="142" width="6" height="18" rx="1.4" fill="#c8a165" stroke="#8f6f38" stroke-width=".9"/>
+        <rect x="62.6" y="143" width="1.6" height="16" rx=".8" fill="#f1dca8" opacity=".8"/>
+        <rect x="82.6" y="143" width="1.6" height="16" rx=".8" fill="#f1dca8" opacity=".8"/>
       </g>
-      ${termDotSVG(42, 128, true)}
-      ${termDotSVG(108, 128, false)}
-      <text x="75" y="146" text-anchor="middle" font-size="8.5" fill="#475569"
+      ${termDotSVG(65, 160, true)}
+      ${termDotSVG(85, 160, false)}
+      <text x="75" y="128" text-anchor="middle" font-size="8.5" fill="#475569"
         font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${cap}</text>
-      <text x="75" y="160" text-anchor="middle" font-size="7" fill="${on && U < 200 ? '#dc2626' : '#1d4ed8'}"
+      <text x="75" y="139" text-anchor="middle" font-size="7" fill="${on && U < 200 ? '#dc2626' : plugged ? '#15803d' : '#1d4ed8'}"
         font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${conn}</text>
     </svg>`
 }
@@ -1577,6 +1583,202 @@ export const TYPES = {
   },
 
   /* ── 家用交流电（三孔插座：用户给的面板图标，L / N 两柱接进家庭电路） ── */
+  /* ── 交流电源（教材符号：一个圆 + 圆内正弦波 + 圆外三根引线，L / N / E 三柱）──
+   * 家庭 220 V 要有一个"电源"实体放在板上；三根引线分别引到圆外三个接线柱，
+   * E 那根只作接地端，不参与回路计算（接不接都不影响读数，但接上才像真正的家庭进线）。 */
+  acSource: {
+    label: '交流电源', w: 150, h: 176,
+    terminals: [
+      { id: 'l', label: 'L', name: '相线（L，红）', x: 26, y: 158 },
+      { id: 'n', label: 'N', name: '零线（N，蓝）', x: 75, y: 158 },
+      { id: 'e', label: 'E', name: '接地（E，黄绿）', x: 124, y: 158 },
+    ],
+    render(c, dyn = {}) {
+      const I = Math.abs(Number(dyn.I) || 0)
+      const on = I > 1e-3
+      /* 圆内正弦：两个周期、幅度 12，横跨圆周 60% */
+      let d = ''
+      for (let i = 0; i <= 56; i++) {
+        const t = i / 56
+        const x = 45 + 60 * t
+        const y = 62 - Math.sin(t * Math.PI * 4) * 12
+        d += (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1) + ' '
+      }
+      return `
+    <svg width="150" height="176" viewBox="0 0 150 176">
+      <defs>
+        <radialGradient id="es-g-ac-face" cx="38%" cy="30%" r="72%">
+          <stop offset="0%" stop-color="#ffffff"/><stop offset="68%" stop-color="#f3f7fb"/><stop offset="100%" stop-color="#dde6ee"/>
+        </radialGradient>
+      </defs>
+      <g class="casing">
+        <path d="M37 103 C31 122 26 136 26 148" stroke="#e53935" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+        <path d="M75 106 L75 148" stroke="#2f6fdc" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+        <path d="M113 103 C119 122 124 136 124 148" stroke="#8bc34a" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+        <circle cx="75" cy="62" r="44" fill="url(#es-g-ac-face)" stroke="#b6c4d1" stroke-width="1.7"/>
+        <circle cx="75" cy="62" r="41" fill="none" stroke="#ffffff" stroke-width="1" opacity=".9"/>
+        <path d="${d}" stroke="${on ? '#c2410c' : '#7b8794'}" stroke-width="2.2" fill="none"/>
+        <text x="75" y="124" text-anchor="middle" font-size="10" font-weight="700" fill="#5A4636"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">220 V ~</text>
+      </g>
+      ${termDotSVG(26, 158, true, 'L')}
+      ${termDotSVG(75, 158, true, 'N')}
+      ${termDotSVG(124, 158, false, 'E')}
+      ${noteChipSVG(75, 172, on ? `交流 · I = ${I.toFixed(2)} A` : '交流电源 · 待接线', on ? '#4ade80' : '#94a3b8', 112)}
+    </svg>` }
+  },
+
+  /* ── 空气开关（双极小型断路器 C16，家庭电路里电能表后面那一个）──
+   * 4 柱：左上相线进、右上零线进、左下相线出、右下零线出；
+   * 引擎里是两条彼此独立的支路（合闸 0.001 Ω / 分闸 1e8 Ω），两路同时通断。
+   * 单击本体（或双击）就合闸 / 分闸 —— 学生在 Tab2 里拉闸就能看到各支路同时灭。 */
+  breaker: {
+    label: '空气开关', w: 124, h: 152,
+    terminals: [
+      { id: 'li', label: 'L进', name: '相线进（左上）', x: 34, y: 26 },
+      { id: 'ni', label: 'N进', name: '零线进（右上）', x: 90, y: 26 },
+      { id: 'lo', label: 'L出', name: '相线出（左下）', x: 34, y: 114 },
+      { id: 'no', label: 'N出', name: '零线出（右下）', x: 90, y: 114 },
+    ],
+    render(c) {
+      const on = !!c.closed
+      const lever = (x) => `
+        <g transform="rotate(${on ? -10 : 16} ${x} 96)">
+          <rect x="${x - 12}" y="50" width="24" height="46" rx="3.5" fill="url(#es-g-bk-lever)" stroke="#173f7f" stroke-width=".9"/>
+          <rect x="${x - 9}" y="53" width="6.5" height="40" rx="3.2" fill="#ffffff" opacity=".40"/>
+          <rect x="${x - 12}" y="88" width="24" height="8" rx="3" fill="#123a72" opacity=".55"/>
+        </g>`
+      return `
+    <svg width="124" height="152" viewBox="0 0 124 152">
+      <defs>
+        <linearGradient id="es-g-bk-body" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ffffff"/><stop offset="52%" stop-color="#f3f5f8"/><stop offset="100%" stop-color="#dce2e9"/>
+        </linearGradient>
+        <linearGradient id="es-g-bk-lever" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#7cb0f7"/><stop offset="42%" stop-color="#2f6fd0"/><stop offset="100%" stop-color="#1c4d99"/>
+        </linearGradient>
+      </defs>
+      <g class="casing">
+        <rect x="18" y="10" width="88" height="118" rx="4.5" fill="url(#es-g-bk-body)" stroke="#b6bfc9" stroke-width="1.1"/>
+        <rect x="22" y="13" width="80" height="3.5" rx="1.8" fill="#ffffff" opacity=".9"/>
+        <rect x="18" y="126" width="88" height="2.4" fill="#c7ced7"/>
+        <text x="62" y="42" text-anchor="middle" font-size="11" font-weight="700" fill="#2b3440"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">C16</text>
+        <rect x="26" y="48" width="26" height="54" rx="4" fill="#d3dae2" opacity=".6"/>
+        <rect x="72" y="48" width="26" height="54" rx="4" fill="#d3dae2" opacity=".6"/>
+        ${lever(39)}
+        ${lever(85)}
+        <text x="39" y="116" text-anchor="middle" font-size="7.5" fill="#6b7684"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">L</text>
+        <text x="85" y="116" text-anchor="middle" font-size="7.5" fill="#6b7684"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">N</text>
+      </g>
+      ${termDotSVG(34, 26, true, 'L')}
+      ${termDotSVG(90, 26, true, 'N')}
+      ${termDotSVG(34, 114, false, 'L')}
+      ${termDotSVG(90, 114, true, 'N')}
+      ${noteChipSVG(62, 141, on ? '合闸 · 两路通电' : '分闸 · 两路断开', on ? '#4ade80' : '#fbbf24', 104)}
+    </svg>` }
+  },
+
+  /* ── 面板开关（墙上的翘板开关，家庭照明电路用真正的那一种，不是实验台闸刀）── */
+  wallSwitch: {
+    label: '面板开关', w: 100, h: 104,
+    terminals: [
+      { id: 'a', label: '1', name: '接线柱 1', x: 30, y: 92 },
+      { id: 'b', label: '2', name: '接线柱 2', x: 70, y: 92 },
+    ],
+    render(c) {
+      const on = !!c.closed
+      return `
+    <svg width="100" height="104" viewBox="0 0 100 104">
+      <defs>
+        <linearGradient id="es-g-ws-plate" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ffffff"/><stop offset="62%" stop-color="#f5f7f9"/><stop offset="100%" stop-color="#dfe5ea"/>
+        </linearGradient>
+        <linearGradient id="es-g-ws-rock" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="${on ? '#ffffff' : '#eef1f4'}"/><stop offset="55%" stop-color="${on ? '#f2f4f6' : '#d5dbe1'}"/><stop offset="100%" stop-color="${on ? '#d8dee4' : '#c3cbd3'}"/>
+        </linearGradient>
+      </defs>
+      <g class="casing">
+        <rect x="8" y="6" width="84" height="82" rx="8" fill="url(#es-g-ws-plate)" stroke="#c3cbd3" stroke-width="1.2"/>
+        <rect x="12" y="9" width="76" height="3.5" rx="1.8" fill="#ffffff" opacity=".95"/>
+        <rect x="26" y="24" width="48" height="52" rx="7" fill="#e9edf1" stroke="#c7cfd6" stroke-width="1"/>
+        <g transform="rotate(${on ? 0 : -7} 50 76)">
+          <rect x="30" y="${on ? 26 : 22}" width="40" height="48" rx="6" fill="url(#es-g-ws-rock)" stroke="#b9c2ca" stroke-width="1"/>
+          <rect x="34" y="${on ? 30 : 26}" width="32" height="4" rx="2" fill="#ffffff" opacity=".8"/>
+          <text x="50" y="${on ? 52 : 48}" text-anchor="middle" font-size="9" font-weight="700"
+            fill="${on ? '#7c8794' : '#9aa4ae'}" font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${on ? 'ON' : 'OFF'}</text>
+        </g>
+      </g>
+      ${termDotSVG(30, 92, true, '1')}
+      ${termDotSVG(70, 92, false, '2')}
+    </svg>` }
+  },
+
+  /* ── 两孔插座：家用电器把插脚插进这两个孔，电器就自动并联在 L / N 上 ── */
+  socket2: {
+    label: '两孔插座', w: 96, h: 100,
+    terminals: [
+      { id: 'l', label: 'L', name: '火线（L，红）', x: 24, y: 88 },
+      { id: 'n', label: 'N', name: '零线（N，蓝）', x: 72, y: 88 },
+    ],
+    render() {
+      return `
+    <svg width="96" height="100" viewBox="0 0 96 100">
+      <defs>
+        <linearGradient id="es-g-sk-plate" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ffffff"/><stop offset="60%" stop-color="#f4f6f8"/><stop offset="100%" stop-color="#e2e7ec"/>
+        </linearGradient>
+      </defs>
+      <g class="casing">
+        <rect x="8" y="6" width="80" height="74" rx="7" fill="url(#es-g-sk-plate)" stroke="#c2cad3" stroke-width="1.2"/>
+        <rect x="12" y="9" width="72" height="3.5" rx="1.8" fill="#ffffff" opacity=".9"/>
+        <ellipse cx="48" cy="43" rx="26" ry="22" fill="#fafbfc" stroke="#d7dde4" stroke-width=".9"/>
+        <rect x="34" y="28" width="8" height="26" rx="4" fill="#262a30"/>
+        <rect x="54" y="28" width="8" height="26" rx="4" fill="#262a30"/>
+        <rect x="34" y="30" width="8" height="4" rx="2" fill="#4a525c" opacity=".6"/>
+        <rect x="54" y="30" width="8" height="4" rx="2" fill="#4a525c" opacity=".6"/>
+        <rect x="20" y="68" width="56" height="9" rx="4" fill="#d9dfe6" stroke="#bcc4cd" stroke-width=".9"/>
+      </g>
+      ${termDotSVG(24, 88, true, 'L')}
+      ${termDotSVG(72, 88, false, 'N')}
+    </svg>` }
+  },
+
+  /* ── 三孔插座（L / N / E 三柱，地线单独引到接地端）── */
+  socket3: {
+    label: '三孔插座', w: 104, h: 108,
+    terminals: [
+      { id: 'l', label: 'L', name: '火线（L，红）', x: 26, y: 96 },
+      { id: 'e', label: 'E', name: '接地（E，黄绿）', x: 52, y: 96 },
+      { id: 'n', label: 'N', name: '零线（N，蓝）', x: 78, y: 96 },
+    ],
+    render() {
+      return `
+    <svg width="104" height="108" viewBox="0 0 104 108">
+      <defs>
+        <linearGradient id="es-g-sk3-plate" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ffffff"/><stop offset="60%" stop-color="#f4f6f8"/><stop offset="100%" stop-color="#e2e7ec"/>
+        </linearGradient>
+      </defs>
+      <g class="casing">
+        <rect x="8" y="6" width="88" height="80" rx="7" fill="url(#es-g-sk3-plate)" stroke="#c2cad3" stroke-width="1.2"/>
+        <rect x="12" y="9" width="80" height="3.5" rx="1.8" fill="#ffffff" opacity=".9"/>
+        <ellipse cx="52" cy="45" rx="28" ry="24" fill="#fafbfc" stroke="#d7dde4" stroke-width=".9"/>
+        <rect x="36" y="30" width="8" height="28" rx="4" fill="#262a30"/>
+        <rect x="60" y="30" width="8" height="28" rx="4" fill="#262a30"/>
+        <rect x="44" y="22" width="16" height="8" rx="4" fill="#262a30"/>
+        <rect x="36" y="32" width="8" height="4" rx="2" fill="#4a525c" opacity=".55"/>
+        <rect x="60" y="32" width="8" height="4" rx="2" fill="#4a525c" opacity=".55"/>
+        <rect x="20" y="72" width="64" height="9" rx="4" fill="#d9dfe6" stroke="#bcc4cd" stroke-width=".9"/>
+      </g>
+      ${termDotSVG(26, 96, true, 'L')}
+      ${termDotSVG(52, 96, false, 'E')}
+      ${termDotSVG(78, 96, false, 'N')}
+    </svg>` }
+  },
+
   mains: {
     label: '家用交流电', w: 170, h: 156,
     terminals: [
@@ -1606,18 +1808,18 @@ export const TYPES = {
    * I = P/U 才有 2.27 A / 6.82 A，配右上「走字倍速」才看得见转盘快慢与计数器跳字。
    * 两台都按 R = U²/P 定阻（洗衣机 500 W → 96.8 Ω，电热水壶 1500 W → 32.3 Ω）。 */
   washer: {
-    label: '洗衣机', w: 150, h: 172,
+    label: '洗衣机', w: 150, h: 168,
     terminals: [
-      { id: 'a', label: '1', name: '接线柱 1', x: 42, y: 128 },
-      { id: 'b', label: '2', name: '接线柱 2', x: 108, y: 128 },
+      { id: 'a', label: '1', name: '插脚 1（火线侧）', x: 65, y: 160 },
+      { id: 'b', label: '2', name: '插脚 2（零线侧）', x: 85, y: 160 },
     ],
     render(c, dyn = {}) { return applianceSVG('washer', c, dyn) },
   },
   kettle: {
-    label: '电热水壶', w: 150, h: 172,
+    label: '电热水壶', w: 150, h: 168,
     terminals: [
-      { id: 'a', label: '1', name: '接线柱 1', x: 42, y: 128 },
-      { id: 'b', label: '2', name: '接线柱 2', x: 108, y: 128 },
+      { id: 'a', label: '1', name: '插脚 1（火线侧）', x: 65, y: 160 },
+      { id: 'b', label: '2', name: '插脚 2（零线侧）', x: 85, y: 160 },
     ],
     render(c, dyn = {}) { return applianceSVG('kettle', c, dyn) },
   },

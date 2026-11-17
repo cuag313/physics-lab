@@ -33,11 +33,38 @@ const WIRE_W = 4.2
 
 const WIRE_COLORS = [
   { key: 'red', hex: '#e53935' },
+  { key: 'blue', hex: '#2f6fdc' },
+  { key: 'pe', hex: '#8bc34a' },
   { key: 'green', hex: '#2e9e44' },
   { key: 'black', hex: '#1c1f24' },
 ]
 
 const keyOf = (cid, tid) => cid + ':' + tid
+
+/* ── 家用电器的"插头吸附"（照 NB：把电器拖到插孔上就自动插上）──
+ * 电器卡里两根插脚在 (65,160)/(85,160)，中点 (75,160)；
+ * 插座卡里的两个孔（L / N 孔）中点分别是两孔 (48,41)、三孔 (52,45)。
+ * 拖动结束若电器中点离某个孔中点不到 96 画布像素，就把电器"吸"上去并对齐，
+ * 同时打上 plug = 插座 id —— 引擎据此把插脚 a/b 直接并到插座的 L / N 节点。 */
+const PLUG_TYPES = ['washer', 'kettle']
+const SOCKET_HOLE = { socket2: { x: 48, y: 41 }, socket3: { x: 52, y: 45 } }
+const PRONG = { x: 75, y: 160 }
+
+function withPlug(cs, c) {
+  if (!PLUG_TYPES.includes(c.type)) return c
+  let best = null
+  let bestD = 96
+  for (const s of cs) {
+    const h = SOCKET_HOLE[s.type]
+    if (!h || s.id === c.id) continue
+    const px = s.x + h.x
+    const py = s.y + h.y
+    const dist = Math.hypot((c.x + PRONG.x) - px, (c.y + PRONG.y) - py)
+    if (dist < bestD) { bestD = dist; best = { s, px, py } }
+  }
+  if (!best) return c.plug ? { ...c, plug: null } : c
+  return { ...c, x: Math.round(best.px - PRONG.x), y: Math.round(best.py - PRONG.y), plug: best.s.id }
+}
 
 /** 接线锚点：接线柱帽正下方（导线真正夹持处） */
 function termAnchor(c, tid) {
@@ -405,7 +432,8 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       id: uidRef.current++, type,
       x: Math.max(0, Math.min(CW - t.w, Math.round(x))),
       y: Math.max(0, Math.min(CH - t.h, Math.round(y))),
-      closed: false, showRead: false, f: 0.4, rmax: CFG.RHEO_MAX,
+      /* 空气开关默认合闸（刚从器材栏拿下来时是"出厂合闸"的样子），其余开关默认断开 */
+      closed: type === 'breaker', showRead: false, f: 0.4, rmax: CFG.RHEO_MAX,
     }
     setComps((cs) => cs.concat(c))
     return c
@@ -452,12 +480,34 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       }
       const cols = Math.max(1, Math.min(3, Math.floor(visW / Math.max(1, t ? t.w + 60 : 300))))
       const rows = Math.max(1, Math.floor(visH / Math.max(1, t ? t.h + 70 : 300)))
-      const cw = visW / cols
-      const chh = visH / rows
-      const slot = n % Math.max(1, cols * rows)
-      const x = (slot % cols) * cw + (cw - (t ? t.w : 0)) / 2
-      const y = Math.floor(slot / cols) * chh + (chh - (t ? t.h : 0)) / 2
-      addComp(type, x, y)
+      const tw = t ? t.w : 150
+      const th = t ? t.h : 150
+      /* 统一 300×300 的网格来找空位：原来按"这一件自己的宽高"算列数，
+       * 交流电源（150）与三孔插座（104）算出的列宽不同，落点就会叠在已有器材上。
+       * 现在逐格试放，取第一个与已有器材不重叠的格子。 */
+      const gw = Math.max(1, Math.floor(visW / 300))
+      const gh = Math.max(1, Math.floor(visH / 300))
+      const cw2 = visW / gw
+      const ch2 = visH / gh
+      const hit = (x, y) => cs.some((c) => {
+        const ct = TYPES[c.type] || { w: 150, h: 150 }
+        return !(x + tw + 22 < c.x || c.x + ct.w + 22 < x || y + th + 22 < c.y || c.y + ct.h + 22 < y)
+      })
+      let px = null
+      let py = null
+      for (let i = 0; i < gw * gh; i++) {
+        const cx = (i % gw) * cw2 + (cw2 - tw) / 2
+        const cy = Math.floor(i / gw) * ch2 + (ch2 - th) / 2
+        if (!hit(cx, cy)) { px = cx; py = cy; break }
+      }
+      if (px === null) {
+        const slot = n % Math.max(1, cols * rows)
+        const cw = visW / cols
+        const chh = visH / rows
+        px = (slot % cols) * cw + (cw - tw) / 2
+        py = Math.floor(slot / cols) * chh + (chh - th) / 2
+      }
+      addComp(type, px, py)
     },
     /* 从器材栏拖到桌面：按落点居中摆放；落点在桌面外就退回网格位 */
     addAt(type, clientX, clientY) {
@@ -574,7 +624,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
 
   const tapComp = useCallback((c, isDouble, ev) => {
     if (!c) return
-    if (c.type === 'switch') {
+    if (c.type === 'switch' || c.type === 'wallSwitch' || c.type === 'breaker') {
       setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, closed: !x.closed } : x)))
     } else if (c.type === 'electromagnet' && ev && ev.shiftKey) {
       // Shift + 单击电磁铁：匝数 +1（5 → 20 循环），线圈会一圈一圈重新画（优先于双击，避免连点被当成双击）
@@ -606,7 +656,10 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         const isDouble = !!(last && now - last.t < 350 && Math.hypot(e.clientX - last.x, e.clientY - last.y) < 28)
         lastUpRef.current = { t: now, x: e.clientX, y: e.clientY }
         tapComp(c, isDouble, e)
+        return
       }
+      /* 拖完松手：家用电器试试能不能"插"到插座上 */
+      setComps((cs) => cs.map((x) => (x.id === d.compId ? withPlug(cs, x) : x)))
       return
     }
     if (d && d.kind === 'slider') forceUpdate((n) => n + 1)
@@ -767,8 +820,9 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
 
   /* ── 电路状态摘要（通路 / 断路 / 短路 / 误接）── */
   const status = useMemo(() => {
-    // 电源三种都要认：电池组 / 蓄电池 / 市电 —— 家庭电路那一套只接市电，不能因为"没电池"就报未开始
-    const src = comps.find((c) => c.type === 'battery' || c.type === 'accumulator' || c.type === 'mains')
+    // 电源四种都要认：电池组 / 蓄电池 / 市电三孔插座 / 交流电源符号 —— 家庭电路那一套只接交流电源，不能因为"没电池"就报未开始
+    const src = comps.find((c) => c.type === 'battery' || c.type === 'accumulator'
+      || c.type === 'mains' || c.type === 'acSource')
     const bulbs = comps.filter((c) => c.type === 'bulb')
     const d = solved.diagnostics || {}
     if (!src) return { tone: 'warn', text: '从右侧拖入电源和用电器，开始搭电路' }
@@ -803,11 +857,12 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
           }
         }
         const head = loads.length > 1 ? `${names} 并联在 220 V 两端，合计 ${total} W` : `${names} 并联在 220 V 两端 · ${total} W`
-        return { tone: 'ok', text: `✅ 家用交流电接通 · ${head} · 电能表串在干路走字` }
+        const plugging = loads.filter((c) => c.plug).length
+        return { tone: 'ok', text: `✅ 交流 220 V 接通 · ${head}${plugging ? `（${plugging} 台插在插座上）` : ''} · 电能表串在干路走字` }
       }
       return { tone: 'ok', text: '✅ 电路接通' }
     }
-    const opened = comps.find((c) => c.type === 'switch' && !c.closed)
+    const opened = comps.find((c) => (c.type === 'switch' || c.type === 'wallSwitch' || c.type === 'breaker') && !c.closed)
     if (opened) return { tone: 'warn', text: '开关断开 · 电路不通' }
     return { tone: 'warn', text: '电路未接通（回路不完整或断路）' }
   }, [comps, solved])
@@ -867,7 +922,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
 
   /* ── 实验记录：合闸 / 断闸（电流有无翻转、或开关被拨动）时追加一行 ── */
   const liveRef = useRef(null)
-  const swList = comps.filter((c) => c.type === 'switch')
+  const swList = comps.filter((c) => c.type === 'switch' || c.type === 'wallSwitch' || c.type === 'breaker')
   const swSig = swList.length + ':' + swList.map((c) => (c.closed ? 1 : 0)).join('')
   useEffect(() => {
     const on = flowItems.length > 0

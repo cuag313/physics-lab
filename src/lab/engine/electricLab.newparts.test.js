@@ -614,3 +614,72 @@ describe('家用电器（洗衣机 500 W / 电热水壶 1500 W，R = U²/P）', 
     expect(w._P + k._P).toBeLessThan(900)
   })
 })
+
+/* 2026-11-17：家庭电路「真器材」—— 交流电源符号 / 空气开关 / 面板开关 / 两孔·三孔插座 / 插脚吸附 */
+describe('家庭电路真器材（交流电源 · 空气开关 · 面板开关 · 插座插脚）', () => {
+  it('TERM_IDS 注册', () => {
+    expect(TERM_IDS.acSource).toEqual(['l', 'n', 'e'])
+    expect(TERM_IDS.breaker).toEqual(['li', 'ni', 'lo', 'no'])
+    expect(TERM_IDS.wallSwitch).toEqual(['a', 'b'])
+    expect(TERM_IDS.socket2).toEqual(['l', 'n'])
+    expect(TERM_IDS.socket3).toEqual(['l', 'e', 'n'])
+  })
+
+  it('交流电源 = 220 V（与 mains 同一口径），接电器时 I = 220/(R+r)', () => {
+    const out = loop(
+      [{ id: 1, type: 'acSource' }, { id: 2, type: 'washer' }],
+      [{ id: 1, a: '1:l', b: '2:a' }, { id: 2, a: '2:b', b: '1:n' }])
+    expect(out[1]._emf).toBe(CFG.MAINS_V)
+    expect(out[2]._I).toBeCloseTo(220 / (48400 / 500 + CFG.MAINS_R), 6)
+  })
+
+  it('电器插在两孔插座上（plug）：不用拉线，插脚 a/b 直接并到插座 L/N', () => {
+    const out = loop(
+      [{ id: 1, type: 'acSource' }, { id: 2, type: 'socket2' }, { id: 3, type: 'washer', plug: 2 }],
+      [{ id: 1, a: '1:l', b: '2:l' }, { id: 2, a: '2:n', b: '1:n' }])
+    expect(out[3]._I).toBeCloseTo(220 / (48400 / 500 + CFG.MAINS_R), 6)
+    expect(out[3]._P / 500).toBeCloseTo(1, 1)
+  })
+
+  it('三孔插座插上电热水壶同样通电（E 柱不参与回路）', () => {
+    const out = loop(
+      [{ id: 1, type: 'acSource' }, { id: 2, type: 'socket3' }, { id: 3, type: 'kettle', plug: 2 }],
+      [{ id: 1, a: '1:l', b: '2:l' }, { id: 2, a: '2:n', b: '1:n' }])
+    expect(out[3]._I).toBeCloseTo(220 / (48400 / 1500 + CFG.MAINS_R), 6)
+  })
+
+  it('两台电器各插一只插座：并联，干路电流 = 两台之和', () => {
+    const out = loop(
+      [{ id: 1, type: 'acSource' }, { id: 2, type: 'socket2' }, { id: 3, type: 'socket3' },
+        { id: 4, type: 'washer', plug: 2 }, { id: 5, type: 'kettle', plug: 3 }],
+      [{ id: 1, a: '1:l', b: '2:l' }, { id: 2, a: '2:l', b: '3:l' }, { id: 2, a: '2:n', b: '3:n' },
+        { id: 3, a: '3:n', b: '1:n' }])
+    expect(near(out[1]._I, out[4]._I + out[5]._I, 1e-6)).toBe(true)
+    expect(out[4]._I).toBeGreaterThan(2)
+    expect(out[5]._I).toBeGreaterThan(6)
+  })
+
+  it('空气开关合闸通、分闸断（双极各自一条支路）', () => {
+    for (const closed of [true, false]) {
+      const out = loop(
+        [{ id: 1, type: 'acSource' }, { id: 2, type: 'breaker', closed }, { id: 3, type: 'kettle' }],
+        [
+          { id: 1, a: '1:l', b: '2:li' }, { id: 2, a: '2:lo', b: '3:a' },
+          { id: 3, a: '3:b', b: '2:ni' }, { id: 4, a: '2:no', b: '1:n' },
+        ])
+      if (closed) expect(out[3]._I).toBeGreaterThan(6)
+      else expect(Math.abs(out[3]._I)).toBeLessThan(1e-5)
+    }
+  })
+
+  it('面板开关与普通开关同口径', () => {
+    const out = loop(
+      [{ id: 1, type: 'acSource' }, { id: 2, type: 'wallSwitch', closed: true }, { id: 3, type: 'bulb' }],
+      [
+        { id: 1, a: '1:l', b: '2:a' }, { id: 2, a: '2:b', b: '3:a' },
+        { id: 3, a: '3:b', b: '1:n' },
+      ])
+    // 面板开关合闸 0.001 Ω，再加上导线电阻 → 比理想值略小
+    expect(near(out[3]._I, 220 / (CFG.BULB_R + CFG.MAINS_R), 0.02)).toBe(true)
+  })
+})

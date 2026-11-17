@@ -17,7 +17,9 @@ const DEFAULT_ITEMS = [
 ]
 
 const COLORS = [
-  { color: '#F44336', name: '红' },
+  { color: '#F44336', name: '红（火线 L）' },
+  { color: '#2f6fdc', name: '蓝（零线 N）' },
+  { color: '#8bc34a', name: '黄绿（地线 E）' },
   { color: '#FFC107', name: '黄' },
   { color: '#4CAF50', name: '绿' },
 ]

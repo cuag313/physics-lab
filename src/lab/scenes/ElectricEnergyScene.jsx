@@ -7,7 +7,7 @@ import { drawKnowledgeCard } from '../ui/knowledgeCard'
 import BuilderSVG from '../simple3d/BuilderSVG.jsx'
 import { TYPES } from './electricSvgInstruments.js'
 import { CFG } from '../engine/electricLab.js'
-import { symSwitch, symHalf, SYM_INK } from '../render/symbols.js'
+import { symHalf } from '../render/symbols.js'
 
 /**
  * ElectricEnergyScene — 电功与电能表（第 9 个按「简单电路」模板改造的初中电学实验）
@@ -38,10 +38,10 @@ function thumb(type) {
 const U_MAINS = CFG.MAINS_V        // 220 V
 const N_KWH = 600                  // 铭牌常数：600 转 / (kW·h)
 const MAX_REC = 4
-/* 三档用电器：额定功率确定 → R = U²/P，I = P/U（市电电压基本恒定）
-   half = 该图标在回路下边占据的半宽（导线在此断开，符号站在导线上） */
+/* 灯支路（固定 100 W 白炽灯）+ 电器支路（下面这三件家用电器任选其一，插在 220 V 两端） */
+const LAMP = { k: 'lamp', name: '白炽灯', P: 100, tag: '100 W', half: 13 }
 const LOADS = [
-  { k: 'lamp', name: '白炽灯', P: 100, tag: '100 W', half: 13 },
+  { k: 'washer', name: '洗衣机', P: 500, tag: '500 W', half: 27 },
   { k: 'kettle', name: '电热水壶', P: 800, tag: '800 W', half: 27 },
   { k: 'cooker', name: '电饭锅', P: 1500, tag: '1500 W', half: 28 },
 ]
@@ -53,9 +53,10 @@ const SPEEDS = [
 
 /* 设计坐标系（绘制时整体等比缩放并居中） */
 const D = {
-  L: 72, R: 452, T: 236, B: 586,        // 回路矩形
+  L: 72, R: 452, T: 214,                // 回路：上边（电能表）/ 左右竖边
+  yA: 420, yB: 545,                     // 两条并联支路的高度（灯支路 / 电器支路）
   zx: 680, zy: 372, zw: 310, zh: 226,    // 电能表特写区（中心 + 宽高）
-  row1: 644,                             // 控件第一行（换用电器 / 记录）
+  row1: 644,                             // 控件第一行（换电器 / 记录）
   row2: 690,                             // 控件第二行（倍速 / 电价 / 复位）
   VW: 900, VH: 730,
 }
@@ -67,7 +68,8 @@ export default function ElectricEnergyScene() {
 
   const S = useRef({
     tab: 1,
-    switchClosed: false,
+    swA: false,               // 灯支路的开关
+    swB: false,               // 电器支路的开关
     time: 0,
     load: 0,                  // 用电器下标（LOADS）
     speed: 600,               // 时间倍速（1× / 60× / 600×）
@@ -105,8 +107,10 @@ export default function ElectricEnergyScene() {
       const s = S.current
       s.time += 1 / 60
       /* 电能累积：真实表由"功率×时间"决定，这里的时间按倍速放行（否则 1 度电要等 1 小时） */
-      if (s.switchClosed) {
-        const Pk = LOADS[s.load].P / 1000            // kW
+      /* 电能累积：两条支路各自按自己的功率计，合计就是流经电能表的那一份 */
+      const Pw = (s.swA ? LAMP.P : 0) + (s.swB ? LOADS[s.load].P : 0)
+      if (Pw > 0) {
+        const Pk = Pw / 1000                         // kW
         const dtSim = dtReal * s.speed               // 模拟秒数
         s.runT += dtSim
         s.kwh += Pk * dtSim / 3600                   // kW·h
@@ -120,13 +124,21 @@ export default function ElectricEnergyScene() {
     return () => { if (animRef.current) cancelAnimationFrame(animRef.current) }
   }, [])
 
-  /** 物理：用电器额定功率 → 电阻 → 干路电流（市电 220 V） */
+  /** 物理：两条支路并联在 220 V 两端，各自 I = P/U，干路 I = I₁ + I₂（电能表量的是干路） */
   function solve() {
     const s = S.current
-    const L = LOADS[s.load]
-    const R = (U_MAINS * U_MAINS) / L.P
-    const I = s.switchClosed ? L.P / U_MAINS : 0
-    return { P: L.P, R, I, on: s.switchClosed, name: L.name, tag: L.tag }
+    const A = LOADS[s.load]
+    const I1 = s.swA ? LAMP.P / U_MAINS : 0
+    const I2 = s.swB ? A.P / U_MAINS : 0
+    const I = I1 + I2
+    const P = (s.swA ? LAMP.P : 0) + (s.swB ? A.P : 0)
+    return {
+      I, I1, I2, P,
+      on: I > 1e-6,
+      name: A.name, tag: A.tag,
+      R1: (U_MAINS * U_MAINS) / LAMP.P,
+      R2: (U_MAINS * U_MAINS) / A.P,
+    }
   }
 
   function render(R) {
@@ -145,7 +157,7 @@ export default function ElectricEnergyScene() {
   function renderDemo(ctx, W, H) {
     const s = S.current
     const sol = solve()
-    const on = s.switchClosed
+    const on = sol.I > 1e-6
 
     /* 右侧知识卡面板 */
     const RAIL = 46
@@ -165,40 +177,55 @@ export default function ElectricEnergyScene() {
     ctx.translate(ox, oy); ctx.scale(sc, sc)
 
     const wc = on ? '#1565C0' : '#9aa7b1'
-    const ink = on ? SYM_INK : '#7c8a93'
     const lw = 2.6
 
-    /* ─── 回路：上边 电能表；下边 用电器 + 开关；左右竖边导线 ─── */
-    const { L, R, T, B } = D
+    /* ─── 家庭电路：交流电源 → 电能表（串在干路）→ 火线竖边 → 两条并联支路 → 零线竖边 → 回电源 ─── */
+    const { L, R, T, yA, yB } = D
     const mx = L + (R - L) * 0.5            // 电能表中心
     const MW = 176, MH = 106                // 表框尺寸
-    const loadX = L + (R - L) * 0.30
-    const swX = L + (R - L) * 0.74
+    const lampX = L + (R - L) * 0.34
+    const lampSwX = L + (R - L) * 0.80
+    const applX = lampX
+    const applSwX = lampSwX
     const hSw = symHalf('switch', 1)
-    const half = LOADS[s.load].half
+    const lampHalf = LAMP.half
+    const applHalf = LOADS[s.load].half
+    const srcY = 392, srcR = 18             // 交流电源符号（左竖边中部，夹在上边和灯支路之间）
 
-    /* 导线：上边从 L 到表左端子，表右端子到 R；
-       左竖边在中间让位给**交流电源符号**（教材画法：圆圈 + 圆内正弦波 + 旁标 220 V） */
-    const midY = (T + B) / 2
-    const srcR = 18
+    /* 干路：电源 L 端 → 左上角 → 上边穿过电能表 → 火线竖边（T → yB） */
+    drawLine(ctx, L, srcY - srcR, L, T, wc, lw)
     drawLine(ctx, L, T, mx - MW / 2, T, wc, lw)
     drawLine(ctx, mx + MW / 2, T, R, T, wc, lw)
-    drawLine(ctx, L, T, L, midY - srcR, wc, lw)
-    drawLine(ctx, L, midY + srcR, L, B, wc, lw)
-    drawLine(ctx, R, T, R, B, wc, lw)
-    drawLine(ctx, L, B, loadX - half, B, wc, lw)
-    drawLine(ctx, loadX + half, B, swX - hSw, B, wc, lw)
-    drawLine(ctx, swX + hSw, B, R, B, wc, lw)
+    drawLine(ctx, R, T, R, yB, wc, lw)
+    /* 零线：电源 N 端 → 零线竖边（srcY+srcR → yB），两条支路的左端都落在这条线上 */
+    drawLine(ctx, L, srcY + srcR, L, yB, wc, lw)
+    /* 灯支路（并联支路一） */
+    drawLine(ctx, R, yA, lampSwX + hSw, yA, wc, lw)
+    drawLine(ctx, lampSwX - hSw, yA, lampX + lampHalf, yA, wc, lw)
+    drawLine(ctx, lampX - lampHalf, yA, L, yA, wc, lw)
+    /* 电器支路（并联支路二） */
+    drawLine(ctx, R, yB, applSwX + hSw, yB, wc, lw)
+    drawLine(ctx, applSwX - hSw, yB, applX + applHalf, yB, wc, lw)
+    drawLine(ctx, applX - applHalf, yB, L, yB, wc, lw)
 
-    /* 电流沿干路流动（市电是交流，这里只示意"电流在流"，不标电子方向） */
-    if (on) {
-      const path = [
-        { x: L, y: B }, { x: L, y: T }, { x: mx - MW / 2, y: T },
-        { x: mx + MW / 2, y: T }, { x: R, y: T }, { x: R, y: B },
-        { x: swX + hSw, y: B }, { x: loadX + half, y: B }, { x: loadX - half, y: B }, { x: L, y: B },
-      ]
-      drawFlow(ctx, path, s.time, '#FBBF24')
+    /* 火线 / 零线色标（铜排母线的位置用文字标出来，避免学生把两条竖边看混） */
+    ctx.textBaseline = 'middle'
+    ctx.textAlign = 'right'
+    ctx.fillStyle = '#B91C1C'
+    ctx.font = `bold ${FS(9)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText('火线 L', R - 8, T + 16)
+    ctx.textAlign = 'left'
+    ctx.fillStyle = '#1D4ED8'
+    ctx.fillText('零线 N', L + 8, yB - 16)
+
+    /* 电流流动示意：交流电只示意"在流"，不标电子方向；两条支路各自按自己的电流决定有无 */
+    if (sol.I > 0) {
+      drawFlow(ctx, [
+        { x: L, y: srcY }, { x: L, y: T }, { x: R, y: T }, { x: R, y: yB },
+      ], s.time, '#FBBF24')
     }
+    if (sol.I1 > 0) drawFlow(ctx, [{ x: R, y: yA }, { x: L, y: yA }], s.time, '#FBBF24')
+    if (sol.I2 > 0) drawFlow(ctx, [{ x: R, y: yB }, { x: L, y: yB }], s.time + 0.35, '#FBBF24')
 
     /* ─── 电能表（回路中的符号化画法：铭牌 + 铝盘 + 计数器）─── */
     drawMeterSym(ctx, mx, T, MW, MH, {
@@ -215,68 +242,83 @@ export default function ElectricEnergyScene() {
     ctx.textAlign = 'right'
     ctx.fillText('← 3 · 4 出线', mx + MW / 2, T - MH / 2 - 7)
 
-    /* 干路电流（表计量的就是它）—— 填住回路中段，并把 W = UIt 摆出来 */
+    /* 干路电流 = 两条支路之和（电能表量的就是它）—— 填住回路中段，并把 W = UIt 摆出来 */
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
     ctx.fillStyle = on ? '#B45309' : '#A8B4BE'
-    ctx.font = `bold ${FS(15)}px "Microsoft YaHei", sans-serif`
-    ctx.fillText(`干路电流 I = ${sol.I.toFixed(2)} A`, mx, T + MH / 2 + 30)
+    ctx.font = `bold ${FS(14)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText(
+      `干路 I = I₁ + I₂ = ${sol.I1.toFixed(2)} + ${sol.I2.toFixed(2)} = ${sol.I.toFixed(2)} A`,
+      mx, T + MH / 2 + 20
+    )
     ctx.fillStyle = on ? '#7C2D12' : '#B4BEC7'
-    ctx.font = `${FS(11)}px "Microsoft YaHei", sans-serif`
+    ctx.font = `${FS(10.5)}px "Microsoft YaHei", sans-serif`
     ctx.fillText(
       `W = UIt = ${U_MAINS} V × ${sol.I.toFixed(2)} A × t = ${(U_MAINS * sol.I / 3600).toFixed(2)} W × t`,
-      mx, T + MH / 2 + 54
+      mx, T + MH / 2 + 40
     )
     ctx.fillStyle = '#8D6E63'
-    ctx.font = `${FS(9.2)}px "Microsoft YaHei", sans-serif`
     ctx.font = `${FS(8.4)}px "Microsoft YaHei", sans-serif`
-    ctx.fillText('1 相线进(L) · 2 零线进(N) → 3 相线出(L) · 4 零线出(N)', mx, T + MH / 2 + 72)
+    ctx.fillText('电能表串联在干路 · 1/2 进线(L/N) → 3/4 出线(L/N)', mx, T + MH / 2 + 55)
 
-    /* ─── 用电器 ─── */
-    drawLoadIcon(ctx, loadX, B, LOADS[s.load].k, {
-      on, P: LOADS[s.load].P, time: s.time, FS,
+    /* ─── 支路一：白炽灯 100 W ─── */
+    drawLoadIcon(ctx, lampX, yA, LAMP.k, {
+      on: sol.I1 > 0, P: LAMP.P, time: s.time, FS,
+    })
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillStyle = '#5D4037'
+    ctx.font = `bold ${FS(10.5)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText(`${LAMP.name} ${LAMP.tag}`, lampX, yA + 16)
+    ctx.fillStyle = sol.I1 > 0 ? '#B45309' : '#8D6E63'
+    ctx.font = `${FS(9.6)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText(`R₁ = ${Math.round(sol.R1)} Ω · I₁ = ${sol.I1.toFixed(2)} A`, lampX, yA + 32)
+
+    /* ─── 支路二：电器（洗衣机 / 电热水壶 / 电饭锅 任选）─── */
+    drawLoadIcon(ctx, applX, yB, LOADS[s.load].k, {
+      on: sol.I2 > 0, P: LOADS[s.load].P, time: s.time, FS,
     })
     ctx.fillStyle = '#5D4037'
     ctx.font = `bold ${FS(10.5)}px "Microsoft YaHei", sans-serif`
-    ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText(`${LOADS[s.load].name} ${LOADS[s.load].tag}`, loadX, B + 16)
-    ctx.fillStyle = '#8D6E63'
-    ctx.font = `${FS(9)}px "Microsoft YaHei", sans-serif`
-    ctx.fillText(`R = U²/P = ${Math.round(sol.R)} Ω`, loadX, B + 32)
+    ctx.fillText(`${LOADS[s.load].name} ${LOADS[s.load].tag}`, applX, yB + 16)
+    ctx.fillStyle = sol.I2 > 0 ? '#B45309' : '#8D6E63'
+    ctx.font = `${FS(9.6)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText(`R₂ = ${Math.round(sol.R2)} Ω · I₂ = ${sol.I2.toFixed(2)} A`, applX, yB + 32)
 
-    /* ─── 开关 ─── */
-    symSwitch(ctx, swX, B, { closed: on, scale: 1, ink })
+    /* ─── 两只支路开关（画成墙上的面板开关，不画实验台闸刀）─── */
+    drawPanelSwitch(ctx, lampSwX, yA, s.swA, { FS })
+    drawPanelSwitch(ctx, applSwX, yB, s.swB, { FS })
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top'
     ctx.fillStyle = '#5D4037'
-    ctx.font = `bold ${FS(10.5)}px "Microsoft YaHei", sans-serif`
-    ctx.textBaseline = 'top'
-    ctx.fillText('开关', swX, B + 22)
+    ctx.font = `bold ${FS(9.5)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText(s.swA ? '面板开关 S₁（合）' : '面板开关 S₁（断）', lampSwX, yA + 20)
+    ctx.fillText(s.swB ? '面板开关 S₂（合）' : '面板开关 S₂（断）', applSwX, yB + 20)
 
     /* ─── 交流电源符号（左竖边中部）─── */
-    drawACSource(ctx, L, midY, srcR, { on, FS })
+    drawACSource(ctx, L, srcY, srcR, { on, FS })
 
     /* ─── 电能表特写区 ─── */
     drawMeterZoom(ctx, D.zx, D.zy, D.zw, D.zh, {
       kwh: s.kwh, I: sol.I, on, speed: s.speed, price: s.price, FS, disc: s.disc,
     })
 
-    /* ─── 控件第一行：换用电器 + 记录 ─── */
+    /* ─── 控件第一行：电器支路换电器 + 记录 ─── */
     const r1 = D.row1
     ctx.fillStyle = '#5A4636'
     ctx.font = `bold ${FS(10.5)}px "Microsoft YaHei", sans-serif`
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-    ctx.fillText('用电器', 44, r1)
+    ctx.fillText('电器支路', 44, r1)
     let bx = 108
     for (let i = 0; i < LOADS.length; i++) {
-      const w = 96
+      const w = 100
       const active = s.load === i
       ctx.fillStyle = active ? '#F59E0B' : '#FFFFFF'
       ctx.strokeStyle = active ? '#B45309' : '#D7C4A8'
       ctx.lineWidth = 1.6
       ctx.beginPath(); ctx.roundRect(bx, r1 - 15, w, 30, 15); ctx.fill(); ctx.stroke()
       ctx.fillStyle = active ? '#FFFFFF' : '#7A5C3E'
-      ctx.font = `bold ${FS(10)}px "Microsoft YaHei", sans-serif`
+      ctx.font = `bold ${FS(9.6)}px "Microsoft YaHei", sans-serif`
       ctx.textAlign = 'center'
-      ctx.fillText(LOADS[i].name, bx + w / 2, r1)
+      ctx.fillText(`${LOADS[i].name} ${LOADS[i].tag}`, bx + w / 2, r1)
       canvasRef.current._clickAreas.push({
         x: TX(bx), y: TY(r1 - 17), w: w * sc, h: 34 * sc,
         onClick: () => { S.current.load = i; forceUpdate(n => n + 1) },
@@ -302,8 +344,8 @@ export default function ElectricEnergyScene() {
         const kwh = S.current.kwh - S.current.mark.kwh
         const t = S.current.runT - S.current.mark.t
         S.current.records.push({
-          load: LOADS[S.current.load].name,
-          P: LOADS[S.current.load].P,
+          load: `${LAMP.name} + ${LOADS[S.current.load].name}`,
+          P: (S.current.swA ? LAMP.P : 0) + (S.current.swB ? LOADS[S.current.load].P : 0),
           t, kwh, n: N_KWH * kwh,
           cost: kwh * S.current.price,
         })
@@ -382,10 +424,14 @@ export default function ElectricEnergyScene() {
 
     ctx.restore()
 
-    /* 开关命中区（屏幕坐标） */
+    /* 两只面板开关的命中区（屏幕坐标） */
     canvasRef.current._clickAreas.push({
-      x: TX(swX - hSw - 12), y: TY(B - 22), w: (hSw + 12) * 2 * sc, h: 44 * sc,
-      onClick: () => { S.current.switchClosed = !S.current.switchClosed; forceUpdate(n => n + 1) },
+      x: TX(lampSwX - 26), y: TY(yA - 30), w: 52 * sc, h: 60 * sc,
+      onClick: () => { S.current.swA = !S.current.swA; forceUpdate(n => n + 1) },
+    })
+    canvasRef.current._clickAreas.push({
+      x: TX(applSwX - 26), y: TY(yB - 30), w: 52 * sc, h: 60 * sc,
+      onClick: () => { S.current.swB = !S.current.swB; forceUpdate(n => n + 1) },
     })
 
     /* ─── 知识卡片 ─── */
@@ -401,8 +447,8 @@ export default function ElectricEnergyScene() {
         const dW = s.kwh - s.mark.kwh
         c.fillText(
           on
-            ? `● 通电中｜${LOAD_SAFE(s.load)} ${sol.tag}｜I = ${sol.I.toFixed(2)} A｜ΔW = ${dW.toFixed(4)} kW·h｜n = ${Math.round(N_KWH * dW)} 转`
-            : `○ 开关断开：表不计量（读数停在 ${s.kwh.toFixed(4)} kW·h），点开关开始用电`,
+            ? `● 通电中｜${LOAD_SAFE(s.load)}（${sol.I2 > 0 ? '亮/转' : '未开'}）｜干路 I = ${sol.I.toFixed(2)} A｜ΔW = ${dW.toFixed(4)} kW·h｜n = ${Math.round(N_KWH * dW)} 转`
+            : `○ 两只开关都断开：表不计量（读数停在 ${s.kwh.toFixed(4)} kW·h），合上任意一只开始用电`,
           tx, ty + 10
         )
       },
@@ -414,11 +460,13 @@ export default function ElectricEnergyScene() {
 
     /* 验收钩子 */
     canvasRef.current._dbg = {
-      swX: TX(swX), swY: TY(B),
+      swAX: TX(lampSwX), swAY: TY(yA),
+      swBX: TX(applSwX), swBY: TY(yB),
       recX: TX(recX + recW / 2), recY: TY(r1),
-      loadBtns: LOADS.map((_, i) => ({ x: TX(108 + i * 104 + 48), y: TY(r1) })),
+      loadBtns: LOADS.map((_, i) => ({ x: TX(108 + i * 108 + 50), y: TY(r1) })),
       speedBtns: SPEEDS.map((_, i) => ({ x: TX(108 + i * 70 + 31), y: TY(r2) })),
-      scale: sc, closed: on, load: s.load, speed: s.speed, I: sol.I,
+      scale: sc, closed: on, swA: s.swA, swB: s.swB, load: s.load, speed: s.speed,
+      I: sol.I, I1: sol.I1, I2: sol.I2,
       kwh: s.kwh, runT: s.runT, recN: s.records.length, price: s.price,
       panel: { x: panel.x, y: panel.y, w: panel.w, h: panel.h },
     }
@@ -459,7 +507,8 @@ export default function ElectricEnergyScene() {
       }
     }
     const cur = {
-      P: LOADS[s.load].P, name: LOADS[s.load].name,
+      P: (s.swA ? LAMP.P : 0) + (s.swB ? LOADS[s.load].P : 0),
+      name: `${LAMP.name} + ${LOADS[s.load].name}`,
       dW: s.kwh - s.mark.kwh,
     }
     return [
@@ -592,7 +641,8 @@ export default function ElectricEnergyScene() {
 
   const handleReset = useCallback(() => {
     const s = S.current
-    s.switchClosed = false
+    s.swA = false
+    s.swB = false
     s.load = 0
     s.speed = 600
     s.price = 0.56
@@ -658,7 +708,7 @@ export default function ElectricEnergyScene() {
           <InfoDock
             align="left"
             offset={{ left: 26, top: 26 }}
-            hint="点右侧器材加入 → 拖拽移动 → 点接线柱连线。接法：电能表串在干路上（插座 L→表 1、N→表 2，表 3→开关 a，开关 b 出来再分成两路）；洗衣机（1、2）与电热水壶（1、2）各自并联在 220 V 两端，两路的另一端都回到表的 4 号柱（零线），所以两台是并联、不是串联。洗衣机 500 W、电热水壶 1500 W，并联时干路电流是两者之和；右上「走字倍速」加快时间才看得见计数器跳字。"
+            hint="接法：交流电源 L(红) → 电能表 1、N(蓝) → 电能表 2，表 3(L 出) / 4(N 出) → 空气开关 L进/N进，空开的 L出/N出 再接到插座（两孔 L/N、三孔 L/E/N）。电能表**串联在干路**上（干路电流全部流过它，所以它计的是总电功）；洗衣机、电热水壶**并联在 220 V 两端**（把电器拖到插孔上就自动插上，不用拉线），各自独立工作，干路电流 = 各支路电流之和。点空气开关或面板开关本体即合闸/分闸；右上「走字倍速」加快时间才看得见计数器跳字。"
             hintTitle="操作说明"
           />
         )}
@@ -671,7 +721,15 @@ export default function ElectricEnergyScene() {
               // 家庭电路三件（本专题补遗留新增）：家用交流电（三孔插座）+ 洗衣机 500 W + 电热水壶 1500 W
               // 电池组只有 3 V，干路电流零点几安，电功几乎为 0、表不走字；
               // 换成家用交流电 + 电器，I = P/U = 2.27 / 6.82 A，配右上「走字倍速」才看得见计数器跳字
+              // 家庭电路（真器材）：交流电源（圆 + 正弦符号 + 三引线）→ 电能表 → 空气开关 → 支路
+              { type: 'acSource', name: '交流电源', icon: thumb('acSource') },
               { type: 'mains', name: '家用交流电', icon: thumb('mains') },
+              { type: 'energyMeter', name: '电能表', icon: thumb('energyMeter') },
+              { type: 'breaker', name: '空气开关', icon: thumb('breaker') },
+              { type: 'wallSwitch', name: '面板开关', icon: thumb('wallSwitch') },
+              { type: 'socket2', name: '两孔插座', icon: thumb('socket2') },
+              { type: 'socket3', name: '三孔插座', icon: thumb('socket3') },
+              // 家用电器（无底座，插脚拖到插孔上就自动并联在 L / N 两端）
               { type: 'washer', name: '洗衣机', icon: thumb('washer') },
               { type: 'kettle', name: '电热水壶', icon: thumb('kettle') },
               { type: 'bulb', name: '灯泡', icon: thumb('bulb') },
@@ -681,8 +739,6 @@ export default function ElectricEnergyScene() {
               { type: 'ammeter', name: '电流表', icon: thumb('ammeter') },
               { type: 'ammeterA', name: '安培表', icon: thumb('ammeterA') },
               { type: 'voltmeter', name: '电压表', icon: thumb('voltmeter') },
-              // 本专题专用：单相电能表（1/2 进线、3/4 出线，铝盘 + 计数器）
-              { type: 'energyMeter', name: '电能表', icon: thumb('energyMeter') },
             ]}
             wireColor={S.current.wireColor}
             onPickColor={handlePickColor}
@@ -731,6 +787,34 @@ function drawACSource(ctx, cx, cy, r, o) {
   ctx.fillStyle = on ? '#B45309' : '#98A6B2'
   ctx.font = `bold ${FS(9.5)}px "Microsoft YaHei", sans-serif`
   ctx.fillText('交流 ~ 50 Hz', cx + r + 9, cy + 12)
+}
+
+/** 墙上的面板开关（真实的家用翘板开关，不是实验台闸刀）：
+ *  白色面板 + 内嵌翘板，合闸时翘板上缘凹进、上面露白；断开时整块翘板被顶起 */
+function drawPanelSwitch(ctx, cx, cy, closed, o) {
+  const { FS } = o
+  const w = 22, h = 30
+  /* 面板 */
+  ctx.fillStyle = '#FFFFFF'
+  ctx.strokeStyle = '#C7CFD6'; ctx.lineWidth = 1.3
+  ctx.beginPath(); ctx.roundRect(cx - w / 2, cy - h / 2, w, h, 4); ctx.fill(); ctx.stroke()
+  /* 内框 */
+  ctx.fillStyle = '#EEF1F4'
+  ctx.strokeStyle = '#D3DAE1'; ctx.lineWidth = 1
+  ctx.beginPath(); ctx.roundRect(cx - w / 2 + 3, cy - h / 2 + 2.5, w - 6, h - 6, 3); ctx.fill(); ctx.stroke()
+  /* 翘板：合闸 → 上半块压进去（画成下面凸起）；断开 → 上半块抬起 */
+  const rockTop = closed ? cy - 4 : cy - 8
+  ctx.fillStyle = closed ? '#FBFDFE' : '#E3E8ED'
+  ctx.strokeStyle = '#AFB9C2'; ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(cx - 6, rockTop); ctx.lineTo(cx + 6, rockTop)
+  ctx.lineTo(cx + 6, cy + 9); ctx.lineTo(cx - 6, cy + 9)
+  ctx.closePath(); ctx.fill(); ctx.stroke()
+  /* 状态字 */
+  ctx.fillStyle = closed ? '#7C8794' : '#9AA4AE'
+  ctx.font = `bold ${FS(7)}px "Microsoft YaHei", sans-serif`
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  ctx.fillText(closed ? 'ON' : 'OFF', cx, cy + 2)
 }
 
 /** 回路中的电能表（符号化：铭牌条 + 铝盘 + 6 位计数器 + 600 r/kW·h） */
@@ -920,6 +1004,51 @@ function drawLoadIcon(ctx, cx, baseY, kind, o) {
     ctx.moveTo(cx - 7, cy + 9); ctx.lineTo(cx - 4, cy - 4); ctx.lineTo(cx, cy + 4)
     ctx.lineTo(cx + 4, cy - 4); ctx.lineTo(cx + 7, cy + 9)
     ctx.stroke()
+  } else if (kind === 'washer') {
+    /* 滚筒洗衣机正面：机身 + 顶部控制面板 + 观察孔（孔里滚筒在转，一眼看出"它在工作"） */
+    ctx.fillStyle = on ? '#FBFDFF' : '#EDF2F7'
+    ctx.strokeStyle = '#94A3B8'; ctx.lineWidth = 1.5
+    ctx.beginPath(); ctx.roundRect(cx - 24, baseY - 62, 48, 56, 4); ctx.fill(); ctx.stroke()
+    /* 顶部控制面板 */
+    ctx.fillStyle = '#DDE5EC'
+    ctx.beginPath(); ctx.roundRect(cx - 24, baseY - 62, 48, 12, 4); ctx.fill()
+    ctx.strokeStyle = '#B7C2CC'; ctx.lineWidth = 1; ctx.stroke()
+    /* 旋钮 */
+    ctx.fillStyle = '#94A3B8'
+    ctx.beginPath(); ctx.arc(cx - 12, baseY - 56, 4, 0, Math.PI * 2); ctx.fill()
+    /* 显示屏 + 指示灯 */
+    ctx.fillStyle = on ? '#16A34A' : '#CBD5E1'
+    ctx.beginPath(); ctx.roundRect(cx - 2, baseY - 60, 16, 7, 2); ctx.fill()
+    ctx.fillStyle = on ? '#EF4444' : '#E2E8F0'
+    ctx.beginPath(); ctx.arc(cx + 20, baseY - 56, 2.6, 0, Math.PI * 2); ctx.fill()
+    /* 观察孔（塑料圈） */
+    const ocy = baseY - 27, orr = 15
+    ctx.fillStyle = '#E7EDF3'
+    ctx.strokeStyle = '#B7C2CC'; ctx.lineWidth = 1.4
+    ctx.beginPath(); ctx.arc(cx - 2, ocy, orr, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    /* 孔里的玻璃 + 滚筒（工作时按 time 转） */
+    ctx.fillStyle = on ? '#BFD8EE' : '#DCE6EE'
+    ctx.beginPath(); ctx.arc(cx - 2, ocy, orr - 4, 0, Math.PI * 2); ctx.fill()
+    const ang = on ? time * 2.4 : 0
+    ctx.strokeStyle = on ? '#3B82F6' : '#B6C2CE'; ctx.lineWidth = 1.6
+    for (let k = 0; k < 3; k++) {
+      const a = ang + (k * 2 * Math.PI) / 3
+      ctx.beginPath()
+      ctx.moveTo(cx - 2, ocy)
+      ctx.lineTo(cx - 2 + Math.cos(a) * (orr - 5), ocy + Math.sin(a) * (orr - 5))
+      ctx.stroke()
+    }
+    ctx.fillStyle = on ? '#2563EB' : '#CBD5E1'
+    ctx.beginPath(); ctx.arc(cx - 2, ocy, 3, 0, Math.PI * 2); ctx.fill()
+    /* 衣物/水迹 */
+    if (on) {
+      ctx.fillStyle = 'rgba(59,130,246,0.45)'
+      ctx.beginPath(); ctx.arc(cx - 2 + Math.cos(ang) * 6, ocy + Math.sin(ang) * 5, 2.4, 0, Math.PI * 2); ctx.fill()
+    }
+    /* 底脚 */
+    ctx.fillStyle = '#CBD5E1'
+    ctx.beginPath(); ctx.roundRect(cx - 22, baseY - 7, 8, 4, 1.5); ctx.fill()
+    ctx.beginPath(); ctx.roundRect(cx + 14, baseY - 7, 8, 4, 1.5); ctx.fill()
   } else if (kind === 'kettle') {
     // 底座
     ctx.fillStyle = '#CBD5E1'
