@@ -102,8 +102,9 @@ function applianceSVG(kind, c, dyn = {}) {
     : U > 200 ? `并联 · U = ${U.toFixed(1)} V`
       : `串联分压 · U = ${U.toFixed(1)} V`
   const cap = on ? `${P} W 额定 · I = ${I.toFixed(2)} A` : `${P} W 额定 · R = ${R.toFixed(1)} Ω`
-  /* 不再画"实验台底座"（用户要求：家用电器就该是一台整机，不带底座）：
-   * 机体下面是两根**插脚**，把电器拖到插座的孔上一放就自动插上（见 BuilderSVG 的吸附逻辑）。 */
+  /* 不再画"实验台底座"（用户要求：家用电器就该是一台整机，不带底座）。
+   * 插头也不画在卡里了：插头是一只**独立可拖**的部件（电源线能任意方向拉长），
+   * 画在 BuilderSVG 的插头层里，拖到插座孔上自动吸附插入。 */
   return `
     <svg width="150" height="168" viewBox="0 0 150 168">
       ${fitInner(150, 168, 150, 168, INNER.homeLoad())}
@@ -111,37 +112,20 @@ function applianceSVG(kind, c, dyn = {}) {
         <rect x="6" y="1" width="138" height="15" rx="4" fill="#334155"/>
         <text x="75" y="11.5" text-anchor="middle" font-size="9" fill="#dbeafe"
           font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${art.label} · 220 V</text>
-        <image href="${figURL(art.file)}" x="22" y="16" width="106" height="82"
+        <image href="${figURL(art.file)}" x="22" y="18" width="106" height="92"
           preserveAspectRatio="xMidYMid meet"/>
         ${on ? `<g>
-          <rect x="106" y="18" width="34" height="12" rx="6" fill="#fee2e2" stroke="#f87171" stroke-width=".9"/>
-          <circle cx="112.5" cy="24" r="2.2" fill="#dc2626"/>
-          <text x="127" y="27.2" text-anchor="middle" font-size="6.5" fill="#b91c1c"
+          <rect x="106" y="20" width="34" height="12" rx="6" fill="#fee2e2" stroke="#f87171" stroke-width=".9"/>
+          <circle cx="112.5" cy="26" r="2.2" fill="#dc2626"/>
+          <text x="127" y="29.2" text-anchor="middle" font-size="6.5" fill="#b91c1c"
             font-family="system-ui,-apple-system,'Segoe UI',sans-serif">运行中</text>
         </g>` : ''}
-        <!-- 插头：机体下面接一段电源线，线端是一个**三脚插头**（地线脚居中、比火零两脚长一点）。
-             插上时插头壳整体下移并放大成实物比例，正好压住插座上的三个孔（三只脚已经进了孔里，不再画脚）。 -->
-        <path d="M75 98 C71 104 79 ${114 + (plugged ? 18 : 0)} 75 ${plugged ? 134 : 124}" stroke="#2b2f36" stroke-width="3.2" fill="none" stroke-linecap="round"/>
-        <path d="M74 100 C71 106 78 115 74 123" stroke="#5b616b" stroke-width="1" fill="none" opacity=".7"/>
-        ${plugged ? `
-        <rect x="52" y="128" width="46" height="40" rx="8" fill="#3c4048" stroke="#2b2f36" stroke-width="1"/>
-        <rect x="56" y="132" width="38" height="4" rx="2" fill="#ffffff" opacity=".22"/>`
-        : `
-        <rect x="56" y="124" width="38" height="18" rx="5" fill="#3c4048" stroke="#2b2f36" stroke-width="1"/>
-        <rect x="59" y="126.5" width="32" height="3" rx="1.5" fill="#ffffff" opacity=".22"/>
-        <!-- 三只脚：L(左) / E(中，略长) / N(右)；L、N 两脚尖的中点正是 (75,160)，供吸附对齐 -->
-        <rect x="61" y="142" width="5" height="18" rx="1.2" fill="#c8a165" stroke="#8f6f38" stroke-width=".9"/>
-        <rect x="84" y="142" width="5" height="18" rx="1.2" fill="#c8a165" stroke="#8f6f38" stroke-width=".9"/>
-        <rect x="72.5" y="142" width="5" height="20" rx="1.2" fill="#c8a165" stroke="#8f6f38" stroke-width=".9"/>
-        <rect x="61.6" y="143" width="1.5" height="16" rx=".7" fill="#f1dca8" opacity=".85"/>
-        <rect x="84.6" y="143" width="1.5" height="16" rx=".7" fill="#f1dca8" opacity=".85"/>
-        <rect x="73.1" y="143" width="1.5" height="18" rx=".7" fill="#f1dca8" opacity=".85"/>`}
       </g>
-      ${/* 家电不设接线柱热点（用户要求）：插脚本身就是"接头"，把电器拖到插座孔上就自动插上，
+      ${/* 家电不设接线柱热点（用户要求）：插头就是"接头"，拖到插座孔上自动插上，
            所以这里不再画 termDot，BuilderSVG 的命中层也跳过家电（NO_TERM_UI）。 */ ''}
-      <text x="75" y="108" text-anchor="middle" font-size="8.5" fill="#475569"
+      <text x="75" y="128" text-anchor="middle" font-size="8.5" fill="#475569"
         font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${cap}</text>
-      <text x="75" y="117.5" text-anchor="middle" font-size="7" fill="${on && U < 200 ? '#dc2626' : plugged ? '#15803d' : '#1d4ed8'}"
+      <text x="75" y="139" text-anchor="middle" font-size="7" fill="${on && U < 200 ? '#dc2626' : plugged ? '#15803d' : '#1d4ed8'}"
         font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${conn}</text>
     </svg>`
 }

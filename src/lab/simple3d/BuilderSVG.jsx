@@ -46,34 +46,39 @@ const keyOf = (cid, tid) => cid + ':' + tid
  * 插座卡里的两个孔（L / N 孔）中点按"面板照片"重新量过：两孔 (47,72)、三孔 (52,86)（照片里 L/N 两斜孔的中点）。 */
 const PLUG_TYPES = ['washer', 'kettle', 'riceCooker', 'heater']
 const SOCKET_HOLE = { socket2: { x: 47, y: 72 }, socket3: { x: 52, y: 112 } }
-const PRONG = { x: 75, y: 160 }
+/* 插头是一只**独立可拖**的部件（用户要求：电器放好后只拖插头，电源线可任意方向拉长）：
+ * 框 36×52，插脚中点（也就是要落进插座孔的那个点）在框内 (18,40)。
+ * 宽度取 36：两孔孔距 22、三孔 L/N 孔距 24，插头壳盖上去后四周还各留 5–6px，
+ * 不会从圆角处"漏出孔"。 */
+const PLUG_SIZE = { w: 36, h: 52 }
+const PLUG_PIN = { x: 18, y: 40 }
+const PLUG_SNAP_R = 84
 
-/** 叠放次序：不额外排序 —— 器材按添加顺序绘制，后加的压在上面（插上电器＝电器后加，自然压在插座上，
- *  读起来就是"机器站在插座前面、插脚插了进去"；反过来把插座画在电器之上，白色面板会横切机器下腹）。 */
+/** 插头默认挂在电器的右侧（大小比例照实物：插头壳比机器窄得多，整只落在机器右边外侧） */
+function plugHome(c) {
+  const t = TYPES[c.type]
+  return { x: Math.round(c.x + t.w + 26), y: Math.round(c.y + t.h * 0.56) }
+}
 
-
-function withPlug(cs, c) {
+/** 松手时：插脚中点离哪个插座的孔最近就插哪个，插不上就原样挂着 */
+function snapPlug(cs, c) {
   if (!PLUG_TYPES.includes(c.type)) return c
+  const pos = c.plugPos || plugHome(c)
   let best = null
-  let bestScore = Infinity
-  const tw = TYPES[c.type].w
-  const th = TYPES[c.type].h
+  let bestD = PLUG_SNAP_R
   for (const s of cs) {
     const h = SOCKET_HOLE[s.type]
     if (!h || s.id === c.id) continue
     const px = s.x + h.x
     const py = s.y + h.y
-    const dist = Math.hypot((c.x + PRONG.x) - px, (c.y + PRONG.y) - py)
-    /* 只看"插脚离孔多远"不够宽容：学生多半是把整台机器往插座上一放，
-       所以卡片只要和插座卡片有交叠也算"要插"，再按离孔的距离挑最近的插座。 */
-    const overlap = c.x + tw > s.x - 8 && c.x < s.x + TYPES[s.type].w + 8 && c.y + th > s.y - 8 && c.y < s.y + TYPES[s.type].h + 8
-    if (dist > 130 && !overlap) continue
-    const score = overlap ? Math.min(dist, 130) : dist
-    if (score < bestScore) { bestScore = score; best = { s, px, py } }
+    const dist = Math.hypot(pos.x - px, pos.y - py)
+    if (dist < bestD) { bestD = dist; best = { s, px, py } }
   }
-  if (!best) return c.plug ? { ...c, plug: null } : c
-  return { ...c, x: Math.round(best.px - PRONG.x), y: Math.round(best.py - PRONG.y), plug: best.s.id }
+  if (!best) return { ...c, plugPos: pos, plug: null }
+  return { ...c, plugPos: { x: best.px, y: best.py }, plug: best.s.id }
 }
+
+/** 叠放次序：不额外排序 —— 器材按添加顺序绘制，后加的压在上面；插头是独立部件，画在最上层。 */
 
 /** 接线锚点：接线柱帽正下方（导线真正夹持处） */
 function termAnchor(c, tid) {
@@ -437,12 +442,17 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   const addComp = useCallback((type, x, y) => {
     const t = TYPES[type]
     if (!t) return null
+    const cy = Math.max(0, Math.min(CH - t.h, Math.round(y)))
     const c = {
       id: uidRef.current++, type,
       x: Math.max(0, Math.min(CW - t.w, Math.round(x))),
-      y: Math.max(0, Math.min(CH - t.h, Math.round(y))),
+      y: cy,
       /* 空气开关 / 面板开关默认合闸（刚拿下来时是"亮的、正常合着"的样子），其余开关默认断开 */
       closed: type === 'breaker' || type === 'wallSwitch', showRead: false, f: 0.4, rmax: CFG.RHEO_MAX,
+      /* 家电自带一只插头，默认挂在机器右侧（拖它到插座上就插进去） */
+      plugPos: PLUG_TYPES.includes(type)
+        ? plugHome({ x: Math.max(0, Math.min(CW - t.w, Math.round(x))), y: cy, type })
+        : undefined,
     }
     setComps((cs) => cs.concat(c))
     return c
@@ -596,6 +606,20 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     window.addEventListener('pointerup', onUp)
   }
 
+  /* ── 插头按下：只拖这一只插头（电源线跟着拉长，任意方向） ── */
+  const onPlugDown = (e, c) => {
+    e.stopPropagation()
+    e.preventDefault()
+    const p = canvasPoint(e)
+    const pos = c.plugPos || plugHome(c)
+    dragRef.current = {
+      kind: 'plugmove', compId: c.id,
+      grab: { dx: p.x - pos.x, dy: p.y - pos.y },
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
+
   const onMove = (e) => {
     const d = dragRef.current
     if (d && d.kind === 'move') {
@@ -603,13 +627,25 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       setComps((cs) => cs.map((c) => {
         if (c.id !== d.compId) return c
         const t = T(c)
-        return {
-          ...c,
-          x: Math.max(-10, Math.min(CW - t.w + 10, p.x - d.grab.dx)),
-          y: Math.max(-10, Math.min(CH - t.h + 10, p.y - d.grab.dy)),
-        }
+        const nx = Math.max(-10, Math.min(CW - t.w + 10, p.x - d.grab.dx))
+        const ny = Math.max(-10, Math.min(CH - t.h + 10, p.y - d.grab.dy))
+        /* 没插上的插头跟着机器一起走（插头是独立部件，位置存的是画布坐标） */
+        const pp = (!c.plug && c.plugPos) ? { x: c.plugPos.x + (nx - c.x), y: c.plugPos.y + (ny - c.y) } : c.plugPos
+        return { ...c, x: nx, y: ny, plugPos: pp }
       }))
       if (Math.hypot(e.clientX - d.sx, e.clientY - d.sy) > 5) d.moved = true
+      return
+    }
+    if (d && d.kind === 'plugmove') {
+      const p = canvasPoint(e)
+      setComps((cs) => cs.map((c) => {
+        if (c.id !== d.compId) return c
+        return {
+          ...c,
+          plug: null,
+          plugPos: { x: Math.round(p.x - d.grab.dx), y: Math.round(p.y - d.grab.dy) },
+        }
+      }))
       return
     }
     if (d && d.kind === 'slider') {
@@ -672,8 +708,12 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         tapComp(c, isDouble, e)
         return
       }
-      /* 拖完松手：家用电器试试能不能"插"到插座上 */
-      setComps((cs) => cs.map((x) => (x.id === d.compId ? withPlug(cs, x) : x)))
+      /* 拖完松手：电器就是电器，不再靠"整机盖到插座上"接线（用户要求：放好后只拖插头） */
+      return
+    }
+    if (d && d.kind === 'plugmove') {
+      /* 松手：插头离哪个插座孔最近就插进去，否则就挂在电器的右后方 */
+      setComps((cs) => cs.map((x) => (x.id === d.compId ? snapPlug(cs, x) : x)))
       return
     }
     if (d && d.kind === 'slider') forceUpdate((n) => n + 1)
@@ -883,6 +923,9 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
 
   const compById = (id) => comps.find((c) => c.id === id)
 
+  /* 家电（也就是"有插头"的那几件）：插头层按这个列表画 */
+  const plugs = comps.filter((c) => PLUG_TYPES.includes(c.type))
+
   /* 有电流的导线 → 电子流动层的数据。
      电子行进方向 = -sign(_wireI)（_wireI 以 a→b 为正 = 电流方向，电子反向） */
   const flowItems = (() => {    const wI = solved._wireI || {}
@@ -1013,6 +1056,12 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
            这一层只负责让"裸铜丝绕在柱脚上"永远画在所有导线最上面。 */
         .esb-wiretop{position:absolute;inset:0;pointer-events:none;z-index:6}
         .esb-partlayer{position:absolute;inset:0;z-index:2;pointer-events:none}
+        /* 插头层：电源线（只画不点）＋ 插头本体（可拖，所以在这一层里 pointer-events 只给 .esb-plug） */
+        .esb-cordlayer{position:absolute;inset:0;pointer-events:none;z-index:8}
+        .esb-plug{position:absolute;touch-action:none;cursor:grab;pointer-events:auto;z-index:9;
+          filter:drop-shadow(0 1.4px 2px rgba(15,23,42,.30))}
+        .esb-plug:active{cursor:grabbing}
+        .esb-plug:hover svg rect{filter:brightness(1.12)}
         .esb-comp{position:absolute;cursor:grab;touch-action:none;pointer-events:auto}
         .esb-comp:active{cursor:grabbing}
         .esb-comp svg{display:block;overflow:visible}
@@ -1162,6 +1211,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
               <div
                 key={c.id}
                 className={`esb-comp${isSel ? ' selected' : ''}`}
+                data-comp-id={c.id} data-comp-type={c.type}
                 style={{ left: c.x, top: c.y, width: t.w, height: t.h }}
                 onPointerDown={(e) => onCompDown(e, c)}
                 onDragStart={(e) => e.preventDefault()}
@@ -1175,6 +1225,67 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             )
           })}
         </div>
+
+        {/* 插头层：每台家电自带一只插头，电源线从机身右侧出来，任意方向都能拉长 */}
+        <svg className="esb-cordlayer" width={CW} height={CH}>
+          {plugs.map((c) => {
+            const t = T(c)
+            const pos = c.plugPos || plugHome(c)
+            const ax = c.x + t.w - 6
+            const ay = c.y + Math.round(t.h * 0.56)
+            /* 线的另一端咬在插头壳的左上口（不是尖脚）：插上时壳压住孔位、线从壳侧进；
+               没插时线从壳侧面进，脚在下面露着 */
+            const bx = pos.x - 15
+            const by = pos.y - (c.plug ? 28 : 34)
+            const dx = bx - ax
+            const sag = Math.min(64, Math.abs(dx) * 0.25 + 12)
+            const d = `M${ax} ${ay} C${ax + dx * 0.4} ${ay + sag} ${bx - dx * 0.35} ${by + sag * 0.6} ${bx} ${by}`
+            return (
+              <g key={c.id}>
+                <path d={d} fill="none" stroke="rgba(15,23,42,0.16)" strokeWidth={5.2} strokeLinecap="round" transform="translate(0 1.6)" />
+                <path d={d} fill="none" stroke="#3f4650" strokeWidth={3.1} strokeLinecap="round" />
+                <path d={d} fill="none" stroke="#8b93a1" strokeWidth={1} strokeLinecap="round" opacity=".6" />
+              </g>
+            )
+          })}
+        </svg>
+        {plugs.map((c) => {
+          const pos = c.plugPos || plugHome(c)
+          return (
+            <div
+              key={'plug' + c.id}
+              className={`esb-plug${c.plug ? ' on' : ''}`}
+              data-plug-of={c.id} data-plug-type={c.type}
+              style={{ left: pos.x - PLUG_PIN.x, top: pos.y - PLUG_PIN.y, width: PLUG_SIZE.w, height: PLUG_SIZE.h }}
+              onPointerDown={(e) => onPlugDown(e, c)}
+              title={c.plug ? '插在插座上（拖动可拔出）' : '拖动这只插头，插到插座的孔里'}
+            >
+              <svg width={PLUG_SIZE.w} height={PLUG_SIZE.h} viewBox="0 0 36 52">
+                {c.plug ? (
+                  <g>
+                    {/* 插上：插头壳整体盖在孔位上（三只脚已经在孔里，所以不再画脚） */}
+                    <rect x="0" y="8" width="36" height="38" rx="4.5" fill="#3c4048" stroke="#242a31" strokeWidth="1.1" />
+                    <rect x="3" y="11.4" width="30" height="3.6" rx="1.8" fill="#ffffff" opacity=".22" />
+                    <rect x="3" y="16.6" width="30" height="1.4" rx=".7" fill="#ffffff" opacity=".10" />
+                  </g>
+                ) : (
+                  <g>
+                    {/* 没插：插头壳在上，三只黄铜脚朝下露着；L、N 两脚尖的中点在 (18,40) */}
+                    <rect x="0" y="0" width="36" height="26" rx="5" fill="#3c4048" stroke="#242a31" strokeWidth="1.1" />
+                    <rect x="3" y="3" width="30" height="3.2" rx="1.6" fill="#ffffff" opacity=".22" />
+                    <rect x="3" y="8.4" width="30" height="1.4" rx=".7" fill="#ffffff" opacity=".10" />
+                    <rect x="6" y="26" width="5" height="14" rx="1.1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".9" />
+                    <rect x="25" y="26" width="5" height="14" rx="1.1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".9" />
+                    <rect x="15.5" y="26" width="5" height="14" rx="1.1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".9" />
+                    <rect x="6.7" y="27" width="1.4" height="12" rx=".7" fill="#f1dca8" opacity=".85" />
+                    <rect x="25.7" y="27" width="1.4" height="12" rx=".7" fill="#f1dca8" opacity=".85" />
+                    <rect x="16.2" y="27" width="1.4" height="12" rx=".7" fill="#f1dca8" opacity=".85" />
+                  </g>
+                )}
+              </svg>
+            </div>
+          )
+        })}
 
         {/* 接线柱命中层：必须压在所有导线之上——否则柱子一接线，导线那根 18px 的
             命中带就把柱子盖住，"再点它接第二根线"根本点不动（多表并联就接不上） */}
