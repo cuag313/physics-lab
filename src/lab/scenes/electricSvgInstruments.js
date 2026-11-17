@@ -823,9 +823,10 @@ function bladeSVG(open) {
  * 全项目统一配色约定：**位于器材右侧（正极/后接端）的柱帽用红色 #c0392b，
  * 左侧（负极/前端）用黑色 #1c1f24**；纵向排布、无左右之分的（验电器球/地、
  * 继电器线圈圈1/圈2）不套用此约定。新增器材请照此传 dark。
+ * 家庭电路这一组（交流电源 / 插座）改传 tint：柱帽跟着导线颜色走 —— 红 L、蓝 N、黑 E。
  */
-function termDotSVG(x, y, dark = false, label = '') {
-  const cp = capPaint(dark)
+function termDotSVG(x, y, dark = false, label = '', tint = '') {
+  const cp = capPaint(dark, tint)
   return `
     <circle cx="${x}" cy="${y}" r="6.4" fill="#0b0d10" stroke="#8d96a1" stroke-width="1.5"/>
     <circle cx="${x}" cy="${y}" r="4.4" fill="${cp.fill}" stroke="${cp.stroke}" stroke-width="1"/>
@@ -1626,9 +1627,9 @@ export const TYPES = {
         <text x="58" y="143" text-anchor="middle" font-size="7" fill="#475569"
           font-family="system-ui,-apple-system,'Segoe UI',sans-serif">红 相线 · 蓝 零线 · 黑 接地</text>
       </g>
-      ${termDotSVG(152, 48, true)}
-      ${termDotSVG(152, 74, true)}
-      ${termDotSVG(152, 100, false)}
+      ${termDotSVG(152, 48, false, '', 'red')}
+      ${termDotSVG(152, 74, true, '', 'blue')}
+      ${termDotSVG(152, 100, true, '', 'black')}
       <text x="168" y="51" font-size="8.5" font-weight="700" fill="#24292f"
         font-family="system-ui,-apple-system,'Segoe UI',sans-serif">L</text>
       <text x="168" y="77" font-size="8.5" font-weight="700" fill="#24292f"
@@ -1699,8 +1700,8 @@ export const TYPES = {
   wallSwitch: {
     label: '面板开关', w: 100, h: 112,
     terminals: [
-      { id: 'a', label: '1', name: '接线柱 1', x: 30, y: 94 },
-      { id: 'b', label: '2', name: '接线柱 2', x: 70, y: 94 },
+      { id: 'a', label: '1', name: '接线柱 1', x: 30, y: 104 },
+      { id: 'b', label: '2', name: '接线柱 2', x: 70, y: 104 },
     ],
     render(c) {
       const on = !!c.closed
@@ -1708,11 +1709,11 @@ export const TYPES = {
     <svg width="100" height="112" viewBox="0 0 100 112">
       <g class="casing">
         <image href="${figURL(on ? 'switch_on_face.png' : 'switch_off_face.png')}"
-          x="2" y="1" width="96" height="102" preserveAspectRatio="none"/>
-        ${on ? `<rect x="26" y="3" width="48" height="2.2" rx="1.1" fill="#ffffff" opacity=".92"/>` : ''}
+          x="4" y="1" width="92" height="100" preserveAspectRatio="none"/>
+        ${on ? `<rect x="24" y="3" width="52" height="2.2" rx="1.1" fill="#ffffff" opacity=".92"/>` : ''}
       </g>
-      ${termDotSVG(30, 94, true, '1')}
-      ${termDotSVG(70, 94, false, '2')}
+      ${termDotSVG(30, 104, true, '', 'black')}
+      ${termDotSVG(70, 104, false, '', 'red')}
     </svg>` }
   },
 
@@ -1727,72 +1728,51 @@ export const TYPES = {
     render() {
       return `
     <svg width="96" height="118" viewBox="0 0 96 118">
-      <defs>
-        <linearGradient id="es-g-sk-plate" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#ffffff"/><stop offset="60%" stop-color="#f4f6f8"/><stop offset="100%" stop-color="#e2e7ec"/>
-        </linearGradient>
-      </defs>
       <g class="casing">
-        <!-- 上方两根线头：红 L、蓝 N -->
-        <path d="M24 30 L24 24" stroke="#e53935" stroke-width="2.8" stroke-linecap="round" fill="none"/>
-        <path d="M72 30 L72 24" stroke="#2f6fdc" stroke-width="2.8" stroke-linecap="round" fill="none"/>
-        <rect x="8" y="30" width="80" height="72" rx="7" fill="url(#es-g-sk-plate)" stroke="#c2cad3" stroke-width="1.2"
-          style="filter:drop-shadow(0 1.6px 2.4px rgba(15,23,42,.28))"/>
-        <rect x="12" y="33" width="72" height="3.5" rx="1.8" fill="#ffffff" opacity=".9"/>
-        <ellipse cx="48" cy="65" rx="26" ry="22" fill="#fafbfc" stroke="#d7dde4" stroke-width=".9"/>
-        <rect x="34" y="52" width="8" height="26" rx="4" fill="#262a30"/>
-        <rect x="54" y="52" width="8" height="26" rx="4" fill="#262a30"/>
-        <rect x="34" y="54" width="8" height="4" rx="2" fill="#4a525c" opacity=".6"/>
-        <rect x="54" y="54" width="8" height="4" rx="2" fill="#4a525c" opacity=".6"/>
+        <!-- 上方两根线头：红 L、蓝 N（面板上沿 34 引到柱帽 24） -->
+        <path d="M36 36 L36 24" stroke="#e53935" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+        <path d="M58 36 L58 24" stroke="#2f6fdc" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+        <!-- 面板直接用用户给的两孔插座图标（用户 2026-11-17 口径：以产品图标为准，不自己画） -->
+        <image href="${figURL('socket2_face.png')}" x="9" y="34" width="78" height="78"
+          preserveAspectRatio="none" style="filter:drop-shadow(0 1.6px 2.4px rgba(15,23,42,.28))"/>
       </g>
-      ${termDotSVG(24, 18, true)}
-      ${termDotSVG(72, 18, false)}
-      <text x="24" y="11" text-anchor="middle" font-size="8.5" font-weight="700" fill="#24292f"
+      ${termDotSVG(36, 18, false, '', 'red')}
+      ${termDotSVG(58, 18, true, '', 'blue')}
+      <text x="36" y="11" text-anchor="middle" font-size="8.5" font-weight="700" fill="#24292f"
         font-family="system-ui,-apple-system,'Segoe UI',sans-serif">L</text>
-      <text x="72" y="11" text-anchor="middle" font-size="8.5" font-weight="700" fill="#24292f"
+      <text x="58" y="11" text-anchor="middle" font-size="8.5" font-weight="700" fill="#24292f"
         font-family="system-ui,-apple-system,'Segoe UI',sans-serif">N</text>
     </svg>` }
   },
 
-  /* ── 三孔插座（L / E / N 三个线头同样引到**面板上方**，末端为接线热点）── */
+  /* ── 三孔插座（面板同样是用户给的三孔图标；L / E / N 三个线头引到**面板上方**，末端即接线热点）── */
   socket3: {
     label: '三孔插座', w: 104, h: 126,
     terminals: [
-      { id: 'l', label: 'L', name: '火线（L，红）', x: 26, y: 18 },
+      { id: 'l', label: 'L', name: '火线（L，红）', x: 30, y: 18 },
       { id: 'e', label: 'E', name: '接地（E，黑）', x: 52, y: 18 },
-      { id: 'n', label: 'N', name: '零线（N，蓝）', x: 78, y: 18 },
+      { id: 'n', label: 'N', name: '零线（N，蓝）', x: 74, y: 18 },
     ],
     render() {
       return `
     <svg width="104" height="126" viewBox="0 0 104 126">
-      <defs>
-        <linearGradient id="es-g-sk3-plate" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#ffffff"/><stop offset="60%" stop-color="#f4f6f8"/><stop offset="100%" stop-color="#e2e7ec"/>
-        </linearGradient>
-      </defs>
       <g class="casing">
         <!-- 上方三根线头：红 L、黑 E、蓝 N -->
-        <path d="M26 32 L26 24" stroke="#e53935" stroke-width="2.8" stroke-linecap="round" fill="none"/>
-        <path d="M52 32 L52 24" stroke="#111827" stroke-width="2.8" stroke-linecap="round" fill="none"/>
-        <path d="M78 32 L78 24" stroke="#2f6fdc" stroke-width="2.8" stroke-linecap="round" fill="none"/>
-        <rect x="8" y="32" width="88" height="80" rx="7" fill="url(#es-g-sk3-plate)" stroke="#c2cad3" stroke-width="1.2"
-          style="filter:drop-shadow(0 1.6px 2.4px rgba(15,23,42,.28))"/>
-        <rect x="12" y="35" width="80" height="3.5" rx="1.8" fill="#ffffff" opacity=".9"/>
-        <ellipse cx="52" cy="76" rx="28" ry="24" fill="#fafbfc" stroke="#d7dde4" stroke-width=".9"/>
-        <rect x="36" y="62" width="8" height="28" rx="4" fill="#262a30"/>
-        <rect x="60" y="62" width="8" height="28" rx="4" fill="#262a30"/>
-        <rect x="44" y="54" width="16" height="8" rx="4" fill="#262a30"/>
-        <rect x="36" y="64" width="8" height="4" rx="2" fill="#4a525c" opacity=".55"/>
-        <rect x="60" y="64" width="8" height="4" rx="2" fill="#4a525c" opacity=".55"/>
+        <path d="M30 36 L30 24" stroke="#e53935" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+        <path d="M52 36 L52 24" stroke="#111827" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+        <path d="M74 36 L74 24" stroke="#2f6fdc" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+        <!-- 面板用用户给的三孔插座图标：上竖孔(E) + 下方两斜孔(L/N) -->
+        <image href="${figURL('socket3_face.png')}" x="8" y="34" width="88" height="88"
+          preserveAspectRatio="none" style="filter:drop-shadow(0 1.6px 2.4px rgba(15,23,42,.28))"/>
       </g>
-      ${termDotSVG(26, 18, true)}
-      ${termDotSVG(52, 18, false)}
-      ${termDotSVG(78, 18, false)}
-      <text x="26" y="11" text-anchor="middle" font-size="8.5" font-weight="700" fill="#24292f"
+      ${termDotSVG(30, 18, false, '', 'red')}
+      ${termDotSVG(52, 18, true, '', 'black')}
+      ${termDotSVG(74, 18, true, '', 'blue')}
+      <text x="30" y="11" text-anchor="middle" font-size="8.5" font-weight="700" fill="#24292f"
         font-family="system-ui,-apple-system,'Segoe UI',sans-serif">L</text>
       <text x="52" y="11" text-anchor="middle" font-size="8.5" font-weight="700" fill="#24292f"
         font-family="system-ui,-apple-system,'Segoe UI',sans-serif">E</text>
-      <text x="78" y="11" text-anchor="middle" font-size="8.5" font-weight="700" fill="#24292f"
+      <text x="74" y="11" text-anchor="middle" font-size="8.5" font-weight="700" fill="#24292f"
         font-family="system-ui,-apple-system,'Segoe UI',sans-serif">N</text>
     </svg>` }
   },

@@ -11,9 +11,15 @@ export const CAP_RED = '#c0392b' // 右 / 正极柱帽
 export const CAP_BLACK = '#1c1f24' // 左 / 负极柱帽
 export const CAP_RED_EDGE = '#7f1d1d' // 红帽描边
 export const CAP_BLACK_EDGE = '#0b0d10' // 黑帽描边
+export const CAP_BLUE = '#2f6fdc' // 零线 N 柱帽（与导线"蓝 = 零线"同口径）
+export const CAP_BLUE_EDGE = '#1e40af'
 
-/** 按"是否深色（左/负）"返回柱帽的填充与描边 */
-export function capPaint(dark) {
+/** 按"是否深色（左/负）"返回柱帽的填充与描边；tint 可显式指定 'red' | 'blue' | 'black'
+ *  （家用电器的导线按红相线 / 蓝零线 / 黑接地着色，柱帽要跟着导线走，不能再套左右的约定） */
+export function capPaint(dark, tint = '') {
+  if (tint === 'red') return { fill: CAP_RED, stroke: CAP_RED_EDGE }
+  if (tint === 'blue') return { fill: CAP_BLUE, stroke: CAP_BLUE_EDGE }
+  if (tint === 'black') return { fill: CAP_BLACK, stroke: CAP_BLACK_EDGE }
   return dark
     ? { fill: CAP_BLACK, stroke: CAP_BLACK_EDGE }
     : { fill: CAP_RED, stroke: CAP_RED_EDGE }

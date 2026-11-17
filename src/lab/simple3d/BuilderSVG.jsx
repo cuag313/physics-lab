@@ -43,11 +43,9 @@ const keyOf = (cid, tid) => cid + ':' + tid
 
 /* ── 家用电器的"插头吸附"（照 NB：把电器拖到插孔上就自动插上）──
  * 电器卡里两根插脚在 (65,160)/(85,160)，中点 (75,160)；
- * 插座卡里的两个孔（L / N 孔）中点分别是两孔 (48,65)、三孔 (52,76)（插座的接线端已挪到面板上方，
- * 面板整体下移，孔位随之改变）。拖动结束若电器中点离某个孔中点不到 96 画布像素，
- * 就把电器"吸"上去并对齐，同时打上 plug = 插座 id —— 引擎据此把插脚 a/b 直接并到插座的 L / N 节点。 */
+ * 插座卡里的两个孔（L / N 孔）中点按"面板照片"重新量过：两孔 (47,72)、三孔 (52,86)（照片里 L/N 两斜孔的中点）。 */
 const PLUG_TYPES = ['washer', 'kettle', 'riceCooker', 'heater']
-const SOCKET_HOLE = { socket2: { x: 48, y: 65 }, socket3: { x: 52, y: 76 } }
+const SOCKET_HOLE = { socket2: { x: 47, y: 72 }, socket3: { x: 52, y: 86 } }
 const PRONG = { x: 75, y: 160 }
 
 /** 叠放次序：不额外排序 —— 器材按添加顺序绘制，后加的压在上面（插上电器＝电器后加，自然压在插座上，
@@ -436,8 +434,8 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       id: uidRef.current++, type,
       x: Math.max(0, Math.min(CW - t.w, Math.round(x))),
       y: Math.max(0, Math.min(CH - t.h, Math.round(y))),
-      /* 空气开关默认合闸（刚从器材栏拿下来时是"出厂合闸"的样子），其余开关默认断开 */
-      closed: type === 'breaker', showRead: false, f: 0.4, rmax: CFG.RHEO_MAX,
+      /* 空气开关 / 面板开关默认合闸（刚拿下来时是"亮的、正常合着"的样子），其余开关默认断开 */
+      closed: type === 'breaker' || type === 'wallSwitch', showRead: false, f: 0.4, rmax: CFG.RHEO_MAX,
     }
     setComps((cs) => cs.concat(c))
     return c
