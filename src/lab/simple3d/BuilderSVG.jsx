@@ -45,7 +45,7 @@ const keyOf = (cid, tid) => cid + ':' + tid
  * 电器卡里两根插脚在 (65,160)/(85,160)，中点 (75,160)；
  * 插座卡里的两个孔（L / N 孔）中点按"面板照片"重新量过：两孔 (47,72)、三孔 (52,86)（照片里 L/N 两斜孔的中点）。 */
 const PLUG_TYPES = ['washer', 'kettle', 'riceCooker', 'heater']
-const SOCKET_HOLE = { socket2: { x: 47, y: 72 }, socket3: { x: 52, y: 86 } }
+const SOCKET_HOLE = { socket2: { x: 47, y: 72 }, socket3: { x: 52, y: 112 } }
 const PRONG = { x: 75, y: 160 }
 
 /** 叠放次序：不额外排序 —— 器材按添加顺序绘制，后加的压在上面（插上电器＝电器后加，自然压在插座上，

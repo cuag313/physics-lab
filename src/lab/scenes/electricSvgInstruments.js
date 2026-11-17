@@ -111,25 +111,30 @@ function applianceSVG(kind, c, dyn = {}) {
         <rect x="6" y="1" width="138" height="15" rx="4" fill="#334155"/>
         <text x="75" y="11.5" text-anchor="middle" font-size="9" fill="#dbeafe"
           font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${art.label} · 220 V</text>
-        <image href="${figURL(art.file)}" x="22" y="18" width="106" height="92"
+        <image href="${figURL(art.file)}" x="22" y="16" width="106" height="82"
           preserveAspectRatio="xMidYMid meet"/>
         ${on ? `<g>
-          <rect x="106" y="20" width="34" height="12" rx="6" fill="#fee2e2" stroke="#f87171" stroke-width=".9"/>
-          <circle cx="112.5" cy="26" r="2.2" fill="#dc2626"/>
-          <text x="127" y="29.2" text-anchor="middle" font-size="6.5" fill="#b91c1c"
+          <rect x="106" y="18" width="34" height="12" rx="6" fill="#fee2e2" stroke="#f87171" stroke-width=".9"/>
+          <circle cx="112.5" cy="24" r="2.2" fill="#dc2626"/>
+          <text x="127" y="27.2" text-anchor="middle" font-size="6.5" fill="#b91c1c"
             font-family="system-ui,-apple-system,'Segoe UI',sans-serif">运行中</text>
         </g>` : ''}
-        <!-- 插脚（两根黄铜片，直接插进插座的两个孔） -->
-        <rect x="62" y="142" width="6" height="18" rx="1.4" fill="#c8a165" stroke="#8f6f38" stroke-width=".9"/>
-        <rect x="82" y="142" width="6" height="18" rx="1.4" fill="#c8a165" stroke="#8f6f38" stroke-width=".9"/>
-        <rect x="62.6" y="143" width="1.6" height="16" rx=".8" fill="#f1dca8" opacity=".8"/>
-        <rect x="82.6" y="143" width="1.6" height="16" rx=".8" fill="#f1dca8" opacity=".8"/>
+        <!-- 插头：机体下面接一段电源线，线端是一个两脚插头（拖到插孔上整只插头插进去） -->
+        <path d="M75 98 C71 104 79 114 75 124" stroke="#2b2f36" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+        <path d="M74 100 C71 106 78 115 74 123" stroke="#5b616b" stroke-width="1" fill="none" opacity=".7"/>
+        <rect x="60" y="124" width="30" height="18" rx="5" fill="#3c4048" stroke="#2b2f36" stroke-width="1"/>
+        <rect x="63" y="126.5" width="24" height="3" rx="1.5" fill="#ffffff" opacity=".22"/>
+        <!-- 两根黄铜插脚（正是吸到插座孔里的那两个脚，中点 (75,160) 供吸附对齐） -->
+        <rect x="67" y="140" width="5.5" height="20" rx="1.4" fill="#c8a165" stroke="#8f6f38" stroke-width=".9"/>
+        <rect x="77.5" y="140" width="5.5" height="20" rx="1.4" fill="#c8a165" stroke="#8f6f38" stroke-width=".9"/>
+        <rect x="67.6" y="141" width="1.6" height="18" rx=".8" fill="#f1dca8" opacity=".8"/>
+        <rect x="78.1" y="141" width="1.6" height="18" rx=".8" fill="#f1dca8" opacity=".8"/>
       </g>
       ${/* 家电不设接线柱热点（用户要求）：插脚本身就是"接头"，把电器拖到插座孔上就自动插上，
            所以这里不再画 termDot，BuilderSVG 的命中层也跳过家电（NO_TERM_UI）。 */ ''}
-      <text x="75" y="128" text-anchor="middle" font-size="8.5" fill="#475569"
+      <text x="75" y="108" text-anchor="middle" font-size="8.5" fill="#475569"
         font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${cap}</text>
-      <text x="75" y="139" text-anchor="middle" font-size="7" fill="${on && U < 200 ? '#dc2626' : plugged ? '#15803d' : '#1d4ed8'}"
+      <text x="75" y="117.5" text-anchor="middle" font-size="7" fill="${on && U < 200 ? '#dc2626' : plugged ? '#15803d' : '#1d4ed8'}"
         font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${conn}</text>
     </svg>`
 }
@@ -1698,22 +1703,28 @@ export const TYPES = {
    * 不再用 ON/OFF 文字（文字版看着像"坏了"）。两张面 switch_on_face.png / switch_off_face.png 直接从
    * 用户给的按钮图标里裁出来（左=合、右=断）；接线柱 1、2 仍在面板下沿。 */
   wallSwitch: {
-    label: '面板开关', w: 100, h: 112,
+    label: '面板开关', w: 100, h: 156,
     terminals: [
-      { id: 'a', label: '1', name: '接线柱 1', x: 30, y: 104 },
-      { id: 'b', label: '2', name: '接线柱 2', x: 70, y: 104 },
+      { id: 'a', label: '1', name: '接线柱 1', x: 30, y: 18 },
+      { id: 'b', label: '2', name: '接线柱 2', x: 70, y: 18 },
     ],
     render(c) {
       const on = !!c.closed
       return `
-    <svg width="100" height="112" viewBox="0 0 100 112">
+    <svg width="100" height="156" viewBox="0 0 100 156">
       <g class="casing">
+        <!-- 面板上方两根线头 + 接线热点（与插座同一套做法） -->
+        <path d="M30 48 L30 24" stroke="#e53935" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+        <path d="M70 48 L70 24" stroke="#111827" stroke-width="2.8" stroke-linecap="round" fill="none"/>
         <image href="${figURL(on ? 'switch_on_face.png' : 'switch_off_face.png')}"
-          x="4" y="1" width="92" height="100" preserveAspectRatio="none"/>
-        ${on ? `<rect x="24" y="3" width="52" height="2.2" rx="1.1" fill="#ffffff" opacity=".92"/>` : ''}
+          x="4" y="46" width="92" height="100" preserveAspectRatio="none"/>
       </g>
-      ${termDotSVG(30, 104, true, '', 'black')}
-      ${termDotSVG(70, 104, false, '', 'red')}
+      ${termDotSVG(30, 18, false, '', 'red')}
+      ${termDotSVG(70, 18, true, '', 'black')}
+      <text x="30" y="11" text-anchor="middle" font-size="8.5" font-weight="700" fill="#24292f"
+        font-family="system-ui,-apple-system,'Segoe UI',sans-serif">1</text>
+      <text x="70" y="11" text-anchor="middle" font-size="8.5" font-weight="700" fill="#24292f"
+        font-family="system-ui,-apple-system,'Segoe UI',sans-serif">2</text>
     </svg>` }
   },
 
@@ -1745,9 +1756,10 @@ export const TYPES = {
     </svg>` }
   },
 
-  /* ── 三孔插座（面板同样是用户给的三孔图标；L / E / N 三个线头引到**面板上方**，末端即接线热点）── */
+  /* ── 三孔插座（面板同样是用户给的三孔图标；L / E / N 三个线头引到**面板上方**，
+   *    线头长度按用户口径拉长到 3 倍（12 → 36 px），末端即接线热点）── */
   socket3: {
-    label: '三孔插座', w: 104, h: 126,
+    label: '三孔插座', w: 104, h: 152,
     terminals: [
       { id: 'l', label: 'L', name: '火线（L，红）', x: 30, y: 18 },
       { id: 'e', label: 'E', name: '接地（E，黑）', x: 52, y: 18 },
@@ -1755,14 +1767,14 @@ export const TYPES = {
     ],
     render() {
       return `
-    <svg width="104" height="126" viewBox="0 0 104 126">
+    <svg width="104" height="152" viewBox="0 0 104 152">
       <g class="casing">
-        <!-- 上方三根线头：红 L、黑 E、蓝 N -->
-        <path d="M30 36 L30 24" stroke="#e53935" stroke-width="2.8" stroke-linecap="round" fill="none"/>
-        <path d="M52 36 L52 24" stroke="#111827" stroke-width="2.8" stroke-linecap="round" fill="none"/>
-        <path d="M74 36 L74 24" stroke="#2f6fdc" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+        <!-- 上方三根线头（长 36 px）：红 L、黑 E、蓝 N -->
+        <path d="M30 60 L30 24" stroke="#e53935" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+        <path d="M52 60 L52 24" stroke="#111827" stroke-width="2.8" stroke-linecap="round" fill="none"/>
+        <path d="M74 60 L74 24" stroke="#2f6fdc" stroke-width="2.8" stroke-linecap="round" fill="none"/>
         <!-- 面板用用户给的三孔插座图标：上竖孔(E) + 下方两斜孔(L/N) -->
-        <image href="${figURL('socket3_face.png')}" x="8" y="34" width="88" height="88"
+        <image href="${figURL('socket3_face.png')}" x="8" y="60" width="88" height="88"
           preserveAspectRatio="none" style="filter:drop-shadow(0 1.6px 2.4px rgba(15,23,42,.28))"/>
       </g>
       ${termDotSVG(30, 18, false, '', 'red')}
