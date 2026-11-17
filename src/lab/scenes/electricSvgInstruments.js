@@ -262,7 +262,7 @@ const INNER = {
       <text class="plabel" x="163" y="140">转子线圈</text>
       <rect x="150" y="122" width="26" height="8" rx="2" fill="#c9a227" stroke="#8a6a3c"/>
       <text class="plabel" x="163" y="158">换向器 · 电刷</text>
-      <text class="plabel" x="59" y="120">皮带轮（带动风扇）</text>
+      <text class="plabel" x="59" y="120">皮带轮（随电流转动）</text>
       <line x1="59" y1="60" x2="59" y2="104" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="5 3"/>`
   },
   diode() {
@@ -854,24 +854,17 @@ function spdtBladeSVG(pos) {
 }
 
 /**
- * 电动机叶轮叠层（装在皮带轮上）：on 时按电流大小转速旋转。
+ * 电动机转向标识（右上角小圆牌）：↻ / ↺。转速本身由 BuilderSVG 的 MotionLayer
+ * 让实拍图标里的皮带轮真转（字符串里的 CSS 动画会被 250ms 重渲染打断，看不到在转）。
  */
-function motorFanSVG(cx, cy, on, I) {
-  const speed = Math.max(0.32, Math.min(3.2, 1.6 / (0.35 + Math.abs(I || 0) * 5)))
-  const blade = (rot) => `
-    <g transform="rotate(${rot} ${cx} ${cy})">
-      <path d="M${cx} ${cy - 7} C${cx + 16} ${cy - 20}, ${cx + 30} ${cy - 40}, ${cx + 22} ${cy - 52}
-               C${cx + 12} ${cy - 46}, ${cx + 4} ${cy - 26}, ${cx} ${cy - 7} Z"
-            fill="#dde5ee" stroke="#7c8693" stroke-width="1.1" opacity="0.93"/>
-    </g>`
+function motorSpinBadgeSVG(cx, cy, dir) {
+  const cw = dir < 0 ? '↺' : '↻'
   return `
-    <style>.es-motor-fan{transform-box:view-box;transform-origin:${cx}px ${cy}px;
-      animation:es-motor-spin linear infinite;animation-play-state:${on ? 'running' : 'paused'}}
-      @keyframes es-motor-spin{to{transform:rotate(360deg)}}</style>
-    <g class="es-motor-fan" style="animation-duration:${speed.toFixed(2)}s">
-      ${blade(0)}${blade(120)}${blade(240)}
-      <circle cx="${cx}" cy="${cy}" r="9.5" fill="#333a44" stroke="#1d232b" stroke-width="1.2"/>
-      <circle cx="${cx}" cy="${cy}" r="4.4" fill="#8d96a1"/>
+    <g>
+      <circle cx="${cx}" cy="${cy}" r="12.5" fill="#0b1220" opacity="0.62"/>
+      <circle cx="${cx}" cy="${cy}" r="12.5" fill="none" stroke="#34d399" stroke-width="1.1" opacity="0.55"/>
+      <text x="${cx}" y="${cy + 5.4}" text-anchor="middle" font-size="15" font-weight="700"
+        fill="#34d399" font-family="Segoe UI Symbol, serif">${cw}</text>
     </g>`
 }
 
@@ -1431,7 +1424,7 @@ export const TYPES = {
     </svg>` }
   },
 
-  /* ── 小电动机模型（真实图 + 皮带轮叶轮随电流转动） ── */
+  /* ── 小电动机模型（真实图标 + 皮带轮真转，见 BuilderSVG 的 MotionLayer） ── */
   motor: {
     label: '小电动机', w: 200, h: 169,
     terminals: [
@@ -1445,8 +1438,8 @@ export const TYPES = {
     <svg width="200" height="169" viewBox="0 0 200 169">
       ${fitInner(200, 169, 200, 169, INNER.motor())}
       ${photo('motor_c.png', 200, 169)}
-      ${motorFanSVG(59, 60, on, I)}
-      ${on ? noteChipSVG(118, 14, `I = ${Math.abs(I).toFixed(2)} A`, '#4ade80', 96) : noteChipSVG(59, 140, '未通电', '#94a3b8', 58)}
+      ${on ? noteChipSVG(150, 18, `I = ${Math.abs(I).toFixed(2)} A`, '#4ade80', 96) : noteChipSVG(59, 140, '未通电', '#94a3b8', 58)}
+      ${on ? motorSpinBadgeSVG(184, 44, dyn.dir || 1) : ''}
     </svg>` }
   },
 

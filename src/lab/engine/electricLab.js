@@ -530,6 +530,7 @@ export function solveCircuit(comps, wires, opts) {
       o._pos = (c.pos ?? 0) === 1 ? 1 : 0
     } else if (c.type === 'motor') {
       o._I = Math.abs(I)
+      o._Iraw = I                 // 带符号：接线柱 1、2 接反 → 电流反向 → 转子反转
       o._P = I * I * CFG.MOTOR_R
     } else if (c.type === 'diode') {
       o._I = Math.abs(I)

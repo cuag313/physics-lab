@@ -190,6 +190,11 @@ function ElectronFlow({ items }) {
  *   跟着转也看不出来），否则孔边会露出一圈不动的原图。 */
 const METER_SLOT = { x: 52, y: 75.5, w: 79, h: 11.5 }
 const WASHER_DRUM = { cx: 69.4, cy: 69.4, r: 16.1 }
+/* 小电动机卡 200×169：图标 256×216 里的黑色皮带轮 —— 用左侧/顶侧轮缘做最小二乘圆拟合，
+   得圆心 (73.9,65.7)、半径 65.5（源坐标），按 200/256 与 169/216 换算 → 卡内 (57.8,51.4)、半径 51.1。
+   旋转层裁到 r=44：5 个白孔 + 1 个黑孔的最外沿只到 r≈34，留足余量；外圈轮缘与皮带保持静止
+   （轮缘本身是圆，不转也看不出来），这样压在轮缘上的皮带就不会被带着甩。 */
+const MOTOR_PULLEY = { cx: 57.8, cy: 51.4, r: 44 }
 
 /**
  * 运动层：转动的铝盘 / 在洗的滚筒 / 工作中指示灯。
@@ -318,6 +323,31 @@ function MotionLayer({ items }) {
                 return <circle key={'sp' + i} cx={x} cy={yy} r={1.15}
                   fill="#b91c1c" opacity={0.9 - i * 0.22} />
               })}
+            </g>
+          )
+        }
+        /* 小电动机：实拍图标里那只黑色皮带轮（6 个圆孔 + 中心螺帽）真转起来。
+           只把轮盘裁成圆、绕轮心旋转；皮带、磁极、底座都不动（所以裁到 r=44，避开皮带）。
+           转速 ∝ 电流；接线柱 1、2 接反 → dir=-1 → 反转。 */
+        if (it.kind === 'motor') {
+          const M = MOTOR_PULLEY
+          const deg = (st.a * it.dir * 180) / Math.PI
+          const cid = `esbm-pul-${it.id}`
+          return (
+            <g key={it.id} transform={`translate(${it.x},${it.y})`} opacity={it.dim ? 0.22 : 1}>
+              <defs>
+                <clipPath id={cid}>
+                  <circle cx={M.cx} cy={M.cy} r={M.r} />
+                </clipPath>
+              </defs>
+              <g clipPath={`url(#${cid})`}>
+                {/* 图标里的 5 个孔是"真镂空"(alpha=0)，卡片的孔亮是因为露出白底；
+                    这里先垫一层白圆，转过去的孔才始终是白的，否则只会透出底下静止的旧孔。 */}
+                <circle cx={M.cx} cy={M.cy} r={M.r - 1} fill="#ffffff" />
+                <image href={figURL('motor_c.png')} x="0" y="0" width="200" height="169"
+                  preserveAspectRatio="none"
+                  transform={`rotate(${deg.toFixed(1)} ${M.cx} ${M.cy})`} />
+              </g>
             </g>
           )
         }
@@ -656,8 +686,11 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       const h = kwhRef.current.get(c.id) || { kwh: 0 }
       return { kwh: h.kwh || 0, I: Math.abs(o._I || 0) }
     }
-    // 小电动机：I 驱动风扇叶片（通电才转）
-    if (c.type === 'motor') return { I: Math.abs(o._I || 0) }
+    // 小电动机：I 决定转速，dir 决定转向（接线柱 1、2 接反 → 反转）
+    if (c.type === 'motor') {
+      const raw = o._Iraw || 0
+      return { I: Math.abs(o._I || 0), dir: raw < -1e-6 ? -1 : 1 }
+    }
     // 灵敏电流计：中央零点，带符号（正偏 / 反偏），满偏 0.15 A
     if (c.type === 'galvanometer') return { frac: (o._I || 0) / (o._fs || CFG.GALV_FS) }
     if (c.type === 'bulb') {
@@ -819,6 +852,14 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       } else if (c.type === 'washer' && P > 0.5) {
         // 单位：rad / 秒；500 W 约 0.5 转每秒（真实滚筒洗程本来就这么慢）
         out.push({ id: c.id, kind: 'washer', x: c.x, y: c.y, v: 2.0 + 2.4 * P / 2000 })
+      } else if (c.type === 'motor' && I > 0.02) {
+        // 单位：rad / 秒；0.6 A 约半转每秒，1 A 再快一点（NB 里就是这个观感）
+        out.push({
+          id: c.id, kind: 'motor', x: c.x, y: c.y,
+          v: 1.9 + 2.2 * Math.min(1.4, I),
+          dir: (o._Iraw || 0) < -1e-6 ? -1 : 1,
+          dim: dissect,   // 透视时自己也要淡下去，否则轮盘像一块实心盖住内部标注
+        })
       }
     }
     return out
