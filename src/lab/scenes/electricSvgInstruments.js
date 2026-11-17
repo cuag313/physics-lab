@@ -119,16 +119,23 @@ function applianceSVG(kind, c, dyn = {}) {
           <text x="127" y="27.2" text-anchor="middle" font-size="6.5" fill="#b91c1c"
             font-family="system-ui,-apple-system,'Segoe UI',sans-serif">运行中</text>
         </g>` : ''}
-        <!-- 插头：机体下面接一段电源线，线端是一个两脚插头（拖到插孔上整只插头插进去） -->
-        <path d="M75 98 C71 104 79 114 75 124" stroke="#2b2f36" stroke-width="3.2" fill="none" stroke-linecap="round"/>
+        <!-- 插头：机体下面接一段电源线，线端是一个**三脚插头**（地线脚居中、比火零两脚长一点）。
+             插上时插头壳整体下移并放大成实物比例，正好压住插座上的三个孔（三只脚已经进了孔里，不再画脚）。 -->
+        <path d="M75 98 C71 104 79 ${114 + (plugged ? 18 : 0)} 75 ${plugged ? 134 : 124}" stroke="#2b2f36" stroke-width="3.2" fill="none" stroke-linecap="round"/>
         <path d="M74 100 C71 106 78 115 74 123" stroke="#5b616b" stroke-width="1" fill="none" opacity=".7"/>
-        <rect x="60" y="124" width="30" height="18" rx="5" fill="#3c4048" stroke="#2b2f36" stroke-width="1"/>
-        <rect x="63" y="126.5" width="24" height="3" rx="1.5" fill="#ffffff" opacity=".22"/>
-        <!-- 两根黄铜插脚（正是吸到插座孔里的那两个脚，中点 (75,160) 供吸附对齐） -->
-        <rect x="67" y="140" width="5.5" height="20" rx="1.4" fill="#c8a165" stroke="#8f6f38" stroke-width=".9"/>
-        <rect x="77.5" y="140" width="5.5" height="20" rx="1.4" fill="#c8a165" stroke="#8f6f38" stroke-width=".9"/>
-        <rect x="67.6" y="141" width="1.6" height="18" rx=".8" fill="#f1dca8" opacity=".8"/>
-        <rect x="78.1" y="141" width="1.6" height="18" rx=".8" fill="#f1dca8" opacity=".8"/>
+        ${plugged ? `
+        <rect x="52" y="128" width="46" height="40" rx="8" fill="#3c4048" stroke="#2b2f36" stroke-width="1"/>
+        <rect x="56" y="132" width="38" height="4" rx="2" fill="#ffffff" opacity=".22"/>`
+        : `
+        <rect x="56" y="124" width="38" height="18" rx="5" fill="#3c4048" stroke="#2b2f36" stroke-width="1"/>
+        <rect x="59" y="126.5" width="32" height="3" rx="1.5" fill="#ffffff" opacity=".22"/>
+        <!-- 三只脚：L(左) / E(中，略长) / N(右)；L、N 两脚尖的中点正是 (75,160)，供吸附对齐 -->
+        <rect x="61" y="142" width="5" height="18" rx="1.2" fill="#c8a165" stroke="#8f6f38" stroke-width=".9"/>
+        <rect x="84" y="142" width="5" height="18" rx="1.2" fill="#c8a165" stroke="#8f6f38" stroke-width=".9"/>
+        <rect x="72.5" y="142" width="5" height="20" rx="1.2" fill="#c8a165" stroke="#8f6f38" stroke-width=".9"/>
+        <rect x="61.6" y="143" width="1.5" height="16" rx=".7" fill="#f1dca8" opacity=".85"/>
+        <rect x="84.6" y="143" width="1.5" height="16" rx=".7" fill="#f1dca8" opacity=".85"/>
+        <rect x="73.1" y="143" width="1.5" height="18" rx=".7" fill="#f1dca8" opacity=".85"/>`}
       </g>
       ${/* 家电不设接线柱热点（用户要求）：插脚本身就是"接头"，把电器拖到插座孔上就自动插上，
            所以这里不再画 termDot，BuilderSVG 的命中层也跳过家电（NO_TERM_UI）。 */ ''}

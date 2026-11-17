@@ -55,14 +55,21 @@ const PRONG = { x: 75, y: 160 }
 function withPlug(cs, c) {
   if (!PLUG_TYPES.includes(c.type)) return c
   let best = null
-  let bestD = 96
+  let bestScore = Infinity
+  const tw = TYPES[c.type].w
+  const th = TYPES[c.type].h
   for (const s of cs) {
     const h = SOCKET_HOLE[s.type]
     if (!h || s.id === c.id) continue
     const px = s.x + h.x
     const py = s.y + h.y
     const dist = Math.hypot((c.x + PRONG.x) - px, (c.y + PRONG.y) - py)
-    if (dist < bestD) { bestD = dist; best = { s, px, py } }
+    /* 只看"插脚离孔多远"不够宽容：学生多半是把整台机器往插座上一放，
+       所以卡片只要和插座卡片有交叠也算"要插"，再按离孔的距离挑最近的插座。 */
+    const overlap = c.x + tw > s.x - 8 && c.x < s.x + TYPES[s.type].w + 8 && c.y + th > s.y - 8 && c.y < s.y + TYPES[s.type].h + 8
+    if (dist > 130 && !overlap) continue
+    const score = overlap ? Math.min(dist, 130) : dist
+    if (score < bestScore) { bestScore = score; best = { s, px, py } }
   }
   if (!best) return c.plug ? { ...c, plug: null } : c
   return { ...c, x: Math.round(best.px - PRONG.x), y: Math.round(best.py - PRONG.y), plug: best.s.id }
