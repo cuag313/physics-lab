@@ -48,11 +48,14 @@ const PLUG_TYPES = ['washer', 'kettle', 'riceCooker', 'heater']
 const SOCKET_HOLE = { socket2: { x: 47, y: 72 }, socket3: { x: 52, y: 112 } }
 /* 插头是一只**独立可拖**的部件（用户要求：电器放好后只拖插头，电源线可任意方向拉长）。
  * 形状照 NB/实物：深灰**盾形插头壳**（上圆下尖、线从尖上出来）＋三只黄铜脚。
- * 框 36×56，两种状态各有一个"锚点"：
- *   没插 —— 插脚朝上露着，锚点 = L/N 两脚尖中点 (18,2)；
- *   插上 —— 插头壳压在孔位上，锚点 = L/N 两孔所在的那一行 (18,40)。 */
-const PLUG_SIZE = { w: 36, h: 60 }
-const PLUG_ANCHOR = { off: { x: 18, y: 2 }, on: { x: 18, y: 40 } }
+ * 框 34×64，两种状态各有一个"锚点"：
+ *   没插 —— 插脚朝上露着，锚点 = 三脚脚尖那一行 (17,2)；
+ *   插上 —— 插头壳压在孔位上（壳顶 = 锚点上方 24，盖住三孔的 E 孔），锚点 = L/N 两孔那一行 (17,40)。 */
+const PLUG_SIZE = { w: 34, h: 64 }
+const PLUG_ANCHOR = { off: { x: 17, y: 2 }, on: { x: 17, y: 40 } }
+/* 电源线的出口：从机身右下角横着出来。值是"整机图右边界到卡片右边的距离"
+ * （四张图的左右留白不同，按 188/224、152/212、176/146、170/201 的原图比例换算出来的） */
+const CORD_OUT = { washer: 37, kettle: 42, riceCooker: 22, heater: 36 }
 const PLUG_SNAP_R = 84
 
 /** 插头默认挂在电器的右侧（大小比例照实物：插头壳比机器窄得多，整只落在机器右边外侧） */
@@ -1234,19 +1237,45 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             const t = T(c)
             const pos = c.plugPos || plugHome(c)
             /* 线的起点藏在机身背后（机身右下角内侧）：线层比器材层低，露出来的一截正好
-               贴着机器边缘，"从机器里长出来"才像真机；终点咬在插头壳的尖上（壳的尖就是线的出口） */
-            const ax = c.x + t.w - 24
-            const ay = c.y + t.h - 22
+               贴着机器边缘，"从机器里长出来"才像真机；终点咬在插头壳的尖上（壳的尖就是线的出口）。
+               线型照 NB：先横向出机器，再用一个圆角拐过去，直线走到插头——细的浅灰扁线，不是软管 */
+            /* 线从**机身的右下角**横着出来（不是从卡片边缘）：四张整机图左右留白不一样，
+               各自的右边界换算成到卡片右边的距离，再加 6 让它藏进机身里 → 线看着是从机器里长出来的 */
+            const ax = c.x + t.w - (CORD_OUT[c.type] || 36) - 20
+            const ay = c.y + 104
             const bx = pos.x
-            const by = pos.y + (c.plug ? 16 : 58)
-            const dx = bx - ax
-            const sag = Math.min(64, Math.abs(dx) * 0.26 + 14)
-            const d = `M${ax} ${ay} C${ax + dx * 0.3} ${ay + sag} ${bx - dx * 0.22} ${by + 12} ${bx} ${by}`
+            const by = pos.y + (c.plug ? 22 : 62)
+            const sx = Math.sign(bx - ax) || 1
+            const sy = Math.sign(by - ay) || 1
+            /* 三段折线（照真机电源线）：① 横向出机身一小段 → ② 斜着直过去 → ③ 竖直进插头。
+               长距离时不再拉一条横线横穿整块板；两个拐角都是圆角 */
+            const stub = 22
+            const p1 = { x: ax + sx * stub, y: ay }
+            const dvy = Math.abs(by - ay)
+            /* 末尾怎么进插头：插上的从插座下沿竖着下来（线藏在插头壳后）；
+               没插的插头脚朝天，线得"从壳尖横着撇出去"再来一下，才像随手扔在桌上的插头 */
+            const p2 = c.plug
+              ? { x: bx, y: by - sy * Math.min(26, dvy * 0.45) }
+              : { x: bx - sx * 22, y: by }
+            const len1 = Math.hypot(p2.x - p1.x, p2.y - p1.y)
+            const len2 = Math.hypot(bx - p2.x, by - p2.y)
+            let d = `M${ax} ${ay} L${bx} ${by}`
+            if (len1 > 4 && len2 > 4) {
+              const u2 = { x: (p2.x - p1.x) / len1, y: (p2.y - p1.y) / len1 }
+              const u3 = { x: (bx - p2.x) / len2, y: (by - p2.y) / len2 }
+              const r1 = Math.max(4, Math.min(12, len1 * 0.45))
+              const r2 = Math.max(4, Math.min(12, len2 * 0.45))
+              const q1a = { x: p1.x - sx * r1, y: p1.y }
+              const q1b = { x: p1.x + u2.x * r1, y: p1.y + u2.y * r1 }
+              const q2a = { x: p2.x - u2.x * r2, y: p2.y - u2.y * r2 }
+              const q2b = { x: p2.x + u3.x * r2, y: p2.y + u3.y * r2 }
+              d = `M${ax} ${ay} L${q1a.x} ${q1a.y} Q${p1.x} ${p1.y} ${q1b.x} ${q1b.y} L${q2a.x} ${q2a.y} Q${p2.x} ${p2.y} ${q2b.x} ${q2b.y} L${bx} ${by}`
+            }
             return (
               <g key={c.id}>
-                <path d={d} fill="none" stroke="rgba(15,23,42,0.16)" strokeWidth={5.2} strokeLinecap="round" transform="translate(0 1.6)" />
-                <path d={d} fill="none" stroke="#3f4650" strokeWidth={3.1} strokeLinecap="round" />
-                <path d={d} fill="none" stroke="#8b93a1" strokeWidth={1} strokeLinecap="round" opacity=".6" />
+                <path d={d} fill="none" stroke="rgba(15,23,42,0.13)" strokeWidth={4.2} strokeLinecap="round" strokeLinejoin="round" transform="translate(0 1.4)" />
+                <path d={d} fill="none" stroke="#bfc5ce" strokeWidth={3.1} strokeLinecap="round" strokeLinejoin="round" />
+                <path d={d} fill="none" stroke="#f2f4f7" strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round" opacity=".85" />
               </g>
             )
           })}
@@ -1263,33 +1292,31 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
               onPointerDown={(e) => onPlugDown(e, c)}
               title={c.plug ? '插在插座上（拖动可拔出）' : '拖动这只插头，插到插座的孔里'}
             >
-              <svg width={PLUG_SIZE.w} height={PLUG_SIZE.h} viewBox="0 0 36 60">
-                {/* 盾形插头壳（照 NB/实物：上圆、下收成尖，线从尖上出来）。壳 36×42 */}
+              <svg width={PLUG_SIZE.w} height={PLUG_SIZE.h} viewBox="0 0 34 64">
+                {/* 盾形插头壳（照 NB/实物：上圆、下收成尖，线从尖上出来）。壳 34×46 */}
                 {c.plug ? (
-                  <g transform="translate(0 14)">
-                    <path d="M4 0 H32 A4 4 0 0 1 36 4 V30 C34 38 26 42 18 42 C10 42 2 38 0 30 V4 A4 4 0 0 1 4 0 Z"
-                      fill="#3b3f46" stroke="#23272d" strokeWidth="1.1" />
-                    <rect x="5" y="3.4" width="26" height="3.4" rx="1.7" fill="#ffffff" opacity=".20" />
-                    <path d="M5 9.4 H31" stroke="#ffffff" strokeWidth="1" opacity=".09" />
-                    <path d="M3.6 5 A3.4 3.4 0 0 1 7 1.6 H29 A3.4 3.4 0 0 1 32.4 5 V29 C31 35 24 38.6 18 38.6 C12 38.6 5 35 3.6 29 Z"
-                      fill="none" stroke="#ffffff" strokeWidth="1" opacity=".14" />
+                  <g transform="translate(0 16)">
+                    <path d="M4 0 H30 A4 4 0 0 1 34 4 V32 C32 41 25 46 17 46 C9 46 2 41 0 32 V4 A4 4 0 0 1 4 0 Z"
+                      fill="#3b3f46" stroke="#23272d" strokeWidth="1" />
+                    <rect x="4.6" y="3.2" width="24.8" height="3" rx="1.5" fill="#ffffff" opacity=".16" />
+                    <path d="M3.4 6 A3.4 3.4 0 0 1 6.8 2.6 H27.2 A3.4 3.4 0 0 1 30.6 6 V31 C29 38 23 41.6 17 41.6 C11 41.6 5 38 3.4 31 Z"
+                      fill="none" stroke="#ffffff" strokeWidth=".9" opacity=".13" />
                   </g>
                 ) : (
                   <g>
                     {/* 没插：三只黄铜脚朝上露着（脚尖就是吸附点），壳在下面 */}
-                    <rect x="6" y="2" width="5" height="16" rx="1.1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".9" />
-                    <rect x="25" y="2" width="5" height="16" rx="1.1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".9" />
-                    <rect x="15.5" y="2" width="5" height="16" rx="1.1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".9" />
-                    <rect x="6.7" y="3" width="1.4" height="14" rx=".7" fill="#f1dca8" opacity=".85" />
-                    <rect x="25.7" y="3" width="1.4" height="14" rx=".7" fill="#f1dca8" opacity=".85" />
-                    <rect x="16.2" y="3" width="1.4" height="14" rx=".7" fill="#f1dca8" opacity=".85" />
+                    <rect x="5" y="2" width="4.4" height="16" rx="1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".85" />
+                    <rect x="24.6" y="2" width="4.4" height="16" rx="1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".85" />
+                    <rect x="14.8" y="2" width="4.4" height="16" rx="1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".85" />
+                    <rect x="5.6" y="3" width="1.1" height="14" rx=".55" fill="#f1dca8" opacity=".8" />
+                    <rect x="25.2" y="3" width="1.1" height="14" rx=".55" fill="#f1dca8" opacity=".8" />
+                    <rect x="15.4" y="3" width="1.1" height="14" rx=".55" fill="#f1dca8" opacity=".8" />
                     <g transform="translate(0 18)">
-                      <path d="M4 0 H32 A4 4 0 0 1 36 4 V30 C34 38 26 42 18 42 C10 42 2 38 0 30 V4 A4 4 0 0 1 4 0 Z"
-                        fill="#3b3f46" stroke="#23272d" strokeWidth="1.1" />
-                      <rect x="5" y="3.4" width="26" height="3.4" rx="1.7" fill="#ffffff" opacity=".20" />
-                      <path d="M5 9.4 H31" stroke="#ffffff" strokeWidth="1" opacity=".09" />
-                      <path d="M3.6 5 A3.4 3.4 0 0 1 7 1.6 H29 A3.4 3.4 0 0 1 32.4 5 V29 C31 35 24 38.6 18 38.6 C12 38.6 5 35 3.6 29 Z"
-                        fill="none" stroke="#ffffff" strokeWidth="1" opacity=".14" />
+                      <path d="M4 0 H30 A4 4 0 0 1 34 4 V32 C32 41 25 46 17 46 C9 46 2 41 0 32 V4 A4 4 0 0 1 4 0 Z"
+                        fill="#3b3f46" stroke="#23272d" strokeWidth="1" />
+                      <rect x="4.6" y="3.2" width="24.8" height="3" rx="1.5" fill="#ffffff" opacity=".16" />
+                      <path d="M3.4 6 A3.4 3.4 0 0 1 6.8 2.6 H27.2 A3.4 3.4 0 0 1 30.6 6 V31 C29 38 23 41.6 17 41.6 C11 41.6 5 38 3.4 31 Z"
+                        fill="none" stroke="#ffffff" strokeWidth=".9" opacity=".13" />
                     </g>
                   </g>
                 )}
