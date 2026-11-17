@@ -185,9 +185,11 @@ function ElectronFlow({ items }) {
  * 电能表 190×190：转盘窗口就是图标上那条黑圆角矩形（256 坐标 x44..204 / y103..119
  *   → 190 坐标 x33..151、中线 y82），铝盘边沿的刻线从这个窗口里走过去。
  * 洗衣机卡 150×172：机体图放在 x24 y18 w102 h90（188×224 按 meet 收成 75.5×90、
- *   左起 x37.2），图标 256 里滚筒圆心 (95,132)、内圆半径≈48 → 卡内 (75.4,67.8)、r≈15.2。 */
+ *   左起 x37.2），washer_body 坐标里观察孔圆心 (80,128)、半径≈38.5 → 卡内 (69.4,69.4)、r≈16.1。
+ *   旋转层必须把观察孔整个盖住（r 取 16.1，比孔大 0.6，多出来的那圈压在金属门圈上 —— 门圈是圆的，
+ *   跟着转也看不出来），否则孔边会露出一圈不动的原图。 */
 const METER_SLOT = { x: 52, y: 75.5, w: 79, h: 11.5 }
-const WASHER_DRUM = { cx: 75.4, cy: 67.8, r: 15.2 }
+const WASHER_DRUM = { cx: 69.4, cy: 69.4, r: 16.1 }
 
 /**
  * 运动层：转动的铝盘 / 在洗的滚筒 / 工作中指示灯。
@@ -228,39 +230,36 @@ function MotionLayer({ items }) {
     <svg className="esb-motionlayer" width={CW} height={CH}>
       {items.map((it) => {
         const st = phRef.current.get(it.id) || { u: 0, a: 0, led: 0 }
-        /* 电能表：窗口里两块亮斑 + 一块红标记横向走过 = 铝盘在转（窗口就是图标那条
-           黑圆角矩形，位置按 256 坐标量出：x70..176 / y103..119 → 190 坐标 x52..131、y76..88），
-           速度 ∝ 表电流（= 全屋总功率），所以"功率大的用电器，表转得更快"是看得见的；
-           旁边再点一颗脉冲灯（闪烁频率固定，机械表就是靠它"闪一下走一次"）。 */
+        /* 电能表：铝盘窗口里扫过一道镜面高光 = 铝盘在转（窗口是图标那条黑圆角矩形，
+           位置按 256 坐标量出：x70..176 / y103..119 → 190 坐标 x52..131、y76..88），
+           速度 ∝ 表电流（= 全屋总功率），所以"功率大的用电器，表转得更快"是看得见的。 */
         if (it.kind === 'meter') {
           const S = METER_SLOT
-          const y = S.y + S.h / 2
-          /* 盘缘标记：两道斜亮刻线 + 一道红刻线，从窗口里扫过去（斜着画才像"盘沿在转"，
-             正着画就成了水平滑动的方块）。全部留在窗口内，不会闪出去。 */
-          const marks = [0, 0.5].map((k, i) => {
-            const x = S.x + ((st.u + k) % 1) * (S.w - 6)
-            return <rect key={'mk' + i} x={x} y={y - (S.h - 4) / 2} width="5.4" height={S.h - 4} rx="2.4"
-              transform={`rotate(16 ${x + 2.7} ${y})`} fill="rgba(240,246,252,.8)" />
-          })
-          const redX = S.x + ((st.u + 0.25) % 1) * (S.w - 6)
-          marks.push(<rect key="mkred" x={redX} y={y - (S.h - 3.4) / 2} width="4" height={S.h - 3.4} rx="2"
-            transform={`rotate(16 ${redX + 2} ${y})`} fill="rgba(239,68,68,.95)" />)
-          const blink = 0.18 + 0.82 * (0.5 + 0.5 * Math.sin(st.led * 2 * Math.PI * 1.15))
+          /* 高光：铝盘是抛光的铝片，隔着窗口看到的其实就是一道镜面反光在盘缘上来回扫。
+             所以这里不摆"彩色刻线"，只在窗口里放一条柔边白高光（中间亮、两侧渐隐），
+             让它随铝盘一起横着走过去；第二条淡一些、落后半个周期，像同一圈盘沿上的两处反光。 */
+          const gid = `esbm-gl-${it.id}`
+          const cid = `esbm-slot-${it.id}`
+          const gx1 = S.x - 24 + (st.u % 1) * (S.w + 48)
+          const gx2 = S.x - 8 + ((st.u + 0.5) % 1) * (S.w + 16)
           return (
             <g key={it.id} transform={`translate(${it.x},${it.y})`}>
               <defs>
-                <clipPath id={`esbm-slot-${it.id}`}>
+                <linearGradient id={gid} x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0%" stopColor="#ffffff" stopOpacity="0" />
+                  <stop offset="36%" stopColor="#ffffff" stopOpacity="0.14" />
+                  <stop offset="50%" stopColor="#ffffff" stopOpacity="0.92" />
+                  <stop offset="64%" stopColor="#ffffff" stopOpacity="0.14" />
+                  <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+                </linearGradient>
+                <clipPath id={cid}>
                   <rect x={S.x} y={S.y} width={S.w} height={S.h} rx="4" />
                 </clipPath>
               </defs>
-              <g clipPath={`url(#esbm-slot-${it.id})`}>
-                {/* 窗口里只叠"铝盘边沿的刻线"在走：图标本身已经把窗口画成黑框 + 中间一条
-                    亮银横线（那是盘沿），所以这里不再铺底色，只在黑区上补会移动的刻线。 */}
-                {marks}
+              <g clipPath={`url(#${cid})`}>
+                <rect x={gx1} y={S.y} width="24" height={S.h} fill={`url(#${gid})`} />
+                <rect x={gx2} y={S.y} width="12" height={S.h} fill={`url(#${gid})`} opacity="0.55" />
               </g>
-              {/* 脉冲灯（表盘左下白色区，图标那儿本来就是空的） */}
-              <circle cx="39.5" cy="95.5" r="5.2" fill="#fecaca" opacity={blink * 0.45} />
-              <circle cx="39.5" cy="95.5" r="2.4" fill="#dc2626" opacity={0.35 + blink * 0.6} />
             </g>
           )
         }
@@ -295,7 +294,7 @@ function MotionLayer({ items }) {
             <g key={it.id} transform={`translate(${it.x},${it.y})`}>
               <defs>
                 <clipPath id={`esbm-drum-${it.id}`}>
-                  <circle cx={D.cx} cy={D.cy} r={D.r - 1.2} />
+                  <circle cx={D.cx} cy={D.cy} r={D.r - 0.3} />
                 </clipPath>
               </defs>
               <g clipPath={`url(#esbm-drum-${it.id})`}>
