@@ -75,6 +75,42 @@ function photo(file, w, h, style = '') {
     preserveAspectRatio="none" style="${style}"/>`
 }
 
+/* ── 家用电器（用户给的产品图标直接当器材面） ──
+ * 图标本身带插头与电线，用之前已裁掉（washer_body.png / kettle_body.png 只留机体），
+ * 机体按 meet 放进器材框；额定功率写在图标下沿的小铭牌上，通电后改成实测电流。
+ * 两台器材的物理口径一致：R = U²/P（洗衣机 500 W → 96.8 Ω，电热水壶 1500 W → 32.3 Ω），
+ * 接上 220 V 后 I 分别是 2.27 A / 6.82 A —— 电能表走字快慢差 3 倍。 */
+const APPLIANCE = {
+  washer: { file: 'washer_body.png', label: '洗衣机', P: 500 },
+  kettle: { file: 'kettle_body.png', label: '电热水壶', P: 1500 },
+}
+
+function applianceSVG(kind, c, dyn = {}) {
+  const art = APPLIANCE[kind]
+  const P = Number(c.p) || art.P
+  const I = Math.abs(Number(dyn.I) || 0)
+  const on = I > 0.001
+  const R0 = (220 * 220) / P
+  const cap = on ? `${P} W 额定 · I = ${I.toFixed(2)} A` : `${P} W 额定 · R = ${R0.toFixed(1)} Ω`
+  return `
+    <svg width="150" height="158" viewBox="0 0 150 158">
+      ${fitInner(150, 158, 150, 158, INNER.homeLoad())}
+      <g class="casing">
+        <rect x="6" y="1" width="138" height="15" rx="4" fill="#334155"/>
+        <text x="75" y="11.5" text-anchor="middle" font-size="9" fill="#dbeafe"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${art.label} · 220 V</text>
+        <image href="${figURL(art.file)}" x="24" y="18" width="102" height="90"
+          preserveAspectRatio="xMidYMid meet"/>
+        <rect x="31" y="110" width="88" height="13" rx="4" fill="#d8dee7" stroke="#a9b3c0" stroke-width="1.2"/>
+        <circle cx="37" cy="116.5" r="3" fill="${on ? '#dc2626' : '#e2e8f0'}" stroke="#94a3b8" stroke-width="1"/>
+      </g>
+      ${termDotSVG(42, 128, true)}
+      ${termDotSVG(108, 128, false)}
+      <text x="75" y="146" text-anchor="middle" font-size="8.5" fill="#475569"
+        font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${cap}</text>
+    </svg>`
+}
+
 /* 内部结构图（移植自源实验的 .inner 层） */
 const INNER = {
   batteryCells() {
@@ -267,49 +303,48 @@ const INNER = {
       <text class="plabel" x="112" y="196">底座（可接地）</text>`
   },
   mains() {
+    /* 剖视：三孔插座内部就是三条通路 —— 上孔接保护地 PE，左下孔零线 N，右下孔火线 L。
+       坐标按图标里三个孔的位置对位（上孔 85,62；下两孔 70,87 / 100,87），
+       字只写三个字母：再多写整句会压到柱子与标题条（第一版就压了）。 */
     return `
-      <!-- 市电进线：火线 / 零线 / 地线 -->
-      <path d="M52 24 V70 M118 24 V70" stroke="#9aa3ad" stroke-width="3"/>
-      <path d="M85 24 V60" stroke="#c9a227" stroke-width="3"/>
-      <text class="plabel" x="118" y="18">火线 L（红）</text>
-      <text class="plabel" x="52" y="18">零线 N（蓝）</text>
-      <text class="plabel" x="85" y="76">接地线（黄绿）</text>
-      <text class="plabel" x="85" y="118">进户线 · 220V 50Hz</text>`
+      <rect x="36" y="25" width="98" height="98" rx="14" fill="none" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="4 3"/>
+      <path d="M85 62 V112" stroke="#9aa3ad" stroke-width="2.4"/>
+      <path d="M70 87 L52 124 M100 87 L118 124" stroke="#9aa3ad" stroke-width="2.4"/>
+      <text class="plabel" x="93" y="54" font-size="8">PE</text>
+      <text class="plabel" x="58" y="96" font-size="8">N</text>
+      <text class="plabel" x="103" y="96" font-size="8">L</text>`
   },
   homeLoad() {
-    /* 剖视：用电器里真正"用电"的只有一段发热电阻 —— 两根柱之间串的就是它。
-       P = U²/R：额定 220 V 下 R 一改，功率就变，电能表走字快慢也跟着变。
-       只画这一段 + 一枚温控片：150×132 的表体上再贴四五条文字就互相压字了
-       （第一版挂了"双金属温控片（到温断开）"，字正好压在底板与接线柱上）。 */
+    /* 剖视：家用电器里真正"用电"的只有一段发热电阻 —— 两根柱之间串的就是它。
+       P = U²/R：额定 220 V 下 P 一换（洗衣机 500 W / 电热水壶 1500 W），阻值就变，
+       电能表走字快慢也跟着变。 */
     return `
-      <!-- 两根柱之间串着发热电阻 -->
-      <path d="M42 96 V82 Q42 76 50 76 M108 96 V82 Q108 76 100 76" stroke="#9aa3ad" stroke-width="3"/>
-      <rect x="52" y="54" width="46" height="20" rx="4" fill="#fecaca" opacity=".8" stroke="#b91c1c" stroke-width="1.1"/>
-      <path d="M58 64 q6 -8 12 0 q6 8 12 0 q6 -8 12 0" fill="none" stroke="#b45309" stroke-width="2"/>
-      <text class="plabel" x="75" y="48">发热电阻丝（P = U²/R）</text>
-      <rect x="62" y="80" width="26" height="7" rx="2" fill="#f59e0b" opacity=".85"/>`
+      <path d="M42 124 V104 Q42 98 50 98 M108 124 V104 Q108 98 100 98" stroke="#9aa3ad" stroke-width="3"/>
+      <rect x="52" y="70" width="46" height="22" rx="4" fill="#fecaca" opacity=".8" stroke="#b91c1c" stroke-width="1.1"/>
+      <path d="M58 81 q6 -8 12 0 q6 8 12 0 q6 -8 12 0" fill="none" stroke="#b45309" stroke-width="2"/>
+      <text class="plabel" x="75" y="62" font-size="8.5">发热电阻丝 R</text>
+      <rect x="62" y="97" width="26" height="7" rx="2" fill="#f59e0b" opacity=".85"/>`
   },
   energyMeter() {
-    /* 透视层：元件旁标小圆编号、图例集中放在底部两行 —— 避免标签自己压在一起
-       （第一版把"电流线圈 / 电压线圈 / 制动磁铁 / 齿轮计数器"四段文字分散贴元件，
-         在 190×150 的表体上互相重叠，还压住铭牌条） */
+    /* 透视层：按 190×190 的表体排版。器材面已换成实拍图标，内部元件整体压到计数器窗口
+       下方（y ≥ 74），四枚编号贴元件旁，图例压成一行 6.2px —— 否则会和计数器数字、
+       铭牌贴纸、底部四个柱互相压字（第一版两行 7.2px 图例就横穿了接线柱那一排）。 */
     const badge = (x, y, n, fill) => `
-      <circle cx="${x}" cy="${y}" r="5.6" fill="${fill}" opacity=".95"/>
-      <text x="${x}" y="${y + 2.6}" text-anchor="middle" font-size="7.4" font-weight="700" fill="#fff">${n}</text>`
+      <circle cx="${x}" cy="${y}" r="4.8" fill="${fill}" opacity=".95"/>
+      <text x="${x}" y="${y + 2.3}" text-anchor="middle" font-size="6.6" font-weight="700" fill="#fff">${n}</text>`
     return `
-      <!-- 电能表剖视：电流线圈 / 电压线圈 + 铝转盘 + 制动磁铁 + 计数器齿轮 -->
-      <rect x="30" y="34" width="14" height="30" rx="3" fill="#b45309" stroke="#78350f" stroke-width="1.2"/>
-      <path d="M37 34 V26 M37 64 V74" stroke="#b45309" stroke-width="2"/>
-      ${badge(26, 31, '1', '#b45309')}
-      <rect x="46" y="34" width="12" height="26" rx="2" fill="#a16207" stroke="#78350f" stroke-width="1"/>
-      ${badge(52, 72, '2', '#a16207')}
-      <circle cx="95" cy="66" r="28" fill="none" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="4 3"/>
-      ${badge(95, 90, '3', '#2563eb')}
-      <rect x="118" y="44" width="12" height="44" rx="2" fill="#e11d48" opacity=".75"/>
-      ${badge(124, 96, '4', '#e11d48')}
-      <path d="M130 66 H152" stroke="#8a6a3c" stroke-width="2"/>
-      <text x="95" y="112" text-anchor="middle" font-size="7.2" fill="#334155">① 电流线圈（串在 1-3 之间）· ② 电压线圈（并联）</text>
-      <text x="95" y="122" text-anchor="middle" font-size="7.2" fill="#334155">③ 铝转盘（涡流驱动力矩）· ④ 制动磁铁 → 齿轮驱动计数器</text>`
+      <rect x="40" y="74" width="11" height="26" rx="2.5" fill="#b45309" stroke="#78350f" stroke-width="1"/>
+      <path d="M45.5 74 V64 M45.5 100 V112" stroke="#b45309" stroke-width="2"/>
+      ${badge(36, 71, '1', '#b45309')}
+      <rect x="56" y="74" width="9" height="22" rx="2" fill="#a16207" stroke="#78350f" stroke-width="1"/>
+      ${badge(61, 100, '2', '#a16207')}
+      <circle cx="100" cy="96" r="21" fill="none" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="4 3"/>
+      ${badge(100, 121, '3', '#2563eb')}
+      <rect x="124" y="74" width="10" height="32" rx="2" fill="#e11d48" opacity=".75"/>
+      ${badge(129, 110, '4', '#e11d48')}
+      <path d="M134 92 H152" stroke="#8a6a3c" stroke-width="2"/>
+      <text x="100" y="140" text-anchor="middle" font-size="6.6" fill="#334155">① 电流线圈（串 1-3） ② 电压线圈（并联 1-2）</text>
+      <text x="100" y="151" text-anchor="middle" font-size="6.6" fill="#334155">③ 铝转盘 ④ 制动磁铁 → 齿轮带动计数器</text>`
   },
   jouleTube() {
     return `
@@ -1517,160 +1552,98 @@ export const TYPES = {
     </svg>` }
   },
 
-  /* ── 家庭电源 220V（火线 L / 零线 N，家庭电路用电源支持件） ── */
+  /* ── 家用交流电（三孔插座：用户给的面板图标，L / N 两柱接进家庭电路） ── */
   mains: {
-    label: '家庭电源 220V', w: 170, h: 130,
+    label: '家用交流电', w: 170, h: 156,
     terminals: [
-      { id: 'n', label: 'N', name: '零线（N，蓝）', x: 52, y: 108 },
-      { id: 'l', label: 'L', name: '火线（L，红）', x: 118, y: 108 },
+      { id: 'n', label: 'N', name: '零线（N，蓝）', x: 52, y: 132 },
+      { id: 'l', label: 'L', name: '火线（L，红）', x: 118, y: 132 },
     ],
     render() {
       return `
-    <svg width="170" height="130" viewBox="0 0 170 130">
-      ${fitInner(170, 130, 170, 130, INNER.mains())}
+    <svg width="170" height="156" viewBox="0 0 170 156">
+      ${fitInner(170, 156, 170, 156, INNER.mains())}
       <g class="casing">
-        <!-- 面板箱体 -->
-        <rect x="22" y="18" width="126" height="82" rx="10" fill="#f2ede3" stroke="#c9c0ab" stroke-width="1.4"/>
-        <rect x="22" y="18" width="126" height="16" rx="8" fill="#e2d9c6" stroke="#c9c0ab" stroke-width="1"/>
-        <text x="85" y="44" text-anchor="middle" font-size="12.5" font-weight="700" fill="#4a4238">家庭电源 220V</text>
-        <text x="85" y="58" text-anchor="middle" font-size="9" fill="#8a7f6c">交流 50Hz · 有效值（按直流等效）</text>
-        <!-- 正弦标记 -->
-        <path d="M66 74 q5 -9 10 0 q5 9 10 0 q5 -9 10 0 q5 9 10 0" fill="none" stroke="#c25a12" stroke-width="1.8"/>
-        <!-- 引线柱脚 -->
-        <path d="M52 100 V106 M118 100 V106" stroke="#8d96a1" stroke-width="5"/>
+        <rect x="6" y="1" width="158" height="16" rx="4" fill="#334155"/>
+        <text x="85" y="13" text-anchor="middle" font-size="9.5" fill="#dbeafe"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">家用交流电 · 三孔插座 220 V</text>
+        <image href="${figURL('socket_face.png')}" x="32" y="21" width="106" height="106"
+          preserveAspectRatio="xMidYMid meet"/>
+        <rect x="30" y="124" width="110" height="14" rx="5" fill="#d8dee7" stroke="#a9b3c0" stroke-width="1.2"/>
       </g>
-      ${termDotSVG(52, 108, true, 'N')}
-      ${termDotSVG(118, 108, false, 'L')}
-      ${noteChipSVG(85, 122, 'L 火线 · N 零线', '#fbbf24', 112)}
+      ${termDotSVG(52, 132, true, 'N')}
+      ${termDotSVG(118, 132, false, 'L')}
     </svg>` }
   },
 
-  /* ── 家用负载（家庭电路里真正"用电"的那件器材；双击在 100 / 800 / 1500 W 之间换档） ──
-   * 为什么要单列一件：电池组只有 3 V，干路电流零点几安，电能表的铝盘与计数器几乎不动，
-   * 「转数法测电功」在 Tab2 里演不出来。换成市电 220 V + 这件负载，I = P/U 才有
-   * 0.45 / 3.64 / 6.82 A，配右上「走字倍速」才看得见转盘快慢与计数器跳字。
-   * 三档都按 R = U²/P 定阻：100 W → 484 Ω、800 W → 60.5 Ω、1500 W → 32.3 Ω。 */
-  homeLoad: {
-    label: '家用负载', w: 150, h: 132,
+  /* ── 家用电器（家庭电路里真正"用电"的器材，用户给的产品图标当器材面） ──
+   * 为什么要单列：电池组只有 3 V，干路电流零点几安，电能表的转盘与计数器几乎不动，
+   * 「转数法测电功」在 Tab2 里演不出来。换成家用交流电 220 V + 这两台电器，
+   * I = P/U 才有 2.27 A / 6.82 A，配右上「走字倍速」才看得见转盘快慢与计数器跳字。
+   * 两台都按 R = U²/P 定阻（洗衣机 500 W → 96.8 Ω，电热水壶 1500 W → 32.3 Ω）。 */
+  washer: {
+    label: '洗衣机', w: 150, h: 158,
     terminals: [
-      { id: 'a', label: '1', name: '接线柱 1', x: 42, y: 110 },
-      { id: 'b', label: '2', name: '接线柱 2', x: 108, y: 110 },
+      { id: 'a', label: '1', name: '接线柱 1', x: 42, y: 128 },
+      { id: 'b', label: '2', name: '接线柱 2', x: 108, y: 128 },
     ],
-    render(c, dyn = {}) {
-      const P = Number(c.p) || 800
-      const I = Math.abs(Number(dyn.I) || 0)
-      const on = I > 0.001                 // 有电流才点灯/加热，静止时不发光
-      const R0 = (220 * 220) / P           // 额定电压下的电阻（前端只作展示用）
-      const kind = P <= 200 ? 'lamp' : P <= 1000 ? 'kettle' : 'cooker'
-
-      const lamp = `
-        <rect x="66" y="84" width="18" height="8" rx="2.5" fill="#cbd5e1" stroke="#94a3b8" stroke-width="1.2"/>
-        <rect x="68" y="74" width="14" height="11" rx="2" fill="#cbd5e1" stroke="#94a3b8" stroke-width="1"/>
-        ${on ? '<circle cx="75" cy="56" r="31" fill="#fbbf24" opacity=".16"/>' : ''}
-        <ellipse cx="75" cy="56" rx="16" ry="18" fill="${on ? '#fde68a' : '#f1f5f9'}" stroke="#94a3b8" stroke-width="1.4"/>
-        <path d="M68 62 q2 -6 4 0 q2 6 4 0 q2 -6 4 0" fill="none"
-          stroke="${on ? '#ea580c' : '#94a3b8'}" stroke-width="1.2"/>`
-
-      const kettle = `
-        <path d="M58 46 L46 30 L50 27 L62 42 Z" fill="${on ? '#f8fafc' : '#e8edf3'}" stroke="#94a3b8" stroke-width="1.3"/>
-        <path d="M57 44 L93 44 L90 92 L60 92 Z" fill="${on ? '#f8fafc' : '#e8edf3'}" stroke="#94a3b8" stroke-width="1.4"/>
-        <rect x="54" y="39" width="42" height="6" rx="3" fill="#cbd5e1" stroke="#94a3b8" stroke-width="1.1"/>
-        <path d="M93 52 Q110 54 110 68 Q110 82 93 84" fill="none" stroke="#94a3b8" stroke-width="2"/>
-        <rect x="64" y="58" width="24" height="26" rx="3"
-          fill="${on ? 'rgba(59,130,246,0.30)' : 'rgba(148,163,184,0.22)'}"/>
-        ${on ? '<path d="M67 64 H85 M67 72 H85 M67 80 H85" stroke="#dc2626" stroke-width="1.6"/>' : ''}
-        <circle cx="67" cy="49" r="2.6" fill="${on ? '#dc2626' : '#e2e8f0'}" stroke="#94a3b8" stroke-width="1"/>`
-
-      const cooker = `
-        ${on ? '<rect x="50" y="62" width="50" height="26" rx="5" fill="rgba(220,38,38,0.16)"/>' : ''}
-        <rect x="46" y="58" width="58" height="34" rx="7" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.4"/>
-        <rect x="44" y="44" width="62" height="15" rx="5" fill="#eef2f7" stroke="#94a3b8" stroke-width="1.3"/>
-        <path d="M52 45 Q75 33 98 45" fill="none" stroke="#94a3b8" stroke-width="2"/>
-        <circle cx="75" cy="42" r="3" fill="#cbd5e1" stroke="#94a3b8" stroke-width="1"/>
-        <circle cx="93" cy="70" r="2.7" fill="${on ? '#dc2626' : '#e2e8f0'}" stroke="#94a3b8" stroke-width="1"/>
-        <circle cx="93" cy="81" r="2.4" fill="${on ? '#f59e0b' : '#e2e8f0'}" stroke="#94a3b8" stroke-width="1"/>`
-
-      const cap = on
-        ? `${P} W 额定 · I = ${I.toFixed(2)} A`
-        : `${P} W 额定 · R = ${R0 >= 100 ? Math.round(R0) : R0.toFixed(1)} Ω`
-
-      return `
-    <svg width="150" height="132" viewBox="0 0 150 132">
-      ${fitInner(150, 132, 150, 132, INNER.homeLoad())}
-      <g class="casing">
-        <rect x="6" y="1" width="138" height="15" rx="4" fill="#334155"/>
-        <text x="75" y="11.5" text-anchor="middle" font-size="9" fill="#dbeafe"
-          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">家用负载 · 220 V 交流</text>
-        ${kind === 'lamp' ? lamp : kind === 'kettle' ? kettle : cooker}
-        <rect x="31" y="92" width="88" height="13" rx="4" fill="#d8dee7" stroke="#a9b3c0" stroke-width="1.2"/>
-      </g>
-      ${termDotSVG(42, 110, true)}
-      ${termDotSVG(108, 110, false)}
-      <text x="75" y="125" text-anchor="middle" font-size="8.5" fill="#475569"
-        font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${cap}</text>
-    </svg>` }
+    render(c, dyn = {}) { return applianceSVG('washer', c, dyn) },
+  },
+  kettle: {
+    label: '电热水壶', w: 150, h: 158,
+    terminals: [
+      { id: 'a', label: '1', name: '接线柱 1', x: 42, y: 128 },
+      { id: 'b', label: '2', name: '接线柱 2', x: 108, y: 128 },
+    ],
+    render(c, dyn = {}) { return applianceSVG('kettle', c, dyn) },
   },
 
-  /* ── 单相电能表（仓库无实拍图，按实物 1:1 绘：铝转盘窗 + 6 位计数器 + 1/2/3/4 四柱） ── */
+  /* ── 单相电能表（器材面用用户给的实拍图标 meter_face.png，1/2/3/4 四柱照图标上的位置对位）
+   * 图标自己印的是 2000 r/kWh，与本仿真「转数法」用的 600 r/kWh 口径不一致，
+   * 所以计数器窗口和铭牌两行都用本工程的图层盖上去：窗口换成随 kwh 变化的六位数字，
+   * 铭牌换成 220 V 10(40) A · 600 r/kWh 的贴纸（不盖的话学生会按 2000 去算转数）。 */
   energyMeter: {
-    label: '电能表', w: 190, h: 150,
+    label: '电能表', w: 190, h: 190,
     meter: true,     // 双击弹读数条（W = … kW·h · I = … A）——BuilderSVG 只给 meter 类器材挂 readout
     terminals: [
-      { id: 'i1', label: '1', name: '进线 1（相线）', x: 40, y: 132 },
-      { id: 'i2', label: '2', name: '进线 2（零线）', x: 76, y: 132 },
-      { id: 'o1', label: '3', name: '出线 3（相线）', x: 114, y: 132 },
-      { id: 'o2', label: '4', name: '出线 4（零线）', x: 150, y: 132 },
+      { id: 'i1', label: '1', name: '进线 1（相线）', x: 55, y: 162 },
+      { id: 'i2', label: '2', name: '进线 2（零线）', x: 79, y: 162 },
+      { id: 'o1', label: '3', name: '出线 3（相线）', x: 102, y: 162 },
+      { id: 'o2', label: '4', name: '出线 4（零线）', x: 126, y: 162 },
     ],
     render(c, dyn = {}) {
       const kwh = Math.max(0, Number(dyn.kwh ?? c.kwh0 ?? 0))
       const I = Math.abs(Number(dyn.I) || 0)
       // 5 位整数 + 1 位小数（红色），与机械表同款
       const digits = String(Math.floor(kwh * 10) % 1000000).padStart(6, '0')
-      // 铝盘转速 ∝ 干路电流；无电流时静止（真实表断电不转）
-      const dur = I > 0.005 ? Math.max(0.3, 0.6 / Math.max(I, 0.02)) : 0
-      const spin = dur
-        ? `<animateTransform attributeName="transform" type="rotate" from="0 62 66" to="360 62 66" dur="${dur.toFixed(2)}s" repeatCount="indefinite"/>`
-        : ''
       const cells = digits.split('').map((d, i) => {
-        const x = 106 + i * 12
+        const cx = 53.3 + i * 16.5
         const red = i === digits.length - 1
-        return `<rect x="${x}" y="46" width="10.5" height="16" rx="1.5" fill="${red ? '#7f1d1d' : '#0f172a'}"/>`
-          + `<text x="${x + 5.25}" y="58.5" text-anchor="middle" font-size="12" font-family="ui-monospace,Consolas,monospace" fill="${red ? '#fecaca' : '#e5eef7'}">${d}</text>`
+        return (red ? `<rect x="${cx - 7.5}" y="46.5" width="15" height="20" rx="2" fill="#7f1d1d" stroke="#b91c1c" stroke-width=".9"/>` : '')
+          + `<text x="${cx}" y="62" text-anchor="middle" font-size="13" font-weight="700"
+             font-family="ui-monospace,Consolas,monospace" fill="${red ? '#fecaca' : '#e7eef7'}">${d}</text>`
       }).join('')
       return `
-    <svg width="190" height="150" viewBox="0 0 190 150">
-      <defs>
-        <linearGradient id="es-em-case" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#f4f7fb"/><stop offset="100%" stop-color="#d5dde8"/>
-        </linearGradient>
-      </defs>
-      ${fitInner(190, 150, 190, 150, INNER.energyMeter())}
+    <svg width="190" height="190" viewBox="0 0 190 190">
+      ${fitInner(190, 190, 190, 190, INNER.energyMeter())}
       <g class="casing">
-        <rect x="3" y="4" width="184" height="132" rx="9" fill="url(#es-em-case)" stroke="#b9c3d1" stroke-width="1.6"/>
-        <rect x="3" y="4" width="184" height="132" rx="9" fill="none" stroke="#ffffff" stroke-width="1" opacity=".75"/>
-        <rect x="11" y="10" width="168" height="17" rx="4" fill="#334155"/>
-        <text x="95" y="22.5" text-anchor="middle" font-size="9.5" fill="#dbeafe"
-          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">单相电能表 · 220V 10(40)A</text>
-        <circle cx="62" cy="66" r="29" fill="#0b1220" stroke="#8b98a9" stroke-width="2"/>
-        <g>
-          ${spin}
-          <circle cx="62" cy="66" r="26" fill="#e8edf4"/>
-          <path d="M62 40 A26 26 0 0 1 88 66 L62 66 Z" fill="#9fb0c4" opacity=".8"/>
-          <rect x="58" y="41" width="8" height="13" rx="2" fill="#1f2937"/>
-          <circle cx="62" cy="66" r="2.6" fill="#64748b"/>
-        </g>
-        <rect x="100" y="42" width="78" height="24" rx="3" fill="#0b1220" stroke="#8b98a9" stroke-width="1.4"/>
-        <text x="139" y="74" text-anchor="middle" font-size="8" fill="#64748b">kW·h</text>
-        <text x="62" y="104" text-anchor="middle" font-size="8.5" fill="#475569"
-          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${I > 0.005 ? `I = ${I.toFixed(2)} A · 600r/kWh` : '无电流 · 转盘静止'}</text>
-        <rect x="14" y="116" width="162" height="18" rx="4" fill="#c3ccd8" opacity=".55"/>
+        <image href="${figURL('meter_face.png')}" x="0" y="0" width="190" height="190"
+          preserveAspectRatio="xMidYMid meet"/>
+        <!-- 计数器窗口：盖掉图标里的静态 000000，换成随 kwh 变化的六位数字 -->
+        <rect x="45" y="44" width="99" height="25" rx="3" fill="#0a0d12"/>
+        ${cells}
+        <!-- 铭牌贴纸：把图标印的 2000 r/kWh 换成 600 r/kWh，并显示实际电流 -->
+        <rect x="46" y="86" width="99" height="31" rx="3" fill="#f8f8f5" stroke="#dddbd2" stroke-width="1"/>
+        <text x="95.5" y="98" text-anchor="middle" font-size="7.5" fill="#3f3f46"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">220 V 10(40) A · 600 r/kWh</text>
+        <text x="95.5" y="110" text-anchor="middle" font-size="7.5" fill="${I > 0.005 ? '#b45309' : '#64748b'}"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${I > 0.005 ? `I = ${I.toFixed(2)} A · 铝盘转动中` : '无电流 · 铝盘不转'}</text>
       </g>
-      ${cells}
       ${termDotsSVG([
-        { x: 40, y: 132, label: '1', dark: true },
-        { x: 76, y: 132, label: '2', dark: true },
-        { x: 114, y: 132, label: '3', dark: false },
-        { x: 150, y: 132, label: '4', dark: false },
+        { x: 55, y: 162, label: '1', dark: true },
+        { x: 79, y: 162, label: '2', dark: true },
+        { x: 102, y: 162, label: '3', dark: false },
+        { x: 126, y: 162, label: '4', dark: false },
       ])}
     </svg>` }
   },

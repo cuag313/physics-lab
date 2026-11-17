@@ -653,7 +653,7 @@ export default function ElectricEnergyScene() {
           <InfoDock
             align="left"
             offset={{ left: 26, top: 26 }}
-            hint="点右侧器材加入 → 拖拽移动 → 点接线柱连线。家庭电路接法：市电 L→表 1、N→表 2、表 3→开关 a、开关 b→负载 1、负载 2→表 4。双击家用负载换 100/800/1500 W；右上「走字倍速」加快时间才看得见计数器跳字。"
+            hint="点右侧器材加入 → 拖拽移动 → 点接线柱连线。家庭电路接法：插座 L→表 1、N→表 2、表 3→开关 a、开关 b→电器 1、电器 2→表 4。洗衣机 500 W、电热水壶 1500 W，两台可以并联；右上「走字倍速」加快时间才看得见计数器跳字。"
             hintTitle="操作说明"
           />
         )}
@@ -663,11 +663,12 @@ export default function ElectricEnergyScene() {
             items={[
               { type: 'battery', name: '电池组', icon: thumb('battery') },
               { type: 'accumulator', name: '蓄电池', icon: thumb('accumulator') },
-              // 家庭电路两件（本专题补遗留新增）：市电 220 V + 家用负载
+              // 家庭电路三件（本专题补遗留新增）：家用交流电（三孔插座）+ 洗衣机 500 W + 电热水壶 1500 W
               // 电池组只有 3 V，干路电流零点几安，电功几乎为 0、表不走字；
-              // 换成市电 + 家用负载才有 I = P/U = 0.45~6.82 A，配右上「走字倍速」看得见读数在跳
-              { type: 'mains', name: '市电 220V', icon: thumb('mains') },
-              { type: 'homeLoad', name: '家用负载', icon: thumb('homeLoad') },
+              // 换成家用交流电 + 电器，I = P/U = 2.27 / 6.82 A，配右上「走字倍速」才看得见计数器跳字
+              { type: 'mains', name: '家用交流电', icon: thumb('mains') },
+              { type: 'washer', name: '洗衣机', icon: thumb('washer') },
+              { type: 'kettle', name: '电热水壶', icon: thumb('kettle') },
               { type: 'bulb', name: '灯泡', icon: thumb('bulb') },
               { type: 'switch', name: '开关', icon: thumb('switch') },
               { type: 'resistor5', name: '电阻', icon: thumb('resistor5') },

@@ -9,6 +9,7 @@
  *     type ∈ battery | bulb | switch | ammeter | voltmeter | rheostat
  *          | resistor5 | resistor10 | resistor15 | switch2 | motor | diode
  *          | fuse | testPencil | electroscope | resBox | multimeter | relay | mains
+ *          | washer | kettle | energyMeter
  *     closed —— 开关通断；f ∈ [0,1]、rmax —— 滑动变阻器接入比例与最大阻值
  *     pos —— 单刀双掷：0=com 接 a，1=com 接 b；dials —— 电阻箱拨盘 [×1k,×100,×10,×1]
  *     mode —— 多用电表档位 'V' | 'A' | 'Ω'；blown —— 保险丝已熔断（持久状态，场景写回）
@@ -104,13 +105,14 @@ export const TERM_IDS = {
   multimeter: ['com', 'in'],         // 多用电表：com(黑) / in(红，V·Ω·A 共用)
   relay: ['ct1', 'ct2', 'ck1', 'ck2'], // 触点 ×2 + 线圈 ×2
   energyMeter: ['i1', 'i2', 'o1', 'o2'], // 单相电能表：1/2 进线，3/4 出线（1-3 电流线圈，2-4 零线直通）
-  mains: ['n', 'l'],                 // 家庭电源：零线 N / 火线 L
+  mains: ['n', 'l'],                 // 家用交流电（三孔插座）：零线 N / 火线 L
+  washer: ['a', 'b'],                // 洗衣机（500 W，R = U²/P）：两接线柱
+  kettle: ['a', 'b'],                // 电热水壶（1500 W，R = U²/P）：两接线柱
   jouleTube: ['a', 'b'],             // 焦耳定律 U 形管：左管 R1、右管 R2 串联，a/b 两接线柱
   jouleSet: ['a1', 'a2', 'b1', 'b2'], // 焦耳定律演示器：A 组（a1-a2）、B 组（b1-b2）两段电阻各一对柱
   electromagnet: ['a', 'b'],         // 电磁铁（线圈 + 软铁芯）：线圈两端两接线柱
   ostersBoard: ['a', 'b'],           // 奥斯特实验板（通电直导线 + 小磁针）：直导线两端两接线柱
   galvanometer: ['neg', 'pos'],      // 灵敏电流计（中央零点，两柱）：电磁感应实验专用
-  homeLoad: ['a', 'b'],              // 家用负载（100/800/1500 W 三档，R = U²/P）：两接线柱
 }
 
 const keyOf = (cid, tid) => cid + ':' + tid
@@ -263,13 +265,13 @@ export function solveCircuit(comps, wires, opts) {
       const R = c.closed ? 0.001 : 1e8
       stampR(A, a, bb, R)
       els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
-    } else if (c.type === 'homeLoad') {
-      // 家用负载：额定功率 P 定阻（R = U²/P，按 220 V 额定电压标定）
-      // 100 W → 484 Ω、800 W → 60.5 Ω、1500 W → 32.3 Ω；
-      // 接 220 V 时 I = P/U = 0.45 / 3.64 / 6.82 A —— 电能表的转盘快慢就由它决定。
+    } else if (c.type === 'washer' || c.type === 'kettle') {
+      // 家用电器：额定功率 P 定阻（R = U²/P，按 220 V 额定电压标定）
+      // 洗衣机 500 W → 96.8 Ω、电热水壶 1500 W → 32.3 Ω；
+      // 接 220 V 时 I = P/U = 2.27 / 6.82 A —— 电能表的转盘快慢与走字速度就由它决定。
       const a = netOf(c, 'a')
       const bb = netOf(c, 'b')
-      const P0 = Number(c.p) || 800
+      const P0 = Number(c.p) || (c.type === 'washer' ? 500 : 1500)
       const R = (CFG.MAINS_V * CFG.MAINS_V) / P0
       stampR(A, a, bb, R)
       els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
@@ -518,8 +520,8 @@ export function solveCircuit(comps, wires, opts) {
       o._I = Math.abs(I)
       o._R = e.R
       o._P = I * I * e.R
-    } else if (c.type === 'homeLoad') {
-      // 实际电流 + 实际功率（换档只改 c.p，电流由电路自己算出来）
+    } else if (c.type === 'washer' || c.type === 'kettle') {
+      // 实际电流 + 实际功率（表上的瓦数由电路算出来，跟额定值无关）
       o._I = Math.abs(I)
       o._R = e.R
       o._P = I * I * e.R

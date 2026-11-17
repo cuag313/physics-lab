@@ -229,7 +229,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       id: uidRef.current++, type,
       x: Math.max(0, Math.min(CW - t.w, Math.round(x))),
       y: Math.max(0, Math.min(CH - t.h, Math.round(y))),
-      closed: false, showRead: false, f: 0.4, rmax: CFG.RHEO_MAX, p: 800,
+      closed: false, showRead: false, f: 0.4, rmax: CFG.RHEO_MAX,
     }
     setComps((cs) => cs.concat(c))
     return c
@@ -410,13 +410,6 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     } else if (c.type === 'electromagnet' && isDouble) {
       // 双击电磁铁：插 / 抽软铁芯（磁性强弱对比实验的关键一步）
       setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, core: x.core === false } : x)))
-    } else if (c.type === 'homeLoad' && isDouble) {
-      // 双击家用负载：100 W → 800 W → 1500 W 循环换档（R = U²/P 跟着改，电流与走字快慢一起变）
-      setComps((cs) => cs.map((x) => {
-        if (x.id !== c.id) return x
-        const p0 = Number(x.p) || 800
-        return { ...x, p: p0 >= 1500 ? 100 : p0 >= 800 ? 1500 : 800 }
-      }))
     } else if (T(c) && T(c).meter && isDouble) {
       setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, showRead: !x.showRead } : x)))
     } else {
@@ -512,7 +505,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     if (c.type === 'ostersBoard') {
       return { I: o._I || 0, sign: o._sign || 0, bmag: o._bmag || 0 }
     }
-    if (c.type === 'homeLoad') return { I: Math.abs(o._I || 0), P: o._P || 0, R: o._R || 0 }
+    if (c.type === 'washer' || c.type === 'kettle') return { I: Math.abs(o._I || 0), P: o._P || 0, R: o._R || 0 }
     if (c.type === 'energyMeter') {
       const h = kwhRef.current.get(c.id) || { kwh: 0 }
       return { kwh: h.kwh || 0, I: Math.abs(o._I || 0) }
@@ -615,10 +608,12 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     if (batI > 1e-4) {
       const lit = bulbs.filter((b) => (solved[b.id]?._P || 0) > 0.001)
       if (lit.length) return { tone: 'ok', text: `✅ 通路 · ${lit.length} 只灯泡发光` }
-      const loads = comps.filter((c) => c.type === 'homeLoad' && Math.abs(solved[c.id]?._I || 0) > 0.005)
+      const loads = comps.filter((c) => (c.type === 'washer' || c.type === 'kettle')
+        && Math.abs(solved[c.id]?._I || 0) > 0.005)
       if (loads.length) {
-        const P = Math.round(Number(loads[0].p) || 800)
-        return { tone: 'ok', text: `✅ 家庭电路接通 · 用电器 ${P} W 工作，电能表走字` }
+        const total = Math.round(loads.reduce((s, c) => s + (Number(c.p) || (c.type === 'washer' ? 500 : 1500)), 0))
+        const names = loads.map((c) => (c.type === 'washer' ? '洗衣机' : '电热水壶')).join(' + ')
+        return { tone: 'ok', text: `✅ 家庭电路接通 · ${names} ${total} W 工作，电能表走字` }
       }
       return { tone: 'ok', text: '✅ 电路接通' }
     }
