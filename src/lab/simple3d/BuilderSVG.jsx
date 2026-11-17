@@ -235,30 +235,35 @@ function MotionLayer({ items }) {
            速度 ∝ 表电流（= 全屋总功率），所以"功率大的用电器，表转得更快"是看得见的。 */
         if (it.kind === 'meter') {
           const S = METER_SLOT
-          /* 高光：铝盘是抛光的铝片，隔着窗口看到的其实就是一道镜面反光在盘缘上来回扫。
-             所以这里不摆"彩色刻线"，只在窗口里放一条柔边白高光（中间亮、两侧渐隐），
-             让它随铝盘一起横着走过去；第二条淡一些、落后半个周期，像同一圈盘沿上的两处反光。 */
+          /* 高光：铝盘是抛光的铝片，隔着窄窗口看到的其实就是"盘沿上一处镜面反光在扫"。
+             所以这里不摆彩色刻线，也不铺通高的白带（那会像窗口里插了块挡板），只在
+             图标本来就画好的那条银色盘沿上放一团柔光斑 + 一小段亮芯，让它随铝盘横着
+             走过去；第二团淡一些、落后半个周期，像同一圈盘沿上另一处反光。 */
           const gid = `esbm-gl-${it.id}`
           const cid = `esbm-slot-${it.id}`
-          const gx1 = S.x - 24 + (st.u % 1) * (S.w + 48)
-          const gx2 = S.x - 8 + ((st.u + 0.5) % 1) * (S.w + 16)
+          /* 图标里那条亮银盘沿线，量出来在窗口上沿下 7px（256 坐标 y≈110 → 190 坐标 y≈82.5） */
+          const ly = S.y + 7.0
+          const gx1 = S.x - 18 + (st.u % 1) * (S.w + 36)
+          const gx2 = S.x - 6 + ((st.u + 0.5) % 1) * (S.w + 12)
           return (
             <g key={it.id} transform={`translate(${it.x},${it.y})`}>
               <defs>
-                <linearGradient id={gid} x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#ffffff" stopOpacity="0" />
-                  <stop offset="36%" stopColor="#ffffff" stopOpacity="0.14" />
-                  <stop offset="50%" stopColor="#ffffff" stopOpacity="0.92" />
-                  <stop offset="64%" stopColor="#ffffff" stopOpacity="0.14" />
+                <radialGradient id={gid} cx="0.5" cy="0.5" r="0.5">
+                  <stop offset="0%" stopColor="#ffffff" stopOpacity="0.82" />
+                  <stop offset="45%" stopColor="#ffffff" stopOpacity="0.22" />
                   <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-                </linearGradient>
+                </radialGradient>
                 <clipPath id={cid}>
                   <rect x={S.x} y={S.y} width={S.w} height={S.h} rx="4" />
                 </clipPath>
               </defs>
               <g clipPath={`url(#${cid})`}>
-                <rect x={gx1} y={S.y} width="24" height={S.h} fill={`url(#${gid})`} />
-                <rect x={gx2} y={S.y} width="12" height={S.h} fill={`url(#${gid})`} opacity="0.55" />
+                {/* 盘沿上的柔光斑（横向拉长、压在银线上，才像打在圆弧上的反光） */}
+                <ellipse cx={gx1} cy={ly} rx="10" ry="4.4" fill={`url(#${gid})`} />
+                <ellipse cx={gx2} cy={ly} rx="7" ry="3.2" fill={`url(#${gid})`} opacity="0.4" />
+                {/* 最亮的那一小段芯：贴在线上的白色高光点 */}
+                <ellipse cx={gx1} cy={ly} rx="5.6" ry="1.4" fill="#ffffff" opacity="0.74" />
+                <ellipse cx={gx2} cy={ly} rx="3.2" ry="1" fill="#ffffff" opacity="0.26" />
               </g>
             </g>
           )
