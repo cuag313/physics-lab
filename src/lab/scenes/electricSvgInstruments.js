@@ -635,6 +635,29 @@ function termDotsSVG(dots) {
 }
 
 /**
+ * 电能表四柱的「接法」标签。单独一层画（见 BuilderSVG 的 .esb-taglayer）——因为导线本体
+ * 是压在器材之上的，标签留在器材字符串里会被从柱脚引出的导线整段盖住。
+ * 每根柱正上方一行功能、一行 L/N，末尾一行说明表内 1-3 / 2-4 的关系。
+ * 字用深色描边打底（paint-order=stroke），压在照片的深色表体或任何背景上都读得清。
+ */
+export function meterTermTagsSVG() {
+  const cols = [
+    { x: 46.4, s: '相线进', l: 'L', c: '#f87171' },
+    { x: 77.6, s: '零线进', l: 'N', c: '#60a5fa' },
+    { x: 108.7, s: '相线出', l: 'L', c: '#f87171' },
+    { x: 139.9, s: '零线出', l: 'N', c: '#60a5fa' },
+  ]
+  const FONT = "system-ui,-apple-system,'Segoe UI',sans-serif"
+  return `
+    <g font-family="${FONT}" text-anchor="middle" stroke="#0b0d10" stroke-width="2.4"
+       paint-order="stroke" stroke-linejoin="round">
+      ${cols.map((k) => `<text x="${k.x}" y="129.5" font-size="6.6" fill="#e2ecf8">${k.s}</text>`).join('')}
+      ${cols.map((k) => `<text x="${k.x}" y="140.5" font-size="8.2" font-weight="700" fill="${k.c}">${k.l}</text>`).join('')}
+      <text x="95.5" y="150.5" font-size="6.2" fill="#c3ccd9">1-3 串电流线圈 · 2-4 零线直通</text>
+    </g>`
+}
+
+/**
  * 单向开关：底座 + 接线柱 + 铰链柱 + 触口前后卡槽 + 闸刀，全部矢量。
  * 结构照 12开关拆解.png，光位与配色照 2.单向开关.png。换算：参考图 3..228 → 0..150（×0.6667），
  * 底座顶面后沿 y179 → y80（Y = 80 + (y-179)×0.6667）。
@@ -1613,6 +1636,7 @@ export const TYPES = {
   energyMeter: {
     label: '电能表', w: 190, h: 190,
     meter: true,     // 双击弹读数条（W = … kW·h · I = … A）——BuilderSVG 只给 meter 类器材挂 readout
+    tagsSVG: meterTermTagsSVG,   // 四柱接法标签：由 BuilderSVG 画在导线之上（.esb-taglayer）
     /* 四柱位置直接从图标上量（256 坐标里柱心 x = 62.5 / 104.5 / 146.5 / 188.5，间距 42，
        y ≈ 216.5；这张图标按 190×190 铺满，换算 ×190/256 = 46.4 / 77.6 / 108.7 / 139.9、y 160.7）。
        颜色也照图标：1、2 柱帽是红色，3、4 是灰黑色 —— 不能套项目里"右红左黑"的约定。 */
@@ -1644,7 +1668,7 @@ export const TYPES = {
         <rect x="45" y="44" width="99" height="25" rx="3" fill="#0a0d12"/>
         ${cells}
         <!-- 铭牌贴纸：把图标印的 2000 r/kWh 换成 600 r/kWh，并显示实际电流 -->
-        <rect x="46" y="86" width="99" height="31" rx="3" fill="#f8f8f5" stroke="#dddbd2" stroke-width="1"/>
+        <rect x="46" y="86" width="99" height="36" rx="3" fill="#f8f8f5" stroke="#dddbd2" stroke-width="1"/>
         <text x="95.5" y="98" text-anchor="middle" font-size="7.5" fill="#3f3f46"
           font-family="system-ui,-apple-system,'Segoe UI',sans-serif">220 V 10(40) A · 600 r/kWh</text>
         <text x="95.5" y="110" text-anchor="middle" font-size="7.5" fill="${I > 0.005 ? '#b45309' : '#64748b'}"

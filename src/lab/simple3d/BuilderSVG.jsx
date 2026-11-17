@@ -891,6 +891,10 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             repeating-linear-gradient(90deg,transparent 0 39px,#e7edf5 39px 40px);
           box-shadow:inset 0 0 0 1px #dbe3ec,0 10px 30px rgba(15,23,42,.07);margin:12px}
         .esb-wirelayer{position:absolute;inset:0;pointer-events:none;z-index:3}
+        /* 器材自带的"说明标签"层（电能表四柱接法）：导线是摆在器材上面的，标签必须更高一层，
+           否则从柱脚引出的导线会把标签整段盖住 */
+        .esb-taglayer{position:absolute;inset:0;pointer-events:none;z-index:7}
+        .esb-root.dissect .esb-taglayer{display:none}
         /* 端头层：导线本体整根压在器材之上（真导线是摆在板面上、绕到柱脚的）；
            这一层只负责让"裸铜丝绕在柱脚上"永远画在所有导线最上面。 */
         .esb-wiretop{position:absolute;inset:0;pointer-events:none;z-index:6}
@@ -1067,6 +1071,19 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
                 onPointerDown={(e) => onTermDown(e, c, tm.id)}
               />
             ))
+          })}
+        </div>
+
+        {/* 器材说明标签层：压在导线之上（电能表四柱接法） */}
+        <div className="esb-taglayer">
+          {comps.map((c) => {
+            const t = T(c)
+            if (!t || !t.tagsSVG) return null
+            return (
+              <svg key={c.id} width={t.w} height={t.h}
+                style={{ position: 'absolute', left: c.x, top: c.y }}
+                dangerouslySetInnerHTML={{ __html: t.tagsSVG(c, dynOf(c)) }} />
+            )
           })}
         </div>
 
