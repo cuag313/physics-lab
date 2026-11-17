@@ -326,25 +326,18 @@ const INNER = {
       <rect x="62" y="97" width="26" height="7" rx="2" fill="#f59e0b" opacity=".85"/>`
   },
   energyMeter() {
-    /* 透视层：按 190×190 的表体排版。器材面已换成实拍图标，内部元件整体压到计数器窗口
-       下方（y ≥ 74），四枚编号贴元件旁，图例压成一行 6.2px —— 否则会和计数器数字、
-       铭牌贴纸、底部四个柱互相压字（第一版两行 7.2px 图例就横穿了接线柱那一排）。 */
-    const badge = (x, y, n, fill) => `
-      <circle cx="${x}" cy="${y}" r="4.8" fill="${fill}" opacity=".95"/>
-      <text x="${x}" y="${y + 2.3}" text-anchor="middle" font-size="6.6" font-weight="700" fill="#fff">${n}</text>`
+    /* 透视层：器材面是实拍图标，内部只画四个关键件，位置压在铭牌贴纸下沿（y ≥ 116）到接线柱
+       （y 160.7）之间那道空档里，图例排成一行"彩色词"，词色 = 元件色 —— 不用编号圆章，
+       因为圆章要么压计数器数字，要么压铭牌贴纸，两版都返工过。 */
     return `
-      <rect x="40" y="74" width="11" height="26" rx="2.5" fill="#b45309" stroke="#78350f" stroke-width="1"/>
-      <path d="M45.5 74 V64 M45.5 100 V112" stroke="#b45309" stroke-width="2"/>
-      ${badge(36, 71, '1', '#b45309')}
-      <rect x="56" y="74" width="9" height="22" rx="2" fill="#a16207" stroke="#78350f" stroke-width="1"/>
-      ${badge(61, 100, '2', '#a16207')}
-      <circle cx="100" cy="96" r="21" fill="none" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="4 3"/>
-      ${badge(100, 121, '3', '#2563eb')}
-      <rect x="124" y="74" width="10" height="32" rx="2" fill="#e11d48" opacity=".75"/>
-      ${badge(129, 110, '4', '#e11d48')}
-      <path d="M134 92 H152" stroke="#8a6a3c" stroke-width="2"/>
-      <text x="100" y="140" text-anchor="middle" font-size="6.6" fill="#334155">① 电流线圈（串 1-3） ② 电压线圈（并联 1-2）</text>
-      <text x="100" y="151" text-anchor="middle" font-size="6.6" fill="#334155">③ 铝转盘 ④ 制动磁铁 → 齿轮带动计数器</text>`
+      <rect x="48" y="116" width="9" height="20" rx="2" fill="#b45309" stroke="#78350f" stroke-width="1"/>
+      <path d="M52.5 116 V108 M52.5 136 V148" stroke="#b45309" stroke-width="2"/>
+      <rect x="66" y="116" width="8" height="18" rx="2" fill="#a16207" stroke="#78350f" stroke-width="1"/>
+      <circle cx="100" cy="126" r="15" fill="none" stroke="#2563eb" stroke-width="1.1" stroke-dasharray="3 2"/>
+      <rect x="124" y="116" width="10" height="22" rx="2" fill="#e11d48" opacity=".7"/>
+      <path d="M134 127 H152" stroke="#8a6a3c" stroke-width="1.6"/>
+      <text x="100" y="150" text-anchor="middle" font-size="6.3"
+        font-family="system-ui,-apple-system,'Segoe UI',sans-serif"><tspan fill="#b45309">电流线圈（串 1-3）</tspan><tspan fill="#334155"> · </tspan><tspan fill="#a16207">电压线圈（并 1-2）</tspan><tspan fill="#334155"> · </tspan><tspan fill="#2563eb">铝盘</tspan><tspan fill="#334155"> · </tspan><tspan fill="#e11d48">制动磁铁 → 计数器</tspan></text>`
   },
   jouleTube() {
     return `
@@ -616,13 +609,13 @@ function centerFaceSVG(x, y, w, h, cfg = {}) {
 }
 /** 接线柱圆点叠层：黑、红、红（金属座圈 + 彩色柱帽，照片缺中柱时补齐三个柱位） */
 function termDotsSVG(dots) {
-  return dots.map(({ x, y, label, dark }) => {
+  return dots.map(({ x, y, label, dark, labelFill = '#24292f' }) => {
     const cp = capPaint(dark)
     return `
     <circle cx="${x}" cy="${y}" r="7" fill="#0b0d10" stroke="#8d96a1" stroke-width="1.6"/>
     <circle cx="${x}" cy="${y}" r="4.8" fill="${cp.fill}" stroke="${cp.stroke}" stroke-width="1"/>
     <circle cx="${x - 1.4}" cy="${y - 1.4}" r="1.5" fill="rgba(255,255,255,0.45)"/>
-    <text x="${x}" y="${y + 16}" text-anchor="middle" font-size="8.5" font-weight="700" fill="#24292f">${label}</text>`
+    <text x="${x}" y="${y + 16}" text-anchor="middle" font-size="8.5" font-weight="700" fill="${labelFill}">${label}</text>`
   }).join('')
 }
 
@@ -1605,11 +1598,14 @@ export const TYPES = {
   energyMeter: {
     label: '电能表', w: 190, h: 190,
     meter: true,     // 双击弹读数条（W = … kW·h · I = … A）——BuilderSVG 只给 meter 类器材挂 readout
+    /* 四柱位置直接从图标上量（256 坐标里柱心 x = 62.5 / 104.5 / 146.5 / 188.5，间距 42，
+       y ≈ 216.5；这张图标按 190×190 铺满，换算 ×190/256 = 46.4 / 77.6 / 108.7 / 139.9、y 160.7）。
+       颜色也照图标：1、2 柱帽是红色，3、4 是灰黑色 —— 不能套项目里"右红左黑"的约定。 */
     terminals: [
-      { id: 'i1', label: '1', name: '进线 1（相线）', x: 55, y: 162 },
-      { id: 'i2', label: '2', name: '进线 2（零线）', x: 79, y: 162 },
-      { id: 'o1', label: '3', name: '出线 3（相线）', x: 102, y: 162 },
-      { id: 'o2', label: '4', name: '出线 4（零线）', x: 126, y: 162 },
+      { id: 'i1', label: '1', name: '进线 1（相线）', x: 46.4, y: 160.7 },
+      { id: 'i2', label: '2', name: '进线 2（零线）', x: 77.6, y: 160.7 },
+      { id: 'o1', label: '3', name: '出线 3（相线）', x: 108.7, y: 160.7 },
+      { id: 'o2', label: '4', name: '出线 4（零线）', x: 139.9, y: 160.7 },
     ],
     render(c, dyn = {}) {
       const kwh = Math.max(0, Number(dyn.kwh ?? c.kwh0 ?? 0))
@@ -1640,10 +1636,10 @@ export const TYPES = {
           font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${I > 0.005 ? `I = ${I.toFixed(2)} A · 铝盘转动中` : '无电流 · 铝盘不转'}</text>
       </g>
       ${termDotsSVG([
-        { x: 55, y: 162, label: '1', dark: true },
-        { x: 79, y: 162, label: '2', dark: true },
-        { x: 102, y: 162, label: '3', dark: false },
-        { x: 126, y: 162, label: '4', dark: false },
+        { x: 46.4, y: 160.7, label: '1', dark: false, labelFill: '#e5e7eb' },
+        { x: 77.6, y: 160.7, label: '2', dark: false, labelFill: '#e5e7eb' },
+        { x: 108.7, y: 160.7, label: '3', dark: true, labelFill: '#e5e7eb' },
+        { x: 139.9, y: 160.7, label: '4', dark: true, labelFill: '#e5e7eb' },
       ])}
     </svg>` }
   },
