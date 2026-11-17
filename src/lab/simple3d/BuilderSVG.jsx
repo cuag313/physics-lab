@@ -47,11 +47,11 @@ const keyOf = (cid, tid) => cid + ':' + tid
 const PLUG_TYPES = ['washer', 'kettle', 'riceCooker', 'heater']
 const SOCKET_HOLE = { socket2: { x: 47, y: 72 }, socket3: { x: 52, y: 112 } }
 /* 插头是一只**独立可拖**的部件（用户要求：电器放好后只拖插头，电源线可任意方向拉长）。
- * 形状照 NB/实物：深灰**盾形插头壳**（上圆下尖、线从尖上出来）＋三只黄铜脚。
- * 框 34×64，两种状态各有一个"锚点"：
+ * 形状照实物**正视（正对纸外）**：深灰圆角矩形壳 ＋ 三只黄铜脚朝上，线从壳底中间出来。
+ * 框 34×54，两种状态各有一个"锚点"：
  *   没插 —— 插脚朝上露着，锚点 = 三脚脚尖那一行 (17,2)；
- *   插上 —— 插头壳压在孔位上（壳顶 = 锚点上方 24，盖住三孔的 E 孔），锚点 = L/N 两孔那一行 (17,40)。 */
-const PLUG_SIZE = { w: 34, h: 64 }
+ *   插上 —— 插头壳正压在孔位上（壳顶 = 锚点上方 26，盖住三孔的 E 孔），锚点 = L/N 两孔那一行 (17,40)。 */
+const PLUG_SIZE = { w: 34, h: 54 }
 const PLUG_ANCHOR = { off: { x: 17, y: 2 }, on: { x: 17, y: 40 } }
 /* 电源线的出口：从机身右下角横着出来。值是"整机图右边界到卡片右边的距离"
  * （四张图的左右留白不同，按 188/224、152/212、176/146、170/201 的原图比例换算出来的） */
@@ -1244,32 +1244,37 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             const ax = c.x + t.w - (CORD_OUT[c.type] || 36) - 20
             const ay = c.y + 104
             const bx = pos.x
-            const by = pos.y + (c.plug ? 22 : 62)
-            const sx = Math.sign(bx - ax) || 1
-            const sy = Math.sign(by - ay) || 1
+            const by = pos.y + (c.plug ? 8 : 52)
+            /* 线的落点：插上的落在壳底正中（竖直下来，藏在壳后）；
+               没插的落进**壳体左侧**（被壳挡住），这样壳外不会伸出一根多余的小线头 */
+            const tx = c.plug ? bx : bx - 12
+            const ty = c.plug ? by : pos.y + 34
+            const sx = Math.sign(tx - ax) || 1
+            const sy = Math.sign(ty - ay) || 1
             /* 三段折线（照真机电源线）：① 横向出机身一小段 → ② 斜着直过去 → ③ 竖直进插头。
-               长距离时不再拉一条横线横穿整块板；两个拐角都是圆角 */
+               长距离时不再拉一条横线横穿整块板；拐角都是圆角 */
             const stub = 22
             const p1 = { x: ax + sx * stub, y: ay }
-            const dvy = Math.abs(by - ay)
-            /* 末尾怎么进插头：插上的从插座下沿竖着下来（线藏在插头壳后）；
-               没插的插头脚朝天，线得"从壳尖横着撇出去"再来一下，才像随手扔在桌上的插头 */
-            const p2 = c.plug
-              ? { x: bx, y: by - sy * Math.min(26, dvy * 0.45) }
-              : { x: bx - sx * 22, y: by }
-            const len1 = Math.hypot(p2.x - p1.x, p2.y - p1.y)
-            const len2 = Math.hypot(bx - p2.x, by - p2.y)
-            let d = `M${ax} ${ay} L${bx} ${by}`
-            if (len1 > 4 && len2 > 4) {
-              const u2 = { x: (p2.x - p1.x) / len1, y: (p2.y - p1.y) / len1 }
-              const u3 = { x: (bx - p2.x) / len2, y: (by - p2.y) / len2 }
+            const dvy = Math.abs(ty - ay)
+            const p2 = c.plug ? { x: tx, y: ty - sy * Math.min(26, dvy * 0.45) } : null
+            const endP = p2 || { x: tx, y: ty }
+            const len1 = Math.hypot(endP.x - p1.x, endP.y - p1.y)
+            let d = `M${ax} ${ay} L${tx} ${ty}`
+            if (len1 > 4) {
+              const u2 = { x: (endP.x - p1.x) / len1, y: (endP.y - p1.y) / len1 }
               const r1 = Math.max(4, Math.min(12, len1 * 0.45))
-              const r2 = Math.max(4, Math.min(12, len2 * 0.45))
               const q1a = { x: p1.x - sx * r1, y: p1.y }
               const q1b = { x: p1.x + u2.x * r1, y: p1.y + u2.y * r1 }
-              const q2a = { x: p2.x - u2.x * r2, y: p2.y - u2.y * r2 }
-              const q2b = { x: p2.x + u3.x * r2, y: p2.y + u3.y * r2 }
-              d = `M${ax} ${ay} L${q1a.x} ${q1a.y} Q${p1.x} ${p1.y} ${q1b.x} ${q1b.y} L${q2a.x} ${q2a.y} Q${p2.x} ${p2.y} ${q2b.x} ${q2b.y} L${bx} ${by}`
+              const len2 = p2 ? Math.hypot(tx - p2.x, ty - p2.y) : 0
+              if (p2 && len2 > 4) {
+                const u3 = { x: (tx - p2.x) / len2, y: (ty - p2.y) / len2 }
+                const r2 = Math.max(4, Math.min(12, len2 * 0.45))
+                const q2a = { x: p2.x - u2.x * r2, y: p2.y - u2.y * r2 }
+                const q2b = { x: p2.x + u3.x * r2, y: p2.y + u3.y * r2 }
+                d = `M${ax} ${ay} L${q1a.x} ${q1a.y} Q${p1.x} ${p1.y} ${q1b.x} ${q1b.y} L${q2a.x} ${q2a.y} Q${p2.x} ${p2.y} ${q2b.x} ${q2b.y} L${tx} ${ty}`
+              } else {
+                d = `M${ax} ${ay} L${q1a.x} ${q1a.y} Q${p1.x} ${p1.y} ${q1b.x} ${q1b.y} L${tx} ${ty}`
+              }
             }
             return (
               <g key={c.id}>
@@ -1292,15 +1297,13 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
               onPointerDown={(e) => onPlugDown(e, c)}
               title={c.plug ? '插在插座上（拖动可拔出）' : '拖动这只插头，插到插座的孔里'}
             >
-              <svg width={PLUG_SIZE.w} height={PLUG_SIZE.h} viewBox="0 0 34 64">
-                {/* 盾形插头壳（照 NB/实物：上圆、下收成尖，线从尖上出来）。壳 34×46 */}
+              <svg width={PLUG_SIZE.w} height={PLUG_SIZE.h} viewBox="0 0 34 54">
+                {/* 插头**正视**：圆角矩形壳（34×34，四角 r6），壳里一圈浅色倒角；
+                    三只脚朝上、线从壳底中间出来 —— 看着就是"正对纸外"的一面，不带斜视 */}
                 {c.plug ? (
-                  <g transform="translate(0 16)">
-                    <path d="M4 0 H30 A4 4 0 0 1 34 4 V32 C32 41 25 46 17 46 C9 46 2 41 0 32 V4 A4 4 0 0 1 4 0 Z"
-                      fill="#3b3f46" stroke="#23272d" strokeWidth="1" />
-                    <rect x="4.6" y="3.2" width="24.8" height="3" rx="1.5" fill="#ffffff" opacity=".16" />
-                    <path d="M3.4 6 A3.4 3.4 0 0 1 6.8 2.6 H27.2 A3.4 3.4 0 0 1 30.6 6 V31 C29 38 23 41.6 17 41.6 C11 41.6 5 38 3.4 31 Z"
-                      fill="none" stroke="#ffffff" strokeWidth=".9" opacity=".13" />
+                  <g transform="translate(0 14)">
+                    <rect x="0" y="0" width="34" height="34" rx="6" fill="#3b3f46" stroke="#23272d" strokeWidth="1" />
+                    <rect x="1.3" y="1.3" width="31.4" height="31.4" rx="4.9" fill="none" stroke="#ffffff" strokeWidth=".9" opacity=".10" />
                   </g>
                 ) : (
                   <g>
@@ -1312,11 +1315,8 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
                     <rect x="25.2" y="3" width="1.1" height="14" rx=".55" fill="#f1dca8" opacity=".8" />
                     <rect x="15.4" y="3" width="1.1" height="14" rx=".55" fill="#f1dca8" opacity=".8" />
                     <g transform="translate(0 18)">
-                      <path d="M4 0 H30 A4 4 0 0 1 34 4 V32 C32 41 25 46 17 46 C9 46 2 41 0 32 V4 A4 4 0 0 1 4 0 Z"
-                        fill="#3b3f46" stroke="#23272d" strokeWidth="1" />
-                      <rect x="4.6" y="3.2" width="24.8" height="3" rx="1.5" fill="#ffffff" opacity=".16" />
-                      <path d="M3.4 6 A3.4 3.4 0 0 1 6.8 2.6 H27.2 A3.4 3.4 0 0 1 30.6 6 V31 C29 38 23 41.6 17 41.6 C11 41.6 5 38 3.4 31 Z"
-                        fill="none" stroke="#ffffff" strokeWidth=".9" opacity=".13" />
+                      <rect x="0" y="0" width="34" height="34" rx="6" fill="#3b3f46" stroke="#23272d" strokeWidth="1" />
+                      <rect x="1.3" y="1.3" width="31.4" height="31.4" rx="4.9" fill="none" stroke="#ffffff" strokeWidth=".9" opacity=".10" />
                     </g>
                   </g>
                 )}
