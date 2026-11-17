@@ -34,64 +34,6 @@ function thumb(type) {
   return <span dangerouslySetInnerHTML={{ __html: svg }} />
 }
 
-/* ── 「照 NB 布局」一键示例：家庭电路照明电路那块板 ──
-   拓扑照 NOBOOK「家庭电路·照明电路」那一课：
-     进户 220 V → 电能表 1/2 进、3/4 出（1-3 是电流线圈 = 串在干路）
-     → 双极空气开关 → 火线（红）/ 零线（蓝）/ 地线（黄绿）三条干线
-     → 两条照明支路（拉线开关 + 灯泡）、两孔插座、三孔插座、插座上的电视机
-   所有用电器都并联在火/零两端，所以它们是并联；电能表只有一个，
-   串在干路上，量的是全部用电器的总电功。 */
-const NB_C = { hot: '#e53935', zero: '#2f6fdc', earth: '#8bc34a' }
-function nbFamilyCircuit() {
-  const comps = [
-    { key: 'src', type: 'mains', x: 10, y: 40 },
-    { key: 'kwh', type: 'energyMeter', x: 200, y: 0 },
-    { key: 'brk', type: 'breaker', x: 420, y: 10, closed: true },
-    { key: 'gnd', type: 'ground', x: 110, y: 520 },
-    { key: 'busL', type: 'busHot', x: 150, y: 320 },
-    { key: 'busN', type: 'busZero', x: 150, y: 384 },
-    { key: 'busE', type: 'busEarth', x: 150, y: 448 },
-    { key: 'sw1', type: 'wallSwitch', x: 250, y: 540, closed: true },
-    { key: 'lamp1', type: 'lamp220', x: 240, y: 670 },
-    { key: 'sw2', type: 'wallSwitch', x: 560, y: 540, closed: true },
-    { key: 'lamp2', type: 'lamp220', x: 550, y: 670 },
-    { key: 'sk2', type: 'socket2', x: 820, y: 590 },
-    { key: 'sk3', type: 'socket3', x: 980, y: 590 },
-    { key: 'tv', type: 'tv', x: 860, y: 720 },
-  ]
-  const wires = [
-    // 进户 → 电能表 1/2（相线进、零线进）
-    { a: 'src:l', b: 'kwh:i1', color: NB_C.hot },
-    { a: 'src:n', b: 'kwh:i2', color: NB_C.zero },
-    // 电能表 3/4 → 空气开关 两极（3 是相线出、4 是零线出）
-    { a: 'kwh:o1', b: 'brk:li', color: NB_C.hot },
-    { a: 'kwh:o2', b: 'brk:ni', color: NB_C.zero },
-    // 空气开关出线 → 三条干线（t1 就是干线的起头）
-    { a: 'brk:lo', b: 'busL:t1', color: NB_C.hot },
-    { a: 'brk:no', b: 'busN:t1', color: NB_C.zero },
-    { a: 'gnd:e', b: 'busE:t1', color: NB_C.earth },
-    // 照明支路 1：火线 t2 → 面板开关 → 灯泡 → 零线 t3（两条线各走相邻的柱，导线才不会打结）
-    { a: 'busL:t2', b: 'sw1:a', color: NB_C.hot },
-    { a: 'sw1:b', b: 'lamp1:a', color: NB_C.hot },
-    { a: 'lamp1:b', b: 'busN:t3', color: NB_C.zero },
-    // 照明支路 2：火线 t5 → 开关 → 灯泡 → 零线 t6
-    { a: 'busL:t5', b: 'sw2:a', color: NB_C.hot },
-    { a: 'sw2:b', b: 'lamp2:a', color: NB_C.hot },
-    { a: 'lamp2:b', b: 'busN:t6', color: NB_C.zero },
-    // 两孔插座（t7 / t8 就近取电）
-    { a: 'busL:t7', b: 'sk2:l', color: NB_C.hot },
-    { a: 'busN:t8', b: 'sk2:n', color: NB_C.zero },
-    // 三孔插座（t9 / t10 取电，地线走地线干线的 t10）
-    { a: 'busL:t9', b: 'sk3:l', color: NB_C.hot },
-    { a: 'busN:t10', b: 'sk3:n', color: NB_C.zero },
-    { a: 'busE:t10', b: 'sk3:e', color: NB_C.earth },
-    // 电视机插在三孔插座上（与灯、插座同为并联支路）
-    { a: 'sk3:l', b: 'tv:a', color: NB_C.hot },
-    { a: 'sk3:n', b: 'tv:b', color: NB_C.zero },
-  ]
-  return { comps, wires }
-}
-
 /* ── 市电与电能表口径（与引擎 CFG 同一套数） ── */
 const U_MAINS = CFG.MAINS_V        // 220 V
 const N_KWH = 600                  // 铭牌常数：600 转 / (kW·h)
@@ -659,30 +601,18 @@ export default function ElectricEnergyScene() {
     s.records = []
     s.cardScroll = 0
     builderRef.current?.reset()
-    S.current.nbLoaded = false
     forceUpdate(n => n + 1)
   }, [])
 
   const handleAddFromPalette = useCallback((type) => { builderRef.current?.add(type) }, [])
   const handleDropFromPalette = useCallback((type, clientX, clientY) => { builderRef.current?.addAt(type, clientX, clientY) }, [])
   const handlePickColor = useCallback((color) => { S.current.wireColor = color; forceUpdate(v => v + 1) }, [])
-  /* 一键铺"照 NB 布局"的整块家庭电路板 */
-  const handleNbPreset = useCallback(() => {
-    const { comps, wires } = nbFamilyCircuit()
-    builderRef.current?.load(comps, wires)
-    S.current.nbLoaded = true
-    forceUpdate(v => v + 1)
-  }, [])
 
   return (
     <SceneShell
       title="电功与电能表"
       tab={tab}
-      onTabChange={(t) => {
-        S.current.tab = t; setTab(t)
-        /* 第一次进「自己动手」就把 NB 那块板铺好，学生一进来看到的是完整的照明电路（不是空桌面） */
-        if (t === 2 && !S.current.nbLoaded) setTimeout(() => handleNbPreset(), 0)
-      }}
+      onTabChange={(t) => { S.current.tab = t; setTab(t) }}
       tab1Label="📖 电路演示"
       tab2Label="🔧 自己动手"
       onReset={handleReset}
@@ -695,7 +625,7 @@ export default function ElectricEnergyScene() {
         </>
       ) : null}
     >
-      <div style={{ position: 'relative', display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0, width: '100%' }}>
+      <div style={{ display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0, width: '100%' }}>
         <canvas
           ref={canvasRef}
           className="canvas-fill"
@@ -708,21 +638,6 @@ export default function ElectricEnergyScene() {
         />
         {tab === 2 && (
           <BuilderSVG ref={builderRef} wireColor={S.current.wireColor} />
-        )}
-        {tab === 2 && (
-          <button
-            type="button"
-            onClick={handleNbPreset}
-            style={{
-              position: 'absolute', top: 10, left: '50%', transform: 'translateX(-50%)', zIndex: 30,
-              padding: '6px 14px', borderRadius: 8, cursor: 'pointer',
-              border: '1px solid #b48a2e', background: '#fff8e6', color: '#7a5310',
-              fontSize: 13, fontWeight: 700, boxShadow: '0 2px 6px rgba(0,0,0,.12)',
-            }}
-            title="按 NOBOOK「家庭电路·照明电路」的布局把整块板铺好"
-          >
-            🧩 一键铺 NB 家庭电路（电能表 → 空气开关 → 三条干线 → 灯 / 插座 / 电视机）
-          </button>
         )}
         {tab === 1 ? (
           <InfoDock
@@ -743,7 +658,7 @@ export default function ElectricEnergyScene() {
           <InfoDock
             align="left"
             offset={{ left: 26, top: 26 }}
-            hint="① 电能表串在干路上：进户线（L 红 / N 蓝）先接表的 1、2 柱，表的 3、4 柱再往空气开关走 —— 表是「串联」，全屋电流都要先过它，所以它量的是总电功。② 空气开关双极：左上/右上进、左下/右下出，单击它就合闸或分闸，两路（相线与零线）同时通断。③ 从空气开关出来分三条干线：火线（红）、零线（蓝）、地线（黄绿）。④ 各用电器都并联在火线与零线两端（两条照明支路、两孔插座、三孔插座上的电视机）—— 并联是因为它们各自接在同一对火/零电位点上，各拿满 220 V，互不影响；洗衣机（500 W）与电热水壶（1500 W）也照这样各接火、零两端并联，干路电流是两者之和。⑤ 三孔插座的 E 柱经地线干线接「接地端子」，地线本身不承担电流。右上「走字倍速」加快时间才看得见计数器跳字。"
+            hint="点右侧器材加入 → 拖拽移动 → 点接线柱连线。接法：电能表串在干路上（插座 L→表 1、N→表 2，表 3→开关 a，开关 b 出来再分成两路）；洗衣机（1、2）与电热水壶（1、2）各自并联在 220 V 两端，两路的另一端都回到表的 4 号柱（零线），所以两台是并联、不是串联。洗衣机 500 W、电热水壶 1500 W，并联时干路电流是两者之和；右上「走字倍速」加快时间才看得见计数器跳字。"
             hintTitle="操作说明"
           />
         )}
@@ -751,29 +666,23 @@ export default function ElectricEnergyScene() {
           <BuilderPalette
             side="right"
             items={[
-              // ── 家庭电路那一套（照 NB「照明电路」的器材表，顺序也按课上从左到右的搭法）──
-              { type: 'mains', name: '进户交流电', icon: thumb('mains') },
-              { type: 'energyMeter', name: '电能表', icon: thumb('energyMeter') },
-              { type: 'breaker', name: '空气开关', icon: thumb('breaker') },
-              { type: 'busHot', name: '火线干线', icon: thumb('busHot') },
-              { type: 'busZero', name: '零线干线', icon: thumb('busZero') },
-              { type: 'busEarth', name: '地线干线', icon: thumb('busEarth') },
-              { type: 'lamp220', name: '白炽灯', icon: thumb('lamp220') },
-              { type: 'wallSwitch', name: '面板开关', icon: thumb('wallSwitch') },
-              { type: 'socket2', name: '两孔插座', icon: thumb('socket2') },
-              { type: 'socket3', name: '三孔插座', icon: thumb('socket3') },
-              { type: 'tv', name: '电视机', icon: thumb('tv') },
-              { type: 'ground', name: '接地端子', icon: thumb('ground') },
-              // ── 电功对比用的两台电器（P 不同 → 铝盘转多快不同）──
-              { type: 'washer', name: '洗衣机', icon: thumb('washer') },
-              { type: 'kettle', name: '电热水壶', icon: thumb('kettle') },
-              // ── 通用器材（量电压、量电流、限流、换电源）──
-              { type: 'ammeter', name: '电流表', icon: thumb('ammeter') },
-              { type: 'voltmeter', name: '电压表', icon: thumb('voltmeter') },
-              { type: 'resistor5', name: '电阻', icon: thumb('resistor5') },
-              { type: 'rheostat', name: '滑变', icon: thumb('rheostat') },
               { type: 'battery', name: '电池组', icon: thumb('battery') },
               { type: 'accumulator', name: '蓄电池', icon: thumb('accumulator') },
+              // 家庭电路三件（本专题补遗留新增）：家用交流电（三孔插座）+ 洗衣机 500 W + 电热水壶 1500 W
+              // 电池组只有 3 V，干路电流零点几安，电功几乎为 0、表不走字；
+              // 换成家用交流电 + 电器，I = P/U = 2.27 / 6.82 A，配右上「走字倍速」才看得见计数器跳字
+              { type: 'mains', name: '家用交流电', icon: thumb('mains') },
+              { type: 'washer', name: '洗衣机', icon: thumb('washer') },
+              { type: 'kettle', name: '电热水壶', icon: thumb('kettle') },
+              { type: 'bulb', name: '灯泡', icon: thumb('bulb') },
+              { type: 'switch', name: '开关', icon: thumb('switch') },
+              { type: 'resistor5', name: '电阻', icon: thumb('resistor5') },
+              { type: 'rheostat', name: '滑变', icon: thumb('rheostat') },
+              { type: 'ammeter', name: '电流表', icon: thumb('ammeter') },
+              { type: 'ammeterA', name: '安培表', icon: thumb('ammeterA') },
+              { type: 'voltmeter', name: '电压表', icon: thumb('voltmeter') },
+              // 本专题专用：单相电能表（1/2 进线、3/4 出线，铝盘 + 计数器）
+              { type: 'energyMeter', name: '电能表', icon: thumb('energyMeter') },
             ]}
             wireColor={S.current.wireColor}
             onPickColor={handlePickColor}
