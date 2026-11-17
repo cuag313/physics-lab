@@ -43,12 +43,16 @@ const keyOf = (cid, tid) => cid + ':' + tid
 
 /* ── 家用电器的"插头吸附"（照 NB：把电器拖到插孔上就自动插上）──
  * 电器卡里两根插脚在 (65,160)/(85,160)，中点 (75,160)；
- * 插座卡里的两个孔（L / N 孔）中点分别是两孔 (48,41)、三孔 (52,45)。
- * 拖动结束若电器中点离某个孔中点不到 96 画布像素，就把电器"吸"上去并对齐，
- * 同时打上 plug = 插座 id —— 引擎据此把插脚 a/b 直接并到插座的 L / N 节点。 */
-const PLUG_TYPES = ['washer', 'kettle']
-const SOCKET_HOLE = { socket2: { x: 48, y: 41 }, socket3: { x: 52, y: 45 } }
+ * 插座卡里的两个孔（L / N 孔）中点分别是两孔 (48,65)、三孔 (52,76)（插座的接线端已挪到面板上方，
+ * 面板整体下移，孔位随之改变）。拖动结束若电器中点离某个孔中点不到 96 画布像素，
+ * 就把电器"吸"上去并对齐，同时打上 plug = 插座 id —— 引擎据此把插脚 a/b 直接并到插座的 L / N 节点。 */
+const PLUG_TYPES = ['washer', 'kettle', 'riceCooker', 'heater']
+const SOCKET_HOLE = { socket2: { x: 48, y: 65 }, socket3: { x: 52, y: 76 } }
 const PRONG = { x: 75, y: 160 }
+
+/** 叠放次序：不额外排序 —— 器材按添加顺序绘制，后加的压在上面（插上电器＝电器后加，自然压在插座上，
+ *  读起来就是"机器站在插座前面、插脚插了进去"；反过来把插座画在电器之上，白色面板会横切机器下腹）。 */
+
 
 function withPlug(cs, c) {
   if (!PLUG_TYPES.includes(c.type)) return c
@@ -566,6 +570,11 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   /* ── 元件本体按下：拖动 / 滑片 / 开关 ── */
   const onCompDown = (e, c) => {
     if (e.target.closest('.esb-term')) return
+    /* 抓起的器件提到最上层：插上电器后电器压住插座面板，看起来才是"机器在前、插脚插进去" */
+    setComps((cs) => {
+      if (cs.length < 2 || cs[cs.length - 1].id === c.id) return cs
+      return [...cs.filter((x) => x.id !== c.id), c]
+    })
     const slider = e.target.closest('.slider-handle')
     if (c.type === 'rheostat' && slider) {
       dragRef.current = { kind: 'slider', compId: c.id, startF: c.f ?? 0.4 }
@@ -841,12 +850,12 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     if (batI > 1e-4) {
       const lit = bulbs.filter((b) => (solved[b.id]?._P || 0) > 0.001)
       if (lit.length) return { tone: 'ok', text: `✅ 通路 · ${lit.length} 只灯泡发光` }
-      const loads = comps.filter((c) => (c.type === 'washer' || c.type === 'kettle')
+      const loads = comps.filter((c) => PLUG_TYPES.includes(c.type)
         && Math.abs(solved[c.id]?._I || 0) > 0.005)
       if (loads.length) {
         // 功率取引擎算出来的实际值（不是额定）：两台串在一条线上时会掉到 500 W 左右，学生一眼看出接错了
         const total = Math.round(loads.reduce((s, c) => s + (solved[c.id]?._P || 0), 0))
-        const names = loads.map((c) => (c.type === 'washer' ? '洗衣机' : '电热水壶')).join(' + ')
+        const names = loads.map((c) => ({ washer: '洗衣机', kettle: '电热水壶', riceCooker: '电饭煲', heater: '电暖器' }[c.type] || '电器')).join(' + ')
         // 每台的端电压 = I·R；都接近 220 V 才是"并联在 220 V 两端"
         const Us = loads.map((c) => Math.abs(solved[c.id]?._I || 0) * (solved[c.id]?._R || 0))
         const par = Us.every((u) => u > 200)
@@ -1002,6 +1011,9 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         .esb-comp{position:absolute;cursor:grab;touch-action:none;pointer-events:auto}
         .esb-comp:active{cursor:grabbing}
         .esb-comp svg{display:block;overflow:visible}
+        /* 器材照片不能参与浏览器"原生图片拖拽"：一旦浏览器在按下时接管成 HTML5 drag，
+           pointermove 就断了，器件只跟手走十几像素就卡住（表现为"家电拖不动"） */
+        .esb-comp svg image,.esb-comp img{-webkit-user-drag:none;user-select:none;pointer-events:none}
         /* 器件图纸里叠了一"内部结构"层（.inner/.plabel）。默认隐藏（否则会从照片的透明区、
            缝隙里露出来）；点右上「🔍 内部结构」后：外壳照片半透明 → 露出内部（X-ray 透视） */
         .esb-root:not(.dissect) .inner,.esb-root:not(.dissect) .plabel{display:none}
@@ -1131,7 +1143,9 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         {/* 运动层：铝盘在转 / 滚筒在洗（自带 rAF，不进器材的字符串重渲染） */}
         <MotionLayer items={motionItems} />
 
-        {/* 元件层 */}
+        {/* 元件层：电器排在插座之后渲染（机器压在插座上＝"插进去了"）。
+            插座顶部那三个接线端被插上的机器盖住是正常的：真机上插座在机器背后，
+            导线顺着机器底边沉下去，读起来就是"插头插在插座里"；没插电器时三端露在外面，方便接线 */}
         <div className="esb-partlayer">
           {comps.map((c) => {
             const t = T(c)
@@ -1145,6 +1159,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
                 className={`esb-comp${isSel ? ' selected' : ''}`}
                 style={{ left: c.x, top: c.y, width: t.w, height: t.h }}
                 onPointerDown={(e) => onCompDown(e, c)}
+                onDragStart={(e) => e.preventDefault()}
               >
                 <div className="esb-boxhl" />
                 <div dangerouslySetInnerHTML={{ __html: t.render(c, dyn) }} />
@@ -1162,6 +1177,9 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
           {comps.map((c) => {
             const t = T(c)
             if (!t) return null
+            /* 家用电器不设接线柱热点（插脚就是接头，拖到插座孔上自动连）；
+               这些器材只保留 TERM_IDS 供引擎做插脚 union，画面上不出现可点的柱帽 */
+            if (t.noTermUI) return null
             return t.terminals.map((tm) => (
               <div
                 key={c.id + ':' + tm.id}

@@ -708,7 +708,7 @@ export default function ElectricEnergyScene() {
           <InfoDock
             align="left"
             offset={{ left: 26, top: 26 }}
-            hint="接法：交流电源 L(红) → 电能表 1、N(蓝) → 电能表 2，表 3(L 出) / 4(N 出) → 空气开关 L进/N进，空开的 L出/N出 再接到插座（两孔 L/N、三孔 L/E/N）。电能表**串联在干路**上（干路电流全部流过它，所以它计的是总电功）；洗衣机、电热水壶**并联在 220 V 两端**（把电器拖到插孔上就自动插上，不用拉线），各自独立工作，干路电流 = 各支路电流之和。点空气开关或面板开关本体即合闸/分闸；右上「走字倍速」加快时间才看得见计数器跳字。"
+            hint="接法：交流电源三根线头朝右（L 红 / N 蓝 / E 黑）→ 电能表 1、2，表 3(L 出) / 4(N 出) → 空气开关 L进/N进，空开 L出/N出 → 插座（接线端都在**面板上方**：两孔 L/N、三孔 L/E/N，线头末端才是热点）。电能表**串联在干路**（干路电流全部流过它，所以计总电功）；洗衣机 / 电饭煲 / 电热水壶 / 电暖器都**并联在 220 V 两端** —— 这四台**没有接线柱**，直接拖到插座孔上就自动插上（干路 I = 各支路之和）。面板开关与空开都靠**明暗**看状态：亮=合闸，暗=断开；点本体即合/分。右上「走字倍速」加快时间才看得见计数器跳字。"
             hintTitle="操作说明"
           />
         )}
@@ -729,9 +729,11 @@ export default function ElectricEnergyScene() {
               { type: 'wallSwitch', name: '面板开关', icon: thumb('wallSwitch') },
               { type: 'socket2', name: '两孔插座', icon: thumb('socket2') },
               { type: 'socket3', name: '三孔插座', icon: thumb('socket3') },
-              // 家用电器（无底座，插脚拖到插孔上就自动并联在 L / N 两端）
+              // 家用电器（无底座，插脚拖到插孔上就自动并联在 L / N 两端，不设接线柱热点）
               { type: 'washer', name: '洗衣机', icon: thumb('washer') },
               { type: 'kettle', name: '电热水壶', icon: thumb('kettle') },
+              { type: 'riceCooker', name: '电饭煲', icon: thumb('riceCooker') },
+              { type: 'heater', name: '电暖器', icon: thumb('heater') },
               { type: 'bulb', name: '灯泡', icon: thumb('bulb') },
               { type: 'switch', name: '开关', icon: thumb('switch') },
               { type: 'resistor5', name: '电阻', icon: thumb('resistor5') },
@@ -790,31 +792,39 @@ function drawACSource(ctx, cx, cy, r, o) {
 }
 
 /** 墙上的面板开关（真实的家用翘板开关，不是实验台闸刀）：
- *  白色面板 + 内嵌翘板，合闸时翘板上缘凹进、上面露白；断开时整块翘板被顶起 */
+ *  状态用**明暗**表示 —— 合闸时整块面板与翘板是亮的（近白），断开时面板发灰、翘板压深；
+ *  翘板上沿那道白边 + 小橙色标记照用户给的面板实物图（左=合、右=断）。 */
 function drawPanelSwitch(ctx, cx, cy, closed, o) {
   const { FS } = o
-  const w = 22, h = 30
-  /* 面板 */
-  ctx.fillStyle = '#FFFFFF'
-  ctx.strokeStyle = '#C7CFD6'; ctx.lineWidth = 1.3
-  ctx.beginPath(); ctx.roundRect(cx - w / 2, cy - h / 2, w, h, 4); ctx.fill(); ctx.stroke()
-  /* 内框 */
-  ctx.fillStyle = '#EEF1F4'
-  ctx.strokeStyle = '#D3DAE1'; ctx.lineWidth = 1
-  ctx.beginPath(); ctx.roundRect(cx - w / 2 + 3, cy - h / 2 + 2.5, w - 6, h - 6, 3); ctx.fill(); ctx.stroke()
-  /* 翘板：合闸 → 上半块压进去（画成下面凸起）；断开 → 上半块抬起 */
-  const rockTop = closed ? cy - 4 : cy - 8
-  ctx.fillStyle = closed ? '#FBFDFE' : '#E3E8ED'
-  ctx.strokeStyle = '#AFB9C2'; ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.moveTo(cx - 6, rockTop); ctx.lineTo(cx + 6, rockTop)
-  ctx.lineTo(cx + 6, cy + 9); ctx.lineTo(cx - 6, cy + 9)
-  ctx.closePath(); ctx.fill(); ctx.stroke()
-  /* 状态字 */
-  ctx.fillStyle = closed ? '#7C8794' : '#9AA4AE'
-  ctx.font = `bold ${FS(7)}px "Microsoft YaHei", sans-serif`
+  const w = 24, h = 32
+  const x = cx - w / 2, y = cy - h / 2
+  /* 面板：亮 / 暗 */
+  ctx.fillStyle = closed ? '#FFFFFF' : '#D9DEE4'
+  ctx.strokeStyle = closed ? '#C7CFD6' : '#A9B3BC'
+  ctx.lineWidth = 1.3
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, 4); ctx.fill(); ctx.stroke()
+  /* 内框（面板凹进去的一圈） */
+  ctx.fillStyle = closed ? '#F1F4F7' : '#C9D0D7'
+  ctx.strokeStyle = closed ? '#D9DFE6' : '#B4BDC6'
+  ctx.lineWidth = 1
+  ctx.beginPath(); ctx.roundRect(x + 3, y + 2.5, w - 6, h - 6, 3); ctx.fill(); ctx.stroke()
+  /* 翘板：合 → 压平（近白、上沿一道高光）；断 → 抬起（压深灰、上沿露出白色凸边） */
+  const rockTop = closed ? cy - 5.5 : cy - 8.5
+  ctx.fillStyle = closed ? '#FDFEFF' : '#AEB7C0'
+  ctx.strokeStyle = closed ? '#C2CBD3' : '#8F99A3'
+  ctx.lineWidth = 1
+  ctx.beginPath(); ctx.roundRect(cx - 6.5, rockTop, 13, cy + 9.5 - rockTop, 2.5); ctx.fill(); ctx.stroke()
+  /* 翘板上沿的白边（实物图上合、断两态都有的那道反光） */
+  ctx.fillStyle = closed ? '#FFFFFF' : '#EAEEF2'
+  ctx.beginPath(); ctx.roundRect(cx - 5.6, rockTop + 0.8, 11.2, 1.8, 0.9); ctx.fill()
+  /* 橙色小标记 */
+  ctx.fillStyle = '#F2822B'
+  ctx.beginPath(); ctx.roundRect(cx - 2.6, rockTop + 3.6, 5.2, 1.4, 0.7); ctx.fill()
+  /* 状态字：仍留一个极小的字，方便读屏与放大查看，正常尺寸几乎看不见 */
+  ctx.fillStyle = closed ? '#B9C2CB' : '#7E8892'
+  ctx.font = `bold ${FS(5.6)}px "Microsoft YaHei", sans-serif`
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-  ctx.fillText(closed ? 'ON' : 'OFF', cx, cy + 2)
+  ctx.fillText(closed ? 'ON' : 'OFF', cx, cy + 4)
 }
 
 /** 回路中的电能表（符号化：铭牌条 + 铝盘 + 6 位计数器 + 600 r/kW·h） */

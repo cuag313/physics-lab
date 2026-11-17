@@ -52,6 +52,8 @@ export const CFG = {
   RELAY_CONTACT_R: 0.001,       // 触点闭合电阻（Ω）
   MAINS_V: 220,                 // 市电电压有效值（V，按直流等效建模）
   MAINS_R: 0.1,                 // 市电电源内阻（Ω）
+  // 家用电器的额定功率（W）：R = U²/P，四台都按 220 V 标定
+  APPLIANCE_W: { washer: 500, riceCooker: 800, kettle: 1500, heater: 1500 },
   // 单相电能表：1↔3 是电流线圈（计量相线），2↔4 是零线直通
   METER_COIL_R: 0.02,           // 电流线圈电阻（Ω）
   METER_LINE_R: 0.001,          // 零线直通段电阻（Ω）
@@ -111,8 +113,10 @@ export const TERM_IDS = {
   wallSwitch: ['a', 'b'],            // 墙上面板开关：两柱
   socket2: ['l', 'n'],               // 两孔插座：火 L / 零 N（电器插脚插进来即并联）
   socket3: ['l', 'e', 'n'],          // 三孔插座：火 L / 地 E / 零 N
-  washer: ['a', 'b'],                // 洗衣机（500 W，R = U²/P）：两接线柱
-  kettle: ['a', 'b'],                // 电热水壶（1500 W，R = U²/P）：两接线柱
+  washer: ['a', 'b'],                // 洗衣机（500 W，R = U²/P）：两根插脚
+  kettle: ['a', 'b'],                // 电热水壶（1500 W，R = U²/P）：两根插脚
+  riceCooker: ['a', 'b'],            // 电饭煲（800 W，R = U²/P）：两根插脚
+  heater: ['a', 'b'],                // 电暖器（1500 W，R = U²/P）：两根插脚
   jouleTube: ['a', 'b'],             // 焦耳定律 U 形管：左管 R1、右管 R2 串联，a/b 两接线柱
   jouleSet: ['a1', 'a2', 'b1', 'b2'], // 焦耳定律演示器：A 组（a1-a2）、B 组（b1-b2）两段电阻各一对柱
   electromagnet: ['a', 'b'],         // 电磁铁（线圈 + 软铁芯）：线圈两端两接线柱
@@ -282,13 +286,13 @@ export function solveCircuit(comps, wires, opts) {
       const R = c.closed ? 0.001 : 1e8
       stampR(A, a, bb, R)
       els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
-    } else if (c.type === 'washer' || c.type === 'kettle') {
+    } else if (c.type === 'washer' || c.type === 'kettle' || c.type === 'riceCooker' || c.type === 'heater') {
       // 家用电器：额定功率 P 定阻（R = U²/P，按 220 V 额定电压标定）
-      // 洗衣机 500 W → 96.8 Ω、电热水壶 1500 W → 32.3 Ω；
-      // 接 220 V 时 I = P/U = 2.27 / 6.82 A —— 电能表的转盘快慢与走字速度就由它决定。
+      // 洗衣机 500 W → 96.8 Ω、电饭煲 800 W → 60.5 Ω、电热水壶 / 电暖器 1500 W → 32.3 Ω；
+      // 接 220 V 时 I = P/U —— 电能表的转盘快慢与走字速度就由它决定。
       const a = netOf(c, 'a')
       const bb = netOf(c, 'b')
-      const P0 = Number(c.p) || (c.type === 'washer' ? 500 : 1500)
+      const P0 = Number(c.p) || CFG.APPLIANCE_W[c.type] || 500
       const R = (CFG.MAINS_V * CFG.MAINS_V) / P0
       stampR(A, a, bb, R)
       els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
@@ -550,7 +554,7 @@ export function solveCircuit(comps, wires, opts) {
       o._I = Math.abs(I)
       o._R = e.R
       o._P = I * I * e.R
-    } else if (c.type === 'washer' || c.type === 'kettle') {
+    } else if (c.type === 'washer' || c.type === 'kettle' || c.type === 'riceCooker' || c.type === 'heater') {
       // 实际电流 + 实际功率（表上的瓦数由电路算出来，跟额定值无关）
       o._I = Math.abs(I)
       o._R = e.R
