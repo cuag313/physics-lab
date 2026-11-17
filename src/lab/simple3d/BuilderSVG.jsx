@@ -46,12 +46,13 @@ const keyOf = (cid, tid) => cid + ':' + tid
  * 插座卡里的两个孔（L / N 孔）中点按"面板照片"重新量过：两孔 (47,72)、三孔 (52,86)（照片里 L/N 两斜孔的中点）。 */
 const PLUG_TYPES = ['washer', 'kettle', 'riceCooker', 'heater']
 const SOCKET_HOLE = { socket2: { x: 47, y: 72 }, socket3: { x: 52, y: 112 } }
-/* 插头是一只**独立可拖**的部件（用户要求：电器放好后只拖插头，电源线可任意方向拉长）：
- * 框 36×52，插脚中点（也就是要落进插座孔的那个点）在框内 (18,40)。
- * 宽度取 36：两孔孔距 22、三孔 L/N 孔距 24，插头壳盖上去后四周还各留 5–6px，
- * 不会从圆角处"漏出孔"。 */
-const PLUG_SIZE = { w: 36, h: 52 }
-const PLUG_PIN = { x: 18, y: 40 }
+/* 插头是一只**独立可拖**的部件（用户要求：电器放好后只拖插头，电源线可任意方向拉长）。
+ * 形状照 NB/实物：深灰**盾形插头壳**（上圆下尖、线从尖上出来）＋三只黄铜脚。
+ * 框 36×56，两种状态各有一个"锚点"：
+ *   没插 —— 插脚朝上露着，锚点 = L/N 两脚尖中点 (18,2)；
+ *   插上 —— 插头壳压在孔位上，锚点 = L/N 两孔所在的那一行 (18,40)。 */
+const PLUG_SIZE = { w: 36, h: 60 }
+const PLUG_ANCHOR = { off: { x: 18, y: 2 }, on: { x: 18, y: 40 } }
 const PLUG_SNAP_R = 84
 
 /** 插头默认挂在电器的右侧（大小比例照实物：插头壳比机器窄得多，整只落在机器右边外侧） */
@@ -1056,8 +1057,9 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
            这一层只负责让"裸铜丝绕在柱脚上"永远画在所有导线最上面。 */
         .esb-wiretop{position:absolute;inset:0;pointer-events:none;z-index:6}
         .esb-partlayer{position:absolute;inset:0;z-index:2;pointer-events:none}
-        /* 插头层：电源线（只画不点）＋ 插头本体（可拖，所以在这一层里 pointer-events 只给 .esb-plug） */
-        .esb-cordlayer{position:absolute;inset:0;pointer-events:none;z-index:8}
+        /* 插头层：电源线画在器材**背后**（起点藏在机身里，露出来的一截贴着机器边缘＝线是从机器里出来的），
+           插头本体在最上层、可拖 */
+        .esb-cordlayer{position:absolute;inset:0;pointer-events:none;z-index:1}
         .esb-plug{position:absolute;touch-action:none;cursor:grab;pointer-events:auto;z-index:9;
           filter:drop-shadow(0 1.4px 2px rgba(15,23,42,.30))}
         .esb-plug:active{cursor:grabbing}
@@ -1231,15 +1233,15 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
           {plugs.map((c) => {
             const t = T(c)
             const pos = c.plugPos || plugHome(c)
-            const ax = c.x + t.w - 6
-            const ay = c.y + Math.round(t.h * 0.56)
-            /* 线的另一端咬在插头壳的左上口（不是尖脚）：插上时壳压住孔位、线从壳侧进；
-               没插时线从壳侧面进，脚在下面露着 */
-            const bx = pos.x - 15
-            const by = pos.y - (c.plug ? 28 : 34)
+            /* 线的起点藏在机身背后（机身右下角内侧）：线层比器材层低，露出来的一截正好
+               贴着机器边缘，"从机器里长出来"才像真机；终点咬在插头壳的尖上（壳的尖就是线的出口） */
+            const ax = c.x + t.w - 24
+            const ay = c.y + t.h - 22
+            const bx = pos.x
+            const by = pos.y + (c.plug ? 16 : 58)
             const dx = bx - ax
-            const sag = Math.min(64, Math.abs(dx) * 0.25 + 12)
-            const d = `M${ax} ${ay} C${ax + dx * 0.4} ${ay + sag} ${bx - dx * 0.35} ${by + sag * 0.6} ${bx} ${by}`
+            const sag = Math.min(64, Math.abs(dx) * 0.26 + 14)
+            const d = `M${ax} ${ay} C${ax + dx * 0.3} ${ay + sag} ${bx - dx * 0.22} ${by + 12} ${bx} ${by}`
             return (
               <g key={c.id}>
                 <path d={d} fill="none" stroke="rgba(15,23,42,0.16)" strokeWidth={5.2} strokeLinecap="round" transform="translate(0 1.6)" />
@@ -1251,35 +1253,44 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         </svg>
         {plugs.map((c) => {
           const pos = c.plugPos || plugHome(c)
+          const an = c.plug ? PLUG_ANCHOR.on : PLUG_ANCHOR.off
           return (
             <div
               key={'plug' + c.id}
               className={`esb-plug${c.plug ? ' on' : ''}`}
               data-plug-of={c.id} data-plug-type={c.type}
-              style={{ left: pos.x - PLUG_PIN.x, top: pos.y - PLUG_PIN.y, width: PLUG_SIZE.w, height: PLUG_SIZE.h }}
+              style={{ left: pos.x - an.x, top: pos.y - an.y, width: PLUG_SIZE.w, height: PLUG_SIZE.h }}
               onPointerDown={(e) => onPlugDown(e, c)}
               title={c.plug ? '插在插座上（拖动可拔出）' : '拖动这只插头，插到插座的孔里'}
             >
-              <svg width={PLUG_SIZE.w} height={PLUG_SIZE.h} viewBox="0 0 36 52">
+              <svg width={PLUG_SIZE.w} height={PLUG_SIZE.h} viewBox="0 0 36 60">
+                {/* 盾形插头壳（照 NB/实物：上圆、下收成尖，线从尖上出来）。壳 36×42 */}
                 {c.plug ? (
-                  <g>
-                    {/* 插上：插头壳整体盖在孔位上（三只脚已经在孔里，所以不再画脚） */}
-                    <rect x="0" y="8" width="36" height="38" rx="4.5" fill="#3c4048" stroke="#242a31" strokeWidth="1.1" />
-                    <rect x="3" y="11.4" width="30" height="3.6" rx="1.8" fill="#ffffff" opacity=".22" />
-                    <rect x="3" y="16.6" width="30" height="1.4" rx=".7" fill="#ffffff" opacity=".10" />
+                  <g transform="translate(0 14)">
+                    <path d="M4 0 H32 A4 4 0 0 1 36 4 V30 C34 38 26 42 18 42 C10 42 2 38 0 30 V4 A4 4 0 0 1 4 0 Z"
+                      fill="#3b3f46" stroke="#23272d" strokeWidth="1.1" />
+                    <rect x="5" y="3.4" width="26" height="3.4" rx="1.7" fill="#ffffff" opacity=".20" />
+                    <path d="M5 9.4 H31" stroke="#ffffff" strokeWidth="1" opacity=".09" />
+                    <path d="M3.6 5 A3.4 3.4 0 0 1 7 1.6 H29 A3.4 3.4 0 0 1 32.4 5 V29 C31 35 24 38.6 18 38.6 C12 38.6 5 35 3.6 29 Z"
+                      fill="none" stroke="#ffffff" strokeWidth="1" opacity=".14" />
                   </g>
                 ) : (
                   <g>
-                    {/* 没插：插头壳在上，三只黄铜脚朝下露着；L、N 两脚尖的中点在 (18,40) */}
-                    <rect x="0" y="0" width="36" height="26" rx="5" fill="#3c4048" stroke="#242a31" strokeWidth="1.1" />
-                    <rect x="3" y="3" width="30" height="3.2" rx="1.6" fill="#ffffff" opacity=".22" />
-                    <rect x="3" y="8.4" width="30" height="1.4" rx=".7" fill="#ffffff" opacity=".10" />
-                    <rect x="6" y="26" width="5" height="14" rx="1.1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".9" />
-                    <rect x="25" y="26" width="5" height="14" rx="1.1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".9" />
-                    <rect x="15.5" y="26" width="5" height="14" rx="1.1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".9" />
-                    <rect x="6.7" y="27" width="1.4" height="12" rx=".7" fill="#f1dca8" opacity=".85" />
-                    <rect x="25.7" y="27" width="1.4" height="12" rx=".7" fill="#f1dca8" opacity=".85" />
-                    <rect x="16.2" y="27" width="1.4" height="12" rx=".7" fill="#f1dca8" opacity=".85" />
+                    {/* 没插：三只黄铜脚朝上露着（脚尖就是吸附点），壳在下面 */}
+                    <rect x="6" y="2" width="5" height="16" rx="1.1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".9" />
+                    <rect x="25" y="2" width="5" height="16" rx="1.1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".9" />
+                    <rect x="15.5" y="2" width="5" height="16" rx="1.1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".9" />
+                    <rect x="6.7" y="3" width="1.4" height="14" rx=".7" fill="#f1dca8" opacity=".85" />
+                    <rect x="25.7" y="3" width="1.4" height="14" rx=".7" fill="#f1dca8" opacity=".85" />
+                    <rect x="16.2" y="3" width="1.4" height="14" rx=".7" fill="#f1dca8" opacity=".85" />
+                    <g transform="translate(0 18)">
+                      <path d="M4 0 H32 A4 4 0 0 1 36 4 V30 C34 38 26 42 18 42 C10 42 2 38 0 30 V4 A4 4 0 0 1 4 0 Z"
+                        fill="#3b3f46" stroke="#23272d" strokeWidth="1.1" />
+                      <rect x="5" y="3.4" width="26" height="3.4" rx="1.7" fill="#ffffff" opacity=".20" />
+                      <path d="M5 9.4 H31" stroke="#ffffff" strokeWidth="1" opacity=".09" />
+                      <path d="M3.6 5 A3.4 3.4 0 0 1 7 1.6 H29 A3.4 3.4 0 0 1 32.4 5 V29 C31 35 24 38.6 18 38.6 C12 38.6 5 35 3.6 29 Z"
+                        fill="none" stroke="#ffffff" strokeWidth="1" opacity=".14" />
+                    </g>
                   </g>
                 )}
               </svg>
