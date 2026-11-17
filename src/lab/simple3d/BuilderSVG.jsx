@@ -18,7 +18,7 @@ import {
   forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from 'react'
 import { solveCircuit, CFG } from '../engine/electricLab.js'
-import { TYPES, RHEO_TRACK, rheostatMode } from '../scenes/electricSvgInstruments.js'
+import { TYPES, RHEO_TRACK, rheostatMode, figURL } from '../scenes/electricSvgInstruments.js'
 import {
   wireCurve, curveD, curveMid, wireLayers, wrapLayers,
 } from '../render/wireSvg.js'
@@ -176,6 +176,148 @@ function ElectronFlow({ items }) {
           )
         }
         return <g key={it.id}>{dots}{arrow}</g>
+      })}
+    </svg>
+  )
+}
+
+/* ── 运动层几何（器材内部坐标，与图标 1:1 对位）──
+ * 电能表 190×190：转盘窗口就是图标上那条黑圆角矩形（256 坐标 x44..204 / y103..119
+ *   → 190 坐标 x33..151、中线 y82），铝盘边沿的刻线从这个窗口里走过去。
+ * 洗衣机卡 150×172：机体图放在 x24 y18 w102 h90（188×224 按 meet 收成 75.5×90、
+ *   左起 x37.2），图标 256 里滚筒圆心 (95,132)、内圆半径≈48 → 卡内 (75.4,67.8)、r≈15.2。 */
+const METER_SLOT = { x: 52, y: 75.5, w: 79, h: 11.5 }
+const WASHER_DRUM = { cx: 75.4, cy: 67.8, r: 15.2 }
+
+/**
+ * 运动层：转动的铝盘 / 在洗的滚筒 / 工作中指示灯。
+ *
+ * 为什么不把动画写进器材的 SVG 字符串：器材层是每 250 ms 用 dangerouslySetInnerHTML
+ * 重画的字符串（电能表每 tick 还要换计数器数字），字符串里挂 CSS 动画会被反复重建成
+ * 起始帧 —— 看起来就是"抖一下 / 冻住"。所以"会动的东西"单独放在这一层，自己跑 rAF，
+ * 只重渲染自己，与整场景重渲染解耦（和 ElectronFlow 同一套做法）。
+ */
+function MotionLayer({ items }) {
+  const [, setTick] = useState(0)
+  const phRef = useRef(new Map())
+  const itemsRef = useRef(items)
+  itemsRef.current = items
+  const live = items.length > 0
+  useEffect(() => {
+    if (!live) return undefined
+    let raf = 0
+    let last = performance.now()
+    const loop = (now) => {
+      const dt = Math.min(0.12, Math.max(0, (now - last) / 1000))
+      last = now
+      for (const it of itemsRef.current) {
+        const st = phRef.current.get(it.id) || { u: 0, a: 0, led: 0 }
+        if (it.kind === 'meter') st.u = (st.u + dt * it.v) % 1
+        else st.a += dt * it.v
+        st.led += dt
+        phRef.current.set(it.id, st)
+      }
+      setTick((n) => n + 1)
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [live])
+
+  return (
+    <svg className="esb-motionlayer" width={CW} height={CH}>
+      {items.map((it) => {
+        const st = phRef.current.get(it.id) || { u: 0, a: 0, led: 0 }
+        /* 电能表：窗口里两块亮斑 + 一块红标记横向走过 = 铝盘在转（窗口就是图标那条
+           黑圆角矩形，位置按 256 坐标量出：x70..176 / y103..119 → 190 坐标 x52..131、y76..88），
+           速度 ∝ 表电流（= 全屋总功率），所以"功率大的用电器，表转得更快"是看得见的；
+           旁边再点一颗脉冲灯（闪烁频率固定，机械表就是靠它"闪一下走一次"）。 */
+        if (it.kind === 'meter') {
+          const S = METER_SLOT
+          const y = S.y + S.h / 2
+          /* 盘缘标记：两道斜亮刻线 + 一道红刻线，从窗口里扫过去（斜着画才像"盘沿在转"，
+             正着画就成了水平滑动的方块）。全部留在窗口内，不会闪出去。 */
+          const marks = [0, 0.5].map((k, i) => {
+            const x = S.x + ((st.u + k) % 1) * (S.w - 6)
+            return <rect key={'mk' + i} x={x} y={y - (S.h - 4) / 2} width="5.4" height={S.h - 4} rx="2.4"
+              transform={`rotate(16 ${x + 2.7} ${y})`} fill="rgba(240,246,252,.8)" />
+          })
+          const redX = S.x + ((st.u + 0.25) % 1) * (S.w - 6)
+          marks.push(<rect key="mkred" x={redX} y={y - (S.h - 3.4) / 2} width="4" height={S.h - 3.4} rx="2"
+            transform={`rotate(16 ${redX + 2} ${y})`} fill="rgba(239,68,68,.95)" />)
+          const blink = 0.18 + 0.82 * (0.5 + 0.5 * Math.sin(st.led * 2 * Math.PI * 1.15))
+          return (
+            <g key={it.id} transform={`translate(${it.x},${it.y})`}>
+              <defs>
+                <clipPath id={`esbm-slot-${it.id}`}>
+                  <rect x={S.x} y={S.y} width={S.w} height={S.h} rx="4" />
+                </clipPath>
+              </defs>
+              <g clipPath={`url(#esbm-slot-${it.id})`}>
+                {/* 窗口里只叠"铝盘边沿的刻线"在走：图标本身已经把窗口画成黑框 + 中间一条
+                    亮银横线（那是盘沿），所以这里不再铺底色，只在黑区上补会移动的刻线。 */}
+                {marks}
+              </g>
+              {/* 脉冲灯（表盘左下白色区，图标那儿本来就是空的） */}
+              <circle cx="39.5" cy="95.5" r="5.2" fill="#fecaca" opacity={blink * 0.45} />
+              <circle cx="39.5" cy="95.5" r="2.4" fill="#dc2626" opacity={0.35 + blink * 0.6} />
+            </g>
+          )
+        }
+        /* 洗衣机：整个滚筒（衣物 + 玻璃）绕筒心转 —— 就是把实拍图标里那一圈再画一遍、
+           转起来后裁在圆窗里，看起来就是"衣服在筒里翻"；再加两片水光、跑动的泡沫和
+           底座指示灯。断电就不画，动都不动。 */
+        if (it.kind === 'washer') {
+          const D = WASHER_DRUM
+          const a = st.a
+          const deg = (a * 180) / Math.PI
+          const halo = [0, Math.PI].map((o, i) => {
+            const r = D.r - 2.2
+            const a0 = a + o
+            const x0 = D.cx + Math.cos(a0) * r
+            const y0 = D.cy + Math.sin(a0) * r
+            const x1 = D.cx + Math.cos(a0 + 0.55) * r
+            const y1 = D.cy + Math.sin(a0 + 0.55) * r
+            return <path key={'hl' + i}
+              d={`M ${D.cx} ${D.cy} L ${x0.toFixed(2)} ${y0.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 0 1 ${x1.toFixed(2)} ${y1.toFixed(2)} Z`}
+              fill="rgba(236,245,255,.42)" />
+          })
+          const bubbles = Array.from({ length: 5 }, (_, i) => {
+            const th = a * 1.6 + (i * Math.PI * 2) / 5
+            const rr = 5.0 + (i % 3) * 3.0
+            const x = D.cx + Math.cos(th) * rr
+            const yy = D.cy + Math.sin(th) * rr * 0.58
+            return <circle key={'bb' + i} cx={x} cy={yy} r={0.8 + (i % 2) * 0.5}
+              fill="rgba(248,250,252,.66)" />
+          })
+          const led = 0.28 + 0.42 * (0.5 + 0.5 * Math.sin(st.led * 6.4))
+          return (
+            <g key={it.id} transform={`translate(${it.x},${it.y})`}>
+              <defs>
+                <clipPath id={`esbm-drum-${it.id}`}>
+                  <circle cx={D.cx} cy={D.cy} r={D.r - 1.2} />
+                </clipPath>
+              </defs>
+              <g clipPath={`url(#esbm-drum-${it.id})`}>
+                <image href={figURL('washer_body.png')} x="24" y="18" width="102" height="90"
+                  preserveAspectRatio="xMidYMid meet"
+                  transform={`rotate(${deg.toFixed(1)} ${D.cx} ${D.cy})`} />
+                {halo}
+                {bubbles}
+              </g>
+              <circle cx="37" cy="116.5" r="4.6" fill="#f87171" opacity={led} />
+              {/* 底座上一个小转盘图标（三点转子）：远处也能一眼看出"在工作" */}
+              {[0, 1, 2].map((i) => {
+                const th = a * 1.4 + (i * Math.PI * 2) / 3
+                const x = 47.5 + Math.cos(th) * 2.6
+                const yy = 116.5 + Math.sin(th) * 1.7
+                return <circle key={'sp' + i} cx={x} cy={yy} r={1.15}
+                  fill="#b91c1c" opacity={0.9 - i * 0.22} />
+              })}
+            </g>
+          )
+        }
+        return null
       })}
     </svg>
   )
@@ -611,9 +753,20 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       const loads = comps.filter((c) => (c.type === 'washer' || c.type === 'kettle')
         && Math.abs(solved[c.id]?._I || 0) > 0.005)
       if (loads.length) {
-        const total = Math.round(loads.reduce((s, c) => s + (Number(c.p) || (c.type === 'washer' ? 500 : 1500)), 0))
+        // 功率取引擎算出来的实际值（不是额定）：两台串在一条线上时会掉到 500 W 左右，学生一眼看出接错了
+        const total = Math.round(loads.reduce((s, c) => s + (solved[c.id]?._P || 0), 0))
         const names = loads.map((c) => (c.type === 'washer' ? '洗衣机' : '电热水壶')).join(' + ')
-        return { tone: 'ok', text: `✅ 家庭电路接通 · ${names} ${total} W 工作，电能表走字` }
+        // 每台的端电压 = I·R；都接近 220 V 才是"并联在 220 V 两端"
+        const Us = loads.map((c) => Math.abs(solved[c.id]?._I || 0) * (solved[c.id]?._R || 0))
+        const par = Us.every((u) => u > 200)
+        if (!par) {
+          return {
+            tone: 'warn',
+            text: `⚠ ${names} 串在同一条支路上了：家用电器应并联在 220 V 两端（现在每台只分到 ${Math.round(Us[0])} V，总功率 ${total} W）`,
+          }
+        }
+        const head = loads.length > 1 ? `${names} 并联在 220 V 两端，合计 ${total} W` : `${names} 并联在 220 V 两端 · ${total} W`
+        return { tone: 'ok', text: `✅ 家用交流电接通 · ${head} · 电能表串在干路走字` }
       }
       return { tone: 'ok', text: '✅ 电路接通' }
     }
@@ -626,8 +779,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
 
   /* 有电流的导线 → 电子流动层的数据。
      电子行进方向 = -sign(_wireI)（_wireI 以 a→b 为正 = 电流方向，电子反向） */
-  const flowItems = (() => {
-    const wI = solved._wireI || {}
+  const flowItems = (() => {    const wI = solved._wireI || {}
     const out = []
     for (const w of wires) {
       const I = wI[w.id]
@@ -644,6 +796,27 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     let bestMag = 0
     for (const it of out) if (it.mag > bestMag) { bestMag = it.mag; bestId = it.id }
     for (const it of out) it.arrowOn = it.id === bestId
+    return out
+  })()
+
+  /* 运动层数据：通电后才"看得出来在动"的两类器材。
+     转速一律 ∝ 功率（洗衣机 500 W 明显比电热水壶 1500 W 慢、两台都开又更快），
+     走字倍速只给一点观感加成并封顶，免得 600× 时糊成一片、反而看不出在转。 */
+  const motionItems = (() => {
+    const out = []
+    const spBoost = meterSpeed >= 600 ? 1.8 : meterSpeed >= 60 ? 1.35 : 1
+    for (const c of comps) {
+      const o = solved[c.id] || {}
+      const I = Math.abs(o._I || 0)
+      const P = Math.abs(o._P || 0)
+      if (c.type === 'energyMeter' && I > 0.004) {
+        // 单位：窗口行程 / 秒。表电流 9 A（1980 W）→ 约 0.95 趟每秒；1.5 kW 单壶 ≈0.8；500 W 单机 ≈0.24
+        out.push({ id: c.id, kind: 'meter', x: c.x, y: c.y, v: (0.05 + 0.85 * Math.min(1.4, I / 9.0)) * spBoost })
+      } else if (c.type === 'washer' && P > 0.5) {
+        // 单位：rad / 秒；500 W 约 0.5 转每秒（真实滚筒洗程本来就这么慢）
+        out.push({ id: c.id, kind: 'washer', x: c.x, y: c.y, v: 2.0 + 2.4 * P / 2000 })
+      }
+    }
     return out
   })()
 
@@ -770,6 +943,8 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         .esb-status{position:absolute;left:12px;bottom:12px;z-index:20;padding:7px 14px;border-radius:10px;
           font-size:13px;font-weight:600;pointer-events:none;box-shadow:0 4px 14px rgba(2,6,23,.25)}
         .esb-flowlayer{position:absolute;inset:0;pointer-events:none;z-index:4}
+        /* 运动层：压在导线(3)与器材(2)之上、接线柱命中层(5)之下 —— 柱子必须还能点 */
+        .esb-motionlayer{position:absolute;inset:0;pointer-events:none;z-index:4}
         .esb-flow-legend{position:absolute;left:12px;bottom:52px;z-index:20;display:flex;align-items:center;gap:9px;
           padding:6px 12px;border-radius:10px;background:rgba(255,255,255,.94);border:1px solid #dbe3ec;
           font-size:12px;color:#334155;pointer-events:none;box-shadow:0 4px 14px rgba(2,6,23,.18);white-space:nowrap}
@@ -848,6 +1023,9 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
 
         {/* 电子流动层：压在导线之上、护套之下 */}
         <ElectronFlow items={flowItems} />
+
+        {/* 运动层：铝盘在转 / 滚筒在洗（自带 rAF，不进器材的字符串重渲染） */}
+        <MotionLayer items={motionItems} />
 
         {/* 元件层 */}
         <div className="esb-partlayer">

@@ -90,11 +90,18 @@ function applianceSVG(kind, c, dyn = {}) {
   const P = Number(c.p) || art.P
   const I = Math.abs(Number(dyn.I) || 0)
   const on = I > 0.001
-  const R0 = (220 * 220) / P
-  const cap = on ? `${P} W 额定 · I = ${I.toFixed(2)} A` : `${P} W 额定 · R = ${R0.toFixed(1)} Ω`
+  const R = Number(dyn.R) || (220 * 220) / P
+  const U = on ? I * R : 0
+  // 家用电器是并联在 220 V 两端用的：通电后直接把两端实际电压写出来，
+  // 学生自己把两台串起来时会看到"串联分压 · U = 165.2 V"，这个反差就是教学点。
+  const conn = !on
+    ? '并联接在 220 V 两端'
+    : U > 200 ? `并联 · U = ${U.toFixed(1)} V`
+      : `串联分压 · U = ${U.toFixed(1)} V`
+  const cap = on ? `${P} W 额定 · I = ${I.toFixed(2)} A` : `${P} W 额定 · R = ${R.toFixed(1)} Ω`
   return `
-    <svg width="150" height="158" viewBox="0 0 150 158">
-      ${fitInner(150, 158, 150, 158, INNER.homeLoad())}
+    <svg width="150" height="172" viewBox="0 0 150 172">
+      ${fitInner(150, 172, 150, 172, INNER.homeLoad())}
       <g class="casing">
         <rect x="6" y="1" width="138" height="15" rx="4" fill="#334155"/>
         <text x="75" y="11.5" text-anchor="middle" font-size="9" fill="#dbeafe"
@@ -103,11 +110,19 @@ function applianceSVG(kind, c, dyn = {}) {
           preserveAspectRatio="xMidYMid meet"/>
         <rect x="31" y="110" width="88" height="13" rx="4" fill="#d8dee7" stroke="#a9b3c0" stroke-width="1.2"/>
         <circle cx="37" cy="116.5" r="3" fill="${on ? '#dc2626' : '#e2e8f0'}" stroke="#94a3b8" stroke-width="1"/>
+        ${on ? `<g>
+          <rect x="108" y="20" width="34" height="12" rx="6" fill="#fee2e2" stroke="#f87171" stroke-width=".9"/>
+          <circle cx="114.5" cy="26" r="2.2" fill="#dc2626"/>
+          <text x="129" y="29.2" text-anchor="middle" font-size="6.5" fill="#b91c1c"
+            font-family="system-ui,-apple-system,'Segoe UI',sans-serif">运行中</text>
+        </g>` : ''}
       </g>
       ${termDotSVG(42, 128, true)}
       ${termDotSVG(108, 128, false)}
       <text x="75" y="146" text-anchor="middle" font-size="8.5" fill="#475569"
         font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${cap}</text>
+      <text x="75" y="160" text-anchor="middle" font-size="7" fill="${on && U < 200 ? '#dc2626' : '#1d4ed8'}"
+        font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${conn}</text>
     </svg>`
 }
 
@@ -1575,7 +1590,7 @@ export const TYPES = {
    * I = P/U 才有 2.27 A / 6.82 A，配右上「走字倍速」才看得见转盘快慢与计数器跳字。
    * 两台都按 R = U²/P 定阻（洗衣机 500 W → 96.8 Ω，电热水壶 1500 W → 32.3 Ω）。 */
   washer: {
-    label: '洗衣机', w: 150, h: 158,
+    label: '洗衣机', w: 150, h: 172,
     terminals: [
       { id: 'a', label: '1', name: '接线柱 1', x: 42, y: 128 },
       { id: 'b', label: '2', name: '接线柱 2', x: 108, y: 128 },
@@ -1583,7 +1598,7 @@ export const TYPES = {
     render(c, dyn = {}) { return applianceSVG('washer', c, dyn) },
   },
   kettle: {
-    label: '电热水壶', w: 150, h: 158,
+    label: '电热水壶', w: 150, h: 172,
     terminals: [
       { id: 'a', label: '1', name: '接线柱 1', x: 42, y: 128 },
       { id: 'b', label: '2', name: '接线柱 2', x: 108, y: 128 },
@@ -1635,6 +1650,7 @@ export const TYPES = {
         <text x="95.5" y="110" text-anchor="middle" font-size="7.5" fill="${I > 0.005 ? '#b45309' : '#64748b'}"
           font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${I > 0.005 ? `I = ${I.toFixed(2)} A · 铝盘转动中` : '无电流 · 铝盘不转'}</text>
       </g>
+      ${noteChipSVG(95, 13, '串在干路 · 计总电功', '#fbbf24', 100)}
       ${termDotsSVG([
         { x: 46.4, y: 160.7, label: '1', dark: false, labelFill: '#e5e7eb' },
         { x: 77.6, y: 160.7, label: '2', dark: false, labelFill: '#e5e7eb' },

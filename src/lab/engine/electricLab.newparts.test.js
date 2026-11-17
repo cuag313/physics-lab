@@ -574,4 +574,43 @@ describe('家用电器（洗衣机 500 W / 电热水壶 1500 W，R = U²/P）', 
     expect(out[2]._I).toBeLessThan(0.06)
     expect(out[2]._P).toBeLessThan(2)   // 96.8 Ω 上 3 V 只有 0.09 W
   })
+
+  it('两台并联在 220 V 两端：各自端电压 ≈ 220 V，干路电流 = 两支路之和', () => {
+    // 插座 L → 表 1 → 表 3 → 开关 → 分成两支：洗衣机 / 电热水壶，各自另一端都回表的 4（零线）
+    const out = loop(
+      [{ id: 1, type: 'mains' }, { id: 2, type: 'energyMeter' }, { id: 3, type: 'switch', closed: true },
+        { id: 4, type: 'washer' }, { id: 5, type: 'kettle' }],
+      [
+        { id: 1, a: '1:l', b: '2:i1' },
+        { id: 2, a: '2:o1', b: '3:a' },
+        { id: 3, a: '3:b', b: '4:a' },      // 支路 1：洗衣机
+        { id: 4, a: '4:b', b: '2:o2' },     //   → 回表的 4 号柱（零线）
+        { id: 5, a: '3:b', b: '5:a' },      // 支路 2：电热水壶
+        { id: 6, a: '5:b', b: '2:o2' },
+        { id: 7, a: '2:i2', b: '1:n' },
+      ])
+    const w = out[4], k = out[5]
+    // 并联 → 两台端电压相同，且都接近 220 V（只被表内线圈/零线段与电源内阻吃掉一点）
+    expect(near(w._I * w._R, 220, 1.5)).toBe(true)
+    expect(near(k._I * k._R, 220, 1.5)).toBe(true)
+    // 干路电流（表的电流线圈）= 两支路之和
+    expect(near(out[2]._I, w._I + k._I, 1e-6)).toBe(true)
+    // 功率叠加：合计 ≈ 2000 W（洗衣机 500 + 壶 1500）
+    expect(w._P + k._P).toBeGreaterThan(1950)
+    expect(w._P + k._P).toBeLessThan(2005)
+  })
+
+  it('两台串在同一条支路上（错接）：各自只分到 110 V 左右，总功率远小于 2000 W', () => {
+    const out = loop(
+      [{ id: 1, type: 'mains' }, { id: 2, type: 'washer' }, { id: 3, type: 'kettle' }],
+      [
+        { id: 1, a: '1:l', b: '2:a' },
+        { id: 2, a: '2:b', b: '3:a' },
+        { id: 3, a: '3:b', b: '1:n' },
+      ])
+    const w = out[2], k = out[3]
+    expect(near(w._I * w._R, 164.9, 1)).toBe(true)   // 串联分压：96.8 : 32.3 ≈ 165 V : 55 V
+    expect(w._I).toBeCloseTo(k._I, 6)
+    expect(w._P + k._P).toBeLessThan(900)
+  })
 })
