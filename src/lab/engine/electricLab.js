@@ -108,6 +108,16 @@ export const TERM_IDS = {
   mains: ['n', 'l'],                 // 家用交流电（三孔插座）：零线 N / 火线 L
   washer: ['a', 'b'],                // 洗衣机（500 W，R = U²/P）：两接线柱
   kettle: ['a', 'b'],                // 电热水壶（1500 W，R = U²/P）：两接线柱
+  breaker: ['li', 'ni', 'lo', 'no'], // 空气开关（双极 C16）：相线进/零线进 → 相线出/零线出，两路同时通断
+  socket2: ['l', 'n'],               // 两孔插座：火/零两柱（负载从这两柱接出去）
+  socket3: ['l', 'e', 'n'],          // 三孔插座：火/地/零三柱
+  tv: ['a', 'b'],                    // 电视机（100 W，R = U²/P = 484 Ω）：插头两柱
+  lamp220: ['a', 'b'],               // 白炽灯（220 V 100 W 家用吊灯）：两柱
+  wallSwitch: ['a', 'b'],            // 墙上的面板开关：与 switch 同一套通断模型
+  ground: ['e'],                     // 接地端子：单柱，不走电流
+  busHot: ['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't9', 't10'],   // 火线干线：10 柱内部全通
+  busZero: ['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't9', 't10'],  // 零线干线
+  busEarth: ['t1', 't2', 't3', 't4', 't5', 't6', 't7', 't8', 't9', 't10'], // 地线干线
   jouleTube: ['a', 'b'],             // 焦耳定律 U 形管：左管 R1、右管 R2 串联，a/b 两接线柱
   jouleSet: ['a1', 'a2', 'b1', 'b2'], // 焦耳定律演示器：A 组（a1-a2）、B 组（b1-b2）两段电阻各一对柱
   electromagnet: ['a', 'b'],         // 电磁铁（线圈 + 软铁芯）：线圈两端两接线柱
@@ -192,6 +202,11 @@ function buildNets(comps, wires) {
 
   for (const c of comps) {
     if (c.type === 'rheostat') uni(idx.get(keyOf(c.id, 'tl')), idx.get(keyOf(c.id, 'tr')))
+    // 干线母线排：一条排上的 10 个柱是同一根铜排 → 全部并成一个节点
+    if (c.type === 'busHot' || c.type === 'busZero' || c.type === 'busEarth') {
+      const ids = TERM_IDS[c.type] || []
+      for (let i = 1; i < ids.length; i++) uni(idx.get(keyOf(c.id, ids[0])), idx.get(keyOf(c.id, ids[i])))
+    }
   }
   for (const w of wires) {
     const ia = idx.get(w.a)
@@ -259,7 +274,7 @@ export function solveCircuit(comps, wires, opts) {
       const bb = netOf(c, 'b')
       stampR(A, a, bb, CFG.BULB_R)
       els.push({ kind: 'R', a, b: bb, R: CFG.BULB_R, comp: c, tA: 'a', tB: 'b' })
-    } else if (c.type === 'switch') {
+    } else if (c.type === 'switch' || c.type === 'wallSwitch') {
       const a = netOf(c, 'a')
       const bb = netOf(c, 'b')
       const R = c.closed ? 0.001 : 1e8
@@ -275,6 +290,31 @@ export function solveCircuit(comps, wires, opts) {
       const R = (CFG.MAINS_V * CFG.MAINS_V) / P0
       stampR(A, a, bb, R)
       els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
+    } else if (c.type === 'tv') {
+      // 电视机：100 W 级家用负载，R = 220²/100 = 484 Ω，接 220 V 时 I ≈ 0.45 A
+      const a = netOf(c, 'a')
+      const bb = netOf(c, 'b')
+      const P0 = Number(c.p) || 100
+      const R = (CFG.MAINS_V * CFG.MAINS_V) / P0
+      stampR(A, a, bb, R)
+      els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
+    } else if (c.type === 'lamp220') {
+      // 家用白炽灯：R = 220²/100 = 484 Ω（不是实验台那颗 3.8 V 小灯泡的 5.2 Ω）
+      const a = netOf(c, 'a')
+      const bb = netOf(c, 'b')
+      const P0 = Number(c.p) || 100
+      const R = (CFG.MAINS_V * CFG.MAINS_V) / P0
+      stampR(A, a, bb, R)
+      els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
+    } else if (c.type === 'breaker') {
+      // 双极空气开关：相线（li→lo）与零线（ni→no）两条独立支路，拨杆一合两路同时通
+      const R = c.closed ? 0.001 : 1e8
+      for (const [p, q] of [['li', 'lo'], ['ni', 'no']]) {
+        const a = netOf(c, p)
+        const bb = netOf(c, q)
+        stampR(A, a, bb, R)
+        els.push({ kind: 'R', a, b: bb, R, comp: c, tA: p, tB: q })
+      }
     } else if ((c.type === 'ammeter' || c.type === 'ammeterA')) {
       const tap = meterRangeTap(c, wires)
       const a = netOf(c, tap) // 接入的量程柱（+ 端）
@@ -525,6 +565,14 @@ export function solveCircuit(comps, wires, opts) {
       o._I = Math.abs(I)
       o._R = e.R
       o._P = I * I * e.R
+    } else if (c.type === 'tv' || c.type === 'lamp220') {
+      o._I = Math.abs(I)
+      o._R = e.R
+      o._P = I * I * e.R
+    } else if (c.type === 'breaker') {
+      o._I = Math.max(o._I || 0, Math.abs(I))  // 两极两支路，取大者
+    } else if (c.type === 'socket2' || c.type === 'socket3' || c.type === 'ground') {
+      o._I = 0                                  // 插座/接地端子本身不走电流，负载挂在它接出去的柱上
     } else if (c.type === 'switch2') {
       o._I = Math.max(o._I, Math.abs(I)) // 刀闸 + 两个掷点共 2 支路，取大者
       o._pos = (c.pos ?? 0) === 1 ? 1 : 0

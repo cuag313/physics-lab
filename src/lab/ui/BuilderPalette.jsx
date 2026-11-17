@@ -18,6 +18,8 @@ const DEFAULT_ITEMS = [
 
 const COLORS = [
   { color: '#F44336', name: '红' },
+  { color: '#2f6fdc', name: '蓝' },     // 家庭电路的零线 N
+  { color: '#8bc34a', name: '黄绿' },   // 家庭电路的地线 E
   { color: '#FFC107', name: '黄' },
   { color: '#4CAF50', name: '绿' },
 ]

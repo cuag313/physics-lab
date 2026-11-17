@@ -32,7 +32,9 @@ const TERM_DROP = 7
 const WIRE_W = 4.2
 
 const WIRE_COLORS = [
-  { key: 'red', hex: '#e53935' },
+  { key: 'red', hex: '#e53935' },      // 火线 L（红）
+  { key: 'blue', hex: '#2f6fdc' },     // 零线 N（蓝）
+  { key: 'earth', hex: '#8bc34a' },    // 地线 E（黄绿）
   { key: 'green', hex: '#2e9e44' },
   { key: 'black', hex: '#1c1f24' },
 ]
@@ -405,7 +407,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       id: uidRef.current++, type,
       x: Math.max(0, Math.min(CW - t.w, Math.round(x))),
       y: Math.max(0, Math.min(CH - t.h, Math.round(y))),
-      closed: false, showRead: false, f: 0.4, rmax: CFG.RHEO_MAX,
+      closed: type === 'breaker', showRead: false, f: 0.4, rmax: CFG.RHEO_MAX,
     }
     setComps((cs) => cs.concat(c))
     return c
@@ -478,6 +480,35 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       previewTipRef.current = null
       heatRef.current.clear()
       kwhRef.current.clear()
+    },
+    /* 一次性铺好整块桌面（家庭电路「照 NB 布局」的一键示例用）：
+       comps = [{key,type,x,y,closed...}]，wires = [{a:'key:柱', b:'key:柱', color}] */
+    load(list = [], ws = []) {
+      const map = new Map()
+      const cs = list.map((it) => {
+        const id = uidRef.current++
+        map.set(it.key || it.type, id)
+        return {
+          id, type: it.type, x: it.x, y: it.y,
+          closed: it.closed !== undefined ? it.closed : it.type === 'breaker',
+          showRead: false, f: it.f !== undefined ? it.f : 0.4, rmax: CFG.RHEO_MAX,
+          p: it.p,
+        }
+      })
+      const fix = (s) => {
+        const k = String(s).split(':')
+        const id = map.get(k[0])
+        return id === undefined ? null : id + ':' + k[1]
+      }
+      const w2 = (ws || []).map((w) => {
+        const a = fix(w.a), b = fix(w.b)
+        return a && b ? { id: uidRef.current++, a, b, color: w.color } : null
+      }).filter(Boolean)
+      heatRef.current.clear(); kwhRef.current.clear()
+      setSelected(null); setPending(null)
+      setComps(cs)
+      setWires(w2)
+      return cs
     },
   }), [addComp])
 
@@ -574,7 +605,10 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
 
   const tapComp = useCallback((c, isDouble, ev) => {
     if (!c) return
-    if (c.type === 'switch') {
+    if (c.type === 'switch' || c.type === 'wallSwitch') {
+      setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, closed: !x.closed } : x)))
+    } else if (c.type === 'breaker') {
+      // 空气开关：单击即合闸 / 分闸（两路同时），和家里的断路器一样
       setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, closed: !x.closed } : x)))
     } else if (c.type === 'electromagnet' && ev && ev.shiftKey) {
       // Shift + 单击电磁铁：匝数 +1（5 → 20 循环），线圈会一圈一圈重新画（优先于双击，避免连点被当成双击）
@@ -682,6 +716,12 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       return { I: o._I || 0, sign: o._sign || 0, bmag: o._bmag || 0 }
     }
     if (c.type === 'washer' || c.type === 'kettle') return { I: Math.abs(o._I || 0), P: o._P || 0, R: o._R || 0 }
+    if (c.type === 'tv') return { I: Math.abs(o._I || 0), P: o._P || 0, R: o._R || 0, on: Math.abs(o._I || 0) > 0.005 }
+    if (c.type === 'lamp220') {
+      const p = o._P || 0
+      return { bright: p > 0 ? Math.min(1, p / 100) : 0 }
+    }
+    if (c.type === 'breaker') return { I: Math.abs(o._I || 0), closed: !!c.closed }
     if (c.type === 'energyMeter') {
       const h = kwhRef.current.get(c.id) || { kwh: 0 }
       return { kwh: h.kwh || 0, I: Math.abs(o._I || 0) }
@@ -787,12 +827,16 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     if (batI > 1e-4) {
       const lit = bulbs.filter((b) => (solved[b.id]?._P || 0) > 0.001)
       if (lit.length) return { tone: 'ok', text: `✅ 通路 · ${lit.length} 只灯泡发光` }
-      const loads = comps.filter((c) => (c.type === 'washer' || c.type === 'kettle')
+      // 家庭电路里的 220 V 白炽灯（lamp220）与家电一起算负载
+      const houseLamps = comps.filter((c) => c.type === 'lamp220' && Math.abs(solved[c.id]?._I || 0) > 0.005)
+      const loads = comps.filter((c) => (c.type === 'washer' || c.type === 'kettle' || c.type === 'tv')
         && Math.abs(solved[c.id]?._I || 0) > 0.005)
+      const lampW = houseLamps.reduce((s, c) => s + (solved[c.id]?._P || 0), 0)
+      const lampTxt = houseLamps.length ? `${houseLamps.length} 盏灯 ${Math.round(lampW)} W` : ''
       if (loads.length) {
         // 功率取引擎算出来的实际值（不是额定）：两台串在一条线上时会掉到 500 W 左右，学生一眼看出接错了
         const total = Math.round(loads.reduce((s, c) => s + (solved[c.id]?._P || 0), 0))
-        const names = loads.map((c) => (c.type === 'washer' ? '洗衣机' : '电热水壶')).join(' + ')
+        const names = loads.map((c) => (c.type === 'washer' ? '洗衣机' : c.type === 'tv' ? '电视机' : '电热水壶')).join(' + ')
         // 每台的端电压 = I·R；都接近 220 V 才是"并联在 220 V 两端"
         const Us = loads.map((c) => Math.abs(solved[c.id]?._I || 0) * (solved[c.id]?._R || 0))
         const par = Us.every((u) => u > 200)
@@ -803,12 +847,13 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
           }
         }
         const head = loads.length > 1 ? `${names} 并联在 220 V 两端，合计 ${total} W` : `${names} 并联在 220 V 两端 · ${total} W`
-        return { tone: 'ok', text: `✅ 家用交流电接通 · ${head} · 电能表串在干路走字` }
+        return { tone: 'ok', text: `✅ 家用交流电接通 · ${lampTxt ? `${lampTxt} + ` : ''}${head} · 电能表串在干路走字` }
       }
+      if (lampTxt) return { tone: 'ok', text: `✅ 家用交流电接通 · ${lampTxt} 并联在 220 V 两端 · 电能表串在干路走字` }
       return { tone: 'ok', text: '✅ 电路接通' }
     }
-    const opened = comps.find((c) => c.type === 'switch' && !c.closed)
-    if (opened) return { tone: 'warn', text: '开关断开 · 电路不通' }
+    const opened = comps.find((c) => (c.type === 'switch' || c.type === 'wallSwitch' || c.type === 'breaker') && !c.closed)
+    if (opened) return { tone: 'warn', text: `${opened.type === 'breaker' ? '空气开关分闸' : '开关断开'} · 电路不通` }
     return { tone: 'warn', text: '电路未接通（回路不完整或断路）' }
   }, [comps, solved])
 
@@ -867,7 +912,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
 
   /* ── 实验记录：合闸 / 断闸（电流有无翻转、或开关被拨动）时追加一行 ── */
   const liveRef = useRef(null)
-  const swList = comps.filter((c) => c.type === 'switch')
+  const swList = comps.filter((c) => c.type === 'switch' || c.type === 'wallSwitch' || c.type === 'breaker')
   const swSig = swList.length + ':' + swList.map((c) => (c.closed ? 1 : 0)).join('')
   useEffect(() => {
     const on = flowItems.length > 0

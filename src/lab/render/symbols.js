@@ -84,6 +84,38 @@ export function symBattery(ctx, x, y, o = {}) {
 }
 
 /**
+ * 交流电源（圆圈 + 正弦波），与电池符号区分：交流电源没有固定的正负极。
+ * 半径 fixed，便于和电池在同一个位置互换而导线长度变化不大。
+ */
+export function symACSource(ctx, x, y, o = {}) {
+  const { ink = INK, scale = 1, fHz = null } = o
+  const k = scale
+  const r = 19 * k
+  ctx.save()
+  ctx.strokeStyle = ink
+  ctx.lineWidth = 2.1 * k
+  ctx.fillStyle = '#ffffff'
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+  /* 正弦波：两个周期，上下各 6 px，完全落在圆内 */
+  ctx.lineWidth = 1.7 * k
+  ctx.beginPath()
+  for (let i = 0; i <= 40; i++) {
+    const t = i / 40
+    const px = x - r * 0.72 + r * 1.44 * t
+    const py = y - Math.sin(t * Math.PI * 4) * r * 0.34
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+  }
+  ctx.stroke()
+  if (fHz) {
+    ctx.font = `bold ${9 * k}px sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText('~', x, y + r + 1)
+  }
+  ctx.restore()
+  return { half: r }
+}
+
+/**
  * 开关（单刀单掷）
  * 闭合：闸刀贴合导线；断开：闸刀抬起。两端画实心接线柱。
  */
