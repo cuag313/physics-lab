@@ -1413,26 +1413,20 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         .esb-partlayer{position:absolute;inset:0;z-index:3;pointer-events:none}
         /* 空开闸刀层：压在器材之上、导线之下；翻转走 transition，所以是"转"过去的 */
         .esb-leverlayer{position:absolute;inset:0;z-index:4;pointer-events:none}
-        .esb-bklever{position:absolute;transform-origin:50% 97.6px;backface-visibility:visible}
+        .esb-bklever{position:absolute;transform-origin:50% 79.5px;backface-visibility:visible}
         .esb-bklever svg{display:block;overflow:visible}
         /* 绕"两竖与面板接触处"那条横线（y=97.6）上下倒：
            前半程脚不动、杆往下落；转到 ~90° 与面板垂直、正好看不见时，才把它挪到另一侧（36.2px），
            后半程继续转到 180° 翻出来 —— 所以不会看见"整块件翻到滑槽外面" */
+        /* 绕"页缝"上下翻：转轴固定不动（绝不平移），一整块件转 180° 翻过去 —— 象翻书页那样。
+           见 flipAngle 的注释：那条缝的位置不是随便取的，它是唯一能让两个终态都留在滑槽里的线。 */
         @keyframes esbFlipToTrip{
-          0%{opacity:1;transform:perspective(520px) translateY(0) rotateX(0deg)}
-          43%{opacity:1;transform:perspective(520px) translateY(0) rotateX(82deg)}
-          46%{opacity:0;transform:perspective(520px) translateY(0) rotateX(88deg)}
-          54%{opacity:0;transform:perspective(520px) translateY(-36.2px) rotateX(92deg)}
-          57%{opacity:1;transform:perspective(520px) translateY(-36.2px) rotateX(98deg)}
-          100%{opacity:1;transform:perspective(520px) translateY(-36.2px) rotateX(180deg)}
+          0%{transform:perspective(520px) rotateX(0deg)}
+          100%{transform:perspective(520px) rotateX(180deg)}
         }
         @keyframes esbFlipToClose{
-          0%{opacity:1;transform:perspective(520px) translateY(-36.2px) rotateX(180deg)}
-          43%{opacity:1;transform:perspective(520px) translateY(-36.2px) rotateX(98deg)}
-          46%{opacity:0;transform:perspective(520px) translateY(-36.2px) rotateX(92deg)}
-          54%{opacity:0;transform:perspective(520px) translateY(0) rotateX(88deg)}
-          57%{opacity:1;transform:perspective(520px) translateY(0) rotateX(82deg)}
-          100%{opacity:1;transform:perspective(520px) translateY(0) rotateX(0deg)}
+          0%{transform:perspective(520px) rotateX(180deg)}
+          100%{transform:perspective(520px) rotateX(0deg)}
         }
         .esb-bklever.to-trip{animation:esbFlipToTrip .46s cubic-bezier(.4,.08,.32,1) both}
         .esb-bklever.to-closed{animation:esbFlipToClose .46s cubic-bezier(.4,.08,.32,1) both}
@@ -1619,12 +1613,13 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
               className={`esb-bklever${flipCls(c)}`}
               style={{
                 left: c.x, top: c.y, width: 124, height: 152,
-                /* 转轴＝两根竖杆与面板接触处连成的那条横线（y=97.6，脚的位置固定不动），
-                   详见 CSS 里的 esbFlipToTrip / esbFlipToClose：
-                   前半程绕这条线把杆"落下来"（脚不动），转到与面板垂直、正好看不见的那一瞬再挪到另一侧。 */
-                transform: c.closed ? 'none' : 'translateY(-36.2px) rotateX(180deg)',
+                /* 转轴＝横杆与两根竖杆交界那条"页缝"（y=79.5），固定不动、全程没有任何平移；
+                   整块件绕它转 180°，中途被压成一条线再翻出来，就是翻书页的样子。
+                   为什么不能把缝放到"两竖的脚"(y=97.6)：件高 31.6、滑槽净高只有 34.4，
+                   绕脚转时横杆必然转到 97.6 以下（120° 时落在 108~113，压到下面那颗螺钉上），
+                   所以只有靠近件中点的那条线能让"横在上"和"横在下"两个终态都留在槽里。 */
+                transform: c.closed ? 'none' : 'rotateX(180deg)',
               }}
-              dangerouslySetInnerHTML={{ __html: breakerLeverSVG() }}
               dangerouslySetInnerHTML={{ __html: breakerLeverSVG() }}
             />
           ))}
