@@ -67,6 +67,11 @@ const PLUG_ANCHOR = { off: { x: 22, y: 22 }, on: { x: 22, y: 33 } }
 const PLUG_HEAD = 'M17 .9 C9.4 .9 3.5 4.1 2.3 10.6 C1.5 15 7.2 28.6 15.1 37.3'
   + ' C16.1 38.7 17.9 38.7 18.9 37.3 C26.8 28.6 32.5 15 31.7 10.6 C30.5 4.1 24.6 .9 17 .9 Z'
 const PLUG_BOOT = 'M13.1 34.4 L11.7 44.2 Q11.3 47.3 13.6 47.7 H20.4 Q22.7 47.3 22.3 44.2 L20.9 34.4 Z'
+/* 插上时看到的"插头背面"轮廓（44×66 画布，锚点 22,33 对着插座孔心）：
+   上宽下窄、下巴收圆 —— 和正面那条蛇头是同一只插头，只是转过去了；不用矩形，矩形看着像"圆角方块"。
+   宽度 ±21 足够把三孔（x 34..70 = 孔心 ±18）整个盖住。 */
+const PLUG_BACK = 'M1.2 15 C1.2 7.4 5.8 2.4 14 2.4 L30 2.4 C38.2 2.4 42.8 7.4 42.8 15'
+  + ' L42.6 39 C42.4 46.6 36 50.6 22 50.6 C8 50.6 1.6 46.6 1.4 39 Z'
 /* 电源线的出口：从机身右下角横着出来。值是"整机图右边界到卡片右边的距离"
  * （四张图的左右留白不同，按 188/224、152/212、176/146、170/201 的原图比例换算出来的） */
 const CORD_OUT = { washer: 37, kettle: 42, riceCooker: 22, heater: 36 }
@@ -1582,9 +1587,9 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             /* 机身图已从 y18 下移到 y26（卡片上不再有标题带），电源出口跟着 +8 */
             const ay = c.y + 112
             const bx = pos.x
-            /* 线的出口 = 蛇头底下罗纹颈的末端（框内 y48）：
-               没插（锚点 17,20 → 框顶 pos.y-20）末端在 pos.y+28；插上（锚点 17,31）在 pos.y+17 */
-            const by = pos.y + (c.plug ? 17 : 28)
+            /* 线的出口 = 插头底下罗纹颈的末端：没插（锚点 22,22 → 框顶 pos.y-22）在 pos.y+30；
+               插上（锚点 22,33）时背面底边在 pos.y+22、颈伸到 pos.y+30 */
+            const by = pos.y + (c.plug ? 27 : 30)
             const tx = bx
             const ty = by
             /* 一条平滑的软线（用户口径：右侧那条伸出去的短横线要去掉）：
@@ -1634,21 +1639,24 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
                   <ellipse cx="22" cy="32" rx="23" ry="21" fill="url(#esb-plug-recess)" />
                 )}
                 {c.plug ? (
-                  /* 插上 —— 看见的是插头背面：42×40 的圆角背板（比三孔略大，孔全被盖住）
-                     + 一圈内凹环 + 两侧捏边 + 底下罗纹颈；脚已经在孔里，不画白标 */
+                  /* 插上 —— 看见的是**同一只插头的背面**：轮廓仍是"上宽下窄、下巴收圆"的插头形
+                     （不是圆角正方形），放大到 41×45 把三孔（x34..70 / y84..120）全包住；
+                     脚已经在孔里，所以不画正面那三道白标，只留内凹环/顶部高光/两侧捏边/模缝 */
                   <g>
-                    <rect x="1" y="11" width="42" height="41" rx="13" fill="url(#esb-plug-back)"
-                      stroke="#20242a" strokeWidth=".9"/>
-                    <rect x="4.4" y="14.4" width="35.2" height="34.2" rx="10" fill="none"
-                      stroke="rgba(255,255,255,.16)" strokeWidth="1.1"/>
-                    <rect x="6" y="17.4" width="32" height="3" rx="1.5" fill="rgba(255,255,255,.10)"/>
-                    <ellipse cx="9.4" cy="31" rx="1.9" ry="3.4" fill="rgba(0,0,0,.28)"/>
-                    <ellipse cx="34.6" cy="31" rx="1.9" ry="3.4" fill="rgba(0,0,0,.28)"/>
-                    <g transform="translate(5 2)">
-                      <path d={PLUG_BOOT} fill="#31353c" stroke="#1d2126" strokeWidth=".8"/>
-                      <line x1="12.4" y1="38.6" x2="21.6" y2="38.6" stroke="#1d2126" strokeWidth="1.1"/>
-                      <line x1="11.9" y1="42" x2="22.1" y2="42" stroke="#1d2126" strokeWidth="1.1"/>
-                    </g>
+                    <path d={PLUG_BACK} fill="url(#esb-plug-back)" stroke="#1f242a" strokeWidth=".75"
+                      strokeLinejoin="round"/>
+                    <path d={PLUG_BACK} fill="none" stroke="rgba(255,255,255,.14)" strokeWidth=".8"
+                      transform="translate(.55 .45) scale(.972)" strokeLinejoin="round"/>
+                    <path d="M7.2 9.4 C 9.6 4.6 14 2.6 22 2.6 C 30 2.6 34.4 4.6 36.8 9.4"
+                      fill="none" stroke="rgba(255,255,255,.26)" strokeWidth="1.15" strokeLinejoin="round"/>
+                    <ellipse cx="4.4" cy="24" rx="1.2" ry="4.2" fill="rgba(0,0,0,.26)"/>
+                    <ellipse cx="39.6" cy="24" rx="1.2" ry="4.2" fill="rgba(0,0,0,.26)"/>
+                    <line x1="22" y1="33" x2="22" y2="45.4" stroke="rgba(0,0,0,.24)" strokeWidth=".75"/>
+                    {/* 颈：从背部底端伸出来的罗纹（电源线就从这儿出去） */}
+                    <path d="M15.4 45.6 L14.6 57.4 Q14.3 60.6 16.6 61 H27.4 Q29.7 60.6 29.4 57.4 L28.6 45.6 Z"
+                      fill="#333941" stroke="#1d2126" strokeWidth=".65"/>
+                    <line x1="14.9" y1="52.4" x2="29.1" y2="52.4" stroke="#1d2126" strokeWidth="1"/>
+                    <line x1="14.6" y1="56.4" x2="29.4" y2="56.4" stroke="#1d2126" strokeWidth="1"/>
                   </g>
                 ) : (
                   /* 没插 —— 蛇头正面：圆角三角形头 + 三道白标 + 罗纹颈 */

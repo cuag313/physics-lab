@@ -914,6 +914,279 @@ export const AC_LEAD = {
   e: { x0: 88.4, y0: 100, ex: 152, ey: 100, color: '#111827' },
 }
 
+/* ── 空气开关的内部结构（"内部结构（透视）"打开时露出来）──
+ * 照用户给的剖视实拍摆件：左模一整摞**灭弧栅** + 动触点臂与静触点；右模**电磁脱扣线圈**（绕满铜线）
+ * + 铁芯撞针 + 双金属片与小弹簧；右侧露出**蓝色手柄的传动臂**，底部两条铜连杆通到下排螺钉。
+ * 画布就是本器材的 124×152，跟外壳件一一对应；不写文字标注。 */
+function breakerInner() {
+  const chute = []
+  for (let i = 0; i < 8; i++) {
+    const y = 34 + i * 5.2
+    chute.push(`<rect x="14" y="${y}" width="38" height="3.2" rx=".7" fill="url(#es-i-bk-chute)" stroke="#8b5c14" stroke-width=".4"/>
+      <rect x="14" y="${y}" width="38" height="1" fill="#f2c878" opacity=".5"/>
+      <rect x="23.4" y="${y}" width="4.6" height="3.2" fill="#7a4e0e" opacity=".42"/>
+      <rect x="33.6" y="${y}" width="4.6" height="3.2" fill="#7a4e0e" opacity=".42"/>`)
+  }
+  const coil = []
+  for (let i = 0; i < 10; i++) {
+    const y = 52 + i * 4
+    coil.push(`<rect x="83" y="${y}" width="21" height="2.8" rx="1.3" fill="url(#es-i-bk-coil)" stroke="#7d2a17" stroke-width=".4"/>
+      <rect x="83" y="${y}" width="21" height=".9" rx=".45" fill="#f0a58c" opacity=".45"/>`)
+  }
+  return `<defs>
+    <linearGradient id="es-i-bk-chute" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#e8bc6c"/><stop offset="55%" stop-color="#c68f38"/><stop offset="100%" stop-color="#8b5c17"/>
+    </linearGradient>
+    <linearGradient id="es-i-bk-coil" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#d96a4a"/><stop offset="52%" stop-color="#b34327"/><stop offset="100%" stop-color="#7d2a17"/>
+    </linearGradient>
+    <linearGradient id="es-i-bk-steel" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#8f98a3"/><stop offset="38%" stop-color="#eef2f6"/><stop offset="100%" stop-color="#7e8792"/>
+    </linearGradient>
+    <linearGradient id="es-i-bk-bimetal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f0cd8a"/><stop offset="60%" stop-color="#d9a83c"/><stop offset="100%" stop-color="#a97a20"/>
+    </linearGradient>
+  </defs>
+  <!-- 壳内腔（浅灰塑料内壁） -->
+  <rect x="6.5" y="7.5" width="111" height="137" rx="5" fill="#f2f5f8" stroke="#c3cbd4" stroke-width="1"/>
+  <rect x="9" y="10" width="106" height="132" rx="4" fill="#e9edf1" stroke="#cfd6de"/>
+  <!-- 左模：灭弧栅槽 + 8 片灭弧栅 -->
+  <rect x="11.4" y="29.6" width="43.2" height="47.4" rx="3" fill="#dee4ea" stroke="#b6c0ca"/>
+  ${chute.join('\n      ')}
+  <!-- 左模：动触点臂（底部枢轴 → 静触点）+ 两端铜连杆 -->
+  <path d="M21.6 121 L27 107 L45.4 82" stroke="#c07a2c" stroke-width="3.6" stroke-linecap="round" fill="none"/>
+  <path d="M21.6 121 L27 107 L45.4 82" stroke="#e7ac63" stroke-width="1.2" stroke-linecap="round" fill="none" opacity=".55"/>
+  <circle cx="21.6" cy="121" r="4.4" fill="#b06a22" stroke="#81501a" stroke-width=".9"/>
+  <rect x="43" y="76.6" width="8.2" height="5.4" rx="1.3" fill="#dde3ea" stroke="#8d97a3" stroke-width=".8"/>
+  <rect x="43.6" y="77.2" width="7" height="1.6" rx=".8" fill="#ffffff" opacity=".8"/>
+  <path d="M21.6 121 L18.4 130 L34 138.4" stroke="#c07a2c" stroke-width="3.6" fill="none" stroke-linejoin="round"/>
+  <rect x="25" y="12.4" width="27" height="9.4" rx="2" fill="#e39b3c" stroke="#a96720" stroke-width=".8"/>
+  <path d="M29.4 21.8 L33 29" stroke="#c07a2c" stroke-width="3.2" fill="none"/>
+  <!-- 右模：电磁脱扣线圈（骨架 + 10 圈绕组 + 上下黄铜端板） -->
+  <rect x="80.4" y="49.8" width="25.8" height="45.4" rx="3" fill="#e7ecf1" stroke="#b6c0ca"/>
+  ${coil.join('\n      ')}
+  <rect x="79.6" y="45.4" width="27.4" height="4.8" rx="1.9" fill="url(#es-i-bk-bimetal)" stroke="#a97a20" stroke-width=".7"/>
+  <rect x="79.6" y="94.8" width="27.4" height="4.8" rx="1.9" fill="url(#es-i-bk-bimetal)" stroke="#a97a20" stroke-width=".7"/>
+  <!-- 线圈里的铁芯撞针 + 顶端的橙色绝缘块 -->
+  <rect x="89.8" y="25.4" width="6.6" height="22" rx="2.2" fill="url(#es-i-bk-steel)" stroke="#828b96" stroke-width=".7"/>
+  <rect x="86.4" y="17.4" width="13.4" height="9" rx="2" fill="#e39b3c" stroke="#a96720" stroke-width=".8"/>
+  <path d="M93 99.6 L93 130 L103 137.6" stroke="#c07a2c" stroke-width="3.6" fill="none" stroke-linejoin="round"/>
+  <!-- 双金属片（黄铜弯片）与小弹簧、主弹簧 -->
+  <path d="M100.4 96 C 112.4 100, 112.4 111, 101.6 115.4" stroke="url(#es-i-bk-bimetal)" stroke-width="4.8" stroke-linecap="round" fill="none"/>
+  <path d="M100.4 96 C 112.4 100, 112.4 111, 101.6 115.4" stroke="#fbe3ad" stroke-width="1.1" stroke-linecap="round" fill="none" opacity=".65"/>
+  <g stroke="#9aa3ad" stroke-width="1.5" fill="none">
+    <path d="M98.4 90 q 3.6 -6 7.2 0 q 3.6 6 7.2 0"/>
+    <path d="M70 104 q 4 -6.4 8 0 q 4 6.4 8 0 q 4 -6.4 8 0"/>
+  </g>
+  <!-- 右侧：蓝色手柄的传动臂 + 连到触点臂的连杆 -->
+  <path d="M112.6 60.4 L120 69 L113.4 79" stroke="#2f73c4" stroke-width="5.4" fill="none" stroke-linejoin="round"/>
+  <path d="M112.6 60.4 L120 69 L113.4 79" stroke="#79b2ee" stroke-width="1.5" fill="none" stroke-linejoin="round" opacity=".7"/>
+  <line x1="111" y1="70.6" x2="60.6" y2="72" stroke="#98a2ad" stroke-width="2"/>
+  <!-- 两道内壁加强筋 -->
+  <rect x="9" y="98.4" width="44" height="1.4" fill="#d3dae2"/>
+  <rect x="72" y="24" width="1.4" height="36" fill="#d3dae2"/>`
+}
+
+const breakerType = {
+  label: '空气开关', w: 124, h: 152, hideWrap: true,
+
+    /* 接线柱放在**壳体上下沿**（不是面板上的螺钉位置）：照用户实拍，导线是从背后绕进来的，
+       线到壳沿就"进壳"，不压在面板上、也不在螺钉上绕铜丝。x 仍对准那两颗螺钉。 */
+    terminals: [
+      { id: 'li', label: 'L进', name: '相线进（左上）', x: 13.6, y: 2.4 },
+      { id: 'ni', label: 'N进', name: '零线进（右上）', x: 48.1, y: 2.4 },
+      { id: 'lo', label: 'L出', name: '相线出（左下）', x: 13.6, y: 149.6 },
+      { id: 'no', label: 'N出', name: '零线出（右下）', x: 48.1, y: 149.6 },
+    ],
+    render(c) {
+      const on = !!c.closed
+      /* 严格照用户新给的 NB 实拍（1P+N，两个模数）逐件对位：
+         · 上排：左模两颗金螺钉（沉在白色凹坑里）+ 右模一颗白按环；
+         · 每条模数上印 **蓝字 NOBOOK + 一道蓝横条**（不是实色印带，字是蓝的）；
+         · 左模：绿指示灯、"230/400V~" 小字、↑ON 箭头、一个哑铃小标；
+         · 手柄是**两根并排的蓝腿 + 一根横杆**，坐在两条灰白的滑槽里 —— 用户口径：**上推到顶=合，压到底=关**；
+         · 右模：橙指示钮、"IΔn 0.03A" 印刷字、一幅**内部结构示意图**（触点 + 虚线箭头）、
+           一块蓝标条 + "合闸前请按下"中文印刷；
+         · 下排四颗金螺钉，右模那两颗坐在一条灰白凹槽里。
+         立体感靠：外壳顶部高光/右侧压深/底部压深、螺钉凹坑的双层环、手柄的斜面渐变与落影。 */
+      const screw = (x, y) => `
+        <g>
+          <ellipse cx="${x}" cy="${y + .8}" rx="10.8" ry="10.4" fill="rgba(23,37,58,.15)"/>
+          <circle cx="${x}" cy="${y}" r="9.6" fill="#f7f9fb" stroke="#c2cad4" stroke-width=".9"/>
+          <circle cx="${x}" cy="${y}" r="8.4" fill="#e3e9ef"/>
+          <circle cx="${x}" cy="${y}" r="8.4" fill="none" stroke="rgba(35,55,80,.30)" stroke-width="2.2"/>
+          <circle cx="${x}" cy="${y}" r="7.6" fill="none" stroke="#ffffff" stroke-width="1" opacity=".75"/>
+          <circle cx="${x}" cy="${y}" r="6.8" fill="url(#es-g-bk-screw)" stroke="#8a6d24" stroke-width=".9"/>
+          <circle cx="${x}" cy="${y}" r="6.8" fill="none" stroke="rgba(96,74,20,.5)" stroke-width="1.5"/>
+          <line x1="${x - 4.7}" y1="${y}" x2="${x + 4.7}" y2="${y}" stroke="#6b5416" stroke-width="1.4"/>
+          <line x1="${x}" y1="${y - 4.7}" x2="${x}" y2="${y + 4.7}" stroke="#6b5416" stroke-width="1.4"/>
+          <circle cx="${x - 2.7}" cy="${y - 3}" r="1.3" fill="#ffe9a8" opacity=".5"/>
+        </g>`
+      const ringBtn = (x, y) => `
+        <g>
+          <ellipse cx="${x}" cy="${y + .6}" rx="9.6" ry="9.2" fill="rgba(23,37,58,.13)"/>
+          <circle cx="${x}" cy="${y}" r="8.6" fill="#f4f6f9" stroke="#b7c0cb" stroke-width="1"/>
+          <circle cx="${x}" cy="${y}" r="6.2" fill="none" stroke="rgba(60,80,105,.3)" stroke-width="1.8"/>
+          <circle cx="${x}" cy="${y}" r="5.4" fill="#fdfefe" stroke="#cfd7e0" stroke-width=".8"/>
+        </g>`
+      /* 蓝字 + 蓝横条（照实物：字是蓝的，后面跟一段实心蓝条） */
+      const silk = (x, w) => `
+        <text x="${x}" y="49.4" font-size="4.5" font-weight="700" letter-spacing=".3" fill="#2f6fb8"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">NOBOOK</text>
+        <rect x="${x + 25.4}" y="46.2" width="${w}" height="2.6" fill="#2f6fb8"/>`
+      /* 手柄两条滑槽（凹进去的灰白窗） */
+      const slot = (x, w) => `
+        <g>
+          <rect x="${x}" y="65.4" width="${w}" height="34.4" rx="1.6" fill="#dde3ea" stroke="#c6ced8" stroke-width=".8"/>
+          <rect x="${x + .8}" y="66.2" width="${w - 1.6}" height="3.2" fill="rgba(23,37,58,.20)"/>
+          <rect x="${x + .8}" y="95" width="${w - 1.6}" height="3.2" fill="#ffffff" opacity=".62"/>
+        </g>`
+      /* 闸刀位置：合闸横杆在上（66）、跳闸横杆落到槽底（84.4）；腿永远在横杆另一侧：
+         合闸时腿从横杆下沿垂到槽底（74.6→97.6），跳闸时腿从槽上口翻上来（65.6→84.4）。 */
+      const barY = on ? 66 : 84.4
+      const LEG_H = on ? 23 : 18.8
+      const legY = on ? barY + 8.6 : 65.6
+      return `
+    <svg width="124" height="152" viewBox="0 0 124 152">
+      <defs>
+        <linearGradient id="es-g-bk-body" x1="0" y1="0" x2="0.16" y2="1">
+          <stop offset="0%" stop-color="#ffffff"/><stop offset="46%" stop-color="#fbfcfd"/>
+          <stop offset="100%" stop-color="#e2e7ec"/>
+        </linearGradient>
+        <linearGradient id="es-g-bk-lever" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#6fb0f0"/><stop offset="30%" stop-color="#3d84d6"/>
+          <stop offset="72%" stop-color="#2a6cc0"/><stop offset="100%" stop-color="#1a4d90"/>
+        </linearGradient>
+        <linearGradient id="es-g-bk-leg" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#1f5aa6"/><stop offset="34%" stop-color="#3a80d2"/>
+          <stop offset="70%" stop-color="#2b6cbd"/><stop offset="100%" stop-color="#194a8c"/>
+        </linearGradient>
+        <radialGradient id="es-g-bk-screw" cx="42%" cy="32%" r="78%">
+          <stop offset="0%" stop-color="#f0d78f"/><stop offset="55%" stop-color="#d3ac4a"/><stop offset="100%" stop-color="#96731f"/>
+        </radialGradient>
+        <linearGradient id="es-g-bk-pill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ffc94f"/><stop offset="55%" stop-color="#f39207"/><stop offset="100%" stop-color="#c06a04"/>
+        </linearGradient>
+        <linearGradient id="es-g-bk-shade" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="rgba(23,37,58,0)"/><stop offset="60%" stop-color="rgba(23,37,58,.10)"/>
+          <stop offset="100%" stop-color="rgba(23,37,58,.26)"/>
+        </linearGradient>
+        <linearGradient id="es-g-bk-lip" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="rgba(23,37,58,.13)"/><stop offset="100%" stop-color="rgba(23,37,58,0)"/>
+        </linearGradient>
+      </defs>
+      <!-- 透视层：灭弧栅 / 脱扣线圈 / 双金属片 / 触点臂（默认隐藏，点"内部结构"才露出来） -->
+      ${fitInner(124, 152, 124, 152, breakerInner())}
+      <g class="casing">
+        <!-- 白壳：一块料 + 顶部斜面高光 + 右/底压深，中间一道模缝 -->
+        <ellipse cx="64" cy="152.4" rx="58" ry="4.6" fill="rgba(23,37,58,.14)"/>
+        <rect x="0.6" y="0.6" width="122.8" height="150.8" rx="3" fill="url(#es-g-bk-body)" stroke="#b3bcc7" stroke-width="1"/>
+        <rect x="1.3" y="1.2" width="121.4" height="3.6" rx="1.6" fill="#ffffff"/>
+        <rect x="1.3" y="4.6" width="121.4" height="1.2" fill="rgba(23,37,58,.09)"/>
+        <rect x="1.3" y="5.8" width="1.6" height="112" fill="#ffffff" opacity=".7"/>
+        <rect x="116" y="5.4" width="7.6" height="138.6" fill="url(#es-g-bk-shade)"/>
+        <rect x="1.4" y="107.6" width="121.2" height="11.6" fill="url(#es-g-bk-lip)"/>
+        <rect x="1.3" y="143.4" width="121.4" height="7" rx="1.6" fill="rgba(23,37,58,.06)"/>
+        <line x1="1.6" y1="119.4" x2="122.2" y2="119.4" stroke="rgba(23,37,58,.10)" stroke-width="1.1"/>
+        <line x1="1.6" y1="120.5" x2="122.2" y2="120.5" stroke="#ffffff" stroke-width="1" opacity=".9"/>
+        <rect x="65.2" y="3" width="1.5" height="145" fill="#cbd3dc"/>
+        <rect x="66.7" y="3" width="1.1" height="145" fill="#ffffff" opacity=".8"/>
+
+        <!-- 蓝字 NOBOOK + 蓝横条（左右各一条） -->
+        ${silk(3.6, 28.6)}
+        ${silk(66.6, 29.8)}
+
+        <!-- 左模：绿指示灯 + 230/400V~ + 哑铃小标 + ↑ON -->
+        <ellipse cx="11.8" cy="58.6" rx="2.6" ry="1.9" fill="#1d5b2c" stroke="#134a24" stroke-width=".6"/>
+        <ellipse cx="11.8" cy="58.4" rx="2" ry="1.3" fill="#43c262"/>
+        <text x="4.4" y="64.6" font-size="3.2" fill="#7c8794"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">230/400V~</text>
+        <line x1="4.4" y1="66.2" x2="19" y2="66.2" stroke="#aeb7c2" stroke-width=".6"/>
+        <g stroke="#8d97a3" stroke-width=".7" fill="none">
+          <ellipse cx="37.4" cy="61.4" rx="1.9" ry="1.5"/><ellipse cx="41.4" cy="61.4" rx="1.9" ry="1.5"/>
+          <line x1="39.3" y1="61.4" x2="39.5" y2="61.4"/>
+        </g>
+        <line x1="48.9" y1="66.6" x2="48.9" y2="57.4" stroke="#6b7583" stroke-width=".9"/>
+        <path d="M46.6 59.6 L48.9 57.2 L51.2 59.6" fill="none" stroke="#6b7583" stroke-width="1.1"/>
+        <text x="51.8" y="61.6" font-size="3.9" font-weight="600" fill="#6b7583"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">ON</text>
+
+        <!-- 右模：白按环 + 橙指示钮 + 漏电参数印刷 + 内部结构示意图 + 蓝标条 + 中文 -->
+        ${ringBtn(81.6, 23.7)}
+        <ellipse cx="80.8" cy="59.1" rx="10.6" ry="3.4" fill="url(#es-g-bk-pill)" stroke="#a86206" stroke-width=".7"/>
+        <ellipse cx="80.8" cy="59.9" rx="9.6" ry="1.1" fill="rgba(120,60,0,.28)"/>
+        <ellipse cx="77.4" cy="57.9" rx="4.6" ry="1.1" fill="#ffffff" opacity=".34"/>
+        <text x="73.6" y="66" font-size="2.7" fill="#7c8794"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">IΔn 0.03A</text>
+        <text x="73.6" y="69.6" font-size="2.7" fill="#7c8794"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">t ≤ 0.1s</text>
+        <!-- 内部结构示意图：触点 + 电磁线圈 + 虚线箭头（照实物那幅细黑线印刷图） -->
+        <g stroke="#5d6773" stroke-width=".62" fill="none" opacity=".92">
+          <rect x="104.6" y="74.6" width="9.4" height="12.2" rx="1"/>
+          <line x1="104.6" y1="80.4" x2="100.4" y2="80.4"/>
+          <line x1="114" y1="80.4" x2="119.2" y2="80.4"/>
+          <line x1="119.2" y1="76.8" x2="119.2" y2="84.2"/>
+          <path d="M119.2 76.8 L122.4 75.4"/>
+          <line x1="101.4" y1="87.4" x2="115.6" y2="87.4"/>
+          <line x1="101.4" y1="87.4" x2="101.4" y2="90.4"/>
+          <line x1="106" y1="87.4" x2="106" y2="90.4"/>
+          <line x1="108.6" y1="90.4" x2="112.4" y2="90.4"/>
+          <line x1="99.2" y1="76.6" x2="99.2" y2="84.2"/>
+          <line x1="96" y1="80.4" x2="92" y2="80.4"/>
+        </g>
+        <g stroke="#8d97a3" stroke-width=".9" stroke-dasharray="2.2 1.6" fill="none">
+          <line x1="72" y1="79.4" x2="93.4" y2="79.4"/>
+          <path d="M74.4 76.8 L71.6 79.4 L74.4 82" stroke-dasharray="0"/>
+        </g>
+        <rect x="74.4" y="99.6" width="13" height="11.4" rx=".8" fill="#2f6cb5"/>
+        <g stroke="#ffffff" stroke-width=".7" opacity=".85">
+          <line x1="76.2" y1="102.4" x2="85.6" y2="102.4"/>
+          <line x1="76.2" y1="105.4" x2="85.6" y2="105.4"/>
+          <line x1="76.2" y1="108.4" x2="85.6" y2="108.4"/>
+        </g>
+        <text x="90.6" y="106.6" font-size="3.4" fill="#4b5563"
+          font-family="system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">合闸前请按下</text>
+
+        <!-- 手柄：两条灰白滑槽 + 两根蓝腿 + 横杆。
+             用户口径（照"合闸 / 空开跳闸"两张带线实拍）：闸刀是**一块绕"两竖与面板接触处"翻转的蓝件**，
+             —— **合闸时"横在上、两竖在下"**（横杆压到滑槽上口、两根腿垂到槽底）；
+             —— **跳闸时"横在下、两竖在上"**（横杆落到槽底、两根腿翻到槽上口）。
+             所以腿必须画在横杆的**另一侧**，不能像原来那样永远挂在横杆下面。 -->
+        ${slot(5.4, 23.6)}
+        ${slot(30.9, 23.5)}
+        <g>
+          <!-- 腿（先画，横杆压在上面）：合闸朝下、跳闸朝上 -->
+          <rect x="9.9" y="${legY}" width="18" height="${LEG_H}" rx="1.6" fill="url(#es-g-bk-leg)" stroke="#153f70" stroke-width=".8"/>
+          <rect x="32.7" y="${legY}" width="18" height="${LEG_H}" rx="1.6" fill="url(#es-g-bk-leg)" stroke="#153f70" stroke-width=".8"/>
+          <!-- 腿的自由端（离横杆那头）亮一层、贴横杆那头压暗 -->
+          <rect x="10.9" y="${on ? legY + LEG_H - 6 : legY + 1}" width="16" height="4.6" rx="1.6" fill="#a6ccf2" opacity=".5"/>
+          <rect x="33.7" y="${on ? legY + LEG_H - 6 : legY + 1}" width="16" height="4.6" rx="1.6" fill="#a6ccf2" opacity=".5"/>
+          <rect x="9.9" y="${on ? legY + .8 : legY + LEG_H - 3.2}" width="18" height="2.4" fill="rgba(9,26,48,.30)"/>
+          <rect x="32.7" y="${on ? legY + .8 : legY + LEG_H - 3.2}" width="18" height="2.4" fill="rgba(9,26,48,.30)"/>
+          <!-- 横杆压在滑槽上的落影 -->
+          <rect x="3.6" y="${barY + 8.6}" width="55.3" height="2.2" rx="1.1" fill="rgba(23,37,58,.18)"/>
+          <!-- 横杆 -->
+          <rect x="3.6" y="${barY}" width="55.3" height="8.6" rx="2" fill="url(#es-g-bk-lever)" stroke="#123f6d" stroke-width=".9"/>
+          <rect x="4.8" y="${barY + 1.1}" width="53" height="2.4" rx="1.2" fill="#ffffff" opacity=".42"/>
+          ${on ? '' : `<g fill="#ffffff" opacity=".20">
+            <rect x="6.4" y="${barY + 3.4}" width="49.6" height="1.1" rx=".5"/>
+            <rect x="6.4" y="${barY + 5.5}" width="49.6" height="1.1" rx=".5"/>
+          </g>`}
+          <rect x="3.6" y="${barY + 7.4}" width="55.3" height="1.4" rx=".7" fill="rgba(9,26,48,.35)"/>
+        </g>
+
+        <!-- 下排：右模两颗螺钉坐在一条灰白凹槽里 -->
+        <rect x="76.4" y="127.8" width="42" height="14.6" rx="3.2" fill="#eef1f5" stroke="#dde3ea" stroke-width=".8"/>
+        ${screw(13.6, 23.7)}
+        ${screw(48.1, 23.7)}
+        ${screw(13.6, 135.1)}
+        ${screw(48.1, 135.1)}
+        ${screw(84.3, 135.1)}
+        ${screw(109.7, 135.1)}
+      </g>
+    </svg>` }
+}
+
 export const TYPES = {
   /* ── 电池组（两节干电池串联 3V，平放电池槽实拍图；黑/红柱就是照片上的接线柱，不再另画帽子） ──
    * 图 battery_c.png 已按实体紧裁（原图 y 92~164）并 4 倍放大锐化，1024×288，按 150×42 等比贴。
@@ -1631,186 +1904,7 @@ export const TYPES = {
    * 4 柱：左上相线进、右上零线进、左下相线出、右下零线出；
    * 引擎里是两条彼此独立的支路（合闸 0.001 Ω / 分闸 1e8 Ω），两路同时通断。
    * 单击本体（或双击）就合闸 / 分闸 —— 学生在 Tab2 里拉闸就能看到各支路同时灭。 */
-  breaker: {
-    label: '空气开关', w: 124, h: 152, hideWrap: true,
-    /* 接线柱放在**壳体上下沿**（不是面板上的螺钉位置）：照用户实拍，导线是从背后绕进来的，
-       线到壳沿就"进壳"，不压在面板上、也不在螺钉上绕铜丝。x 仍对准那两颗螺钉。 */
-    terminals: [
-      { id: 'li', label: 'L进', name: '相线进（左上）', x: 13.6, y: 2.4 },
-      { id: 'ni', label: 'N进', name: '零线进（右上）', x: 48.1, y: 2.4 },
-      { id: 'lo', label: 'L出', name: '相线出（左下）', x: 13.6, y: 149.6 },
-      { id: 'no', label: 'N出', name: '零线出（右下）', x: 48.1, y: 149.6 },
-    ],
-    render(c) {
-      const on = !!c.closed
-      /* 严格照用户新给的 NB 实拍（1P+N，两个模数）逐件对位：
-         · 上排：左模两颗金螺钉（沉在白色凹坑里）+ 右模一颗白按环；
-         · 每条模数上印 **蓝字 NOBOOK + 一道蓝横条**（不是实色印带，字是蓝的）；
-         · 左模：绿指示灯、"230/400V~" 小字、↑ON 箭头、一个哑铃小标；
-         · 手柄是**两根并排的蓝腿 + 一根横杆**，坐在两条灰白的滑槽里 —— 用户口径：**上推到顶=合，压到底=关**；
-         · 右模：橙指示钮、"IΔn 0.03A" 印刷字、一幅**内部结构示意图**（触点 + 虚线箭头）、
-           一块蓝标条 + "合闸前请按下"中文印刷；
-         · 下排四颗金螺钉，右模那两颗坐在一条灰白凹槽里。
-         立体感靠：外壳顶部高光/右侧压深/底部压深、螺钉凹坑的双层环、手柄的斜面渐变与落影。 */
-      const screw = (x, y) => `
-        <g>
-          <ellipse cx="${x}" cy="${y + .8}" rx="10.8" ry="10.4" fill="rgba(23,37,58,.15)"/>
-          <circle cx="${x}" cy="${y}" r="9.6" fill="#f7f9fb" stroke="#c2cad4" stroke-width=".9"/>
-          <circle cx="${x}" cy="${y}" r="8.4" fill="#e3e9ef"/>
-          <circle cx="${x}" cy="${y}" r="8.4" fill="none" stroke="rgba(35,55,80,.30)" stroke-width="2.2"/>
-          <circle cx="${x}" cy="${y}" r="7.6" fill="none" stroke="#ffffff" stroke-width="1" opacity=".75"/>
-          <circle cx="${x}" cy="${y}" r="6.8" fill="url(#es-g-bk-screw)" stroke="#8a6d24" stroke-width=".9"/>
-          <circle cx="${x}" cy="${y}" r="6.8" fill="none" stroke="rgba(96,74,20,.5)" stroke-width="1.5"/>
-          <line x1="${x - 4.7}" y1="${y}" x2="${x + 4.7}" y2="${y}" stroke="#6b5416" stroke-width="1.4"/>
-          <line x1="${x}" y1="${y - 4.7}" x2="${x}" y2="${y + 4.7}" stroke="#6b5416" stroke-width="1.4"/>
-          <circle cx="${x - 2.7}" cy="${y - 3}" r="1.3" fill="#ffe9a8" opacity=".5"/>
-        </g>`
-      const ringBtn = (x, y) => `
-        <g>
-          <ellipse cx="${x}" cy="${y + .6}" rx="9.6" ry="9.2" fill="rgba(23,37,58,.13)"/>
-          <circle cx="${x}" cy="${y}" r="8.6" fill="#f4f6f9" stroke="#b7c0cb" stroke-width="1"/>
-          <circle cx="${x}" cy="${y}" r="6.2" fill="none" stroke="rgba(60,80,105,.3)" stroke-width="1.8"/>
-          <circle cx="${x}" cy="${y}" r="5.4" fill="#fdfefe" stroke="#cfd7e0" stroke-width=".8"/>
-        </g>`
-      /* 蓝字 + 蓝横条（照实物：字是蓝的，后面跟一段实心蓝条） */
-      const silk = (x, w) => `
-        <text x="${x}" y="49.4" font-size="4.5" font-weight="700" letter-spacing=".3" fill="#2f6fb8"
-          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">NOBOOK</text>
-        <rect x="${x + 25.4}" y="46.2" width="${w}" height="2.6" fill="#2f6fb8"/>`
-      /* 手柄两条滑槽（凹进去的灰白窗） */
-      const slot = (x, w) => `
-        <g>
-          <rect x="${x}" y="65.4" width="${w}" height="34.4" rx="1.6" fill="#dde3ea" stroke="#c6ced8" stroke-width=".8"/>
-          <rect x="${x + .8}" y="66.2" width="${w - 1.6}" height="3.2" fill="rgba(23,37,58,.20)"/>
-          <rect x="${x + .8}" y="95" width="${w - 1.6}" height="3.2" fill="#ffffff" opacity=".62"/>
-        </g>`
-      const barY = on ? 67 : 77.2
-      return `
-    <svg width="124" height="152" viewBox="0 0 124 152">
-      <defs>
-        <linearGradient id="es-g-bk-body" x1="0" y1="0" x2="0.16" y2="1">
-          <stop offset="0%" stop-color="#ffffff"/><stop offset="46%" stop-color="#fbfcfd"/>
-          <stop offset="100%" stop-color="#e2e7ec"/>
-        </linearGradient>
-        <linearGradient id="es-g-bk-lever" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#6fb0f0"/><stop offset="30%" stop-color="#3d84d6"/>
-          <stop offset="72%" stop-color="#2a6cc0"/><stop offset="100%" stop-color="#1a4d90"/>
-        </linearGradient>
-        <linearGradient id="es-g-bk-leg" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stop-color="#1f5aa6"/><stop offset="34%" stop-color="#3a80d2"/>
-          <stop offset="70%" stop-color="#2b6cbd"/><stop offset="100%" stop-color="#194a8c"/>
-        </linearGradient>
-        <radialGradient id="es-g-bk-screw" cx="42%" cy="32%" r="78%">
-          <stop offset="0%" stop-color="#f0d78f"/><stop offset="55%" stop-color="#d3ac4a"/><stop offset="100%" stop-color="#96731f"/>
-        </radialGradient>
-        <linearGradient id="es-g-bk-pill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#ffc94f"/><stop offset="55%" stop-color="#f39207"/><stop offset="100%" stop-color="#c06a04"/>
-        </linearGradient>
-        <linearGradient id="es-g-bk-shade" x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0%" stop-color="rgba(23,37,58,0)"/><stop offset="60%" stop-color="rgba(23,37,58,.10)"/>
-          <stop offset="100%" stop-color="rgba(23,37,58,.26)"/>
-        </linearGradient>
-        <linearGradient id="es-g-bk-lip" x1="0" y1="1" x2="0" y2="0">
-          <stop offset="0%" stop-color="rgba(23,37,58,.13)"/><stop offset="100%" stop-color="rgba(23,37,58,0)"/>
-        </linearGradient>
-      </defs>
-      <g class="casing">
-        <!-- 白壳：一块料 + 顶部斜面高光 + 右/底压深，中间一道模缝 -->
-        <ellipse cx="64" cy="152.4" rx="58" ry="4.6" fill="rgba(23,37,58,.14)"/>
-        <rect x="0.6" y="0.6" width="122.8" height="150.8" rx="3" fill="url(#es-g-bk-body)" stroke="#b3bcc7" stroke-width="1"/>
-        <rect x="1.3" y="1.2" width="121.4" height="3.6" rx="1.6" fill="#ffffff"/>
-        <rect x="1.3" y="4.6" width="121.4" height="1.2" fill="rgba(23,37,58,.09)"/>
-        <rect x="1.3" y="5.8" width="1.6" height="112" fill="#ffffff" opacity=".7"/>
-        <rect x="116" y="5.4" width="7.6" height="138.6" fill="url(#es-g-bk-shade)"/>
-        <rect x="1.4" y="107.6" width="121.2" height="11.6" fill="url(#es-g-bk-lip)"/>
-        <rect x="1.3" y="143.4" width="121.4" height="7" rx="1.6" fill="rgba(23,37,58,.06)"/>
-        <line x1="1.6" y1="119.4" x2="122.2" y2="119.4" stroke="rgba(23,37,58,.10)" stroke-width="1.1"/>
-        <line x1="1.6" y1="120.5" x2="122.2" y2="120.5" stroke="#ffffff" stroke-width="1" opacity=".9"/>
-        <rect x="65.2" y="3" width="1.5" height="145" fill="#cbd3dc"/>
-        <rect x="66.7" y="3" width="1.1" height="145" fill="#ffffff" opacity=".8"/>
-
-        <!-- 蓝字 NOBOOK + 蓝横条（左右各一条） -->
-        ${silk(3.6, 28.6)}
-        ${silk(66.6, 29.8)}
-
-        <!-- 左模：绿指示灯 + 230/400V~ + 哑铃小标 + ↑ON -->
-        <ellipse cx="11.8" cy="58.6" rx="2.6" ry="1.9" fill="#1d5b2c" stroke="#134a24" stroke-width=".6"/>
-        <ellipse cx="11.8" cy="58.4" rx="2" ry="1.3" fill="#43c262"/>
-        <text x="4.4" y="64.6" font-size="3.2" fill="#7c8794"
-          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">230/400V~</text>
-        <line x1="4.4" y1="66.2" x2="19" y2="66.2" stroke="#aeb7c2" stroke-width=".6"/>
-        <g stroke="#8d97a3" stroke-width=".7" fill="none">
-          <ellipse cx="37.4" cy="61.4" rx="1.9" ry="1.5"/><ellipse cx="41.4" cy="61.4" rx="1.9" ry="1.5"/>
-          <line x1="39.3" y1="61.4" x2="39.5" y2="61.4"/>
-        </g>
-        <line x1="48.9" y1="66.6" x2="48.9" y2="57.4" stroke="#6b7583" stroke-width=".9"/>
-        <path d="M46.6 59.6 L48.9 57.2 L51.2 59.6" fill="none" stroke="#6b7583" stroke-width="1.1"/>
-        <text x="51.8" y="61.6" font-size="3.9" font-weight="600" fill="#6b7583"
-          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">ON</text>
-
-        <!-- 右模：白按环 + 橙指示钮 + 漏电参数印刷 + 内部结构示意图 + 蓝标条 + 中文 -->
-        ${ringBtn(81.6, 23.7)}
-        <ellipse cx="80.8" cy="59.1" rx="10.6" ry="3.4" fill="url(#es-g-bk-pill)" stroke="#a86206" stroke-width=".7"/>
-        <ellipse cx="80.8" cy="59.9" rx="9.6" ry="1.1" fill="rgba(120,60,0,.28)"/>
-        <ellipse cx="77.4" cy="57.9" rx="4.6" ry="1.1" fill="#ffffff" opacity=".34"/>
-        <text x="73.6" y="66" font-size="2.7" fill="#7c8794"
-          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">IΔn 0.03A</text>
-        <text x="73.6" y="69.6" font-size="2.7" fill="#7c8794"
-          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">t ≤ 0.1s</text>
-        <!-- 内部结构示意图：触点 + 电磁线圈 + 虚线箭头（照实物那幅细黑线印刷图） -->
-        <g stroke="#5d6773" stroke-width=".62" fill="none" opacity=".92">
-          <rect x="104.6" y="74.6" width="9.4" height="12.2" rx="1"/>
-          <line x1="104.6" y1="80.4" x2="100.4" y2="80.4"/>
-          <line x1="114" y1="80.4" x2="119.2" y2="80.4"/>
-          <line x1="119.2" y1="76.8" x2="119.2" y2="84.2"/>
-          <path d="M119.2 76.8 L122.4 75.4"/>
-          <line x1="101.4" y1="87.4" x2="115.6" y2="87.4"/>
-          <line x1="101.4" y1="87.4" x2="101.4" y2="90.4"/>
-          <line x1="106" y1="87.4" x2="106" y2="90.4"/>
-          <line x1="108.6" y1="90.4" x2="112.4" y2="90.4"/>
-          <line x1="99.2" y1="76.6" x2="99.2" y2="84.2"/>
-          <line x1="96" y1="80.4" x2="92" y2="80.4"/>
-        </g>
-        <g stroke="#8d97a3" stroke-width=".9" stroke-dasharray="2.2 1.6" fill="none">
-          <line x1="72" y1="79.4" x2="93.4" y2="79.4"/>
-          <path d="M74.4 76.8 L71.6 79.4 L74.4 82" stroke-dasharray="0"/>
-        </g>
-        <rect x="74.4" y="99.6" width="13" height="11.4" rx=".8" fill="#2f6cb5"/>
-        <g stroke="#ffffff" stroke-width=".7" opacity=".85">
-          <line x1="76.2" y1="102.4" x2="85.6" y2="102.4"/>
-          <line x1="76.2" y1="105.4" x2="85.6" y2="105.4"/>
-          <line x1="76.2" y1="108.4" x2="85.6" y2="108.4"/>
-        </g>
-        <text x="90.6" y="106.6" font-size="3.4" fill="#4b5563"
-          font-family="system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">合闸前请按下</text>
-
-        <!-- 手柄：两条灰白滑槽 + 两根蓝腿 + 横杆（上推到顶=合 / 压到底=关） -->
-        ${slot(5.4, 23.6)}
-        ${slot(30.9, 23.5)}
-        <g>
-          <!-- 横杆压在滑槽上的落影 -->
-          <rect x="3.6" y="${barY + 8.2}" width="55.3" height="2.4" rx="1.1" fill="rgba(23,37,58,.18)"/>
-          <rect x="9.9" y="${barY + 8.2}" width="18" height="15" rx="1.5" fill="url(#es-g-bk-leg)" stroke="#153f70" stroke-width=".8"/>
-          <rect x="32.7" y="${barY + 8.2}" width="18" height="15" rx="1.5" fill="url(#es-g-bk-leg)" stroke="#153f70" stroke-width=".8"/>
-          <rect x="11.4" y="${barY + 9.4}" width="2.6" height="12.6" rx="1.3" fill="#ffffff" opacity=".22"/>
-          <rect x="34.2" y="${barY + 9.4}" width="2.6" height="12.6" rx="1.3" fill="#ffffff" opacity=".22"/>
-          <rect x="3.6" y="${barY}" width="55.3" height="8.6" rx="2" fill="url(#es-g-bk-lever)" stroke="#123f6d" stroke-width=".9"/>
-          <rect x="4.8" y="${barY + 1.1}" width="53" height="2.4" rx="1.2" fill="#ffffff" opacity=".42"/>
-          <rect x="6.4" y="${barY + 4.6}" width="49.6" height="1.3" rx=".6" fill="#ffffff" opacity=".18"/>
-          <rect x="3.6" y="${barY + 7.4}" width="55.3" height="1.4" rx=".7" fill="rgba(9,26,48,.35)"/>
-        </g>
-
-        <!-- 下排：右模两颗螺钉坐在一条灰白凹槽里 -->
-        <rect x="76.4" y="127.8" width="42" height="14.6" rx="3.2" fill="#eef1f5" stroke="#dde3ea" stroke-width=".8"/>
-        ${screw(13.6, 23.7)}
-        ${screw(48.1, 23.7)}
-        ${screw(13.6, 135.1)}
-        ${screw(48.1, 135.1)}
-        ${screw(84.3, 135.1)}
-        ${screw(109.7, 135.1)}
-      </g>
-    </svg>` }
-  },
+  breaker: breakerType,
 
   /* ── 面板开关（墙上的翘板开关；面板面用用户给的实拍图，合 / 断两态各一张）
    * 用户口径：开关状态靠**明暗**表示 —— 合闸时翘板是近白色（亮），分闸时整块面板与翘板同时变暗（灰），
