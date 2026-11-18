@@ -1634,128 +1634,184 @@ export const TYPES = {
   breaker: {
     label: '空气开关', w: 124, h: 152,
     terminals: [
-      { id: 'li', label: 'L进', name: '相线进（左上）', x: 14.7, y: 27.1 },
-      { id: 'ni', label: 'N进', name: '零线进（右上）', x: 45.4, y: 27.1 },
-      { id: 'lo', label: 'L出', name: '相线出（左下）', x: 15.3, y: 135.7 },
-      { id: 'no', label: 'N出', name: '零线出（右下）', x: 47.3, y: 135.7 },
+      { id: 'li', label: 'L进', name: '相线进（左上）', x: 13.6, y: 23.7 },
+      { id: 'ni', label: 'N进', name: '零线进（右上）', x: 48.1, y: 23.7 },
+      { id: 'lo', label: 'L出', name: '相线出（左下）', x: 13.6, y: 135.1 },
+      { id: 'no', label: 'N出', name: '零线出（右下）', x: 48.1, y: 135.1 },
     ],
     render(c) {
       const on = !!c.closed
-      /* 严格照用户给的 NB 特写逐件对位：把参考图的主体（97×112）按 1.278 / 1.357 换算到 124×152。
-         两个模数拼成的白壳 + 一道竖向模缝；左模上下共四颗金色十字螺钉（沉在凹坑里）；
-         右模顶上是一颗白按环（不是螺钉）；两条蓝色 NOBOOK 印带；左模一颗绿色指示灯 + ON 箭头；
-         右模一颗橙色指示钮 + 一幅接线示意图 + 底下一块蓝标签；中间一只**带两条腿的蓝色手柄**。
-         真器件上不印"合闸·两路通电"这种字，说明条一律不画。 */
+      /* 严格照用户新给的 NB 实拍（1P+N，两个模数）逐件对位：
+         · 上排：左模两颗金螺钉（沉在白色凹坑里）+ 右模一颗白按环；
+         · 每条模数上印 **蓝字 NOBOOK + 一道蓝横条**（不是实色印带，字是蓝的）；
+         · 左模：绿指示灯、"230/400V~" 小字、↑ON 箭头、一个哑铃小标；
+         · 手柄是**两根并排的蓝腿 + 一根横杆**，坐在两条灰白的滑槽里 —— 用户口径：**上推到顶=合，压到底=关**；
+         · 右模：橙指示钮、"IΔn 0.03A" 印刷字、一幅**内部结构示意图**（触点 + 虚线箭头）、
+           一块蓝标条 + "合闸前请按下"中文印刷；
+         · 下排四颗金螺钉，右模那两颗坐在一条灰白凹槽里。
+         立体感靠：外壳顶部高光/右侧压深/底部压深、螺钉凹坑的双层环、手柄的斜面渐变与落影。 */
       const screw = (x, y) => `
         <g>
-          <circle cx="${x}" cy="${y}" r="9.2" fill="rgba(23,37,58,.13)"/>
-          <circle cx="${x}" cy="${y}" r="8.2" fill="#eef2f6" stroke="#b9c2cc" stroke-width=".9"/>
-          <circle cx="${x}" cy="${y}" r="6.6" fill="url(#es-g-bk-screw)" stroke="#8a6d24" stroke-width=".9"/>
-          <circle cx="${x}" cy="${y}" r="6.6" fill="none" stroke="rgba(96,74,20,.55)" stroke-width="1.5"/>
-          <line x1="${x - 4.6}" y1="${y}" x2="${x + 4.6}" y2="${y}" stroke="#6b5416" stroke-width="1.35"/>
-          <line x1="${x}" y1="${y - 4.6}" x2="${x}" y2="${y + 4.6}" stroke="#6b5416" stroke-width="1.35"/>
-          <circle cx="${x - 2.6}" cy="${y - 2.9}" r="1.3" fill="#ffe9a8" opacity=".55"/>
+          <ellipse cx="${x}" cy="${y + .8}" rx="10.8" ry="10.4" fill="rgba(23,37,58,.15)"/>
+          <circle cx="${x}" cy="${y}" r="9.6" fill="#f7f9fb" stroke="#c2cad4" stroke-width=".9"/>
+          <circle cx="${x}" cy="${y}" r="8.4" fill="#e3e9ef"/>
+          <circle cx="${x}" cy="${y}" r="8.4" fill="none" stroke="rgba(35,55,80,.30)" stroke-width="2.2"/>
+          <circle cx="${x}" cy="${y}" r="7.6" fill="none" stroke="#ffffff" stroke-width="1" opacity=".75"/>
+          <circle cx="${x}" cy="${y}" r="6.8" fill="url(#es-g-bk-screw)" stroke="#8a6d24" stroke-width=".9"/>
+          <circle cx="${x}" cy="${y}" r="6.8" fill="none" stroke="rgba(96,74,20,.5)" stroke-width="1.5"/>
+          <line x1="${x - 4.7}" y1="${y}" x2="${x + 4.7}" y2="${y}" stroke="#6b5416" stroke-width="1.4"/>
+          <line x1="${x}" y1="${y - 4.7}" x2="${x}" y2="${y + 4.7}" stroke="#6b5416" stroke-width="1.4"/>
+          <circle cx="${x - 2.7}" cy="${y - 3}" r="1.3" fill="#ffe9a8" opacity=".5"/>
         </g>`
       const ringBtn = (x, y) => `
         <g>
-          <circle cx="${x}" cy="${y}" r="9.2" fill="rgba(23,37,58,.12)"/>
-          <circle cx="${x}" cy="${y}" r="8" fill="#e9edf2" stroke="#aeb8c4" stroke-width="1"/>
-          <circle cx="${x}" cy="${y}" r="5.6" fill="#fdfefe"/>
-          <circle cx="${x}" cy="${y}" r="5.6" fill="none" stroke="#cfd7e0" stroke-width=".9"/>
+          <ellipse cx="${x}" cy="${y + .6}" rx="9.6" ry="9.2" fill="rgba(23,37,58,.13)"/>
+          <circle cx="${x}" cy="${y}" r="8.6" fill="#f4f6f9" stroke="#b7c0cb" stroke-width="1"/>
+          <circle cx="${x}" cy="${y}" r="6.2" fill="none" stroke="rgba(60,80,105,.3)" stroke-width="1.8"/>
+          <circle cx="${x}" cy="${y}" r="5.4" fill="#fdfefe" stroke="#cfd7e0" stroke-width=".8"/>
         </g>`
+      /* 蓝字 + 蓝横条（照实物：字是蓝的，后面跟一段实心蓝条） */
+      const silk = (x, w) => `
+        <text x="${x}" y="49.4" font-size="4.5" font-weight="700" letter-spacing=".3" fill="#2f6fb8"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">NOBOOK</text>
+        <rect x="${x + 25.4}" y="46.2" width="${w}" height="2.6" fill="#2f6fb8"/>`
+      /* 手柄两条滑槽（凹进去的灰白窗） */
+      const slot = (x, w) => `
+        <g>
+          <rect x="${x}" y="65.4" width="${w}" height="34.4" rx="1.6" fill="#dde3ea" stroke="#c6ced8" stroke-width=".8"/>
+          <rect x="${x + .8}" y="66.2" width="${w - 1.6}" height="3.2" fill="rgba(23,37,58,.20)"/>
+          <rect x="${x + .8}" y="95" width="${w - 1.6}" height="3.2" fill="#ffffff" opacity=".62"/>
+        </g>`
+      const barY = on ? 67 : 77.2
       return `
     <svg width="124" height="152" viewBox="0 0 124 152">
       <defs>
-        <linearGradient id="es-g-bk-body" x1="0" y1="0" x2="0.1" y2="1">
-          <stop offset="0%" stop-color="#ffffff"/><stop offset="52%" stop-color="#f7f9fb"/><stop offset="100%" stop-color="#e3e8ee"/>
+        <linearGradient id="es-g-bk-body" x1="0" y1="0" x2="0.16" y2="1">
+          <stop offset="0%" stop-color="#ffffff"/><stop offset="46%" stop-color="#fbfcfd"/>
+          <stop offset="100%" stop-color="#e2e7ec"/>
         </linearGradient>
         <linearGradient id="es-g-bk-lever" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#63a8ee"/><stop offset="38%" stop-color="#2c76cf"/><stop offset="100%" stop-color="#1a4c8e"/>
+          <stop offset="0%" stop-color="#6fb0f0"/><stop offset="30%" stop-color="#3d84d6"/>
+          <stop offset="72%" stop-color="#2a6cc0"/><stop offset="100%" stop-color="#1a4d90"/>
         </linearGradient>
-        <radialGradient id="es-g-bk-screw" cx="42%" cy="34%" r="76%">
-          <stop offset="0%" stop-color="#eed388"/><stop offset="55%" stop-color="#d2ab48"/><stop offset="100%" stop-color="#9b7722"/>
+        <linearGradient id="es-g-bk-leg" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#1f5aa6"/><stop offset="34%" stop-color="#3a80d2"/>
+          <stop offset="70%" stop-color="#2b6cbd"/><stop offset="100%" stop-color="#194a8c"/>
+        </linearGradient>
+        <radialGradient id="es-g-bk-screw" cx="42%" cy="32%" r="78%">
+          <stop offset="0%" stop-color="#f0d78f"/><stop offset="55%" stop-color="#d3ac4a"/><stop offset="100%" stop-color="#96731f"/>
         </radialGradient>
         <linearGradient id="es-g-bk-pill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#ffc046"/><stop offset="60%" stop-color="#f09109"/><stop offset="100%" stop-color="#c86f06"/>
+          <stop offset="0%" stop-color="#ffc94f"/><stop offset="55%" stop-color="#f39207"/><stop offset="100%" stop-color="#c06a04"/>
+        </linearGradient>
+        <linearGradient id="es-g-bk-shade" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="rgba(23,37,58,0)"/><stop offset="60%" stop-color="rgba(23,37,58,.10)"/>
+          <stop offset="100%" stop-color="rgba(23,37,58,.26)"/>
+        </linearGradient>
+        <linearGradient id="es-g-bk-lip" x1="0" y1="1" x2="0" y2="0">
+          <stop offset="0%" stop-color="rgba(23,37,58,.13)"/><stop offset="100%" stop-color="rgba(23,37,58,0)"/>
         </linearGradient>
       </defs>
       <g class="casing">
-        <!-- 白壳：整体一块，底部端子区略压深一点，中间一道模缝把两个模数分开 -->
-        <rect x="0.8" y="0.6" width="122.4" height="150.6" rx="3" fill="url(#es-g-bk-body)" stroke="#b5bec9" stroke-width="1"/>
-        <rect x="1.6" y="1.4" width="120.8" height="3" rx="1.5" fill="#ffffff" opacity=".9"/>
-        <rect x="1.6" y="119.4" width="120.8" height="30.4" rx="1.6" fill="#eef1f5" opacity=".7"/>
-        <line x1="1.4" y1="119.2" x2="122.6" y2="119.2" stroke="rgba(23,37,58,.13)" stroke-width="1.2"/>
-        <line x1="1.4" y1="120.6" x2="122.6" y2="120.6" stroke="#ffffff" stroke-width="1" opacity=".85"/>
-        <rect x="55.6" y="2.6" width="1.7" height="146" fill="#dde3ea"/>
-        <rect x="57.3" y="2.6" width="1.2" height="146" fill="#ffffff" opacity=".7"/>
+        <!-- 白壳：一块料 + 顶部斜面高光 + 右/底压深，中间一道模缝 -->
+        <ellipse cx="64" cy="152.4" rx="58" ry="4.6" fill="rgba(23,37,58,.14)"/>
+        <rect x="0.6" y="0.6" width="122.8" height="150.8" rx="3" fill="url(#es-g-bk-body)" stroke="#b3bcc7" stroke-width="1"/>
+        <rect x="1.3" y="1.2" width="121.4" height="3.6" rx="1.6" fill="#ffffff"/>
+        <rect x="1.3" y="4.6" width="121.4" height="1.2" fill="rgba(23,37,58,.09)"/>
+        <rect x="1.3" y="5.8" width="1.6" height="112" fill="#ffffff" opacity=".7"/>
+        <rect x="116" y="5.4" width="7.6" height="138.6" fill="url(#es-g-bk-shade)"/>
+        <rect x="1.4" y="107.6" width="121.2" height="11.6" fill="url(#es-g-bk-lip)"/>
+        <rect x="1.3" y="143.4" width="121.4" height="7" rx="1.6" fill="rgba(23,37,58,.06)"/>
+        <line x1="1.6" y1="119.4" x2="122.2" y2="119.4" stroke="rgba(23,37,58,.10)" stroke-width="1.1"/>
+        <line x1="1.6" y1="120.5" x2="122.2" y2="120.5" stroke="#ffffff" stroke-width="1" opacity=".9"/>
+        <rect x="65.2" y="3" width="1.5" height="145" fill="#cbd3dc"/>
+        <rect x="66.7" y="3" width="1.1" height="145" fill="#ffffff" opacity=".8"/>
 
-        <!-- 两条蓝色 NOBOOK 印带（左模、右模各一条） -->
-        <rect x="1.6" y="47.4" width="53.4" height="4.8" fill="#1f4fa0"/>
-        <rect x="1.6" y="47.4" width="53.4" height="1.5" fill="#3f74c9"/>
-        <rect x="62.4" y="47.4" width="60" height="4.8" fill="#1f4fa0"/>
-        <rect x="62.4" y="47.4" width="60" height="1.5" fill="#3f74c9"/>
-        <text x="9" y="51.2" font-size="3.3" font-weight="700" letter-spacing=".25" fill="#ffffff"
-          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">NOBOOK</text>
-        <text x="67" y="51.2" font-size="3.3" font-weight="700" letter-spacing=".25" fill="#ffffff"
-          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">NOBOOK</text>
+        <!-- 蓝字 NOBOOK + 蓝横条（左右各一条） -->
+        ${silk(3.6, 28.6)}
+        ${silk(66.6, 29.8)}
 
-        <!-- 左模：绿色指示灯 + ON 箭头 + 小字 -->
-        <circle cx="9.6" cy="57.2" r="1.8" fill="#215e2b"/>
-        <circle cx="9.6" cy="57.2" r="1.2" fill="#38d15c"/>
-        <text x="4.2" y="64.4" font-size="3.6" fill="#6d7885"
-          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">C16</text>
-        <line x1="45.4" y1="63" x2="45.4" y2="55.6" stroke="#5b6673" stroke-width=".9"/>
-        <path d="M43.4 57.4 L45.4 55.2 L47.4 57.4" fill="none" stroke="#5b6673" stroke-width=".9"/>
-        <text x="48.6" y="60" font-size="3.8" fill="#5b6673"
+        <!-- 左模：绿指示灯 + 230/400V~ + 哑铃小标 + ↑ON -->
+        <ellipse cx="11.8" cy="58.6" rx="2.6" ry="1.9" fill="#1d5b2c" stroke="#134a24" stroke-width=".6"/>
+        <ellipse cx="11.8" cy="58.4" rx="2" ry="1.3" fill="#43c262"/>
+        <text x="4.4" y="64.6" font-size="3.2" fill="#7c8794"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">230/400V~</text>
+        <line x1="4.4" y1="66.2" x2="19" y2="66.2" stroke="#aeb7c2" stroke-width=".6"/>
+        <g stroke="#8d97a3" stroke-width=".7" fill="none">
+          <ellipse cx="37.4" cy="61.4" rx="1.9" ry="1.5"/><ellipse cx="41.4" cy="61.4" rx="1.9" ry="1.5"/>
+          <line x1="39.3" y1="61.4" x2="39.5" y2="61.4"/>
+        </g>
+        <line x1="48.9" y1="66.6" x2="48.9" y2="57.4" stroke="#6b7583" stroke-width=".9"/>
+        <path d="M46.6 59.6 L48.9 57.2 L51.2 59.6" fill="none" stroke="#6b7583" stroke-width="1.1"/>
+        <text x="51.8" y="61.6" font-size="3.9" font-weight="600" fill="#6b7583"
           font-family="system-ui,-apple-system,'Segoe UI',sans-serif">ON</text>
 
-        <!-- 右模：白按环（顶上那颗）+ 橙色指示钮 -->
-        ${ringBtn(73, 23)}
-        <ellipse cx="77" cy="57.6" rx="12.4" ry="5" fill="url(#es-g-bk-pill)" stroke="#a86206" stroke-width=".7"/>
-        <ellipse cx="72.6" cy="55.8" rx="6.4" ry="1.7" fill="#ffffff" opacity=".3"/>
+        <!-- 右模：白按环 + 橙指示钮 + 漏电参数印刷 + 内部结构示意图 + 蓝标条 + 中文 -->
+        ${ringBtn(81.6, 23.7)}
+        <ellipse cx="80.8" cy="59.1" rx="10.6" ry="3.4" fill="url(#es-g-bk-pill)" stroke="#a86206" stroke-width=".7"/>
+        <ellipse cx="80.8" cy="59.9" rx="9.6" ry="1.1" fill="rgba(120,60,0,.28)"/>
+        <ellipse cx="77.4" cy="57.9" rx="4.6" ry="1.1" fill="#ffffff" opacity=".34"/>
+        <text x="73.6" y="66" font-size="2.7" fill="#7c8794"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">IΔn 0.03A</text>
+        <text x="73.6" y="69.6" font-size="2.7" fill="#7c8794"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">t ≤ 0.1s</text>
+        <!-- 内部结构示意图：触点 + 电磁线圈 + 虚线箭头（照实物那幅细黑线印刷图） -->
+        <g stroke="#5d6773" stroke-width=".62" fill="none" opacity=".92">
+          <rect x="104.6" y="74.6" width="9.4" height="12.2" rx="1"/>
+          <line x1="104.6" y1="80.4" x2="100.4" y2="80.4"/>
+          <line x1="114" y1="80.4" x2="119.2" y2="80.4"/>
+          <line x1="119.2" y1="76.8" x2="119.2" y2="84.2"/>
+          <path d="M119.2 76.8 L122.4 75.4"/>
+          <line x1="101.4" y1="87.4" x2="115.6" y2="87.4"/>
+          <line x1="101.4" y1="87.4" x2="101.4" y2="90.4"/>
+          <line x1="106" y1="87.4" x2="106" y2="90.4"/>
+          <line x1="108.6" y1="90.4" x2="112.4" y2="90.4"/>
+          <line x1="99.2" y1="76.6" x2="99.2" y2="84.2"/>
+          <line x1="96" y1="80.4" x2="92" y2="80.4"/>
+        </g>
+        <g stroke="#8d97a3" stroke-width=".9" stroke-dasharray="2.2 1.6" fill="none">
+          <line x1="72" y1="79.4" x2="93.4" y2="79.4"/>
+          <path d="M74.4 76.8 L71.6 79.4 L74.4 82" stroke-dasharray="0"/>
+        </g>
+        <rect x="74.4" y="99.6" width="13" height="11.4" rx=".8" fill="#2f6cb5"/>
+        <g stroke="#ffffff" stroke-width=".7" opacity=".85">
+          <line x1="76.2" y1="102.4" x2="85.6" y2="102.4"/>
+          <line x1="76.2" y1="105.4" x2="85.6" y2="105.4"/>
+          <line x1="76.2" y1="108.4" x2="85.6" y2="108.4"/>
+        </g>
+        <text x="90.6" y="106.6" font-size="3.4" fill="#4b5563"
+          font-family="system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">合闸前请按下</text>
 
-        <!-- 右模中间那幅接线示意图（细黑线，照实物印刷） -->
-        <g stroke="#59636f" stroke-width=".7" fill="none" opacity=".9">
-          <rect x="92" y="76.4" width="15.2" height="12.4" rx=".8"/>
-          <line x1="92" y1="82.6" x2="87.8" y2="82.6"/>
-          <line x1="107.2" y1="82.6" x2="112.4" y2="82.6"/>
-          <line x1="112.4" y1="79.2" x2="112.4" y2="88.4"/>
-          <path d="M112.4 79.2 L116.6 77.8 L116.6 89.6"/>
-          <line x1="87.8" y1="79.6" x2="89.4" y2="79.6"/>
-          <line x1="87.8" y1="85.6" x2="89.4" y2="85.6"/>
-          <line x1="114.4" y1="92" x2="120.2" y2="92"/>
-          <line x1="114.4" y1="92" x2="114.4" y2="95.6"/>
+        <!-- 手柄：两条灰白滑槽 + 两根蓝腿 + 横杆（上推到顶=合 / 压到底=关） -->
+        ${slot(5.4, 23.6)}
+        ${slot(30.9, 23.5)}
+        <g>
+          <!-- 横杆压在滑槽上的落影 -->
+          <rect x="3.6" y="${barY + 8.2}" width="55.3" height="2.4" rx="1.1" fill="rgba(23,37,58,.18)"/>
+          <rect x="9.9" y="${barY + 8.2}" width="18" height="15" rx="1.5" fill="url(#es-g-bk-leg)" stroke="#153f70" stroke-width=".8"/>
+          <rect x="32.7" y="${barY + 8.2}" width="18" height="15" rx="1.5" fill="url(#es-g-bk-leg)" stroke="#153f70" stroke-width=".8"/>
+          <rect x="11.4" y="${barY + 9.4}" width="2.6" height="12.6" rx="1.3" fill="#ffffff" opacity=".22"/>
+          <rect x="34.2" y="${barY + 9.4}" width="2.6" height="12.6" rx="1.3" fill="#ffffff" opacity=".22"/>
+          <rect x="3.6" y="${barY}" width="55.3" height="8.6" rx="2" fill="url(#es-g-bk-lever)" stroke="#123f6d" stroke-width=".9"/>
+          <rect x="4.8" y="${barY + 1.1}" width="53" height="2.4" rx="1.2" fill="#ffffff" opacity=".42"/>
+          <rect x="6.4" y="${barY + 4.6}" width="49.6" height="1.3" rx=".6" fill="#ffffff" opacity=".18"/>
+          <rect x="3.6" y="${barY + 7.4}" width="55.3" height="1.4" rx=".7" fill="rgba(9,26,48,.35)"/>
         </g>
 
-        <!-- 右模底下那块蓝标签 + 旁边的印刷字（用细横线示意） -->
-        <rect x="70.4" y="98.2" width="12.6" height="10.4" rx="1" fill="#2f6cb5"/>
-        <rect x="71.6" y="99.4" width="10.2" height="8.4" rx=".6" fill="none" stroke="#ffffff" stroke-width=".6" opacity=".55"/>
-        <line x1="86.6" y1="100.8" x2="117" y2="100.8" stroke="#68727d" stroke-width="1.05"/>
-        <line x1="86.6" y1="104.6" x2="109" y2="104.6" stroke="#68727d" stroke-width="1.05"/>
-        <line x1="86.6" y1="108.4" x2="113.2" y2="108.4" stroke="#68727d" stroke-width="1.05"/>
-
-        <!-- 蓝色手柄：一根横杆 + 两条腿（横杆横跨两个模数，合闸抬起 6°，分闸压下 12°） -->
-        <g transform="rotate(${on ? -2 : 11} 47 76)">
-          <rect x="4" y="70" width="87" height="12" rx="2.6" fill="url(#es-g-bk-lever)" stroke="#123f6d" stroke-width=".9"/>
-          <rect x="6" y="71.4" width="83" height="2.6" rx="1.3" fill="#ffffff" opacity=".34"/>
-          <rect x="5" y="81.4" width="14.5" height="14.6" rx="2.2" fill="url(#es-g-bk-lever)" stroke="#123f6d" stroke-width=".9"/>
-          <rect x="76.5" y="81.4" width="14.5" height="14.6" rx="2.2" fill="url(#es-g-bk-lever)" stroke="#123f6d" stroke-width=".9"/>
-          <rect x="7" y="82.6" width="3.4" height="11.8" rx="1.7" fill="#ffffff" opacity=".28"/>
-          <rect x="78.5" y="82.6" width="3.4" height="11.8" rx="1.7" fill="#ffffff" opacity=".28"/>
-        </g>
-
-        ${screw(14.7, 27.1)}
-        ${screw(45.4, 27.1)}
-        ${screw(15.3, 135.7)}
-        ${screw(47.3, 135.7)}
-        ${screw(83.1, 135.7)}
-        ${screw(103.5, 135.7)}
+        <!-- 下排：右模两颗螺钉坐在一条灰白凹槽里 -->
+        <rect x="76.4" y="127.8" width="42" height="14.6" rx="3.2" fill="#eef1f5" stroke="#dde3ea" stroke-width=".8"/>
+        ${screw(13.6, 23.7)}
+        ${screw(48.1, 23.7)}
+        ${screw(13.6, 135.1)}
+        ${screw(48.1, 135.1)}
+        ${screw(84.3, 135.1)}
+        ${screw(109.7, 135.1)}
       </g>
       ${['L', 'N'].map((t, i) => `
-        <text x="${[14.7, 45.4][i]}" y="${27.1 + 15.4}" text-anchor="middle" font-size="6.6"
-          font-weight="700" fill="#7d8794" font-family="system-ui,-apple-system,sans-serif">${t}</text>
-        <text x="${[15.3, 47.3][i]}" y="${135.7 + 12.2}" text-anchor="middle" font-size="6.6"
-          font-weight="700" fill="#7d8794" font-family="system-ui,-apple-system,sans-serif">${t}</text>`).join('')}
+        <text x="${[13.6, 48.1][i]}" y="${23.7 + 14.6}" text-anchor="middle" font-size="5.6"
+          font-weight="700" fill="#8d97a3" font-family="system-ui,-apple-system,sans-serif">${t}</text>
+        <text x="${[13.6, 48.1][i]}" y="${135.1 + 11.2}" text-anchor="middle" font-size="5.6"
+          font-weight="700" fill="#8d97a3" font-family="system-ui,-apple-system,sans-serif">${t}</text>`).join('')}
     </svg>` }
   },
 
