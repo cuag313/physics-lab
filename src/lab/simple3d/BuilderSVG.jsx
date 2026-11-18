@@ -1571,6 +1571,17 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
               title={c.plug ? '插在插座上（拖动可拔出）' : '拖动这只插头，插到插座的孔里'}
             >
               <svg width={PLUG_SIZE.w} height={PLUG_SIZE.h} viewBox="0 0 34 60">
+                <defs>
+                  <radialGradient id="esb-plug-recess" cx="50%" cy="46%" r="58%">
+                    <stop offset="55%" stopColor="rgba(15,23,42,.34)"/>
+                    <stop offset="100%" stopColor="rgba(15,23,42,0)"/>
+                  </radialGradient>
+                </defs>
+                {/* 插上时：先在插座面板上铺一圈"沉进孔里的暗影"，再把蛇头压上去 ——
+                    读作插头坐进插座的圆凹槽，而不是平贴在面上 */}
+                {c.plug && (
+                  <ellipse cx="17" cy="30" rx="18.5" ry="16.5" fill="url(#esb-plug-recess)" />
+                )}
                 {/* 蛇头（照用户给的特写）：圆角三角形头 + 底部罗纹颈；插上时（.on）不画正面三道白标，
                     那会儿看到的是插头背面、脚已经在孔里，配合 CSS 投影就"插进去了" */}
                 <path d={PLUG_HEAD} fill="#3b4048" stroke="#20242a" strokeWidth=".9"/>
