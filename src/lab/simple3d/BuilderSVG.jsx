@@ -45,6 +45,15 @@ const keyOf = (cid, tid) => cid + ':' + tid
  * 电器卡里两根插脚在 (65,160)/(85,160)，中点 (75,160)；
  * 插座卡里的两个孔（L / N 孔）中点按"面板照片"重新量过：两孔 (47,72)、三孔 (52,86)（照片里 L/N 两斜孔的中点）。 */
 const PLUG_TYPES = ['washer', 'kettle', 'riceCooker', 'heater']
+/* 插头有几只脚：洗衣机（沾水）与电饭煲按实物是**三脚**（要接地），
+ * 电热水壶、电暖器是**两脚**（外壳绝缘，不带接地脚）。
+ * 于是两孔插座只吃得下两脚插头，三脚插头只认三孔插座 —— 现实里就是这么插的。 */
+const PLUG_PINS = { washer: 3, riceCooker: 3, kettle: 2, heater: 2 }
+/* 两脚插头的两只脚左右对称（17±8.8），三脚的中间那只（接地）在正中 17 */
+const PLUG_PIN_X = {
+  3: [5, 14.8, 24.6],
+  2: [8.2, 25.8],
+}
 const SOCKET_HOLE = { socket2: { x: 47, y: 72 }, socket3: { x: 52, y: 112 } }
 /* 插头是一只**独立可拖**的部件（用户要求：电器放好后只拖插头，电源线可任意方向拉长）。
  * 形状照 NB/实物：**五边形插头壳**（平顶 + 两条直边 + 下方收成一个尖，线从尖上出来），
@@ -66,7 +75,9 @@ function plugHome(c) {
   return { x: Math.round(c.x + t.w + 26), y: Math.round(c.y + t.h * 0.56) }
 }
 
-/** 松手时：插脚中点离哪个插座的孔最近就插哪个，插不上就原样挂着 */
+/** 松手时：插头离哪个插座孔最近就插哪个，插不上就原样挂着。
+ *  三脚插头只认三孔插座 —— 两孔插座没有 E（接地）孔，现实里根本插不进去；
+ *  拖到两孔上就停在原地，并由上层弹一句提示（不硬塞，免得插头壳盖着两个孔演戏）。 */
 function snapPlug(cs, c) {
   if (!PLUG_TYPES.includes(c.type)) return c
   const pos = c.plugPos || plugHome(c)
@@ -80,8 +91,13 @@ function snapPlug(cs, c) {
     const dist = Math.hypot(pos.x - px, pos.y - py)
     if (dist < bestD) { bestD = dist; best = { s, px, py } }
   }
-  if (!best) return { ...c, plugPos: pos, plug: null }
-  return { ...c, plugPos: { x: best.px, y: best.py }, plug: best.s.id }
+  if (!best) return { ...c, plugPos: pos, plug: null, plugReject: null }
+  /* 三脚插头插不进两孔插座：那个插座没有 E（接地）孔 —— 插头退回电器右侧挂着，
+     不留它压在别人插好的孔上（两只插头叠在一起会看成一只）。 */
+  if (best.s.type !== 'socket3' && (PLUG_PINS[c.type] || 3) === 3) {
+    return { ...c, plugPos: plugHome(c), plug: null, plugReject: best.s.type }
+  }
+  return { ...c, plugPos: { x: best.px, y: best.py }, plug: best.s.id, plugReject: null }
 }
 
 /** 叠放次序：不额外排序 —— 器材按添加顺序绘制，后加的压在上面；插头是独立部件，画在最上层。 */
@@ -242,9 +258,46 @@ const WASHER_DRUM = { cx: 69.4, cy: 69.4, r: 16.1 }
    旋转层裁到 r=44：5 个白孔 + 1 个黑孔的最外沿只到 r≈34，留足余量；外圈轮缘与皮带保持静止
    （轮缘本身是圆，不转也看不出来），这样压在轮缘上的皮带就不会被带着甩。 */
 const MOTOR_PULLEY = { cx: 57.8, cy: 51.4, r: 44 }
+/* 三台家电的"工作痕迹"位置（按器材图在卡里的实际落点量出来，卡都是 150×168、图框 x22 y18 w106 h92）：
+ * 电热水壶 kettle_body 152×212 → meet 收成 65.96×92、左起 42.0；壶嘴尖在源图 (16,88) → 卡内 (49.0,56.2)；
+ * 电饭煲 ricecooker_body 176×146 → 收成 106×87.9、上起 20.0；盖顶排气孔 (88,10) → 卡内 (75,26)，
+ *   面板指示灯放在显示屏右侧 (128,50) → 卡内 (99,50)；
+ * 电暖器 heater_body 170×201 → 收成 77.8×92、左起 36.1；三片发热网在源图 x 25..122、
+ *   依次 y 38..83 / 88..139 / 144..165（像素聚类量的，不是估的）→ 卡内 x 47.6..91.9、
+ *   y 35.6..55.8 / 58.3..81.3 / 83.9..93.4。 */
+const KETTLE_SPOUT = { x: 45.0, y: 33.0 }
+const RICE_VENT = { x: 75, y: 26 }
+const RICE_LED = { x: 99, y: 50 }
+const HEATER_BANDS = [
+  { x0: 47.6, y0: 35.6, w: 44.4, h: 20.2 },
+  { x0: 47.6, y0: 58.5, w: 44.4, h: 22.8 },
+  { x0: 47.6, y0: 84.0, w: 44.4, h: 9.4 },
+]
 
 /**
- * 运动层：转动的铝盘 / 在洗的滚筒 / 工作中指示灯。
+ * 蒸汽：几缕错相位的汽柱往上飘，越飘越大越淡。
+ * 只画白色在暖白底上根本看不出来，所以用灰蓝（#7f8ea3）打底 + 白色小芯提亮，
+ * 远看是一团带体积的汽，近看是一层层往上散的小球。
+ */
+function steamWisps(st, o, { n = 4, rise = 14, r0 = 2.4, r1 = 5.2, drift = 2, speed = 0.6 } = {}, gid) {
+  return Array.from({ length: n }, (_, i) => {
+    const t = ((st.led * speed + i / n) % 1)
+    const y = o.y - 1 - t * rise
+    const x = o.x + Math.sin((t + i * 0.3) * 5.2) * drift * t
+    const r = r0 + t * (r1 - r0)
+    const op = Math.min(1, t * 3.2) * (1 - t)
+    return (
+      <g key={'w' + i} opacity={(op * 0.95).toFixed(3)}>
+        {/* 软边雾团（径向渐变，边缘化开，才不会像一颗颗小圆点） */}
+        <circle cx={x} cy={y} r={r} fill={`url(#${gid})`} />
+        <circle cx={x - 0.4} cy={y - 0.5} r={r * 0.34} fill="#ffffff" opacity=".55" />
+      </g>
+    )
+  })
+}
+
+/**
+ * 运动层：转动的铝盘 / 在洗的滚筒 / 工作中的家电 / 小电动机。
  *
  * 为什么不把动画写进器材的 SVG 字符串：器材层是每 250 ms 用 dangerouslySetInnerHTML
  * 重画的字符串（电能表每 tick 还要换计数器数字），字符串里挂 CSS 动画会被反复重建成
@@ -398,6 +451,76 @@ function MotionLayer({ items }) {
             </g>
           )
         }
+        /* 电热水壶：壶嘴冒汽 —— 三缕汽柱错相位往上飘，越飘越大越淡（汽是白的，用灰蓝衬一层才在暖底上看得见）。
+           不做"水在壶里翻滚"：实拍壶身是不透明的，只能看见壶嘴出来的这一股汽。 */
+        if (it.kind === 'kettle') {
+          const o = KETTLE_SPOUT
+          const led = 0.5 + 0.5 * Math.sin(st.led * 3.1)
+          const sgid = `esbm-steamk-${it.id}`
+          return (
+            <g key={it.id} transform={`translate(${it.x},${it.y})`}>
+              <defs>
+                <radialGradient id={sgid} cx="0.5" cy="0.5" r="0.5">
+                  <stop offset="0%" stopColor="#77879c" stopOpacity="0.72" />
+                  <stop offset="48%" stopColor="#8b99aa" stopOpacity="0.36" />
+                  <stop offset="100%" stopColor="#9aa7b8" stopOpacity="0" />
+                </radialGradient>
+              </defs>
+              {/* 壶底电源灯：压在黑色底座上（不能飘到机身外面去） */}
+              <circle cx="95" cy="101" r="4.2" fill="#ef4444" opacity={0.18 + led * 0.18} />
+              <circle cx="95" cy="101" r="1.6" fill="#fca5a5" opacity={0.8 + led * 0.2} />
+              {steamWisps(st, o, { rise: 16, n: 5, r0: 2.6, r1: 5.4, drift: 1.8, speed: 0.6 }, sgid)}
+            </g>
+          )
+        }
+        /* 电饭煲：盖上排气孔冒一点汽 + 面板加热指示灯呼吸。
+           汽只升 14 px（再高就压到卡片标题条上了），指示灯画在显示屏右侧那一格。 */
+        if (it.kind === 'riceCooker') {
+          const o = RICE_VENT
+          const led = 0.5 + 0.5 * Math.sin(st.led * 3.2)
+          const sgid = `esbm-steamr-${it.id}`
+          return (
+            <g key={it.id} transform={`translate(${it.x},${it.y})`}>
+              <defs>
+                <radialGradient id={sgid} cx="0.5" cy="0.5" r="0.5">
+                  <stop offset="0%" stopColor="#77879c" stopOpacity="0.5" />
+                  <stop offset="48%" stopColor="#8b99aa" stopOpacity="0.24" />
+                  <stop offset="100%" stopColor="#9aa7b8" stopOpacity="0" />
+                </radialGradient>
+              </defs>
+              {/* 汽只升 8 px（再高就压到卡片标题条上了） */}
+              {steamWisps(st, o, { rise: 8, n: 3, r0: 2.4, r1: 4.4, drift: 1.4, speed: 0.5 }, sgid)}
+              {/* 加热指示灯：橙色，呼吸范围给足，缩到 600× 时也能看出"在保温/在煮" */}
+              <circle cx={RICE_LED.x} cy={RICE_LED.y} r="5.4" fill="#f59e0b" opacity={0.14 + led * 0.2} />
+              <circle cx={RICE_LED.x} cy={RICE_LED.y} r="2.0" fill="#fdba74" opacity={0.55 + led * 0.45} />
+            </g>
+          )
+        }
+        /* 电暖器：三片发热网透出橙红光 —— 亮度带一点双频闪烁（像电阻丝在抖），
+           中间最亮、上下两端淡出，才像"从网眼里透出来的热"，不是贴了一块橙色板。 */
+        if (it.kind === 'heater') {
+          const gid = `esbm-heatg-${it.id}`
+          const flick = 0.5 + 0.22 * Math.sin(st.led * 6.6) + 0.12 * Math.sin(st.led * 17.3)
+          return (
+            <g key={it.id} transform={`translate(${it.x},${it.y})`}>
+              <defs>
+                <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#fb923c" stopOpacity="0" />
+                  <stop offset="46%" stopColor="#f97316" stopOpacity=".9" />
+                  <stop offset="100%" stopColor="#fb923c" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              {HEATER_BANDS.map((b, i) => (
+                <g key={'hb' + i}>
+                  <rect x={b.x0} y={b.y0} width={b.w} height={b.h} rx="2.6"
+                    fill={`url(#${gid})`} opacity={Math.max(0.16, flick - i * 0.05).toFixed(3)} />
+                  <ellipse cx={b.x0 + b.w / 2} cy={b.y0 + b.h / 2} rx={b.w / 2 - 4} ry={b.h / 2 - 1.6}
+                    fill="#ff7a2f" opacity={(0.12 + 0.16 * flick).toFixed(3)} />
+                </g>
+              ))}
+            </g>
+          )
+        }
         return null
       })}
     </svg>
@@ -411,6 +534,8 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   const [pending, setPending] = useState(null)
   const [, forceUpdate] = useState(0)
   const [records, setRecords] = useState([])
+  const [plugHint, setPlugHint] = useState(null)
+  const plugHintTimer = useRef(0)
   const [dissect, setDissect] = useState(false)   // 一键透视：外壳半透明、露出 .inner 内部结构
   /* 电能表走字倍速：真实时间里 100 W 点一小时才 1 度电，肉眼看不到转盘与计数器在动；
    * 1× 用来说明"真表就是走得很慢"，60× / 600× 才能把 W = Pt 演出来。 */
@@ -718,8 +843,19 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       return
     }
     if (d && d.kind === 'plugmove') {
-      /* 松手：插头离哪个插座孔最近就插进去，否则就挂在电器的右后方 */
-      setComps((cs) => cs.map((x) => (x.id === d.compId ? snapPlug(cs, x) : x)))
+      /* 松手：插头离哪个插座孔最近就插进去，否则就挂在电器的右后方。
+         三脚插头碰到两孔插座 → 停在原地，弹一句提示（E 脚没有孔位）。 */
+      const cur = compsRef.current.find((x) => x.id === d.compId)
+      if (!cur) return
+      const next = snapPlug(compsRef.current, cur)
+      if (next.plugReject) {
+        setPlugHint('⚠ 三脚插头插不进两孔插座：E（接地）脚没有孔位，请换三孔插座')
+        clearTimeout(plugHintTimer.current)
+        plugHintTimer.current = setTimeout(() => setPlugHint(null), 2800)
+      } else {
+        setPlugHint(null)
+      }
+      setComps((cs) => cs.map((x) => (x.id === d.compId ? next : x)))
       return
     }
     if (d && d.kind === 'slider') forceUpdate((n) => n + 1)
@@ -794,7 +930,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     if (c.type === 'ostersBoard') {
       return { I: o._I || 0, sign: o._sign || 0, bmag: o._bmag || 0 }
     }
-    if (c.type === 'washer' || c.type === 'kettle') return { I: Math.abs(o._I || 0), P: o._P || 0, R: o._R || 0 }
+    if (PLUG_TYPES.includes(c.type)) return { I: Math.abs(o._I || 0), P: o._P || 0, R: o._R || 0 }
     if (c.type === 'energyMeter') {
       const h = kwhRef.current.get(c.id) || { kwh: 0 }
       return { kwh: h.kwh || 0, I: Math.abs(o._I || 0) }
@@ -923,7 +1059,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       return { tone: 'ok', text: '✅ 电路接通' }
     }
     const opened = comps.find((c) => (c.type === 'switch' || c.type === 'wallSwitch' || c.type === 'breaker') && !c.closed)
-    if (opened) return { tone: 'warn', text: '开关断开 · 电路不通' }
+    if (opened) return { tone: 'warn', text: '⚠ 开关断开 · 电路不通' }
     return { tone: 'warn', text: '电路未接通（回路不完整或断路）' }
   }, [comps, solved])
 
@@ -970,6 +1106,10 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       } else if (c.type === 'washer' && P > 0.5) {
         // 单位：rad / 秒；500 W 约 0.5 转每秒（真实滚筒洗程本来就这么慢）
         out.push({ id: c.id, kind: 'washer', x: c.x, y: c.y, v: 2.0 + 2.4 * P / 2000 })
+      } else if ((c.type === 'kettle' || c.type === 'riceCooker' || c.type === 'heater') && P > 0.5) {
+        /* 这三台只按"绝对时间"演进（汽往上飘、指示灯呼吸、电阻丝闪），不用转速，
+           所以 v 给 0 —— st.led 每帧照加，动画照样跑；断电（P=0）就整条不画。 */
+        out.push({ id: c.id, kind: c.type, x: c.x, y: c.y, v: 0 })
       } else if (c.type === 'motor' && I > 0.02) {
         // 单位：rad / 秒；0.6 A 约半转每秒，1 A 再快一点（NB 里就是这个观感）
         out.push({
@@ -1313,13 +1453,14 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
                   </g>
                 ) : (
                   <g>
-                    {/* 没插：三只黄铜脚朝上露着（脚尖就是吸附点），五边形壳在下面 */}
-                    <rect x="5" y="2" width="4.4" height="16" rx="1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".85" />
-                    <rect x="24.6" y="2" width="4.4" height="16" rx="1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".85" />
-                    <rect x="14.8" y="2" width="4.4" height="16" rx="1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".85" />
-                    <rect x="5.6" y="3" width="1.1" height="14" rx=".55" fill="#f1dca8" opacity=".8" />
-                    <rect x="25.2" y="3" width="1.1" height="14" rx=".55" fill="#f1dca8" opacity=".8" />
-                    <rect x="15.4" y="3" width="1.1" height="14" rx=".55" fill="#f1dca8" opacity=".8" />
+                    {/* 没插：插脚朝上露着（脚尖就是吸附点），五边形壳在下面。
+                        两脚 / 三脚按 PLUG_PINS 画：三脚中间那只接地脚在正中，与三孔插座的 E 孔对得上 */}
+                    {(PLUG_PIN_X[PLUG_PINS[c.type] || 3] || PLUG_PIN_X[3]).map((x, i) => (
+                      <g key={'pin' + i}>
+                        <rect x={x} y="2" width="4.4" height="16" rx="1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".85" />
+                        <rect x={x + 0.6} y="3" width="1.1" height="14" rx=".55" fill="#f1dca8" opacity=".8" />
+                      </g>
+                    ))}
                     <g transform="translate(0 18)">
                       <path d={PLUG_PENTA} fill="#3b3f46" stroke="#23272d" strokeWidth="1" />
                       <g transform="translate(17 20) scale(0.88) translate(-17 -20)">
@@ -1413,11 +1554,12 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         <div
           className="esb-status"
           style={{
-            background: status.tone === 'ok' ? 'rgba(46,125,50,.92)' : status.tone === 'bad' ? 'rgba(198,40,40,.9)' : 'rgba(15,23,42,.84)',
+            background: plugHint ? 'rgba(180,83,9,.92)'
+              : status.tone === 'ok' ? 'rgba(46,125,50,.92)' : status.tone === 'bad' ? 'rgba(198,40,40,.9)' : 'rgba(15,23,42,.84)',
             color: '#fff',
           }}
         >
-          {status.text}
+          {plugHint || status.text}
         </div>
 
         {/* 图例：只在有电流时出现，免得平时白占地方 */}
