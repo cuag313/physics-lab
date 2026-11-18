@@ -718,16 +718,13 @@ export default function ElectricEnergyScene() {
             items={[
               { type: 'battery', name: '电池组', icon: thumb('battery') },
               { type: 'accumulator', name: '蓄电池', icon: thumb('accumulator') },
-              // 家庭电路三件（本专题补遗留新增）：家用交流电（三孔插座）+ 洗衣机 500 W + 电热水壶 1500 W
-              // 电池组只有 3 V，干路电流零点几安，电功几乎为 0、表不走字；
-              // 换成家用交流电 + 电器，I = P/U = 2.27 / 6.82 A，配右上「走字倍速」才看得见计数器跳字
               // 家庭电路（真器材）：交流电源（圆 + 正弦符号 + 三引线）→ 电能表 → 空气开关 → 支路
+              // 「家用交流电（三孔插座）」与「两孔插座」已按用户要求撤掉：家电一律三芯插头，
+              // 只留一只三孔插座当负载端，器材面板更干净。
               { type: 'acSource', name: '交流电源', icon: thumb('acSource') },
-              { type: 'mains', name: '家用交流电', icon: thumb('mains') },
               { type: 'energyMeter', name: '电能表', icon: thumb('energyMeter') },
               { type: 'breaker', name: '空气开关', icon: thumb('breaker') },
               { type: 'wallSwitch', name: '面板开关', icon: thumb('wallSwitch') },
-              { type: 'socket2', name: '两孔插座', icon: thumb('socket2') },
               { type: 'socket3', name: '三孔插座', icon: thumb('socket3') },
               // 家用电器（无底座，插脚拖到插孔上就自动并联在 L / N 两端，不设接线柱热点）
               { type: 'washer', name: '洗衣机', icon: thumb('washer') },

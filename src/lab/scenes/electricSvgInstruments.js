@@ -87,46 +87,18 @@ const APPLIANCE = {
   heater: { file: 'heater_body.png', label: '电暖器', P: 1500 },
 }
 
-function applianceSVG(kind, c, dyn = {}) {
+function applianceSVG(kind, c) {
   const art = APPLIANCE[kind]
-  const P = Number(c.p) || art.P
-  const I = Math.abs(Number(dyn.I) || 0)
-  const on = I > 0.001
-  const R = Number(dyn.R) || (220 * 220) / P
-  const U = on ? I * R : 0
-  // 通电后才写出两端实测电压：学生把两台电器串起来时会看到"串联分压 · U = 165.2 V"，
-  // 这个反差就是教学点。没通电台面上什么都不写（"插头未插入""等合闸"这类方案说明被用户要求去掉，
-  // 状态靠插头插没插上、红灯亮不亮自己看得出来）。
-  const conn = !on ? ''
-    : U > 200 ? `并联 · U = ${U.toFixed(1)} V`
-      : `串联分压 · U = ${U.toFixed(1)} V`
-  const cap = on ? `${P} W 额定 · I = ${I.toFixed(2)} A` : `${P} W 额定 · R = ${R.toFixed(1)} Ω`
-  /* 不再画"实验台底座"（用户要求：家用电器就该是一台整机，不带底座）。
-   * 插头也不画在卡里了：插头是一只**独立可拖**的部件（电源线能任意方向拉长），
-   * 画在 BuilderSVG 的插头层里，拖到插座孔上自动吸附插入。 */
+  /* 用户口径：**家电卡片上的文字一律不要**（标题带、额定参数、"运行中"、并联/串联说明全删），
+     只要那台机器本身 —— 照 NB 实拍，机身上是没有任何字的，状态靠蒸汽、指示灯和插头自己看。
+     所以这里只剩一张整机图；接线柱热点也不画（插头就是接头）。 */
   return `
     <svg width="150" height="168" viewBox="0 0 150 168">
       ${fitInner(150, 168, 150, 168, INNER.homeLoad())}
       <g class="casing">
-        <rect x="6" y="1" width="138" height="15" rx="4" fill="#334155"/>
-        <text x="75" y="11.5" text-anchor="middle" font-size="9" fill="#dbeafe"
-          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${art.label} · 220 V</text>
-        <image href="${figURL(art.file)}" x="22" y="18" width="106" height="92"
+        <image href="${figURL(art.file)}" x="22" y="26" width="106" height="92"
           preserveAspectRatio="xMidYMid meet"/>
-        ${on ? `<g>
-          <rect x="106" y="20" width="34" height="12" rx="6" fill="#fee2e2" stroke="#f87171" stroke-width=".9"/>
-          <circle cx="112.5" cy="26" r="2.2" fill="#dc2626"/>
-          <text x="127" y="29.2" text-anchor="middle" font-size="6.5" fill="#b91c1c"
-            font-family="system-ui,-apple-system,'Segoe UI',sans-serif">运行中</text>
-        </g>` : ''}
       </g>
-      ${/* 家电不设接线柱热点（用户要求）：插头就是"接头"，拖到插座孔上自动插上，
-           所以这里不再画 termDot，BuilderSVG 的命中层也跳过家电（NO_TERM_UI）。 */ ''}
-      <text x="75" y="128" text-anchor="middle" font-size="8.5" fill="#475569"
-        font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${cap}</text>
-      ${conn ? `<text x="75" y="139" text-anchor="middle" font-size="7"
-        fill="${U > 200 ? '#15803d' : '#dc2626'}"
-        font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${conn}</text>` : ''}
     </svg>`
 }
 
@@ -1662,68 +1634,128 @@ export const TYPES = {
   breaker: {
     label: '空气开关', w: 124, h: 152,
     terminals: [
-      { id: 'li', label: 'L进', name: '相线进（左上）', x: 34, y: 26 },
-      { id: 'ni', label: 'N进', name: '零线进（右上）', x: 90, y: 26 },
-      { id: 'lo', label: 'L出', name: '相线出（左下）', x: 34, y: 114 },
-      { id: 'no', label: 'N出', name: '零线出（右下）', x: 90, y: 114 },
+      { id: 'li', label: 'L进', name: '相线进（左上）', x: 14.7, y: 27.1 },
+      { id: 'ni', label: 'N进', name: '零线进（右上）', x: 45.4, y: 27.1 },
+      { id: 'lo', label: 'L出', name: '相线出（左下）', x: 15.3, y: 135.7 },
+      { id: 'no', label: 'N出', name: '零线出（右下）', x: 47.3, y: 135.7 },
     ],
     render(c) {
       const on = !!c.closed
-      /* 照 NB 的实物：白色双极断路器，四个金色螺钉端子（上下各两只），中间两只蓝色手柄，
-         合闸手柄朝上、分闸（跳闸）朝下压；面板上印 C16 / 1P+N，右侧一颗橙色试验按钮。
-         原来那行"合闸 · 两路通电"的说明条去掉了 —— 真器件上没有这种字，状态看手柄位置就够。 */
-      const lever = (x) => `
-        <g transform="rotate(${on ? -8 : 14} ${x} 96)">
-          <rect x="${x - 11}" y="52" width="22" height="42" rx="3" fill="url(#es-g-bk-lever)" stroke="#13477e" stroke-width=".9"/>
-          <rect x="${x - 8}" y="55" width="5.6" height="36" rx="2.8" fill="#ffffff" opacity=".38"/>
-          <rect x="${x - 11}" y="86" width="22" height="7" rx="2.6" fill="#0f3567" opacity=".5"/>
-          <rect x="${x - 4.5}" y="60" width="9" height="12" rx="1.6" fill="#ffffff" opacity=".22"/>
-        </g>`
+      /* 严格照用户给的 NB 特写逐件对位：把参考图的主体（97×112）按 1.278 / 1.357 换算到 124×152。
+         两个模数拼成的白壳 + 一道竖向模缝；左模上下共四颗金色十字螺钉（沉在凹坑里）；
+         右模顶上是一颗白按环（不是螺钉）；两条蓝色 NOBOOK 印带；左模一颗绿色指示灯 + ON 箭头；
+         右模一颗橙色指示钮 + 一幅接线示意图 + 底下一块蓝标签；中间一只**带两条腿的蓝色手柄**。
+         真器件上不印"合闸·两路通电"这种字，说明条一律不画。 */
       const screw = (x, y) => `
         <g>
-          <circle cx="${x}" cy="${y}" r="6.2" fill="#c9a24a" stroke="#8a6a26" stroke-width=".9"/>
-          <circle cx="${x}" cy="${y}" r="4.2" fill="#e0bd6a"/>
-          <line x1="${x - 3.4}" y1="${y}" x2="${x + 3.4}" y2="${y}" stroke="#8a6a26" stroke-width="1.1"/>
-          <line x1="${x}" y1="${y - 3.4}" x2="${x}" y2="${y + 3.4}" stroke="#8a6a26" stroke-width="1.1"/>
+          <circle cx="${x}" cy="${y}" r="9.2" fill="rgba(23,37,58,.13)"/>
+          <circle cx="${x}" cy="${y}" r="8.2" fill="#eef2f6" stroke="#b9c2cc" stroke-width=".9"/>
+          <circle cx="${x}" cy="${y}" r="6.6" fill="url(#es-g-bk-screw)" stroke="#8a6d24" stroke-width=".9"/>
+          <circle cx="${x}" cy="${y}" r="6.6" fill="none" stroke="rgba(96,74,20,.55)" stroke-width="1.5"/>
+          <line x1="${x - 4.6}" y1="${y}" x2="${x + 4.6}" y2="${y}" stroke="#6b5416" stroke-width="1.35"/>
+          <line x1="${x}" y1="${y - 4.6}" x2="${x}" y2="${y + 4.6}" stroke="#6b5416" stroke-width="1.35"/>
+          <circle cx="${x - 2.6}" cy="${y - 2.9}" r="1.3" fill="#ffe9a8" opacity=".55"/>
+        </g>`
+      const ringBtn = (x, y) => `
+        <g>
+          <circle cx="${x}" cy="${y}" r="9.2" fill="rgba(23,37,58,.12)"/>
+          <circle cx="${x}" cy="${y}" r="8" fill="#e9edf2" stroke="#aeb8c4" stroke-width="1"/>
+          <circle cx="${x}" cy="${y}" r="5.6" fill="#fdfefe"/>
+          <circle cx="${x}" cy="${y}" r="5.6" fill="none" stroke="#cfd7e0" stroke-width=".9"/>
         </g>`
       return `
     <svg width="124" height="152" viewBox="0 0 124 152">
       <defs>
-        <linearGradient id="es-g-bk-body" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#ffffff"/><stop offset="46%" stop-color="#f6f7f9"/><stop offset="100%" stop-color="#dfe4ea"/>
+        <linearGradient id="es-g-bk-body" x1="0" y1="0" x2="0.1" y2="1">
+          <stop offset="0%" stop-color="#ffffff"/><stop offset="52%" stop-color="#f7f9fb"/><stop offset="100%" stop-color="#e3e8ee"/>
         </linearGradient>
         <linearGradient id="es-g-bk-lever" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#79b8f8"/><stop offset="45%" stop-color="#2f7ad6"/><stop offset="100%" stop-color="#1b4f96"/>
+          <stop offset="0%" stop-color="#63a8ee"/><stop offset="38%" stop-color="#2c76cf"/><stop offset="100%" stop-color="#1a4c8e"/>
+        </linearGradient>
+        <radialGradient id="es-g-bk-screw" cx="42%" cy="34%" r="76%">
+          <stop offset="0%" stop-color="#eed388"/><stop offset="55%" stop-color="#d2ab48"/><stop offset="100%" stop-color="#9b7722"/>
+        </radialGradient>
+        <linearGradient id="es-g-bk-pill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ffc046"/><stop offset="60%" stop-color="#f09109"/><stop offset="100%" stop-color="#c86f06"/>
         </linearGradient>
       </defs>
       <g class="casing">
-        <!-- 壳体：上面一道帽檐、两侧各有两条竖向加强筋，底部一条深色底座线 -->
-        <rect x="16" y="8" width="92" height="126" rx="3.4" fill="url(#es-g-bk-body)" stroke="#b3bcc6" stroke-width="1.1"/>
-        <rect x="18" y="9.6" width="88" height="3.2" rx="1.6" fill="#ffffff" opacity=".92"/>
-        <rect x="16" y="128" width="92" height="6" rx="2" fill="#cfd5dd"/>
-        <rect x="20" y="52" width="1.6" height="52" fill="#e2e7ed"/>
-        <rect x="104" y="52" width="1.6" height="52" fill="#e2e7ed"/>
-        <text x="62" y="22" text-anchor="middle" font-size="5.2" fill="#8b96a3"
+        <!-- 白壳：整体一块，底部端子区略压深一点，中间一道模缝把两个模数分开 -->
+        <rect x="0.8" y="0.6" width="122.4" height="150.6" rx="3" fill="url(#es-g-bk-body)" stroke="#b5bec9" stroke-width="1"/>
+        <rect x="1.6" y="1.4" width="120.8" height="3" rx="1.5" fill="#ffffff" opacity=".9"/>
+        <rect x="1.6" y="119.4" width="120.8" height="30.4" rx="1.6" fill="#eef1f5" opacity=".7"/>
+        <line x1="1.4" y1="119.2" x2="122.6" y2="119.2" stroke="rgba(23,37,58,.13)" stroke-width="1.2"/>
+        <line x1="1.4" y1="120.6" x2="122.6" y2="120.6" stroke="#ffffff" stroke-width="1" opacity=".85"/>
+        <rect x="55.6" y="2.6" width="1.7" height="146" fill="#dde3ea"/>
+        <rect x="57.3" y="2.6" width="1.2" height="146" fill="#ffffff" opacity=".7"/>
+
+        <!-- 两条蓝色 NOBOOK 印带（左模、右模各一条） -->
+        <rect x="1.6" y="47.4" width="53.4" height="4.8" fill="#1f4fa0"/>
+        <rect x="1.6" y="47.4" width="53.4" height="1.5" fill="#3f74c9"/>
+        <rect x="62.4" y="47.4" width="60" height="4.8" fill="#1f4fa0"/>
+        <rect x="62.4" y="47.4" width="60" height="1.5" fill="#3f74c9"/>
+        <text x="9" y="51.2" font-size="3.3" font-weight="700" letter-spacing=".25" fill="#ffffff"
           font-family="system-ui,-apple-system,'Segoe UI',sans-serif">NOBOOK</text>
-        <text x="62" y="44" text-anchor="middle" font-size="10.5" font-weight="700" fill="#28323d"
+        <text x="67" y="51.2" font-size="3.3" font-weight="700" letter-spacing=".25" fill="#ffffff"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">NOBOOK</text>
+
+        <!-- 左模：绿色指示灯 + ON 箭头 + 小字 -->
+        <circle cx="9.6" cy="57.2" r="1.8" fill="#215e2b"/>
+        <circle cx="9.6" cy="57.2" r="1.2" fill="#38d15c"/>
+        <text x="4.2" y="64.4" font-size="3.6" fill="#6d7885"
           font-family="system-ui,-apple-system,'Segoe UI',sans-serif">C16</text>
-        <!-- 两只手柄的滑槽（深色槽口让手柄看着是"从壳里翻出来"的） -->
-        <rect x="27" y="48" width="26" height="54" rx="3" fill="#c4ccd5" opacity=".55"/>
-        <rect x="73" y="48" width="26" height="54" rx="3" fill="#c4ccd5" opacity=".55"/>
-        ${lever(40)}
-        ${lever(86)}
-        <circle cx="62" cy="104" r="4.2" fill="#f97316" stroke="#b45309" stroke-width=".8"/>
-        <text x="62" y="122" text-anchor="middle" font-size="5.6" fill="#7b8794"
-          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">1P+N · 16A</text>
-        ${screw(34, 26)}
-        ${screw(90, 26)}
-        ${screw(34, 114)}
-        ${screw(90, 114)}
+        <line x1="45.4" y1="63" x2="45.4" y2="55.6" stroke="#5b6673" stroke-width=".9"/>
+        <path d="M43.4 57.4 L45.4 55.2 L47.4 57.4" fill="none" stroke="#5b6673" stroke-width=".9"/>
+        <text x="48.6" y="60" font-size="3.8" fill="#5b6673"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">ON</text>
+
+        <!-- 右模：白按环（顶上那颗）+ 橙色指示钮 -->
+        ${ringBtn(73, 23)}
+        <ellipse cx="77" cy="57.6" rx="12.4" ry="5" fill="url(#es-g-bk-pill)" stroke="#a86206" stroke-width=".7"/>
+        <ellipse cx="72.6" cy="55.8" rx="6.4" ry="1.7" fill="#ffffff" opacity=".3"/>
+
+        <!-- 右模中间那幅接线示意图（细黑线，照实物印刷） -->
+        <g stroke="#59636f" stroke-width=".7" fill="none" opacity=".9">
+          <rect x="92" y="76.4" width="15.2" height="12.4" rx=".8"/>
+          <line x1="92" y1="82.6" x2="87.8" y2="82.6"/>
+          <line x1="107.2" y1="82.6" x2="112.4" y2="82.6"/>
+          <line x1="112.4" y1="79.2" x2="112.4" y2="88.4"/>
+          <path d="M112.4 79.2 L116.6 77.8 L116.6 89.6"/>
+          <line x1="87.8" y1="79.6" x2="89.4" y2="79.6"/>
+          <line x1="87.8" y1="85.6" x2="89.4" y2="85.6"/>
+          <line x1="114.4" y1="92" x2="120.2" y2="92"/>
+          <line x1="114.4" y1="92" x2="114.4" y2="95.6"/>
+        </g>
+
+        <!-- 右模底下那块蓝标签 + 旁边的印刷字（用细横线示意） -->
+        <rect x="70.4" y="98.2" width="12.6" height="10.4" rx="1" fill="#2f6cb5"/>
+        <rect x="71.6" y="99.4" width="10.2" height="8.4" rx=".6" fill="none" stroke="#ffffff" stroke-width=".6" opacity=".55"/>
+        <line x1="86.6" y1="100.8" x2="117" y2="100.8" stroke="#68727d" stroke-width="1.05"/>
+        <line x1="86.6" y1="104.6" x2="109" y2="104.6" stroke="#68727d" stroke-width="1.05"/>
+        <line x1="86.6" y1="108.4" x2="113.2" y2="108.4" stroke="#68727d" stroke-width="1.05"/>
+
+        <!-- 蓝色手柄：一根横杆 + 两条腿（横杆横跨两个模数，合闸抬起 6°，分闸压下 12°） -->
+        <g transform="rotate(${on ? -2 : 11} 47 76)">
+          <rect x="4" y="70" width="87" height="12" rx="2.6" fill="url(#es-g-bk-lever)" stroke="#123f6d" stroke-width=".9"/>
+          <rect x="6" y="71.4" width="83" height="2.6" rx="1.3" fill="#ffffff" opacity=".34"/>
+          <rect x="5" y="81.4" width="14.5" height="14.6" rx="2.2" fill="url(#es-g-bk-lever)" stroke="#123f6d" stroke-width=".9"/>
+          <rect x="76.5" y="81.4" width="14.5" height="14.6" rx="2.2" fill="url(#es-g-bk-lever)" stroke="#123f6d" stroke-width=".9"/>
+          <rect x="7" y="82.6" width="3.4" height="11.8" rx="1.7" fill="#ffffff" opacity=".28"/>
+          <rect x="78.5" y="82.6" width="3.4" height="11.8" rx="1.7" fill="#ffffff" opacity=".28"/>
+        </g>
+
+        ${screw(14.7, 27.1)}
+        ${screw(45.4, 27.1)}
+        ${screw(15.3, 135.7)}
+        ${screw(47.3, 135.7)}
+        ${screw(83.1, 135.7)}
+        ${screw(103.5, 135.7)}
       </g>
-      ${termDotSVG(34, 26, true, 'L')}
-      ${termDotSVG(90, 26, true, 'N')}
-      ${termDotSVG(34, 114, false, 'L')}
-      ${termDotSVG(90, 114, true, 'N')}
+      ${['L', 'N'].map((t, i) => `
+        <text x="${[14.7, 45.4][i]}" y="${27.1 + 15.4}" text-anchor="middle" font-size="6.6"
+          font-weight="700" fill="#7d8794" font-family="system-ui,-apple-system,sans-serif">${t}</text>
+        <text x="${[15.3, 47.3][i]}" y="${135.7 + 12.2}" text-anchor="middle" font-size="6.6"
+          font-weight="700" fill="#7d8794" font-family="system-ui,-apple-system,sans-serif">${t}</text>`).join('')}
     </svg>` }
   },
 

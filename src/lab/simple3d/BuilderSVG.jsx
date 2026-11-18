@@ -48,22 +48,21 @@ const PLUG_TYPES = ['washer', 'kettle', 'riceCooker', 'heater']
 /* 插头有几只脚：洗衣机（沾水）与电饭煲按实物是**三脚**（要接地），
  * 电热水壶、电暖器是**两脚**（外壳绝缘，不带接地脚）。
  * 于是两孔插座只吃得下两脚插头，三脚插头只认三孔插座 —— 现实里就是这么插的。 */
-const PLUG_PINS = { washer: 3, riceCooker: 3, kettle: 2, heater: 2 }
-/* 两脚插头的两只脚左右对称（17±8.8），三脚的中间那只（接地）在正中 17 */
-const PLUG_PIN_X = {
-  3: [5, 14.8, 24.6],
-  2: [8.2, 25.8],
-}
+/* 家电的插头脚数：用户口径「家用电器全改为三芯插头」—— 四台都是三脚，
+   插座只留三孔（两孔插座已从器材面板撤掉），所以不再有插不进的情况。 */
+const PLUG_PINS = { washer: 3, riceCooker: 3, kettle: 3, heater: 3 }
 const SOCKET_HOLE = { socket2: { x: 47, y: 72 }, socket3: { x: 52, y: 112 } }
-/* 插头是一只**独立可拖**的部件（用户要求：电器放好后只拖插头，电源线可任意方向拉长）。
- * 形状照 NB/实物：**五边形插头壳**（平顶 + 两条直边 + 下方收成一个尖，线从尖上出来），
- * 朝外一面是三只黄铜脚。框 34×60，两种状态各有一个"锚点"：
- *   没插 —— 插脚朝上露着，锚点 = 三脚脚尖那一行 (17,2)；
- *   插上 —— 插头壳正压在孔位上（壳顶 = 锚点上方 26，盖住三孔的 E 孔），锚点 = L/N 两孔那一行 (17,40)。 */
+/* 插头是一只**独立可拖**的部件（电器放好后只拖插头，电源线可任意方向拉长）。
+ * 形状照用户给的插头特写：**蛇头**——圆角三角形的头（顶宽、两侧收、下巴圆钝）+ 底下罗纹颈 + 灰线缆；
+ * 正面三道白标（一竖两斜，照实物）。框 34×60，两种状态各有一个"锚点"：
+ *   没插 —— 头正落在锚点上（头 0..40，锚点 = 头心 17,20）；
+ *   插上 —— 头压低盖住三孔（锚点 (17,31)：头 81..121，正好罩住 E(90) 与 L/N(112) 三个孔）。 */
 const PLUG_SIZE = { w: 34, h: 60 }
-const PLUG_ANCHOR = { off: { x: 17, y: 2 }, on: { x: 17, y: 40 } }
-/* 五边形插头壳（34×40）：平顶、两条直边、下方收成一个尖（线从尖上出来） */
-const PLUG_PENTA = 'M4 0 H30 Q34 0 34 4 V22 Q34 25 31 26.8 L18.3 38.4 Q17 39.6 15.7 38.4 L3 26.8 Q0 25 0 22 V4 Q0 0 4 0 Z'
+const PLUG_ANCHOR = { off: { x: 17, y: 20 }, on: { x: 17, y: 31 } }
+/* 蛇头轮廓（34×40）：圆角三角形的头，下巴收圆；脖子在 36..48，线从 48 出去 */
+const PLUG_HEAD = 'M17 .9 C9.4 .9 3.5 4.1 2.3 10.6 C1.5 15 7.2 28.6 15.1 37.3'
+  + ' C16.1 38.7 17.9 38.7 18.9 37.3 C26.8 28.6 32.5 15 31.7 10.6 C30.5 4.1 24.6 .9 17 .9 Z'
+const PLUG_BOOT = 'M13.1 34.4 L11.7 44.2 Q11.3 47.3 13.6 47.7 H20.4 Q22.7 47.3 22.3 44.2 L20.9 34.4 Z'
 /* 电源线的出口：从机身右下角横着出来。值是"整机图右边界到卡片右边的距离"
  * （四张图的左右留白不同，按 188/224、152/212、176/146、170/201 的原图比例换算出来的） */
 const CORD_OUT = { washer: 37, kettle: 42, riceCooker: 22, heater: 36 }
@@ -1355,6 +1354,8 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         .esb-plug{position:absolute;touch-action:none;cursor:grab;pointer-events:auto;z-index:9;
           filter:drop-shadow(0 1.4px 2px rgba(15,23,42,.30))}
         .esb-plug:active{cursor:grabbing}
+        /* 插上的插头：投影压得更实（贴住插座面板），一眼看出"已经插进去了"，不是浮在面上 */
+        .esb-plug.on{filter:drop-shadow(0 2.4px 3.2px rgba(15,23,42,.42))}
         .esb-plug:hover svg rect{filter:brightness(1.12)}
         .esb-comp{position:absolute;cursor:grab;touch-action:none;pointer-events:auto}
         .esb-comp:active{cursor:grabbing}
@@ -1531,42 +1532,23 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             /* 线从**机身的右下角**横着出来（不是从卡片边缘）：四张整机图左右留白不一样，
                各自的右边界换算成到卡片右边的距离，再加 6 让它藏进机身里 → 线看着是从机器里长出来的 */
             const ax = c.x + t.w - (CORD_OUT[c.type] || 36) - 20
-            const ay = c.y + 104
+            /* 机身图已从 y18 下移到 y26（卡片上不再有标题带），电源出口跟着 +8 */
+            const ay = c.y + 112
             const bx = pos.x
-            /* 线的出口就是壳底那个尖：壳体固定画在框内 y14..54，尖在 52.4。
-               没插（锚点 17,2 → 框顶 pos.y-2）尖在 pos.y+50；插上（锚点 17,40）尖在 pos.y+12 */
-            const by = pos.y + (c.plug ? 12 : 50)
+            /* 线的出口 = 蛇头底下罗纹颈的末端（框内 y48）：
+               没插（锚点 17,20 → 框顶 pos.y-20）末端在 pos.y+28；插上（锚点 17,31）在 pos.y+17 */
+            const by = pos.y + (c.plug ? 17 : 28)
             const tx = bx
             const ty = by
-            const sx = Math.sign(tx - ax) || 1
-            const sy = Math.sign(ty - ay) || 1
-            /* 三段折线（照真机电源线）：① 横向出机身一小段 → ② 斜着直过去 → ③ 竖直进插头。
-               长距离时不再拉一条横线横穿整块板；拐角都是圆角 */
-            const stub = 22
-            const p1 = { x: ax + sx * stub, y: ay }
-            const dvy = Math.abs(ty - ay)
-            const p2 = c.plug
-              ? { x: tx, y: ty - sy * Math.min(26, dvy * 0.45) }
-              : null
-            const endP = p2 || { x: tx, y: ty }
-            const len1 = Math.hypot(endP.x - p1.x, endP.y - p1.y)
-            let d = `M${ax} ${ay} L${tx} ${ty}`
-            if (len1 > 4) {
-              const u2 = { x: (endP.x - p1.x) / len1, y: (endP.y - p1.y) / len1 }
-              const r1 = Math.max(4, Math.min(12, len1 * 0.45))
-              const q1a = { x: p1.x - sx * r1, y: p1.y }
-              const q1b = { x: p1.x + u2.x * r1, y: p1.y + u2.y * r1 }
-              const len2 = p2 ? Math.hypot(tx - p2.x, ty - p2.y) : 0
-              if (p2 && len2 > 4) {
-                const u3 = { x: (tx - p2.x) / len2, y: (ty - p2.y) / len2 }
-                const r2 = Math.max(4, Math.min(c.plug ? 12 : 20, len2 * 0.5))
-                const q2a = { x: p2.x - u2.x * r2, y: p2.y - u2.y * r2 }
-                const q2b = { x: p2.x + u3.x * r2, y: p2.y + u3.y * r2 }
-                d = `M${ax} ${ay} L${q1a.x} ${q1a.y} Q${p1.x} ${p1.y} ${q1b.x} ${q1b.y} L${q2a.x} ${q2a.y} Q${p2.x} ${p2.y} ${q2b.x} ${q2b.y} L${tx} ${ty}`
-              } else {
-                d = `M${ax} ${ay} L${q1a.x} ${q1a.y} Q${p1.x} ${p1.y} ${q1b.x} ${q1b.y} L${tx} ${ty}`
-              }
-            }
+            /* 一条平滑的软线（用户口径：右侧那条伸出去的短横线要去掉）：
+               出机身那一下只留一个横向的缓弯（控制点），不再有直段；进插头那一下竖着收进去。 */
+            const dx = tx - ax
+            const dy = ty - ay
+            const sx = Math.sign(dx) || 1
+            const sy = Math.sign(dy) || 1
+            const k1 = Math.min(Math.abs(dx) * 0.55, c.plug ? 46 : 34)
+            const k2 = Math.min(Math.abs(dy) * 0.55, 40)
+            const d = `M${ax} ${ay} C${ax + sx * k1} ${ay} ${tx} ${ty - sy * k2} ${tx} ${ty}`
             return (
               <g key={c.id}>
                 <path d={d} fill="none" stroke="rgba(15,23,42,0.13)" strokeWidth={4.2} strokeLinecap="round" strokeLinejoin="round" transform="translate(0 1.4)" />
@@ -1589,19 +1571,21 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
               title={c.plug ? '插在插座上（拖动可拔出）' : '拖动这只插头，插到插座的孔里'}
             >
               <svg width={PLUG_SIZE.w} height={PLUG_SIZE.h} viewBox="0 0 34 60">
-                {/* 一只壳管两种状态（用户口径：没插的与插上的必须是同一个轮廓，别一个三角一个梯形）。
-                    壳体固定画在框内 y14..54：没插时它挂在孔外、插上时整只压进孔里 —— 位置变，形状不变。
-                    朝外那一面（壳顶）露 2 或 3 只短铜脚：脚只伸出壳沿 4 px，不改变整体剪影。 */}
-                <g transform="translate(0 14)">
-                  <path d={PLUG_PENTA} fill="#3b3f46" stroke="#23272d" strokeWidth="1" />
-                  <g transform="translate(17 20) scale(0.9) translate(-17 -20)">
-                    <path d={PLUG_PENTA} fill="none" stroke="#ffffff" strokeWidth="1" opacity=".1" />
+                {/* 蛇头（照用户给的特写）：圆角三角形头 + 底部罗纹颈；插上时（.on）不画正面三道白标，
+                    那会儿看到的是插头背面、脚已经在孔里，配合 CSS 投影就"插进去了" */}
+                <path d={PLUG_HEAD} fill="#3b4048" stroke="#20242a" strokeWidth=".9"/>
+                <path d={PLUG_HEAD} fill="none" stroke="#ffffff" strokeWidth="1" opacity=".1"
+                  transform="translate(1.1 1.1) scale(.93)" strokeLinejoin="round"/>
+                {!c.plug && (
+                  <g stroke="#ffffff" strokeWidth="2.1" strokeLinecap="round" opacity=".9" fill="none">
+                    <line x1="17" y1="7" x2="17" y2="17.2"/>
+                    <line x1="11.4" y1="18.4" x2="14.3" y2="25.6"/>
+                    <line x1="22.6" y1="18.4" x2="19.7" y2="25.6"/>
                   </g>
-                  {(PLUG_PIN_X[PLUG_PINS[c.type] || 3] || PLUG_PIN_X[3]).map((x, i) => (
-                    <rect key={'pin' + i} x={x + 0.4} y="0.8" width="3.8" height="4.4" rx="1"
-                      fill="#c8a165" stroke="#7a5c2c" strokeWidth=".7" />
-                  ))}
-                </g>
+                )}
+                <path d={PLUG_BOOT} fill="#31353c" stroke="#1d2126" strokeWidth=".8"/>
+                <line x1="12.4" y1="38.6" x2="21.6" y2="38.6" stroke="#1d2126" strokeWidth="1.1"/>
+                <line x1="11.9" y1="42" x2="22.1" y2="42" stroke="#1d2126" strokeWidth="1.1"/>
               </svg>
             </div>
           )
