@@ -94,11 +94,10 @@ function applianceSVG(kind, c, dyn = {}) {
   const on = I > 0.001
   const R = Number(dyn.R) || (220 * 220) / P
   const U = on ? I * R : 0
-  const plugged = !!c.plug
-  // 家用电器是并联在 220 V 两端用的：通电后直接把两端实际电压写出来，
-  // 学生自己把两台串起来时会看到"串联分压 · U = 165.2 V"，这个反差就是教学点。
-  const conn = !on
-    ? (plugged ? '插在插座上 · 等合闸' : '插头未插入')
+  // 通电后才写出两端实测电压：学生把两台电器串起来时会看到"串联分压 · U = 165.2 V"，
+  // 这个反差就是教学点。没通电台面上什么都不写（"插头未插入""等合闸"这类方案说明被用户要求去掉，
+  // 状态靠插头插没插上、红灯亮不亮自己看得出来）。
+  const conn = !on ? ''
     : U > 200 ? `并联 · U = ${U.toFixed(1)} V`
       : `串联分压 · U = ${U.toFixed(1)} V`
   const cap = on ? `${P} W 额定 · I = ${I.toFixed(2)} A` : `${P} W 额定 · R = ${R.toFixed(1)} Ω`
@@ -125,8 +124,9 @@ function applianceSVG(kind, c, dyn = {}) {
            所以这里不再画 termDot，BuilderSVG 的命中层也跳过家电（NO_TERM_UI）。 */ ''}
       <text x="75" y="128" text-anchor="middle" font-size="8.5" fill="#475569"
         font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${cap}</text>
-      <text x="75" y="139" text-anchor="middle" font-size="7" fill="${on && U < 200 ? '#dc2626' : plugged ? '#15803d' : '#1d4ed8'}"
-        font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${conn}</text>
+      ${conn ? `<text x="75" y="139" text-anchor="middle" font-size="7"
+        fill="${U > 200 ? '#15803d' : '#dc2626'}"
+        font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${conn}</text>` : ''}
     </svg>`
 }
 
@@ -932,6 +932,16 @@ function resistorType(ohm, bands) {
   }
 }
 
+/* ── 交流电源三根引线的几何（器材本地坐标）──
+ * 三根线从圆右侧圆周上引出来，线头默认落在 x152；拖线头就能把线拉长、拉歪。
+ * BuilderSVG 也 import 这一份：渲染、命中、导线"接在线上任意一点"都用同一套数，
+ * 免得两边各写一份 88/98/152 之后对一个像素对不上。 */
+export const AC_LEAD = {
+  l: { x0: 88.4, y0: 48, ex: 152, ey: 48, color: '#e53935' },
+  n: { x0: 98, y0: 74, ex: 152, ey: 74, color: '#2f6fdc' },
+  e: { x0: 88.4, y0: 100, ex: 152, ey: 100, color: '#111827' },
+}
+
 export const TYPES = {
   /* ── 电池组（两节干电池串联 3V，平放电池槽实拍图；黑/红柱就是照片上的接线柱，不再另画帽子） ──
    * 图 battery_c.png 已按实体紧裁（原图 y 92~164）并 4 倍放大锐化，1024×288，按 150×42 等比贴。
@@ -1584,7 +1594,8 @@ export const TYPES = {
   /* ── 家用交流电（三孔插座：用户给的面板图标，L / N 两柱接进家庭电路） ── */
   /* ── 交流电源（教材符号：一个圆 + 圆内**一个周期**正弦 + 圆外三根引线朝右，L / N / E 三柱）──
    * 用户口径：正弦只画一个周期；三根线从圆右侧引出去（不是朝下），线色红（相线）、蓝（零线）、黑（接地）；
-   * 三个线头末端就是接线热点，接上才像真正的家庭进线。E 只作接地端，不参与回路计算。 */
+   * 三根线是**能拉长的**：拖线头可以把线拉长、拉歪，导线也能接在线上任意一点（见 BuilderSVG 的 AC_LEAD/leadHit）。
+   * 线头位置存在 comp.lead = { l:[x,y], n:[x,y], e:[x,y] }（器材本地坐标），默认落在 x152。 */
   acSource: {
     label: '交流电源', w: 200, h: 168,
     terminals: [
@@ -1603,6 +1614,26 @@ export const TYPES = {
         const y = 74 - Math.sin(t * Math.PI * 2) * 13
         d += (i ? 'L' : 'M') + x.toFixed(1) + ' ' + y.toFixed(1) + ' '
       }
+      /* 三根引线的线头位置（拉长后就是 c.lead 里的值）；线从圆周上那个点引出来，
+         线头画成一小段"露铜 + 彩色护套"，拖它就是拉线 */
+      const leadHead = (key) => {
+        const g = AC_LEAD[key]
+        const e = (c && c.lead && c.lead[key]) || [g.ex, g.ey]
+        return { g, x: e[0], y: e[1] }
+      }
+      const leadSVG = (key, label) => {
+        const { g, x, y } = leadHead(key)
+        const lx = Math.max(4, Math.min(196, x))
+        const ly = Math.max(6, Math.min(162, y))
+        return `
+          <line x1="${g.x0}" y1="${g.y0}" x2="${lx}" y2="${ly}" stroke="${g.color}" stroke-width="3"
+            stroke-linecap="round"/>
+          <circle cx="${lx}" cy="${ly}" r="3.6" fill="${g.color}" stroke="#ffffff" stroke-width="1.1"/>
+          <circle cx="${lx}" cy="${ly}" r="1.5" fill="#ffffff" opacity=".85"/>
+          <text x="${lx + 9}" y="${ly - 6}" font-size="8.5" font-weight="700" fill="#24292f"
+            paint-order="stroke" stroke="#ffffff" stroke-width="2.2"
+            font-family="system-ui,-apple-system,'Segoe UI',sans-serif">${label}</text>`
+      }
       return `
     <svg width="200" height="168" viewBox="0 0 200 168">
       <defs>
@@ -1611,10 +1642,6 @@ export const TYPES = {
         </radialGradient>
       </defs>
       <g class="casing">
-        <!-- 三根引线朝右引到三个线头：红 = 相线、蓝 = 零线、黑 = 接地 -->
-        <path d="M88 48 L146 48" stroke="#e53935" stroke-width="3" fill="none" stroke-linecap="round"/>
-        <path d="M98 74 L146 74" stroke="#2f6fdc" stroke-width="3" fill="none" stroke-linecap="round"/>
-        <path d="M88 100 L146 100" stroke="#111827" stroke-width="3" fill="none" stroke-linecap="round"/>
         <circle cx="58" cy="74" r="40" fill="url(#es-g-ac-face)" stroke="#b6c4d1" stroke-width="1.7"/>
         <circle cx="58" cy="74" r="37" fill="none" stroke="#ffffff" stroke-width="1" opacity=".9"/>
         <path d="${d}" stroke="${on ? '#c2410c' : '#7b8794'}" stroke-width="2.4" fill="none"/>
@@ -1623,15 +1650,7 @@ export const TYPES = {
         <text x="58" y="143" text-anchor="middle" font-size="7" fill="#475569"
           font-family="system-ui,-apple-system,'Segoe UI',sans-serif">红 相线 · 蓝 零线 · 黑 接地</text>
       </g>
-      ${termDotSVG(152, 48, false, '', 'red')}
-      ${termDotSVG(152, 74, true, '', 'blue')}
-      ${termDotSVG(152, 100, true, '', 'black')}
-      <text x="168" y="51" font-size="8.5" font-weight="700" fill="#24292f"
-        font-family="system-ui,-apple-system,'Segoe UI',sans-serif">L</text>
-      <text x="168" y="77" font-size="8.5" font-weight="700" fill="#24292f"
-        font-family="system-ui,-apple-system,'Segoe UI',sans-serif">N</text>
-      <text x="168" y="103" font-size="8.5" font-weight="700" fill="#24292f"
-        font-family="system-ui,-apple-system,'Segoe UI',sans-serif">E</text>
+      ${['l', 'n', 'e'].map((k) => leadSVG(k, { l: 'L', n: 'N', e: 'E' }[k])).join('')}
       ${noteChipSVG(100, 158, on ? `交流 · I = ${I.toFixed(2)} A` : '交流电源 · 待接线', on ? '#4ade80' : '#94a3b8', 120)}
     </svg>` }
   },
@@ -1650,42 +1669,61 @@ export const TYPES = {
     ],
     render(c) {
       const on = !!c.closed
+      /* 照 NB 的实物：白色双极断路器，四个金色螺钉端子（上下各两只），中间两只蓝色手柄，
+         合闸手柄朝上、分闸（跳闸）朝下压；面板上印 C16 / 1P+N，右侧一颗橙色试验按钮。
+         原来那行"合闸 · 两路通电"的说明条去掉了 —— 真器件上没有这种字，状态看手柄位置就够。 */
       const lever = (x) => `
-        <g transform="rotate(${on ? -10 : 16} ${x} 96)">
-          <rect x="${x - 12}" y="50" width="24" height="46" rx="3.5" fill="url(#es-g-bk-lever)" stroke="#173f7f" stroke-width=".9"/>
-          <rect x="${x - 9}" y="53" width="6.5" height="40" rx="3.2" fill="#ffffff" opacity=".40"/>
-          <rect x="${x - 12}" y="88" width="24" height="8" rx="3" fill="#123a72" opacity=".55"/>
+        <g transform="rotate(${on ? -8 : 14} ${x} 96)">
+          <rect x="${x - 11}" y="52" width="22" height="42" rx="3" fill="url(#es-g-bk-lever)" stroke="#13477e" stroke-width=".9"/>
+          <rect x="${x - 8}" y="55" width="5.6" height="36" rx="2.8" fill="#ffffff" opacity=".38"/>
+          <rect x="${x - 11}" y="86" width="22" height="7" rx="2.6" fill="#0f3567" opacity=".5"/>
+          <rect x="${x - 4.5}" y="60" width="9" height="12" rx="1.6" fill="#ffffff" opacity=".22"/>
+        </g>`
+      const screw = (x, y) => `
+        <g>
+          <circle cx="${x}" cy="${y}" r="6.2" fill="#c9a24a" stroke="#8a6a26" stroke-width=".9"/>
+          <circle cx="${x}" cy="${y}" r="4.2" fill="#e0bd6a"/>
+          <line x1="${x - 3.4}" y1="${y}" x2="${x + 3.4}" y2="${y}" stroke="#8a6a26" stroke-width="1.1"/>
+          <line x1="${x}" y1="${y - 3.4}" x2="${x}" y2="${y + 3.4}" stroke="#8a6a26" stroke-width="1.1"/>
         </g>`
       return `
     <svg width="124" height="152" viewBox="0 0 124 152">
       <defs>
         <linearGradient id="es-g-bk-body" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#ffffff"/><stop offset="52%" stop-color="#f3f5f8"/><stop offset="100%" stop-color="#dce2e9"/>
+          <stop offset="0%" stop-color="#ffffff"/><stop offset="46%" stop-color="#f6f7f9"/><stop offset="100%" stop-color="#dfe4ea"/>
         </linearGradient>
         <linearGradient id="es-g-bk-lever" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#7cb0f7"/><stop offset="42%" stop-color="#2f6fd0"/><stop offset="100%" stop-color="#1c4d99"/>
+          <stop offset="0%" stop-color="#79b8f8"/><stop offset="45%" stop-color="#2f7ad6"/><stop offset="100%" stop-color="#1b4f96"/>
         </linearGradient>
       </defs>
       <g class="casing">
-        <rect x="18" y="10" width="88" height="118" rx="4.5" fill="url(#es-g-bk-body)" stroke="#b6bfc9" stroke-width="1.1"/>
-        <rect x="22" y="13" width="80" height="3.5" rx="1.8" fill="#ffffff" opacity=".9"/>
-        <rect x="18" y="126" width="88" height="2.4" fill="#c7ced7"/>
-        <text x="62" y="42" text-anchor="middle" font-size="11" font-weight="700" fill="#2b3440"
+        <!-- 壳体：上面一道帽檐、两侧各有两条竖向加强筋，底部一条深色底座线 -->
+        <rect x="16" y="8" width="92" height="126" rx="3.4" fill="url(#es-g-bk-body)" stroke="#b3bcc6" stroke-width="1.1"/>
+        <rect x="18" y="9.6" width="88" height="3.2" rx="1.6" fill="#ffffff" opacity=".92"/>
+        <rect x="16" y="128" width="92" height="6" rx="2" fill="#cfd5dd"/>
+        <rect x="20" y="52" width="1.6" height="52" fill="#e2e7ed"/>
+        <rect x="104" y="52" width="1.6" height="52" fill="#e2e7ed"/>
+        <text x="62" y="22" text-anchor="middle" font-size="5.2" fill="#8b96a3"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">NOBOOK</text>
+        <text x="62" y="44" text-anchor="middle" font-size="10.5" font-weight="700" fill="#28323d"
           font-family="system-ui,-apple-system,'Segoe UI',sans-serif">C16</text>
-        <rect x="26" y="48" width="26" height="54" rx="4" fill="#d3dae2" opacity=".6"/>
-        <rect x="72" y="48" width="26" height="54" rx="4" fill="#d3dae2" opacity=".6"/>
-        ${lever(39)}
-        ${lever(85)}
-        <text x="39" y="116" text-anchor="middle" font-size="7.5" fill="#6b7684"
-          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">L</text>
-        <text x="85" y="116" text-anchor="middle" font-size="7.5" fill="#6b7684"
-          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">N</text>
+        <!-- 两只手柄的滑槽（深色槽口让手柄看着是"从壳里翻出来"的） -->
+        <rect x="27" y="48" width="26" height="54" rx="3" fill="#c4ccd5" opacity=".55"/>
+        <rect x="73" y="48" width="26" height="54" rx="3" fill="#c4ccd5" opacity=".55"/>
+        ${lever(40)}
+        ${lever(86)}
+        <circle cx="62" cy="104" r="4.2" fill="#f97316" stroke="#b45309" stroke-width=".8"/>
+        <text x="62" y="122" text-anchor="middle" font-size="5.6" fill="#7b8794"
+          font-family="system-ui,-apple-system,'Segoe UI',sans-serif">1P+N · 16A</text>
+        ${screw(34, 26)}
+        ${screw(90, 26)}
+        ${screw(34, 114)}
+        ${screw(90, 114)}
       </g>
       ${termDotSVG(34, 26, true, 'L')}
       ${termDotSVG(90, 26, true, 'N')}
       ${termDotSVG(34, 114, false, 'L')}
       ${termDotSVG(90, 114, true, 'N')}
-      ${noteChipSVG(62, 141, on ? '合闸 · 两路通电' : '分闸 · 两路断开', on ? '#4ade80' : '#fbbf24', 104)}
     </svg>` }
   },
 

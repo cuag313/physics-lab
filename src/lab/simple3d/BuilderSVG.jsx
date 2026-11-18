@@ -18,7 +18,7 @@ import {
   forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from 'react'
 import { solveCircuit, CFG } from '../engine/electricLab.js'
-import { TYPES, RHEO_TRACK, rheostatMode, figURL } from '../scenes/electricSvgInstruments.js'
+import { TYPES, AC_LEAD, RHEO_TRACK, rheostatMode, figURL } from '../scenes/electricSvgInstruments.js'
 import {
   wireCurve, curveD, curveMid, wireLayers, wrapLayers,
 } from '../render/wireSvg.js'
@@ -69,6 +69,50 @@ const PLUG_PENTA = 'M4 0 H30 Q34 0 34 4 V22 Q34 25 31 26.8 L18.3 38.4 Q17 39.6 1
 const CORD_OUT = { washer: 37, kettle: 42, riceCooker: 22, heater: 36 }
 const PLUG_SNAP_R = 84
 
+/* 空气开关分闸/合闸的"咔哒"一声：现场用 WebAudio 合成，不挂音频文件。
+   分闸（跳闸）是脆响 + 往下的金属尾音，合闸稍沉一点 —— NB 的断路器是真会响的。
+   浏览器只允许在用户手势里出声，而这个声音正是点击触发的，所以第一次点就有。 */
+let clackCtx = null
+function breakerClack(on) {
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext
+    if (!AC) return
+    if (!clackCtx) clackCtx = new AC()
+    const ac = clackCtx
+    if (ac.state === 'suspended') ac.resume()
+    const t0 = ac.currentTime + 0.004
+    /* ① 触头撞在一起的那一下：14 ms 噪声，带通滤波，合闸亮一点、分闸闷一点 */
+    const n = Math.max(24, Math.floor(ac.sampleRate * 0.014))
+    const buf = ac.createBuffer(1, n, ac.sampleRate)
+    const ch = buf.getChannelData(0)
+    for (let i = 0; i < n; i++) ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2)
+    const src = ac.createBufferSource()
+    src.buffer = buf
+    const bp = ac.createBiquadFilter()
+    bp.type = 'bandpass'
+    bp.frequency.value = on ? 1500 : 900
+    bp.Q.value = 1.1
+    const g1 = ac.createGain()
+    g1.gain.value = on ? 0.5 : 0.34
+    src.connect(bp).connect(g1).connect(ac.destination)
+    src.start(t0)
+    /* ② 手柄到位的"咯"：一段短促下坠的低音 */
+    const osc = ac.createOscillator()
+    osc.type = 'square'
+    osc.frequency.setValueAtTime(on ? 260 : 190, t0 + 0.008)
+    osc.frequency.exponentialRampToValueAtTime(on ? 96 : 74, t0 + 0.06)
+    const g2 = ac.createGain()
+    g2.gain.setValueAtTime(0.0001, t0 + 0.008)
+    g2.gain.exponentialRampToValueAtTime(on ? 0.16 : 0.1, t0 + 0.014)
+    g2.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.075)
+    osc.connect(g2).connect(ac.destination)
+    osc.start(t0 + 0.008)
+    osc.stop(t0 + 0.09)
+  } catch {
+    /* 静音 / 无音频设备（截图脚本、无头浏览器）直接跳过，不抛错 */
+  }
+}
+
 /** 插头默认挂在电器的右侧（大小比例照实物：插头壳比机器窄得多，整只落在机器右边外侧） */
 function plugHome(c) {
   const t = TYPES[c.type]
@@ -102,10 +146,11 @@ function snapPlug(cs, c) {
 
 /** 叠放次序：不额外排序 —— 器材按添加顺序绘制，后加的压在上面；插头是独立部件，画在最上层。 */
 
-/** 接线锚点：接线柱帽正下方（导线真正夹持处） */
-function termAnchor(c, tid) {
-  const t = (TYPES[c.type] && TYPES[c.type].terminals.find((x) => x.id === tid)) || null
-  return t ? { x: c.x + t.x, y: c.y + t.y + TERM_DROP } : null
+/** 接线锚点：接线柱帽正下方（导线真正夹持处）；交流电源的三根引线则落在线上 t 处 */
+function termAnchor(c, tid, t = 1) {
+  if (AC_LEAD[tid] && c.type === 'acSource') return leadAt(c, tid, t)
+  const t0 = (TYPES[c.type] && TYPES[c.type].terminals.find((x) => x.id === tid)) || null
+  return t0 ? { x: c.x + t0.x, y: c.y + t0.y + TERM_DROP } : null
 }
 
 /** 出线方向：接线柱在器材左半 → 向左拔出，右半 → 向右 */
@@ -115,10 +160,54 @@ function outOf(c, tid) {
   return t.x < (TYPES[c.type].w || 0) / 2 ? -1 : 1
 }
 
-/** 一根导线的曲线（p1/p2 为柱脚锚点） */
-function wireGeom(c1, tid1, c2, tid2, seed) {
-  const p1 = termAnchor(c1, tid1)
-  const p2 = termAnchor(c2, tid2)
+/* ── 交流电源的三根引线（可以拖长，导线也能接在线上任意一点）──
+ * 几何在 electricSvgInstruments 的 AC_LEAD 里（渲染与命中同一套数）：
+ *   引线从圆右侧圆周引出，线头默认落在 x152；线头位置存在 c.lead[tid] = [x, y]（器材本地坐标）。
+ * 拖线头就是把线拉长、拉歪；接在线上任意一点的导线按 t ∈ [0,1] 定位，
+ * 线拉长后弧长变了、比例不变，导线还咬在原来的位置上。 */
+/** 引线两端（画布坐标） */
+function leadPts(c, tid) {
+  const b = AC_LEAD[tid]
+  if (!b || c.type !== 'acSource') return null
+  const end = (c.lead && c.lead[tid]) || [b.ex, b.ey]
+  return {
+    p0: { x: c.x + b.x0, y: c.y + b.y0 },
+    p1: { x: c.x + end[0], y: c.y + end[1] },
+    end,
+  }
+}
+/** 引线上 t 处的点（t=0 圆周、t=1 线头） */
+function leadAt(c, tid, t) {
+  const L = leadPts(c, tid)
+  if (!L) return null
+  const k = Math.max(0, Math.min(1, t))
+  return { x: L.p0.x + (L.p1.x - L.p0.x) * k, y: L.p0.y + (L.p1.y - L.p0.y) * k }
+}
+/** 画布上某一点离哪根引线最近（用来"接在线上任意一点"）：返回 {cid, tid, t, d} */
+function leadHit(comps, p, tol = 15) {
+  let best = null
+  for (const c of comps) {
+    if (c.type !== 'acSource') continue
+    for (const tid of ['l', 'n', 'e']) {
+      const L = leadPts(c, tid)
+      if (!L) continue
+      const dx = L.p1.x - L.p0.x
+      const dy = L.p1.y - L.p0.y
+      const len2 = dx * dx + dy * dy
+      if (len2 < 4) continue
+      const t = Math.max(0, Math.min(1, ((p.x - L.p0.x) * dx + (p.y - L.p0.y) * dy) / len2))
+      const q = { x: L.p0.x + dx * t, y: L.p0.y + dy * t }
+      const d = Math.hypot(p.x - q.x, p.y - q.y)
+      if (d < tol && (!best || d < best.d)) best = { cid: c.id, tid, t, d }
+    }
+  }
+  return best
+}
+
+/** 一根导线的曲线（p1/p2 为柱脚锚点；t1/t2 用于"接在交流电源引线的任意一点"） */
+function wireGeom(c1, tid1, c2, tid2, seed, t1 = 1, t2 = 1) {
+  const p1 = termAnchor(c1, tid1, t1)
+  const p2 = termAnchor(c2, tid2, t2)
   if (!p1 || !p2) return null
   const cur = wireCurve(p1, p2, outOf(c1, tid1), outOf(c2, tid2), seed)
   return { p1, p2, cur, mid: curveMid(cur) }
@@ -595,7 +684,11 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     const b = keyOf(tb.cid, tb.tid)
     setWires((ws) => {
       if (ws.some((w) => (w.a === a && w.b === b) || (w.a === b && w.b === a))) return ws
-      return ws.concat({ id: uidRef.current++, a, b, color: color || wireColor })
+      /* aT / bT：导线端接在交流电源引线上的位置（0 = 圆周，1 = 线头）；别的柱子都是 1，不用存 */
+      const extra = {}
+      if (ta.t != null && ta.t < 0.999) extra.aT = ta.t
+      if (tb.t != null && tb.t < 0.999) extra.bT = tb.t
+      return ws.concat({ id: uidRef.current++, a, b, color: color || wireColor, ...extra })
     })
   }, [wireColor])
 
@@ -694,6 +787,23 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     if (previewPathRef.current) previewPathRef.current.setAttribute('d', '')
   }
 
+  /* 待接线时松手就落在交流电源的引线上（任意一点）= 接在那儿。
+     用挂在 window 上的独立 up 监听，而不是 onTermDown 里那只 up —— 那只 up 是"按下那一刻"的闭包，
+     里面的 pending 还是 null，等到松手时根本看不到刚起的那根线。 */
+  useEffect(() => {
+    if (!pending) return undefined
+    const up = (e) => {
+      const hit = leadHit(compsRef.current, canvasPoint(e))
+      if (!hit) return
+      if (hit.cid === pending.cid && hit.tid === pending.tid) return
+      addWire(pending, { cid: hit.cid, tid: hit.tid, t: hit.t })
+      setPending(null)
+      stopPreview()
+    }
+    window.addEventListener('pointerup', up)
+    return () => window.removeEventListener('pointerup', up)
+  }, [pending, addWire])
+
   /* ── 接线柱按下：点柱连线（pending → 再点另一柱连通）── */
   const onTermDown = (e, c, tid) => {
     e.preventDefault(); e.stopPropagation()
@@ -709,6 +819,11 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     setPending({ cid: c.id, tid })
     const p1 = termAnchor(c, tid)
     if (p1) previewTipRef.current = { from: { cid: c.id, tid }, tip: { x: p1.x + outOf(c, tid) * 20, y: p1.y - 60 } }
+    /* 交流电源的线头：按下去拖 = 把引线拉长（真拖动了就取消这次"待接线"）；
+       只是点一下（没拖动）= 照旧从线头起一根线。 */
+    if (AC_LEAD[tid] && c.type === 'acSource') {
+      dragRef.current = { kind: 'lead', compId: c.id, tid, sx: e.clientX, sy: e.clientY, moved: false }
+    }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
   }
@@ -788,6 +903,19 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       }))
       return
     }
+    /* 拖交流电源的线头：把引线拉长、拉歪（端点存进 comp.lead，导线接在线上任意一点时按比例跟着走） */
+    if (d && d.kind === 'lead') {
+      if (Math.hypot(e.clientX - d.sx, e.clientY - d.sy) > 5) d.moved = true
+      if (!d.moved) return
+      const p = canvasPoint(e)
+      setComps((cs) => cs.map((c) => {
+        if (c.id !== d.compId) return c
+        const ex = Math.max(2, Math.min(198, Math.round(p.x - c.x)))
+        const ey = Math.max(4, Math.min(164, Math.round(p.y - c.y)))
+        return { ...c, lead: { ...(c.lead || {}), [d.tid]: [ex, ey] } }
+      }))
+      return
+    }
     if (pending && !d) {
       const pt = canvasPoint(e)
       const st = previewTipRef.current
@@ -806,6 +934,8 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   const tapComp = useCallback((c, isDouble, ev) => {
     if (!c) return
     if (c.type === 'switch' || c.type === 'wallSwitch' || c.type === 'breaker') {
+      /* 断路器拉闸（跳闸）要有声 —— 这一下"咔哒"是学生判断"真的断了"的听觉线索 */
+      if (c.type === 'breaker') breakerClack(!c.closed)
       setComps((cs) => cs.map((x) => (x.id === c.id ? { ...x, closed: !x.closed } : x)))
     } else if (c.type === 'electromagnet' && ev && ev.shiftKey) {
       // Shift + 单击电磁铁：匝数 +1（5 → 20 循环），线圈会一圈一圈重新画（优先于双击，避免连点被当成双击）
@@ -859,6 +989,20 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       return
     }
     if (d && d.kind === 'slider') forceUpdate((n) => n + 1)
+    /* 交流电源线头：拖过就把这次"待接线"取消（刚那次按下只是拉线，不是要接线） */
+    if (d && d.kind === 'lead') {
+      if (d.moved) { setPending(null); stopPreview() }
+      return
+    }
+    /* 待接线时松手：若落点就在交流电源的某根引线上（任意一点），就接在那儿，
+       不用非要把线端对到线头那个小圆点上。 */
+    if (pending) {
+      const hit = leadHit(compsRef.current, canvasPoint(e))
+      if (hit && !(hit.cid === pending.cid && hit.tid === pending.tid)) {
+        addWire(pending, { cid: hit.cid, tid: hit.tid, t: hit.t })
+        setPending(null); stopPreview()
+      }
+    }
   }
 
   /* ── 键盘删除 ── */
@@ -1078,7 +1222,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       const c1 = compById(+w.a.split(':')[0])
       const c2 = compById(+w.b.split(':')[0])
       if (!c1 || !c2) continue
-      const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13)
+      const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13, w.aT ?? 1, w.bT ?? 1)
       if (!g) continue
       out.push({ id: w.id, cur: g.cur, dir: I > 0 ? -1 : 1, mag: Math.abs(I) })
     }
@@ -1193,7 +1337,10 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             repeating-linear-gradient(0deg,transparent 0 39px,#e7edf5 39px 40px),
             repeating-linear-gradient(90deg,transparent 0 39px,#e7edf5 39px 40px);
           box-shadow:inset 0 0 0 1px #dbe3ec,0 10px 30px rgba(15,23,42,.07);margin:12px}
-        .esb-wirelayer{position:absolute;inset:0;pointer-events:none;z-index:3}
+        /* 导线画在器材**下面**（z2 < 器材 z3）：真导线是铺在板面上、从器材背后绕到柱脚的，
+           一根线横穿过去只会从机器边上露出来，不会压住机器面板（NB 就是这么藏的）。
+           柱脚那圈裸铜丝另画在 wiretop(z6)，仍压在最上层。 */
+        .esb-wirelayer{position:absolute;inset:0;pointer-events:none;z-index:2}
         /* 器材自带的"说明标签"层（电能表四柱接法）：导线是摆在器材上面的，标签必须更高一层，
            否则从柱脚引出的导线会把标签整段盖住 */
         .esb-taglayer{position:absolute;inset:0;pointer-events:none;z-index:7}
@@ -1201,7 +1348,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         /* 端头层：导线本体整根压在器材之上（真导线是摆在板面上、绕到柱脚的）；
            这一层只负责让"裸铜丝绕在柱脚上"永远画在所有导线最上面。 */
         .esb-wiretop{position:absolute;inset:0;pointer-events:none;z-index:6}
-        .esb-partlayer{position:absolute;inset:0;z-index:2;pointer-events:none}
+        .esb-partlayer{position:absolute;inset:0;z-index:3;pointer-events:none}
         /* 插头层：电源线画在器材**背后**（起点藏在机身里，露出来的一截贴着机器边缘＝线是从机器里出来的），
            插头本体在最上层、可拖 */
         .esb-cordlayer{position:absolute;inset:0;pointer-events:none;z-index:1}
@@ -1259,7 +1406,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
           transition:opacity .15s;pointer-events:none;z-index:9;font-weight:600}
         .esb-status{position:absolute;left:12px;bottom:12px;z-index:20;padding:7px 14px;border-radius:10px;
           font-size:13px;font-weight:600;pointer-events:none;box-shadow:0 4px 14px rgba(2,6,23,.25)}
-        .esb-flowlayer{position:absolute;inset:0;pointer-events:none;z-index:4}
+        .esb-flowlayer{position:absolute;inset:0;pointer-events:none;z-index:2}
         /* 运动层：压在导线(3)与器材(2)之上、接线柱命中层(5)之下 —— 柱子必须还能点 */
         .esb-motionlayer{position:absolute;inset:0;pointer-events:none;z-index:4}
         .esb-flow-legend{position:absolute;left:12px;bottom:52px;z-index:20;display:flex;align-items:center;gap:9px;
@@ -1299,7 +1446,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             const c1 = compById(+w.a.split(':')[0])
             const c2 = compById(+w.b.split(':')[0])
             if (!c1 || !c2) return null
-            const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13)
+            const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13, w.aT ?? 1, w.bT ?? 1)
             if (!g) return null
             const sel = selected && selected.kind === 'wire' && selected.id === w.id
             const color = w.color || '#475569'
@@ -1386,11 +1533,11 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             const ax = c.x + t.w - (CORD_OUT[c.type] || 36) - 20
             const ay = c.y + 104
             const bx = pos.x
-            const by = pos.y + (c.plug ? 14 : 56)
-            /* 线的落点：插上的落在五边形壳的尖上（竖直下来藏壳后，从面板下沿钻出去）；
-               没插的落进壳体左侧一点点（被壳挡住），线就直接"进了插头"，壳外不留线头、也不打圈 */
-            const tx = c.plug ? bx : bx - 13
-            const ty = c.plug ? by : pos.y + 34
+            /* 线的出口就是壳底那个尖：壳体固定画在框内 y14..54，尖在 52.4。
+               没插（锚点 17,2 → 框顶 pos.y-2）尖在 pos.y+50；插上（锚点 17,40）尖在 pos.y+12 */
+            const by = pos.y + (c.plug ? 12 : 50)
+            const tx = bx
+            const ty = by
             const sx = Math.sign(tx - ax) || 1
             const sy = Math.sign(ty - ay) || 1
             /* 三段折线（照真机电源线）：① 横向出机身一小段 → ② 斜着直过去 → ③ 竖直进插头。
@@ -1442,33 +1589,19 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
               title={c.plug ? '插在插座上（拖动可拔出）' : '拖动这只插头，插到插座的孔里'}
             >
               <svg width={PLUG_SIZE.w} height={PLUG_SIZE.h} viewBox="0 0 34 60">
-                {/* 五边形插头壳（34 宽 × 40 高）：平顶 → 两条直边 → 下方收成一个尖，线从这个尖出来。
-                    朝外的一面就是三只黄铜脚所在的面（没插时朝上露着，插上时整壳压住孔位） */}
-                {c.plug ? (
-                  <g transform="translate(0 14)">
-                    <path d={PLUG_PENTA} fill="#3b3f46" stroke="#23272d" strokeWidth="1" />
-                    <g transform="translate(17 20) scale(0.88) translate(-17 -20)">
-                      <path d={PLUG_PENTA} fill="none" stroke="#ffffff" strokeWidth="1" opacity=".12" />
-                    </g>
+                {/* 一只壳管两种状态（用户口径：没插的与插上的必须是同一个轮廓，别一个三角一个梯形）。
+                    壳体固定画在框内 y14..54：没插时它挂在孔外、插上时整只压进孔里 —— 位置变，形状不变。
+                    朝外那一面（壳顶）露 2 或 3 只短铜脚：脚只伸出壳沿 4 px，不改变整体剪影。 */}
+                <g transform="translate(0 14)">
+                  <path d={PLUG_PENTA} fill="#3b3f46" stroke="#23272d" strokeWidth="1" />
+                  <g transform="translate(17 20) scale(0.9) translate(-17 -20)">
+                    <path d={PLUG_PENTA} fill="none" stroke="#ffffff" strokeWidth="1" opacity=".1" />
                   </g>
-                ) : (
-                  <g>
-                    {/* 没插：插脚朝上露着（脚尖就是吸附点），五边形壳在下面。
-                        两脚 / 三脚按 PLUG_PINS 画：三脚中间那只接地脚在正中，与三孔插座的 E 孔对得上 */}
-                    {(PLUG_PIN_X[PLUG_PINS[c.type] || 3] || PLUG_PIN_X[3]).map((x, i) => (
-                      <g key={'pin' + i}>
-                        <rect x={x} y="2" width="4.4" height="16" rx="1" fill="#c8a165" stroke="#8f6f38" strokeWidth=".85" />
-                        <rect x={x + 0.6} y="3" width="1.1" height="14" rx=".55" fill="#f1dca8" opacity=".8" />
-                      </g>
-                    ))}
-                    <g transform="translate(0 18)">
-                      <path d={PLUG_PENTA} fill="#3b3f46" stroke="#23272d" strokeWidth="1" />
-                      <g transform="translate(17 20) scale(0.88) translate(-17 -20)">
-                        <path d={PLUG_PENTA} fill="none" stroke="#ffffff" strokeWidth="1" opacity=".12" />
-                      </g>
-                    </g>
-                  </g>
-                )}
+                  {(PLUG_PIN_X[PLUG_PINS[c.type] || 3] || PLUG_PIN_X[3]).map((x, i) => (
+                    <rect key={'pin' + i} x={x + 0.4} y="0.8" width="3.8" height="4.4" rx="1"
+                      fill="#c8a165" stroke="#7a5c2c" strokeWidth=".7" />
+                  ))}
+                </g>
               </svg>
             </div>
           )
@@ -1483,15 +1616,21 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             /* 家用电器不设接线柱热点（插脚就是接头，拖到插座孔上自动连）；
                这些器材只保留 TERM_IDS 供引擎做插脚 union，画面上不出现可点的柱帽 */
             if (t.noTermUI) return null
-            return t.terminals.map((tm) => (
-              <div
-                key={c.id + ':' + tm.id}
-                className={`esb-term${pending && pending.cid === c.id && pending.tid === tm.id ? ' active' : ''}`}
-                title={tm.name}
-                style={{ left: c.x + tm.x - 9, top: c.y + tm.y - 9 }}
-                onPointerDown={(e) => onTermDown(e, c, tm.id)}
-              />
-            ))
+            return t.terminals.map((tm) => {
+              /* 交流电源的三根引线会动：柱子热点跟着线头走，不然点不到 */
+              const tp = (AC_LEAD[tm.id] && c.type === 'acSource')
+                ? leadAt(c, tm.id, 1)
+                : { x: c.x + tm.x, y: c.y + tm.y }
+              return (
+                <div
+                  key={c.id + ':' + tm.id}
+                  className={`esb-term${pending && pending.cid === c.id && pending.tid === tm.id ? ' active' : ''}`}
+                  title={tm.name}
+                  style={{ left: tp.x - 9, top: tp.y - 9 }}
+                  onPointerDown={(e) => onTermDown(e, c, tm.id)}
+                />
+              )
+            })
           })}
         </div>
 
@@ -1515,7 +1654,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             const c1 = compById(+w.a.split(':')[0])
             const c2 = compById(+w.b.split(':')[0])
             if (!c1 || !c2) return null
-            const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13)
+            const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1], w.id * 977 + 13, w.aT ?? 1, w.bT ?? 1)
             if (!g) return null
             const color = w.color || '#475569'
             const B = wrapLayers(color, WIRE_W)

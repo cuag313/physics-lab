@@ -10,15 +10,6 @@ const OUT = path.resolve(__dirname, '..', 'audit', 'fidelity')
 const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-function center(page, sel) {
-  return page.evaluate((s) => {
-    const el = document.querySelector(s)
-    if (!el) return null
-    const r = el.getBoundingClientRect()
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
-  }, sel)
-}
-
 async function main() {
   const browser = await puppeteer.launch({ executablePath: EDGE, headless: 'new', args: ['--window-size=1680,1000'] })
   const page = await browser.newPage()
