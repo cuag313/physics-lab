@@ -1419,16 +1419,20 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
            前半程脚不动、杆往下落；转到 ~90° 与面板垂直、正好看不见时，才把它挪到另一侧（36.2px），
            后半程继续转到 180° 翻出来 —— 所以不会看见"整块件翻到滑槽外面" */
         @keyframes esbFlipToTrip{
-          0%{transform:perspective(520px) translateY(0) rotateX(0deg)}
-          45%{transform:perspective(520px) translateY(0) rotateX(86deg)}
-          55%{transform:perspective(520px) translateY(-36.2px) rotateX(94deg)}
-          100%{transform:perspective(520px) translateY(-36.2px) rotateX(180deg)}
+          0%{opacity:1;transform:perspective(520px) translateY(0) rotateX(0deg)}
+          43%{opacity:1;transform:perspective(520px) translateY(0) rotateX(82deg)}
+          46%{opacity:0;transform:perspective(520px) translateY(0) rotateX(88deg)}
+          54%{opacity:0;transform:perspective(520px) translateY(-36.2px) rotateX(92deg)}
+          57%{opacity:1;transform:perspective(520px) translateY(-36.2px) rotateX(98deg)}
+          100%{opacity:1;transform:perspective(520px) translateY(-36.2px) rotateX(180deg)}
         }
         @keyframes esbFlipToClose{
-          0%{transform:translateY(-36.2px) rotateX(180deg)}
-          45%{transform:perspective(520px) translateY(-36.2px) rotateX(94deg)}
-          55%{transform:perspective(520px) translateY(0) rotateX(86deg)}
-          100%{transform:perspective(520px) translateY(0) rotateX(0deg)}
+          0%{opacity:1;transform:perspective(520px) translateY(-36.2px) rotateX(180deg)}
+          43%{opacity:1;transform:perspective(520px) translateY(-36.2px) rotateX(98deg)}
+          46%{opacity:0;transform:perspective(520px) translateY(-36.2px) rotateX(92deg)}
+          54%{opacity:0;transform:perspective(520px) translateY(0) rotateX(88deg)}
+          57%{opacity:1;transform:perspective(520px) translateY(0) rotateX(82deg)}
+          100%{opacity:1;transform:perspective(520px) translateY(0) rotateX(0deg)}
         }
         .esb-bklever.to-trip{animation:esbFlipToTrip .46s cubic-bezier(.4,.08,.32,1) both}
         .esb-bklever.to-closed{animation:esbFlipToClose .46s cubic-bezier(.4,.08,.32,1) both}
