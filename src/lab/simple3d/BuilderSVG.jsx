@@ -51,15 +51,19 @@ const PLUG_TYPES = ['washer', 'kettle', 'riceCooker', 'heater']
 /* 家电的插头脚数：用户口径「家用电器全改为三芯插头」—— 四台都是三脚，
    插座只留三孔（两孔插座已从器材面板撤掉），所以不再有插不进的情况。 */
 const PLUG_PINS = { washer: 3, riceCooker: 3, kettle: 3, heater: 3 }
-const SOCKET_HOLE = { socket2: { x: 47, y: 72 }, socket3: { x: 52, y: 112 } }
+/* 插座孔位中心（吸附点）。三孔插座按 socket3_face.png 重新量：
+   E 竖孔在 (52,89.6)、L/N 两斜孔在 (38.5,113.9)/(65.5,113.9) —— 三孔整体外接框 x34..70、y84..120，
+   中心 (52,103)；插头背面 42×40 盖上去正好把三个孔全包住（用户口径：插上不能露出孔）。 */
+const SOCKET_HOLE = { socket2: { x: 47, y: 72 }, socket3: { x: 52, y: 103 } }
 /* 插头是一只**独立可拖**的部件（电器放好后只拖插头，电源线可任意方向拉长）。
  * 形状照用户给的插头特写：**蛇头**——圆角三角形的头（顶宽、两侧收、下巴圆钝）+ 底下罗纹颈 + 灰线缆；
- * 正面三道白标（一竖两斜，照实物）。框 34×60，两种状态各有一个"锚点"：
- *   没插 —— 头正落在锚点上（头 0..40，锚点 = 头心 17,20）；
- *   插上 —— 头压低盖住三孔（锚点 (17,31)：头 81..121，正好罩住 E(90) 与 L/N(112) 三个孔）。 */
-const PLUG_SIZE = { w: 34, h: 60 }
-const PLUG_ANCHOR = { off: { x: 17, y: 20 }, on: { x: 17, y: 31 } }
-/* 蛇头轮廓（34×40）：圆角三角形的头，下巴收圆；脖子在 36..48，线从 48 出去 */
+ * 正面三道白标（一竖两斜，照实物）。框 44×66（比头宽 10 px，为的是"插上"时能把三孔整个盖住）：
+ *   没插 —— 锚点 = 头心 (22,22)；
+ *   插上 —— 画**插头背面**（一块比三孔略大的圆角背板 + 颈），锚点压到 (22,33)，
+ *            背板 42×40 正好罩住 E(90) 与 L/N(112) 三个孔 —— 用户口径：插上要看不见孔。 */
+const PLUG_SIZE = { w: 44, h: 66 }
+const PLUG_ANCHOR = { off: { x: 22, y: 22 }, on: { x: 22, y: 33 } }
+/* 蛇头轮廓（34×40，画在 5,2 的偏移里）：圆角三角形的头，下巴收圆；脖子在 36..48，线从 48 出去 */
 const PLUG_HEAD = 'M17 .9 C9.4 .9 3.5 4.1 2.3 10.6 C1.5 15 7.2 28.6 15.1 37.3'
   + ' C16.1 38.7 17.9 38.7 18.9 37.3 C26.8 28.6 32.5 15 31.7 10.6 C30.5 4.1 24.6 .9 17 .9 Z'
 const PLUG_BOOT = 'M13.1 34.4 L11.7 44.2 Q11.3 47.3 13.6 47.7 H20.4 Q22.7 47.3 22.3 44.2 L20.9 34.4 Z'
@@ -1266,6 +1270,40 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     return out
   })()
 
+  /* ── 短路位置：判定为短路时，把红叉打在**那根"跨接"的导线**上 ──
+   * 短路回路里各根线的电流几乎一样大（都接近短路电流），只取"电流最大的那根"会随机落到干路线上；
+   * 真正要标的是那根**又短又跨接**的线，所以先在"电流接近最大"的线里筛，再取长度最短的。
+   * 一根线都找不到（比如短路来自一只近乎 0 Ω 的负载）就退回电源本体中心。 */
+  const shortAt = (() => {
+    if (!(solved.diagnostics || {}).short) return null
+    const wI = solved._wireI || {}
+    let maxI = 0
+    const cand = []
+    for (const w of wires) {
+      const I = Math.abs(wI[w.id] || 0)
+      if (I > maxI) maxI = I
+      const c1 = compById(+w.a.split(':')[0])
+      const c2 = compById(+w.b.split(':')[0])
+      if (!c1 || !c2) continue
+      const g = wireGeom(c1, w.a.split(':')[1], c2, w.b.split(':')[1],
+        w.id * 977 + 13, w.aT ?? 1, w.bT ?? 1)
+      if (!g || !g.mid) continue
+      cand.push({ I, g, len: Math.hypot(g.p2.x - g.p1.x, g.p2.y - g.p1.y) })
+    }
+    let best = null
+    if (maxI > 0 && cand.length) {
+      const strong = cand.filter((x) => x.I >= maxI * 0.9)
+      strong.sort((a, b) => a.len - b.len)
+      best = strong[0] || null
+    }
+    if (best) return { x: best.g.mid.x, y: best.g.mid.y }
+    const src = comps.find((c) => c.type === 'battery' || c.type === 'accumulator'
+      || c.type === 'mains' || c.type === 'acSource')
+    if (!src) return null
+    const t = T(src)
+    return { x: src.x + (t ? t.w / 2 : 30), y: src.y + (t ? t.h / 2 : 30) }
+  })()
+
   /* ── 实验记录：合闸 / 断闸（电流有无翻转、或开关被拨动）时追加一行 ── */
   const liveRef = useRef(null)
   const swList = comps.filter((c) => c.type === 'switch' || c.type === 'wallSwitch' || c.type === 'breaker')
@@ -1347,6 +1385,15 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         /* 端头层：导线本体整根压在器材之上（真导线是摆在板面上、绕到柱脚的）；
            这一层只负责让"裸铜丝绕在柱脚上"永远画在所有导线最上面。 */
         .esb-wiretop{position:absolute;inset:0;pointer-events:none;z-index:6}
+        /* 短路红叉：永远压在最上面（连插头都不遮它），只看得见、不挡点击 */
+        .esb-shortalert{position:absolute;inset:0;pointer-events:none;z-index:14}
+        .esb-shortx .pulse{animation:esbShortPulse 1.15s ease-out infinite;
+          transform-box:fill-box;transform-origin:50% 50%}
+        @keyframes esbShortPulse{
+          0%{opacity:.95;transform:scale(.55)}
+          70%{opacity:.18;transform:scale(1.5)}
+          100%{opacity:0;transform:scale(1.75)}
+        }
         .esb-partlayer{position:absolute;inset:0;z-index:3;pointer-events:none}
         /* 插头层：电源线画在器材**背后**（起点藏在机身里，露出来的一截贴着机器边缘＝线是从机器里出来的），
            插头本体在最上层、可拖 */
@@ -1570,33 +1617,55 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
               onPointerDown={(e) => onPlugDown(e, c)}
               title={c.plug ? '插在插座上（拖动可拔出）' : '拖动这只插头，插到插座的孔里'}
             >
-              <svg width={PLUG_SIZE.w} height={PLUG_SIZE.h} viewBox="0 0 34 60">
+              <svg width={PLUG_SIZE.w} height={PLUG_SIZE.h} viewBox="0 0 44 66">
                 <defs>
                   <radialGradient id="esb-plug-recess" cx="50%" cy="46%" r="58%">
                     <stop offset="55%" stopColor="rgba(15,23,42,.34)"/>
                     <stop offset="100%" stopColor="rgba(15,23,42,0)"/>
                   </radialGradient>
+                  <linearGradient id="esb-plug-back" x1="0" y1="0" x2="0.35" y2="1">
+                    <stop offset="0%" stopColor="#4b525c"/>
+                    <stop offset="45%" stopColor="#3a4048"/>
+                    <stop offset="100%" stopColor="#282d34"/>
+                  </linearGradient>
                 </defs>
-                {/* 插上时：先在插座面板上铺一圈"沉进孔里的暗影"，再把蛇头压上去 ——
-                    读作插头坐进插座的圆凹槽，而不是平贴在面上 */}
+                {/* 插上时：先在插座面板上铺一圈"沉进孔里的暗影"，再把插头背面压上去 */}
                 {c.plug && (
-                  <ellipse cx="17" cy="30" rx="18.5" ry="16.5" fill="url(#esb-plug-recess)" />
+                  <ellipse cx="22" cy="32" rx="23" ry="21" fill="url(#esb-plug-recess)" />
                 )}
-                {/* 蛇头（照用户给的特写）：圆角三角形头 + 底部罗纹颈；插上时（.on）不画正面三道白标，
-                    那会儿看到的是插头背面、脚已经在孔里，配合 CSS 投影就"插进去了" */}
-                <path d={PLUG_HEAD} fill="#3b4048" stroke="#20242a" strokeWidth=".9"/>
-                <path d={PLUG_HEAD} fill="none" stroke="#ffffff" strokeWidth="1" opacity=".1"
-                  transform="translate(1.1 1.1) scale(.93)" strokeLinejoin="round"/>
-                {!c.plug && (
-                  <g stroke="#ffffff" strokeWidth="2.1" strokeLinecap="round" opacity=".9" fill="none">
-                    <line x1="17" y1="7" x2="17" y2="17.2"/>
-                    <line x1="11.4" y1="18.4" x2="14.3" y2="25.6"/>
-                    <line x1="22.6" y1="18.4" x2="19.7" y2="25.6"/>
+                {c.plug ? (
+                  /* 插上 —— 看见的是插头背面：42×40 的圆角背板（比三孔略大，孔全被盖住）
+                     + 一圈内凹环 + 两侧捏边 + 底下罗纹颈；脚已经在孔里，不画白标 */
+                  <g>
+                    <rect x="1" y="11" width="42" height="41" rx="13" fill="url(#esb-plug-back)"
+                      stroke="#20242a" strokeWidth=".9"/>
+                    <rect x="4.4" y="14.4" width="35.2" height="34.2" rx="10" fill="none"
+                      stroke="rgba(255,255,255,.16)" strokeWidth="1.1"/>
+                    <rect x="6" y="17.4" width="32" height="3" rx="1.5" fill="rgba(255,255,255,.10)"/>
+                    <ellipse cx="9.4" cy="31" rx="1.9" ry="3.4" fill="rgba(0,0,0,.28)"/>
+                    <ellipse cx="34.6" cy="31" rx="1.9" ry="3.4" fill="rgba(0,0,0,.28)"/>
+                    <g transform="translate(5 2)">
+                      <path d={PLUG_BOOT} fill="#31353c" stroke="#1d2126" strokeWidth=".8"/>
+                      <line x1="12.4" y1="38.6" x2="21.6" y2="38.6" stroke="#1d2126" strokeWidth="1.1"/>
+                      <line x1="11.9" y1="42" x2="22.1" y2="42" stroke="#1d2126" strokeWidth="1.1"/>
+                    </g>
+                  </g>
+                ) : (
+                  /* 没插 —— 蛇头正面：圆角三角形头 + 三道白标 + 罗纹颈 */
+                  <g transform="translate(5 2)">
+                    <path d={PLUG_HEAD} fill="#3b4048" stroke="#20242a" strokeWidth=".9"/>
+                    <path d={PLUG_HEAD} fill="none" stroke="#ffffff" strokeWidth="1" opacity=".1"
+                      transform="translate(1.1 1.1) scale(.93)" strokeLinejoin="round"/>
+                    <g stroke="#ffffff" strokeWidth="2.1" strokeLinecap="round" opacity=".9" fill="none">
+                      <line x1="17" y1="7" x2="17" y2="17.2"/>
+                      <line x1="11.4" y1="18.4" x2="14.3" y2="25.6"/>
+                      <line x1="22.6" y1="18.4" x2="19.7" y2="25.6"/>
+                    </g>
+                    <path d={PLUG_BOOT} fill="#31353c" stroke="#1d2126" strokeWidth=".8"/>
+                    <line x1="12.4" y1="38.6" x2="21.6" y2="38.6" stroke="#1d2126" strokeWidth="1.1"/>
+                    <line x1="11.9" y1="42" x2="22.1" y2="42" stroke="#1d2126" strokeWidth="1.1"/>
                   </g>
                 )}
-                <path d={PLUG_BOOT} fill="#31353c" stroke="#1d2126" strokeWidth=".8"/>
-                <line x1="12.4" y1="38.6" x2="21.6" y2="38.6" stroke="#1d2126" strokeWidth="1.1"/>
-                <line x1="11.9" y1="42" x2="22.1" y2="42" stroke="#1d2126" strokeWidth="1.1"/>
               </svg>
             </div>
           )
@@ -1653,14 +1722,34 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             if (!g) return null
             const color = w.color || '#475569'
             const B = wrapLayers(color, WIRE_W)
+            /* 空气开关这类"线从背后进壳"的器材：端头不画绕铜丝，线到壳沿就断，读作钻进壳里 */
+            const noWrapA = !!(T(c1) && T(c1).hideWrap)
+            const noWrapB = !!(T(c2) && T(c2).hideWrap)
             return (
               <g key={w.id}>
-                {wrapAt(g.p1, B, 'b1')}
-                {wrapAt(g.p2, B, 'b2')}
+                {!noWrapA && wrapAt(g.p1, B, 'b1')}
+                {!noWrapB && wrapAt(g.p2, B, 'b2')}
               </g>
             )
           })}
         </svg>
+        {/* 短路警示：在短接处打一只红叉（带脉冲圈 + "短路"字样），压在所有器材之上 */}
+        {shortAt && (
+          <svg className="esb-shortalert" width={CW} height={CH}>
+            <g className="esb-shortx" transform={`translate(${shortAt.x.toFixed(1)},${shortAt.y.toFixed(1)})`}>
+              <circle r="19" fill="rgba(239,68,68,.18)"/>
+              <circle r="19" fill="none" stroke="#ef4444" strokeWidth="2" opacity=".85"/>
+              <circle className="pulse" r="19" fill="none" stroke="#fca5a5" strokeWidth="2.4"/>
+              <line x1="-9.4" y1="-9.4" x2="9.4" y2="9.4" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" opacity=".55"/>
+              <line x1="9.4" y1="-9.4" x2="-9.4" y2="9.4" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" opacity=".55"/>
+              <line x1="-9.4" y1="-9.4" x2="9.4" y2="9.4" stroke="#ef4444" strokeWidth="4" strokeLinecap="round"/>
+              <line x1="9.4" y1="-9.4" x2="-9.4" y2="9.4" stroke="#ef4444" strokeWidth="4" strokeLinecap="round"/>
+              <text x="0" y="31" textAnchor="middle" fontSize="9.5" fontWeight="700" fill="#dc2626"
+                fontFamily="system-ui,-apple-system,'Segoe UI',sans-serif"
+                style={{ paintOrder: 'stroke', stroke: '#ffffff', strokeWidth: 2.4 }}>短路</text>
+            </g>
+          </svg>
+        )}
       </div>
       </div>
 

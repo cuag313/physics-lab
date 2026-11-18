@@ -1632,12 +1632,14 @@ export const TYPES = {
    * 引擎里是两条彼此独立的支路（合闸 0.001 Ω / 分闸 1e8 Ω），两路同时通断。
    * 单击本体（或双击）就合闸 / 分闸 —— 学生在 Tab2 里拉闸就能看到各支路同时灭。 */
   breaker: {
-    label: '空气开关', w: 124, h: 152,
+    label: '空气开关', w: 124, h: 152, hideWrap: true,
+    /* 接线柱放在**壳体上下沿**（不是面板上的螺钉位置）：照用户实拍，导线是从背后绕进来的，
+       线到壳沿就"进壳"，不压在面板上、也不在螺钉上绕铜丝。x 仍对准那两颗螺钉。 */
     terminals: [
-      { id: 'li', label: 'L进', name: '相线进（左上）', x: 13.6, y: 23.7 },
-      { id: 'ni', label: 'N进', name: '零线进（右上）', x: 48.1, y: 23.7 },
-      { id: 'lo', label: 'L出', name: '相线出（左下）', x: 13.6, y: 135.1 },
-      { id: 'no', label: 'N出', name: '零线出（右下）', x: 48.1, y: 135.1 },
+      { id: 'li', label: 'L进', name: '相线进（左上）', x: 13.6, y: 2.4 },
+      { id: 'ni', label: 'N进', name: '零线进（右上）', x: 48.1, y: 2.4 },
+      { id: 'lo', label: 'L出', name: '相线出（左下）', x: 13.6, y: 149.6 },
+      { id: 'no', label: 'N出', name: '零线出（右下）', x: 48.1, y: 149.6 },
     ],
     render(c) {
       const on = !!c.closed
@@ -1807,11 +1809,6 @@ export const TYPES = {
         ${screw(84.3, 135.1)}
         ${screw(109.7, 135.1)}
       </g>
-      ${['L', 'N'].map((t, i) => `
-        <text x="${[13.6, 48.1][i]}" y="${23.7 + 14.6}" text-anchor="middle" font-size="5.6"
-          font-weight="700" fill="#8d97a3" font-family="system-ui,-apple-system,sans-serif">${t}</text>
-        <text x="${[13.6, 48.1][i]}" y="${135.1 + 11.2}" text-anchor="middle" font-size="5.6"
-          font-weight="700" fill="#8d97a3" font-family="system-ui,-apple-system,sans-serif">${t}</text>`).join('')}
     </svg>` }
   },
 
