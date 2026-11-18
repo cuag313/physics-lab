@@ -76,6 +76,13 @@ const PLUG_BACK = 'M1.6 6.6 C1.6 3.4 4.2 1.8 8.2 1.8 L39.8 1.8 C43.8 1.8 46.4 3.
 /* 插上后要盖住三个孔，所以背面比"手持那只"稍大一圈 */
 const PLUG_BACK_SIZE = { w: 48, h: 74 }
 const PLUG_BACK_ANCHOR = { x: 24, y: 34 }
+
+/* 空开闸刀的翻转动画只在"状态真的变了"那一帧挂上，避免新加一只空开时也演一遍 */
+const FLIP_SEEN = new Set()
+function flipCls(c) {
+  if (!FLIP_SEEN.has(c.id)) { FLIP_SEEN.add(c.id); return '' }
+  return c.closed ? ' to-closed' : ' to-trip'
+}
 /* 电源线的出口：从机身右下角横着出来。值是"整机图右边界到卡片右边的距离"
  * （四张图的左右留白不同，按 188/224、152/212、176/146、170/201 的原图比例换算出来的） */
 const CORD_OUT = { washer: 37, kettle: 42, riceCooker: 22, heater: 36 }
@@ -1406,8 +1413,25 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         .esb-partlayer{position:absolute;inset:0;z-index:3;pointer-events:none}
         /* 空开闸刀层：压在器材之上、导线之下；翻转走 transition，所以是"转"过去的 */
         .esb-leverlayer{position:absolute;inset:0;z-index:4;pointer-events:none}
-        .esb-bklever{position:absolute;transition:transform .34s cubic-bezier(.34,1.28,.52,1)}
+        .esb-bklever{position:absolute;transform-origin:50% 97.6px;backface-visibility:visible}
         .esb-bklever svg{display:block;overflow:visible}
+        /* 绕"两竖与面板接触处"那条横线（y=97.6）上下倒：
+           前半程脚不动、杆往下落；转到 ~90° 与面板垂直、正好看不见时，才把它挪到另一侧（36.2px），
+           后半程继续转到 180° 翻出来 —— 所以不会看见"整块件翻到滑槽外面" */
+        @keyframes esbFlipToTrip{
+          0%{transform:perspective(520px) translateY(0) rotateX(0deg)}
+          45%{transform:perspective(520px) translateY(0) rotateX(86deg)}
+          55%{transform:perspective(520px) translateY(-36.2px) rotateX(94deg)}
+          100%{transform:perspective(520px) translateY(-36.2px) rotateX(180deg)}
+        }
+        @keyframes esbFlipToClose{
+          0%{transform:translateY(-36.2px) rotateX(180deg)}
+          45%{transform:perspective(520px) translateY(-36.2px) rotateX(94deg)}
+          55%{transform:perspective(520px) translateY(0) rotateX(86deg)}
+          100%{transform:perspective(520px) translateY(0) rotateX(0deg)}
+        }
+        .esb-bklever.to-trip{animation:esbFlipToTrip .46s cubic-bezier(.4,.08,.32,1) both}
+        .esb-bklever.to-closed{animation:esbFlipToClose .46s cubic-bezier(.4,.08,.32,1) both}
         .esb-root.dissect .esb-leverlayer{opacity:.4}
         /* 插头层：电源线画在器材**背后**（起点藏在机身里，露出来的一截贴着机器边缘＝线是从机器里出来的），
            插头本体在最上层、可拖 */
@@ -1588,16 +1612,15 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
           {comps.filter((c) => c.type === 'breaker').map((c) => (
             <div
               key={'lv' + c.id}
-              className="esb-bklever"
+              className={`esb-bklever${flipCls(c)}`}
               style={{
                 left: c.x, top: c.y, width: 124, height: 152,
-                /* 转轴＝两根竖杆与面板接触处连成的那条**横线**（y=79.5，横向贯通整个手柄）。
-                   绕这条线上下翻 ＝ rotateX(180°)，所以中途会先被"压扁"再翻过去，
-                   而不是像 rotate() 那样在纸面里顺时针转倒 —— 后者正是用户说的"顺时针旋转倒过来"。 */
-                transform: `perspective(520px) rotateX(${c.closed ? 0 : 180}deg)`,
-                transformOrigin: '50% 79.5px',
-                transformStyle: 'preserve-3d',
+                /* 转轴＝两根竖杆与面板接触处连成的那条横线（y=97.6，脚的位置固定不动），
+                   详见 CSS 里的 esbFlipToTrip / esbFlipToClose：
+                   前半程绕这条线把杆"落下来"（脚不动），转到与面板垂直、正好看不见的那一瞬再挪到另一侧。 */
+                transform: c.closed ? 'none' : 'translateY(-36.2px) rotateX(180deg)',
               }}
+              dangerouslySetInnerHTML={{ __html: breakerLeverSVG() }}
               dangerouslySetInnerHTML={{ __html: breakerLeverSVG() }}
             />
           ))}
@@ -1875,3 +1898,4 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
 })
 
 export default BuilderSVG
+
