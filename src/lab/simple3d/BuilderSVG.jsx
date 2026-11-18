@@ -1591,8 +1591,12 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
               className="esb-bklever"
               style={{
                 left: c.x, top: c.y, width: 124, height: 152,
-                transform: `rotate(${c.closed ? 0 : 180}deg)`,
-                transformOrigin: '30.6px 79.5px',
+                /* 转轴＝两根竖杆与面板接触处连成的那条**横线**（y=79.5，横向贯通整个手柄）。
+                   绕这条线上下翻 ＝ rotateX(180°)，所以中途会先被"压扁"再翻过去，
+                   而不是像 rotate() 那样在纸面里顺时针转倒 —— 后者正是用户说的"顺时针旋转倒过来"。 */
+                transform: `perspective(520px) rotateX(${c.closed ? 0 : 180}deg)`,
+                transformOrigin: '50% 79.5px',
+                transformStyle: 'preserve-3d',
               }}
               dangerouslySetInnerHTML={{ __html: breakerLeverSVG() }}
             />
