@@ -987,6 +987,41 @@ function breakerInner() {
   <rect x="72" y="24" width="1.4" height="36" fill="#d3dae2"/>`
 }
 
+/* ── 闸刀（手柄）单独成一张图 ──
+ * 它不跟外壳一起画：`BuilderSVG` 把它挂成独立一层，按"合闸 0° / 跳闸 180°"给一个 CSS transition，
+ * 于是翻转是**真的绕"两竖与面板接触处"（30.6, 79.5）转过去**，而不是跳到另一个位置。
+ * 图里按**合闸**位画（横杆在上 66..74.6、两根腿 74.6..97.6），转 180° 后横杆正好落到 84.4..93、
+ * 两根腿翻到 61.4..84.4 —— 就是实拍里"横在下、两竖在上"。 */
+export function breakerLeverSVG() {
+  return `
+    <svg width="124" height="152" viewBox="0 0 124 152">
+      <defs>
+        <linearGradient id="es-lv-lever" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#7ab6ef"/><stop offset="28%" stop-color="#3d84d6"/>
+          <stop offset="72%" stop-color="#2a6cc0"/><stop offset="100%" stop-color="#1a4d90"/>
+        </linearGradient>
+        <linearGradient id="es-lv-leg" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="#1f5aa6"/><stop offset="34%" stop-color="#3a80d2"/>
+          <stop offset="66%" stop-color="#3a80d2"/><stop offset="100%" stop-color="#1f5aa6"/>
+        </linearGradient>
+      </defs>
+      <!-- 投在面板/滑槽上的落影 -->
+      <rect x="4.6" y="73.4" width="55.3" height="13" rx="3" fill="rgba(23,37,58,.10)"/>
+      <!-- 两根腿（横杆压在上面） -->
+      <rect x="9.9" y="74.6" width="18" height="23" rx="2.2" fill="url(#es-lv-leg)" stroke="#153f70" stroke-width=".8"/>
+      <rect x="32.7" y="74.6" width="18" height="23" rx="2.2" fill="url(#es-lv-leg)" stroke="#153f70" stroke-width=".8"/>
+      <!-- 腿的自由端亮面 + 贴横杆那头压暗 -->
+      <rect x="10.9" y="91.2" width="16" height="4.8" rx="2" fill="#a6ccf2" opacity=".45"/>
+      <rect x="33.7" y="91.2" width="16" height="4.8" rx="2" fill="#a6ccf2" opacity=".45"/>
+      <rect x="9.9" y="75.4" width="18" height="2.6" fill="rgba(9,26,48,.32)"/>
+      <rect x="32.7" y="75.4" width="18" height="2.6" fill="rgba(9,26,48,.32)"/>
+      <!-- 横杆 -->
+      <rect x="3.6" y="66" width="55.3" height="8.6" rx="2.2" fill="url(#es-lv-lever)" stroke="#123f6d" stroke-width=".9"/>
+      <rect x="4.8" y="67.1" width="53" height="2.6" rx="1.3" fill="#ffffff" opacity=".40"/>
+      <rect x="3.6" y="73.4" width="55.3" height="1.4" rx=".7" fill="rgba(9,26,48,.35)"/>
+    </svg>`
+}
+
 const breakerType = {
   label: '空气开关', w: 124, h: 152, hideWrap: true,
 
@@ -1041,11 +1076,7 @@ const breakerType = {
           <rect x="${x + .8}" y="66.2" width="${w - 1.6}" height="3.2" fill="rgba(23,37,58,.20)"/>
           <rect x="${x + .8}" y="95" width="${w - 1.6}" height="3.2" fill="#ffffff" opacity=".62"/>
         </g>`
-      /* 闸刀位置：合闸横杆在上（66）、跳闸横杆落到槽底（84.4）；腿永远在横杆另一侧：
-         合闸时腿从横杆下沿垂到槽底（74.6→97.6），跳闸时腿从槽上口翻上来（65.6→84.4）。 */
-      const barY = on ? 66 : 84.4
-      const LEG_H = on ? 23 : 18.8
-      const legY = on ? barY + 8.6 : 65.6
+      /* 闸刀在独立图层里画（见 breakerLeverSVG），这里只留滑槽 —— 翻转时闸刀是"转"过去的 */
       return `
     <svg width="124" height="152" viewBox="0 0 124 152">
       <defs>
@@ -1147,33 +1178,16 @@ const breakerType = {
         <text x="90.6" y="106.6" font-size="3.4" fill="#4b5563"
           font-family="system-ui,-apple-system,'PingFang SC','Microsoft YaHei',sans-serif">合闸前请按下</text>
 
-        <!-- 手柄：两条灰白滑槽 + 两根蓝腿 + 横杆。
-             用户口径（照"合闸 / 空开跳闸"两张带线实拍）：闸刀是**一块绕"两竖与面板接触处"翻转的蓝件**，
-             —— **合闸时"横在上、两竖在下"**（横杆压到滑槽上口、两根腿垂到槽底）；
-             —— **跳闸时"横在下、两竖在上"**（横杆落到槽底、两根腿翻到槽上口）。
-             所以腿必须画在横杆的**另一侧**，不能像原来那样永远挂在横杆下面。 -->
+        <!-- 手柄：两条灰白滑槽 + 两根蓝腿 + 横杆，**整块绕"两竖与面板接触处"转**。
+             用户口径：合闸"横在上、两竖在下"，跳闸"横在下、两竖在上"，而且要看得出是**旋转**（不是镜像翻转）：
+             所以整块给了 ±5° 的转角（同一个转轴：滑槽下口 x30.6 / y96，就是两竖跟面板接触的地方），
+             再把投在面板上的落影一起转 —— 斜着看就是"刚转过一把"。合闸时腿被压短（俯视）、
+             跳闸时腿缩短且顶面更亮（仰视），两端还各补一道面光，避免"两块贴纸"。 -->
         ${slot(5.4, 23.6)}
         ${slot(30.9, 23.5)}
-        <g>
-          <!-- 腿（先画，横杆压在上面）：合闸朝下、跳闸朝上 -->
-          <rect x="9.9" y="${legY}" width="18" height="${LEG_H}" rx="1.6" fill="url(#es-g-bk-leg)" stroke="#153f70" stroke-width=".8"/>
-          <rect x="32.7" y="${legY}" width="18" height="${LEG_H}" rx="1.6" fill="url(#es-g-bk-leg)" stroke="#153f70" stroke-width=".8"/>
-          <!-- 腿的自由端（离横杆那头）亮一层、贴横杆那头压暗 -->
-          <rect x="10.9" y="${on ? legY + LEG_H - 6 : legY + 1}" width="16" height="4.6" rx="1.6" fill="#a6ccf2" opacity=".5"/>
-          <rect x="33.7" y="${on ? legY + LEG_H - 6 : legY + 1}" width="16" height="4.6" rx="1.6" fill="#a6ccf2" opacity=".5"/>
-          <rect x="9.9" y="${on ? legY + .8 : legY + LEG_H - 3.2}" width="18" height="2.4" fill="rgba(9,26,48,.30)"/>
-          <rect x="32.7" y="${on ? legY + .8 : legY + LEG_H - 3.2}" width="18" height="2.4" fill="rgba(9,26,48,.30)"/>
-          <!-- 横杆压在滑槽上的落影 -->
-          <rect x="3.6" y="${barY + 8.6}" width="55.3" height="2.2" rx="1.1" fill="rgba(23,37,58,.18)"/>
-          <!-- 横杆 -->
-          <rect x="3.6" y="${barY}" width="55.3" height="8.6" rx="2" fill="url(#es-g-bk-lever)" stroke="#123f6d" stroke-width=".9"/>
-          <rect x="4.8" y="${barY + 1.1}" width="53" height="2.4" rx="1.2" fill="#ffffff" opacity=".42"/>
-          ${on ? '' : `<g fill="#ffffff" opacity=".20">
-            <rect x="6.4" y="${barY + 3.4}" width="49.6" height="1.1" rx=".5"/>
-            <rect x="6.4" y="${barY + 5.5}" width="49.6" height="1.1" rx=".5"/>
-          </g>`}
-          <rect x="3.6" y="${barY + 7.4}" width="55.3" height="1.4" rx=".7" fill="rgba(9,26,48,.35)"/>
-        </g>
+        <!-- 两条灰白滑槽（闸刀本身在独立的 .esb-bklever 层里画，好让翻转时真的"转"起来） -->
+        ${slot(5.4, 23.6)}
+        ${slot(30.9, 23.5)}
 
         <!-- 下排：右模两颗螺钉坐在一条灰白凹槽里 -->
         <rect x="76.4" y="127.8" width="42" height="14.6" rx="3.2" fill="#eef1f5" stroke="#dde3ea" stroke-width=".8"/>

@@ -18,7 +18,7 @@ import {
   forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState,
 } from 'react'
 import { solveCircuit, CFG } from '../engine/electricLab.js'
-import { TYPES, AC_LEAD, RHEO_TRACK, rheostatMode, figURL } from '../scenes/electricSvgInstruments.js'
+import { TYPES, AC_LEAD, RHEO_TRACK, rheostatMode, figURL, breakerLeverSVG } from '../scenes/electricSvgInstruments.js'
 import {
   wireCurve, curveD, curveMid, wireLayers, wrapLayers,
 } from '../render/wireSvg.js'
@@ -70,8 +70,12 @@ const PLUG_BOOT = 'M13.1 34.4 L11.7 44.2 Q11.3 47.3 13.6 47.7 H20.4 Q22.7 47.3 2
 /* 插上时看到的"插头背面"轮廓（44×66 画布，锚点 22,33 对着插座孔心）：
    上宽下窄、下巴收圆 —— 和正面那条蛇头是同一只插头，只是转过去了；不用矩形，矩形看着像"圆角方块"。
    宽度 ±21 足够把三孔（x 34..70 = 孔心 ±18）整个盖住。 */
-const PLUG_BACK = 'M1.2 15 C1.2 7.4 5.8 2.4 14 2.4 L30 2.4 C38.2 2.4 42.8 7.4 42.8 15'
-  + ' L42.6 39 C42.4 46.6 36 50.6 22 50.6 C8 50.6 1.6 46.6 1.4 39 Z'
+const PLUG_BACK = 'M1.6 6.6 C1.6 3.4 4.2 1.8 8.2 1.8 L39.8 1.8 C43.8 1.8 46.4 3.4 46.4 6.6'
+  + ' L45.2 42 C44.4 52.6 40 61 32.6 65.2 C29.6 66.8 26.8 67.4 24 67.4'
+  + ' C21.2 67.4 18.4 66.8 15.4 65.2 C8 61 3.6 52.6 2.8 42 Z'
+/* 插上后要盖住三个孔，所以背面比"手持那只"稍大一圈 */
+const PLUG_BACK_SIZE = { w: 48, h: 74 }
+const PLUG_BACK_ANCHOR = { x: 24, y: 34 }
 /* 电源线的出口：从机身右下角横着出来。值是"整机图右边界到卡片右边的距离"
  * （四张图的左右留白不同，按 188/224、152/212、176/146、170/201 的原图比例换算出来的） */
 const CORD_OUT = { washer: 37, kettle: 42, riceCooker: 22, heater: 36 }
@@ -1400,6 +1404,11 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
           100%{opacity:0;transform:scale(1.75)}
         }
         .esb-partlayer{position:absolute;inset:0;z-index:3;pointer-events:none}
+        /* 空开闸刀层：压在器材之上、导线之下；翻转走 transition，所以是"转"过去的 */
+        .esb-leverlayer{position:absolute;inset:0;z-index:4;pointer-events:none}
+        .esb-bklever{position:absolute;transition:transform .34s cubic-bezier(.34,1.28,.52,1)}
+        .esb-bklever svg{display:block;overflow:visible}
+        .esb-root.dissect .esb-leverlayer{opacity:.4}
         /* 插头层：电源线画在器材**背后**（起点藏在机身里，露出来的一截贴着机器边缘＝线是从机器里出来的），
            插头本体在最上层、可拖 */
         .esb-cordlayer{position:absolute;inset:0;pointer-events:none;z-index:1}
@@ -1573,6 +1582,23 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
           })}
         </div>
 
+        {/* 空开闸刀单独一层：合闸 0° / 跳闸 180°，转轴就在"两竖与面板接触处"(30.6,79.5)。
+            有了 CSS transition，翻转是**真的转过去**（能看见横杆扫下来、两竖扫上去），不是跳到另一个位置 */}
+        <div className="esb-leverlayer">
+          {comps.filter((c) => c.type === 'breaker').map((c) => (
+            <div
+              key={'lv' + c.id}
+              className="esb-bklever"
+              style={{
+                left: c.x, top: c.y, width: 124, height: 152,
+                transform: `rotate(${c.closed ? 0 : 180}deg)`,
+                transformOrigin: '30.6px 79.5px',
+              }}
+              dangerouslySetInnerHTML={{ __html: breakerLeverSVG() }}
+            />
+          ))}
+        </div>
+
         {/* 插头层：每台家电自带一只插头，电源线从机身右侧出来，任意方向都能拉长 */}
         <svg className="esb-cordlayer" width={CW} height={CH}>
           {plugs.map((c) => {
@@ -1612,17 +1638,18 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         </svg>
         {plugs.map((c) => {
           const pos = c.plugPos || plugHome(c)
-          const an = c.plug ? PLUG_ANCHOR.on : PLUG_ANCHOR.off
+          const an = c.plug ? PLUG_BACK_ANCHOR : PLUG_ANCHOR.off
+          const ps = c.plug ? PLUG_BACK_SIZE : PLUG_SIZE
           return (
             <div
               key={'plug' + c.id}
               className={`esb-plug${c.plug ? ' on' : ''}`}
               data-plug-of={c.id} data-plug-type={c.type}
-              style={{ left: pos.x - an.x, top: pos.y - an.y, width: PLUG_SIZE.w, height: PLUG_SIZE.h }}
+              style={{ left: pos.x - an.x, top: pos.y - an.y, width: ps.w, height: ps.h }}
               onPointerDown={(e) => onPlugDown(e, c)}
               title={c.plug ? '插在插座上（拖动可拔出）' : '拖动这只插头，插到插座的孔里'}
             >
-              <svg width={PLUG_SIZE.w} height={PLUG_SIZE.h} viewBox="0 0 44 66">
+              <svg width={ps.w} height={ps.h} viewBox={c.plug ? '0 0 48 74' : '0 0 44 66'}>
                 <defs>
                   <radialGradient id="esb-plug-recess" cx="50%" cy="46%" r="58%">
                     <stop offset="55%" stopColor="rgba(15,23,42,.34)"/>
@@ -1636,27 +1663,34 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
                 </defs>
                 {/* 插上时：先在插座面板上铺一圈"沉进孔里的暗影"，再把插头背面压上去 */}
                 {c.plug && (
-                  <ellipse cx="22" cy="32" rx="23" ry="21" fill="url(#esb-plug-recess)" />
+                  <ellipse cx="24" cy="34" rx="26" ry="24" fill="url(#esb-plug-recess)" />
                 )}
                 {c.plug ? (
-                  /* 插上 —— 看见的是**同一只插头的背面**：轮廓仍是"上宽下窄、下巴收圆"的插头形
-                     （不是圆角正方形），放大到 41×45 把三孔（x34..70 / y84..120）全包住；
-                     脚已经在孔里，所以不画正面那三道白标，只留内凹环/顶部高光/两侧捏边/模缝 */
+                  /* 插上 —— 看见的是**同一只插头的背面**：上宽下收、下巴收成楔形（梯形），
+                     不是圆角正方形；宽到把三孔整个盖住。背面特征：顶部高光弧、中段横向模缝、
+                     两侧捏边、下巴那道收口、底下伸出的圆罗纹套（电源线从套里下来） */
                   <g>
                     <path d={PLUG_BACK} fill="url(#esb-plug-back)" stroke="#1f242a" strokeWidth=".75"
                       strokeLinejoin="round"/>
-                    <path d={PLUG_BACK} fill="none" stroke="rgba(255,255,255,.14)" strokeWidth=".8"
-                      transform="translate(.55 .45) scale(.972)" strokeLinejoin="round"/>
-                    <path d="M7.2 9.4 C 9.6 4.6 14 2.6 22 2.6 C 30 2.6 34.4 4.6 36.8 9.4"
-                      fill="none" stroke="rgba(255,255,255,.26)" strokeWidth="1.15" strokeLinejoin="round"/>
-                    <ellipse cx="4.4" cy="24" rx="1.2" ry="4.2" fill="rgba(0,0,0,.26)"/>
-                    <ellipse cx="39.6" cy="24" rx="1.2" ry="4.2" fill="rgba(0,0,0,.26)"/>
-                    <line x1="22" y1="33" x2="22" y2="45.4" stroke="rgba(0,0,0,.24)" strokeWidth=".75"/>
-                    {/* 颈：从背部底端伸出来的罗纹（电源线就从这儿出去） */}
-                    <path d="M15.4 45.6 L14.6 57.4 Q14.3 60.6 16.6 61 H27.4 Q29.7 60.6 29.4 57.4 L28.6 45.6 Z"
-                      fill="#333941" stroke="#1d2126" strokeWidth=".65"/>
-                    <line x1="14.9" y1="52.4" x2="29.1" y2="52.4" stroke="#1d2126" strokeWidth="1"/>
-                    <line x1="14.6" y1="56.4" x2="29.4" y2="56.4" stroke="#1d2126" strokeWidth="1"/>
+                    <path d={PLUG_BACK} fill="none" stroke="rgba(255,255,255,.13)" strokeWidth=".9"
+                      transform="translate(.5 .5) scale(.965)" strokeLinejoin="round"/>
+                    {/* 顶部高光：沿上缘的一道弧 */}
+                    <path d="M5.6 7.2 C 8.6 3.2 14 1.6 24 1.6 C 34 1.6 39.4 3.2 42.4 7.2"
+                      fill="none" stroke="rgba(255,255,255,.30)" strokeWidth="1.25" strokeLinejoin="round"/>
+                    {/* 中段那道横向模具接缝（真插头背面都有） */}
+                    <path d="M3 32.4 C 10 34.2 38 34.2 45 32.4" fill="none" stroke="rgba(0,0,0,.30)" strokeWidth="1.05"/>
+                    <path d="M3 31.2 C 10 33 38 33 45 31.2" fill="none" stroke="rgba(255,255,255,.16)" strokeWidth=".95"/>
+                    {/* 两侧捏边 */}
+                    <ellipse cx="5.2" cy="23" rx="1.2" ry="5" fill="rgba(0,0,0,.26)"/>
+                    <ellipse cx="42.8" cy="23" rx="1.2" ry="5" fill="rgba(0,0,0,.26)"/>
+                    {/* 下巴塌下去的那道收口（楔形的"腰"） */}
+                    <path d="M7 55.4 C 6.4 60.2 11.6 63.6 24 63.6 C 36.4 63.6 41.6 60.2 41 55.4"
+                      fill="none" stroke="rgba(0,0,0,.24)" strokeWidth="1.05"/>
+                    {/* 底下伸出的圆罗纹套 */}
+                    <rect x="17.2" y="61.4" width="13.6" height="11.6" rx="4.6" fill="#333941" stroke="#1d2126" strokeWidth=".7"/>
+                    <rect x="18.6" y="62.6" width="2.6" height="8.4" rx="1.3" fill="rgba(255,255,255,.16)"/>
+                    <line x1="17.6" y1="66" x2="30.4" y2="66" stroke="#1d2126" strokeWidth=".9"/>
+                    <line x1="17.6" y1="69" x2="30.4" y2="69" stroke="#1d2126" strokeWidth=".9"/>
                   </g>
                 ) : (
                   /* 没插 —— 蛇头正面：圆角三角形头 + 三道白标 + 罗纹颈 */
