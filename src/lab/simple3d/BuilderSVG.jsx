@@ -1413,7 +1413,8 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         .esb-partlayer{position:absolute;inset:0;z-index:3;pointer-events:none}
         /* 空开闸刀层：压在器材之上、导线之下；翻转走 transition，所以是"转"过去的 */
         .esb-leverlayer{position:absolute;inset:0;z-index:4;pointer-events:none}
-        .esb-bklever{position:absolute;transform-origin:50% 79.5px;backface-visibility:visible}
+        /* 转轴的 y 与翻转角度都可调（--esb-flip-y / --esb-flip-deg），默认＝页缝 79.5px / 180° */
+        .esb-bklever{position:absolute;transform-origin:50% var(--esb-flip-y, 79.5px);backface-visibility:visible}
         .esb-bklever svg{display:block;overflow:visible}
         /* 绕"两竖与面板接触处"那条横线（y=97.6）上下倒：
            前半程脚不动、杆往下落；转到 ~90° 与面板垂直、正好看不见时，才把它挪到另一侧（36.2px），
@@ -1422,10 +1423,10 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
            见 flipAngle 的注释：那条缝的位置不是随便取的，它是唯一能让两个终态都留在滑槽里的线。 */
         @keyframes esbFlipToTrip{
           0%{transform:perspective(520px) rotateX(0deg)}
-          100%{transform:perspective(520px) rotateX(180deg)}
+          100%{transform:perspective(520px) rotateX(var(--esb-flip-deg, 180deg))}
         }
         @keyframes esbFlipToClose{
-          0%{transform:perspective(520px) rotateX(180deg)}
+          0%{transform:perspective(520px) rotateX(var(--esb-flip-deg, 180deg))}
           100%{transform:perspective(520px) rotateX(0deg)}
         }
         .esb-bklever.to-trip{animation:esbFlipToTrip .46s cubic-bezier(.4,.08,.32,1) both}
@@ -1618,7 +1619,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
                    为什么不能把缝放到"两竖的脚"(y=97.6)：件高 31.6、滑槽净高只有 34.4，
                    绕脚转时横杆必然转到 97.6 以下（120° 时落在 108~113，压到下面那颗螺钉上），
                    所以只有靠近件中点的那条线能让"横在上"和"横在下"两个终态都留在槽里。 */
-                transform: c.closed ? 'none' : 'rotateX(180deg)',
+                transform: c.closed ? 'none' : 'rotateX(var(--esb-flip-deg, 180deg))',
               }}
               dangerouslySetInnerHTML={{ __html: breakerLeverSVG() }}
             />
