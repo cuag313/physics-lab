@@ -5,6 +5,7 @@ import InfoDock from '../ui/InfoDock'
 import BuilderPalette from '../ui/BuilderPalette'
 import { drawKnowledgeCard } from '../ui/knowledgeCard'
 import BuilderSVG from '../simple3d/BuilderSVG.jsx'
+import Motor3D from '../simple3d/Motor3D.jsx'
 import { TYPES } from './electricSvgInstruments.js'
 import { symSwitch, symHalf, symBattery, symACSource, SYM_INK } from '../render/symbols.js'
 
@@ -48,6 +49,18 @@ const D = {
   VW: 800, VH: 730,
 }
 
+/* 画布布局：左区（viewW）× 整高，按设计坐标等比缩放居中。renderDemo 与 3D 层共用同一套数 */
+function layoutFor(W, H) {
+  const RAIL = 46
+  const pw = Math.max(250, Math.min(W * 0.29, 520))
+  const panel = { x: W - 16 - RAIL - pw, y: 10, w: pw, h: H - 38 }
+  const viewW = panel.x - 16
+  const sc = Math.max(0.5, Math.min(1.12, Math.min(viewW / D.VW, H / D.VH)))
+  const ox = (viewW - D.VW * sc) / 2
+  const oy = (H - D.VH * sc) / 2
+  return { pw, panel, viewW, sc, ox, oy }
+}
+
 const TAU_K = 10          // 转矩系数（K·I·cos θ）
 const AC_HZ = 4           // 交流演示频率（Hz）：真实市电 50 Hz 太快，降到 4 Hz 才看得清电流反向
 const DAMP = 1.15         // 阻尼（无换向器时靠它把摆动停下来）
@@ -78,6 +91,8 @@ export default function ElectricMotorScene() {
 
   const [tab, setTab] = useState(1)
   const [, forceUpdate] = useState(0)
+  /* 3D 层要用同一套布局参数定位 —— 只在尺寸变化时更新（不每帧 setState） */
+  const [lay, setLay] = useState({ sc: 1, ox: 0, oy: 0, viewW: 0, H: 0 })
 
   useEffect(() => {
     const canvas = canvasRef.current; if (!canvas) return
@@ -89,6 +104,7 @@ export default function ElectricMotorScene() {
         canvas.height = rect.height * devicePixelRatio
         this.ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0)
         this.W = rect.width; this.H = rect.height
+        setLay({ ...layoutFor(this.W, this.H), H: this.H })
       },
     }
     R.resize(); canvasRef.current._R = R
@@ -125,10 +141,8 @@ export default function ElectricMotorScene() {
 
   function render(R) {
     const ctx = R.ctx, W = R.W, H = R.H
+    /* 底色交给 CSS 的渐变层（3D 层要夹在底色与 2D 之间），画布本身透明 */
     ctx.clearRect(0, 0, W, H)
-    const bg = ctx.createLinearGradient(0, 0, W * 0.35, H)
-    bg.addColorStop(0, '#FFFCF5'); bg.addColorStop(0.55, '#FDF4E6'); bg.addColorStop(1, '#FBEDD9')
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H)
     canvasRef.current._clickAreas = []
     if (S.current.tab === 1) renderDemo(ctx, W, H)
   }
@@ -143,15 +157,10 @@ export default function ElectricMotorScene() {
 
     /* 右侧知识卡面板 */
     const RAIL = 46
-    /* 知识卡瘦身：从 40% 让到 30% 以内 —— 电机本体才是主角（对标 NOBOOK：一屏器材，无卡无曲线喧宾） */
-    const pw = Math.max(250, Math.min(W * 0.29, 520))
-    const panel = { x: W - 16 - RAIL - pw, y: 10, w: pw, h: H - 38 }
-    const viewW = panel.x - 16
+    const { pw, panel, viewW, sc, ox, oy } =
+      layoutFor(W, H)
 
     /* 设计坐标 → 屏幕坐标 */
-    const sc = Math.max(0.5, Math.min(1.12, Math.min(viewW / D.VW, H / D.VH)))
-    const ox = (viewW - D.VW * sc) / 2
-    const oy = (H - D.VH * sc) / 2
     const TX = (x) => ox + x * sc
     const TY = (y) => oy + y * sc
     const FS = (n) => Math.max(9, Math.round(n * sc))
@@ -204,7 +213,7 @@ export default function ElectricMotorScene() {
       cx, cy, theta: s.theta, on, Iamp: s.I,
       iNow: typeof s.iNow === 'number' ? s.iNow : s.I,
       field: s.field, commutator: s.commutator, FS, time: s.time, closed: on,
-      omega: s.omega, ac,
+      omega: s.omega, ac, solid3D: true,
     })
 
     /* ─── 电源 / 开关 ─── */
@@ -655,16 +664,31 @@ export default function ElectricMotorScene() {
       ) : null}
     >
       <div style={{ display: 'flex', flexDirection: 'row', flex: 1, minHeight: 0, width: '100%' }}>
-        <canvas
-          ref={canvasRef}
-          className="canvas-fill"
-          style={{ width: '100%', flex: 1, minHeight: 0, display: tab === 1 ? 'block' : 'none', touchAction: 'none' }}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
-          onWheel={handleWheel}
-        />
+        <div style={{ position: 'relative', flex: 1, minHeight: 0, display: tab === 1 ? 'block' : 'none' }}>
+          {/* ① 底色（原来画在 canvas 上，现在让给 DOM，好把 3D 层夹在中间） */}
+          <div style={{
+            position: 'absolute', inset: 0,
+            background: 'linear-gradient(120deg,#FFFCF5 0%,#FDF4E6 55%,#FBEDD9 100%)',
+          }} />
+          {/* ② 电动机实体（真 3D，正交投影与下面 2D 层同一套设计坐标） */}
+          {tab === 1 && lay.viewW > 0 && (
+            <Motor3D
+              sc={lay.sc} ox={lay.ox} oy={lay.oy}
+              vw={D.VW} vh={D.VH} cx={D.cx} cy={D.cy}
+              getState={() => S.current}
+            />
+          )}
+          {/* ③ 2D 标注层（电路、磁感线、电流箭头、⊙⊗、曲线、知识卡提示） */}
+          <canvas
+            ref={canvasRef}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', touchAction: 'none' }}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            onWheel={handleWheel}
+          />
+        </div>
         {tab === 2 && (
           <BuilderSVG ref={builderRef} wireColor={S.current.wireColor} />
         )}
@@ -808,28 +832,34 @@ function drawMotorBody(ctx, o) {
   /* 腔体：两块磁极之间是一个**圆柱形通孔**（照 NB 的画法）—— 中间留空；
      只在**下缘**画一段孔壁（视线略高，能看见孔的内壁下半圈），上缘只留一条落影线。
      整个孔都描边会让它变成"圆环"，反而不像通了。 */
+  /* ★ 实体（极靴 / 通孔 / 轴 / 线圈 / 换向器 / 电刷）已交给 3D 层（simple3d/Motor3D.jsx）渲染，
+     这一层只留"标注"（磁感线、电流箭头、⊙⊗、气泡、放大窗）。solid3D=false 时才回落到 2D 画法。 */
+  const SOLID3D = o.solid3D !== false
   const wallT = 15
-  ctx.save()
-  ctx.beginPath()
-  ctx.arc(cx, cy, cavR, 0.12 * Math.PI, 0.88 * Math.PI)
-  ctx.arc(cx, cy, cavR - wallT, 0.88 * Math.PI, 0.12 * Math.PI, true)
-  ctx.closePath()
-  const wallG = ctx.createLinearGradient(0, cy, 0, cy + cavR)
-  wallG.addColorStop(0, 'rgba(196,180,152,0.28)')
-  wallG.addColorStop(0.55, 'rgba(240,232,214,0.45)')
-  wallG.addColorStop(1, 'rgba(255,253,247,0.62)')
-  ctx.fillStyle = wallG; ctx.fill()
-  ctx.restore()
-  /* 孔沿：外沿一圈暗线（洞口边界） + 上缘一层淡影（从上方落进去的阴影） */
-  ctx.strokeStyle = 'rgba(118,98,72,0.46)'; ctx.lineWidth = 1.3
-  ctx.beginPath(); ctx.arc(cx, cy, cavR, 0, Math.PI * 2); ctx.stroke()
-  ctx.strokeStyle = 'rgba(96,78,56,0.30)'; ctx.lineWidth = 5
-  ctx.beginPath(); ctx.arc(cx, cy, cavR - 5, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke()
+  if (!SOLID3D) {
+    ctx.save()
+    ctx.beginPath()
+    ctx.arc(cx, cy, cavR, 0.12 * Math.PI, 0.88 * Math.PI)
+    ctx.arc(cx, cy, cavR - wallT, 0.88 * Math.PI, 0.12 * Math.PI, true)
+    ctx.closePath()
+    const wallG = ctx.createLinearGradient(0, cy, 0, cy + cavR)
+    wallG.addColorStop(0, 'rgba(196,180,152,0.28)')
+    wallG.addColorStop(0.55, 'rgba(240,232,214,0.45)')
+    wallG.addColorStop(1, 'rgba(255,253,247,0.62)')
+    ctx.fillStyle = wallG; ctx.fill()
+    ctx.restore()
+    /* 孔沿：外沿一圈暗线（洞口边界） + 上缘一层淡影（从上方落进去的阴影） */
+    ctx.strokeStyle = 'rgba(118,98,72,0.46)'; ctx.lineWidth = 1.3
+    ctx.beginPath(); ctx.arc(cx, cy, cavR, 0, Math.PI * 2); ctx.stroke()
+    ctx.strokeStyle = 'rgba(96,78,56,0.30)'; ctx.lineWidth = 5
+    ctx.beginPath(); ctx.arc(cx, cy, cavR - 5, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke()
+  }
 
   for (const [x0, w0, col, pole, isLeft] of [
     [magL, magLw, lc, lPole, true],
     [magR, magRw, rc, rPole, false],
   ]) {
+    if (SOLID3D) continue
     const xIn = isLeft ? x0 + w0 : x0
     const xOut = isLeft ? x0 : x0 + w0
     const dx = Math.abs(cx - xIn)
@@ -929,8 +959,10 @@ function drawMotorBody(ctx, o) {
   }
 
   /* 转轴（竖直，在屏幕平面内 —— 线圈绕它旋转） */
-  ctx.strokeStyle = '#94A3B8'; ctx.lineWidth = 2.4
-  ctx.beginPath(); ctx.moveTo(cx, cy - bH - 14); ctx.lineTo(cx, egy + 6); ctx.stroke()
+  if (!SOLID3D) {
+    ctx.strokeStyle = '#94A3B8'; ctx.lineWidth = 2.4
+    ctx.beginPath(); ctx.moveTo(cx, cy - bH - 14); ctx.lineTo(cx, egy + 6); ctx.stroke()
+  }
 
   /* 线圈：单匝矩形，绕**竖直轴**转（θ=0 → 线圈平面在纸面内；θ=±90° → 侧身成一条线）。
      两条竖边用**红 / 蓝**表示电流朝上 / 朝下（换向器每半圈把两色对调，这就是"换向"看得见的那一下）；
@@ -972,16 +1004,16 @@ function drawMotorBody(ctx, o) {
   }
 
   // 远侧竖边（先画，被近侧压住）
-  tube(farX, yTopF, farX, yBotF, farW, frontIsRight ? colLeft : colRight, 0.80)
+  if (!SOLID3D) tube(farX, yTopF, farX, yBotF, farW, frontIsRight ? colLeft : colRight, 0.80)
 
   // 上边（铜色的"框"，从远边连到近边）
-  tube(farX, yTopF, nearX, yTopN, 3.8, on ? '#B45309' : '#A2917C')
+  if (!SOLID3D) tube(farX, yTopF, nearX, yTopN, 3.8, on ? '#B45309' : '#A2917C')
   /* ★ 底边不能画：单匝电枢是**开口**的 —— 电流从左端进来、绕"左边→上边→右边"、
      从右端出去接换向器。若把底边也连上，两只引线就被底边直接短接，线圈里没有电流，
      也就谈不上"通电导线在磁场里受力"。 */
 
   // 近侧竖边（最粗最亮）
-  tube(nearX, yTopN, nearX, yBotN, nearW, frontIsRight ? colRight : colLeft)
+  if (!SOLID3D) tube(nearX, yTopN, nearX, yBotN, nearW, frontIsRight ? colRight : colLeft)
 
   // 线圈里的电流方向（小箭头，颜色与那条边一致）
   if (hasI && halfW > 8) {
@@ -1084,6 +1116,7 @@ function drawMotorBody(ctx, o) {
   /* 线圈两条引线：从**开口的两端**（左侧竖边的下端、右侧竖边的下端）直插进换向器中心。
      这两条是电流唯一的进出通道 —— 线圈本身不闭合，才不会"两根引线被底边短接"。 */
   for (let k = 0; k < 2; k++) {
+    if (SOLID3D) continue
     const from = k === 0 ? { x: nearX, y: yBotN } : { x: farX, y: yBotF }
     ctx.strokeStyle = commutator ? shade(copper, -0.15) : '#9AA7B1'
     ctx.lineWidth = 1.8
@@ -1095,7 +1128,7 @@ function drawMotorBody(ctx, o) {
 
   ctx.save(); ctx.translate(cx, egy)
   /* 换向器：一块铜"鼓"—— 落地阴影 + 外圈暗边 + 两半各自上下渐变，才不是一枚贴纸圆盘 */
-  if (commutator) {
+  if (!SOLID3D && commutator) {
     ctx.save()
     ctx.fillStyle = 'rgba(60,40,20,0.28)'
     ctx.beginPath(); ctx.ellipse(0, egyR * 0.62, egyR * 0.96, egyR * 0.26, 0, 0, Math.PI * 2); ctx.fill()
@@ -1103,7 +1136,7 @@ function drawMotorBody(ctx, o) {
     ctx.beginPath(); ctx.arc(0, 0, egyR + 2.2, 0, Math.PI * 2)
     ctx.strokeStyle = '#7A4A18'; ctx.lineWidth = 2.6; ctx.stroke()
   }
-  if (!commutator) {
+  if (!SOLID3D && !commutator) {
     // 拆掉：留一块淡灰"拆空"区和虚线外廓，表示"铜片没了、不导电"
     ctx.fillStyle = 'rgba(148,163,184,0.16)'
     ctx.beginPath(); ctx.arc(0, 0, egyR, 0, Math.PI * 2); ctx.fill()
@@ -1112,6 +1145,7 @@ function drawMotorBody(ctx, o) {
     ctx.setLineDash([])
   }
   for (let k = 0; k < 2 && commutator; k++) {
+    if (SOLID3D) break
     const a0 = seamBase + k * Math.PI
     /* 半环（照 NB：换向器是**圆环**，不是实心圆盘）—— 外弧 + 内弧围成一条铜箍，中间留出轴孔 */
     const halfG = ctx.createLinearGradient(0, -egyR, 0, egyR)
@@ -1131,7 +1165,7 @@ function drawMotorBody(ctx, o) {
     ctx.beginPath(); ctx.arc(0, 0, (egyR + ringIn) / 2, a0 + 0.2, a0 + Math.PI - 0.2); ctx.stroke()
   }
   // 中间轴孔（黑洞）—— 有了它，"环"才成立
-  if (commutator) {
+  if (!SOLID3D && commutator) {
     ctx.beginPath(); ctx.arc(0, 0, ringIn - 1, 0, Math.PI * 2)
     ctx.fillStyle = '#251708'; ctx.fill()
     ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1.2; ctx.stroke()
@@ -1175,14 +1209,17 @@ function drawMotorBody(ctx, o) {
     }
   }
   // 转轴（从圆心穿过，压在铜片之上）
-  ctx.fillStyle = '#A8B3C0'
-  ctx.strokeStyle = '#7C8798'; ctx.lineWidth = 1
-  ctx.beginPath(); ctx.arc(0, 0, 4.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+  if (!SOLID3D) {
+    ctx.fillStyle = '#A8B3C0'
+    ctx.strokeStyle = '#7C8798'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.arc(0, 0, 4.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+  }
   ctx.restore()
 
   /* ─── 两个电刷（固定不转）：碳块**压在外圆上**（内沿压进铜片 1.2px）+ 弹簧片 + 引线 ─── */
   const brushIn = egyR - 1.2, brushOut = egyR + 11.8
   for (const s of [-1, 1]) {
+    if (SOLID3D) continue
     const bx = cx + s * (brushIn + brushOut) / 2
     ctx.fillStyle = commutator ? '#3E4653' : '#9AA3AE'
     ctx.strokeStyle = commutator ? '#1E2530' : '#8A939E'
