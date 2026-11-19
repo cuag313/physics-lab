@@ -434,7 +434,7 @@ function steamWisps(st, o, { n = 4, rise = 14, r0 = 2.4, r1 = 5.2, drift = 2, sp
  * 起始帧 —— 看起来就是"抖一下 / 冻住"。所以"会动的东西"单独放在这一层，自己跑 rAF，
  * 只重渲染自己，与整场景重渲染解耦（和 ElectronFlow 同一套做法）。
  */
-function MotionLayer({ items, dissect }) {
+function MotionLayer({ items }) {
   const [, setTick] = useState(0)
   const phRef = useRef(new Map())
   const itemsRef = useRef(items)
@@ -564,7 +564,7 @@ function MotionLayer({ items, dissect }) {
              两块带圆弧凹面的磁极拼成圆柱腔，单匝线圈绕竖直轴在里面扫，
              下面接两片半环换向器、左右两只电刷。这样"自己动手"里也能看见原理，
              而不是只看见一只黑皮带轮在转。 ── */
-          if (dissect) {
+          if (it.cut) {
             const CX = 100, CY = 68, CR = 62
             const PT = 15, PB = 121, BLKW = 46, L1 = 54, R0 = 146
             const dx = Math.abs(CX - L1)
@@ -800,6 +800,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   const [plugHint, setPlugHint] = useState(null)
   const plugHintTimer = useRef(0)
   const [dissect, setDissect] = useState(false)   // 一键透视：外壳半透明、露出 .inner 内部结构
+  const [motorCut, setMotorCut] = useState(false) // 只把小电动机换成剖面（其它器材外壳不动）
   /* 电能表走字倍速：真实时间里 100 W 点一小时才 1 度电，肉眼看不到转盘与计数器在动；
    * 1× 用来说明"真表就是走得很慢"，60× / 600× 才能把 W = Pt 演出来。 */
   const [meterSpeed, setMeterSpeed] = useState(1)
@@ -1428,13 +1429,14 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         /* 这三台只按"绝对时间"演进（汽往上飘、指示灯呼吸、电阻丝闪），不用转速，
            所以 v 给 0 —— st.led 每帧照加，动画照样跑；断电（P=0）就整条不画。 */
         out.push({ id: c.id, kind: c.type, x: c.x, y: c.y, v: 0 })
-      } else if (c.type === 'motor' && (I > 0.02 || dissect)) {
+      } else if (c.type === 'motor' && (I > 0.02 || motorCut || dissect)) {
         // 单位：rad / 秒；0.6 A 约半转每秒，1 A 再快一点（NB 里就是这个观感）
         out.push({
           id: c.id, kind: 'motor', x: c.x, y: c.y,
           v: I > 0.02 ? 1.9 + 2.2 * Math.min(1.4, I) : 0,
           dir: (o._Iraw || 0) < -1e-6 ? -1 : 1,
           dim: false,
+          cut: motorCut || dissect,   // 只看电动机剖面（不动其它器材的外壳）
         })
       }
     }
@@ -1621,6 +1623,13 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
           box-shadow:0 6px 18px rgba(2,6,23,.14);transition:background .15s,border-color .15s,color .15s}
         .esb-dissect:hover{background:#f8fafc;border-color:#c7d2e0}
         .esb-dissect.on{background:#fff7ed;border-color:#f59e0b;color:#b45309}
+        /* 小电动机剖面的单独开关：只换电动机，外壳其它器材照旧 */
+        .esb-cut{position:absolute;right:18px;top:58px;z-index:22;display:inline-flex;align-items:center;gap:6px;
+          padding:7px 13px;border-radius:10px;border:1px solid #dbe3ec;background:rgba(255,255,255,.96);
+          color:#1e293b;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;
+          box-shadow:0 6px 18px rgba(2,6,23,.14);transition:background .15s,border-color .15s,color .15s}
+        .esb-cut:hover{background:#f8fafc;border-color:#c7d2e0}
+        .esb-cut.on{background:#fff7ed;border-color:#f59e0b;color:#b45309}
         /* 电能表走字倍速：真表走得太慢（100 W 要 1 小时才 1 度），只有加快时间才看得出转盘与计数器在动 */
         .esb-speed{position:absolute;right:18px;top:58px;z-index:22;display:inline-flex;align-items:center;gap:6px;
           padding:7px 13px;border-radius:10px;border:1px solid #dbe3ec;background:rgba(255,255,255,.96);
@@ -1739,7 +1748,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         <ElectronFlow items={flowItems} />
 
         {/* 运动层：铝盘在转 / 滚筒在洗（自带 rAF，不进器材的字符串重渲染） */}
-        <MotionLayer items={motionItems} dissect={dissect} />
+        <MotionLayer items={motionItems} />
 
         {/* 元件层：电器排在插座之后渲染（机器压在插座上＝"插进去了"）。
             插座顶部那三个接线端被插上的机器盖住是正常的：真机上插座在机器背后，
@@ -2009,6 +2018,17 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       >
         {dissect ? '🔍 内部结构（开）' : '🔍 内部结构（透视）'}
       </button>
+
+      {/* 小电动机专用剖面：只把电动机卡片换成内部结构，其它器材外壳保持原样 */}
+      {comps.some((c) => c.type === 'motor') && (
+        <button
+          className={`esb-cut${motorCut ? ' on' : ''}`}
+          title="只把小电动机换成剖面：磁极弧形极靴、绕竖直轴扫动的线圈、换向器与电刷"
+          onClick={() => setMotorCut((v) => !v)}
+        >
+          {motorCut ? '✂ 电机剖面（开）' : '✂ 电机剖面'}
+        </button>
+      )}
 
       {/* 电能表走字倍速：只有场景里存在电能表时才出现（别的专题用不到） */}
       {comps.some((c) => c.type === 'energyMeter') && (

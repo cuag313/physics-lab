@@ -43,9 +43,9 @@ const D = {
   L: 118, R: 468, T: 424, B: 574,   // 回路矩形
   batX: 196, swX: 350,
   row1: 624, row2: 680,
-  chX: 596, chY: 456, chW: 256, chH: 132,   // τ–θ 曲线
+  chX: 590, chY: 452, chW: 200, chH: 132,   // τ–θ 曲线（瘦身，把横向空间让给电机）
   zx: 566, zy: 292, zr: 64,   // 换向器"放大窗"（呼应教学片里"下方同步放大接触处"）
-  VW: 900, VH: 730,
+  VW: 800, VH: 730,
 }
 
 const TAU_K = 10          // 转矩系数（K·I·cos θ）
@@ -143,7 +143,8 @@ export default function ElectricMotorScene() {
 
     /* 右侧知识卡面板 */
     const RAIL = 46
-    const pw = Math.max(300, Math.min(W * 0.40, 700))
+    /* 知识卡瘦身：从 40% 让到 30% 以内 —— 电机本体才是主角（对标 NOBOOK：一屏器材，无卡无曲线喧宾） */
+    const pw = Math.max(250, Math.min(W * 0.29, 520))
     const panel = { x: W - 16 - RAIL - pw, y: 10, w: pw, h: H - 38 }
     const viewW = panel.x - 16
 
