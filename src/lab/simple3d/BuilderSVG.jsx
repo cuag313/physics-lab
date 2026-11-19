@@ -365,8 +365,12 @@ function ElectronFlow({ items }) {
  *   左起 x37.2），washer_body 坐标里观察孔圆心 (80,128)、半径≈38.5 → 卡内 (69.4,69.4)、r≈16.1。
  *   旋转层必须把观察孔整个盖住（r 取 16.1，比孔大 0.6，多出来的那圈压在金属门圈上 —— 门圈是圆的，
  *   跟着转也看不出来），否则孔边会露出一圈不动的原图。 */
+/* 洗衣机滚筒：washer_body.png 167×224，在卡里的图框是 x22 y26 w106 h92（meet）
+   → 缩放 92/224=0.4107、左右居中后左起 x40.7。
+   源图里滚筒（衣物）外接框 x46..121 / y90..166 → 圆心 (83.5,128)、半径≈38
+   → 卡内 cx=(40.7+83.5×0.4107)=75.0、cy=(26+128×0.4107)=78.6、r≈15.6（取 16.2 盖住门圈内沿）。 */
 const METER_SLOT = { x: 52, y: 75.5, w: 79, h: 11.5 }
-const WASHER_DRUM = { cx: 69.4, cy: 69.4, r: 16.1 }
+const WASHER_DRUM = { cx: 75.0, cy: 78.6, r: 16.2 }
 /* 小电动机卡 200×169：图标 256×216 里的黑色皮带轮 —— 用左侧/顶侧轮缘做最小二乘圆拟合，
    得圆心 (73.9,65.7)、半径 65.5（源坐标），按 200/256 与 169/216 换算 → 卡内 (57.8,51.4)、半径 51.1。
    旋转层裁到 r=44：5 个白孔 + 1 个黑孔的最外沿只到 r≈34，留足余量；外圈轮缘与皮带保持静止
@@ -376,16 +380,17 @@ const MOTOR_PULLEY = { cx: 57.8, cy: 51.4, r: 44 }
  * 电热水壶 kettle_body 152×212 → meet 收成 65.96×92、左起 42.0；壶嘴尖在源图 (16,88) → 卡内 (49.0,56.2)；
  * 电饭煲 ricecooker_body 176×146 → 收成 106×87.9、上起 20.0；盖顶排气孔 (88,10) → 卡内 (75,26)，
  *   面板指示灯放在显示屏右侧 (128,50) → 卡内 (99,50)；
- * 电暖器 heater_body 170×201 → 收成 77.8×92、左起 36.1；三片发热网在源图 x 25..122、
- *   依次 y 38..83 / 88..139 / 144..165（像素聚类量的，不是估的）→ 卡内 x 47.6..91.9、
- *   y 35.6..55.8 / 58.3..81.3 / 83.9..93.4。 */
+ * 电暖器 heater_body 144×201 → 收成 65.9×92、左起 42.05、上起 26；
+ *   反射罩三片发热网在源图 x 20..126（w106）、竖向三段 y 37..83 / 87..139 / 144..169
+ *   （按"暗于 lum118 且每行>25 px"聚类量的，不是估的）→ 卡内 x 51.2..99.7、
+ *   y 42.9..64.0 / 65.8..89.6 / 91.9..103.4。 */
 const KETTLE_SPOUT = { x: 45.0, y: 33.0 }
 const RICE_VENT = { x: 75, y: 26 }
 const RICE_LED = { x: 99, y: 50 }
 const HEATER_BANDS = [
-  { x0: 47.6, y0: 35.6, w: 44.4, h: 20.2 },
-  { x0: 47.6, y0: 58.5, w: 44.4, h: 22.8 },
-  { x0: 47.6, y0: 84.0, w: 44.4, h: 9.4 },
+  { x0: 51.2, y0: 42.9, w: 48.5, h: 21.1 },
+  { x0: 51.2, y0: 65.8, w: 48.5, h: 23.8 },
+  { x0: 51.2, y0: 91.9, w: 48.5, h: 11.5 },
 ]
 
 /**
@@ -522,18 +527,18 @@ function MotionLayer({ items }) {
                 </clipPath>
               </defs>
               <g clipPath={`url(#esbm-drum-${it.id})`}>
-                <image href={figURL('washer_body.png')} x="24" y="18" width="102" height="90"
+                <image href={figURL('washer_body.png')} x="22" y="26" width="106" height="92"
                   preserveAspectRatio="xMidYMid meet"
                   transform={`rotate(${deg.toFixed(1)} ${D.cx} ${D.cy})`} />
                 {halo}
                 {bubbles}
               </g>
-              <circle cx="37" cy="116.5" r="4.6" fill="#f87171" opacity={led} />
-              {/* 底座上一个小转盘图标（三点转子）：远处也能一眼看出"在工作" */}
+              <circle cx="100" cy="112.5" r="2.4" fill="#f87171" opacity={led} />
+              {/* 底座正中一个小转盘图标（三点转子）：远处也能一眼看出"在工作" */}
               {[0, 1, 2].map((i) => {
                 const th = a * 1.4 + (i * Math.PI * 2) / 3
-                const x = 47.5 + Math.cos(th) * 2.6
-                const yy = 116.5 + Math.sin(th) * 1.7
+                const x = 75 + Math.cos(th) * 2.8
+                const yy = 112.5 + Math.sin(th) * 1.8
                 return <circle key={'sp' + i} cx={x} cy={yy} r={1.15}
                   fill="#b91c1c" opacity={0.9 - i * 0.22} />
               })}
@@ -1669,9 +1674,11 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
             const d = `M${ax} ${ay} C${ax + sx * k1} ${ay} ${tx} ${ty - sy * k2} ${tx} ${ty}`
             return (
               <g key={c.id}>
-                <path d={d} fill="none" stroke="rgba(15,23,42,0.13)" strokeWidth={4.2} strokeLinecap="round" strokeLinejoin="round" transform="translate(0 1.4)" />
-                <path d={d} fill="none" stroke="#bfc5ce" strokeWidth={3.1} strokeLinecap="round" strokeLinejoin="round" />
-                <path d={d} fill="none" stroke="#f2f4f7" strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round" opacity=".85" />
+                {/* 线是**黑的**（照 NB 实拍：家电电源线与插头都是黑色橡套线，不是浅灰）：
+                    底下一条更深的落影，本体 #23262b，靠上沿一条 #6b7280 细高光做出圆柱反光 */}
+                <path d={d} fill="none" stroke="rgba(12,16,22,0.42)" strokeWidth={4.6} strokeLinecap="round" strokeLinejoin="round" transform="translate(0 1.6)" />
+                <path d={d} fill="none" stroke="#23262b" strokeWidth={3.4} strokeLinecap="round" strokeLinejoin="round" />
+                <path d={d} fill="none" stroke="#6b7280" strokeWidth={1.0} strokeLinecap="round" strokeLinejoin="round" opacity=".55" />
               </g>
             )
           })}
