@@ -561,32 +561,34 @@ function MotionLayer({ items }) {
            转速 ∝ 电流；接线柱 1、2 接反 → dir=-1 → 反转。 */
         if (it.kind === 'motor') {
           const M = MOTOR_PULLEY
-          const deg = (st.a * it.dir * 180) / Math.PI
+          /* 转向口径（2026-11-19 用户确认）：从纸面外往里看（视线基本沿电机轴），转子在**纸面内逆时针**转。
+             SVG 里 rotate(+deg) 是顺时针，所以统一取负号：dir=+1（接线柱 a→b 的那个电流方向）→ 逆时针；
+             把两根接线柱换过来（dir=-1）→ 顺时针。皮带是开口传动、两轴同向，所以大皮带轮用同一个符号。 */
+          const spin = -st.a * it.dir
+          const deg = (spin * 180) / Math.PI
           const cid = `esbm-pul-${it.id}`
-          /* 转子（N/S 之间那只铜鼓）：轴左右向，轮廓转起来不变，所以只能靠**表面亮暗带上下扫过**
-             表现转动。带子位置 y = cy + ry·sinθ、可见度 ∝ cosθ（转到上下边沿时被压扁、变暗），
-             转过前方那根灰色支架时被遮住（用 mask 挖掉支架那一条竖带）——
-             皮带传动：大皮带轮 r≈52 由转子上小轮带动，所以转子比大轮快（×2.4）。
-             接线柱 1、2 接反 → dir=-1 → 反向。 */
+          /* 转子（N/S 之间那只铜鼓）：视线几乎沿轴，转起来是"盘面绕圆心转"，不是"柱面上下滚"。
+             所以画 3 道软边的"线圈边"（亮铜 ×1 / 暗铜 ×2）绕圆心逆时针扫；椭圆透视不额外压，
+             直接用盘面上各向等速的角位置（rx/ry 分别取分量），转到正前方的支架、金环、黑电刷后面会被挡住。
+             皮带传动：转子上小轮带大轮，所以转子比大轮快（×2.4）。 */
           const R = MOTOR_ROTOR
-          const rPhase = st.a * it.dir * 2.4
+          const rPhase = spin * 2.4
           const rid = `esbm-rot-${it.id}`
           const rgid = `esbm-rotg-${it.id}`
           const lgid = `esbm-rotl-${it.id}`
-          const bands = []
-          /* 表面 6 条"明暗带"（上下方向均匀铺在柱面上）：转到上/下边沿时被压扁、变暗 → cosθ 收尾。
-             用竖直渐变的软带（不是硬条纹），读起来是"光/阴在扫过"，不是"画了黑条"。 */
-          for (let k = 0; k < 6; k++) {
-            const th = rPhase + (k * Math.PI) / 3
-            const c = Math.cos(th)
-            if (c < 0.12) continue
-            const y = R.cy + R.ry * Math.sin(th)
-            const light = ((k % 3) + 3) % 3 === 1
-            bands.push(
-              <rect key={'rb' + k}
-                x={R.cx - R.rx} y={y - 3.4} width={R.rx * 2} height={6.8}
-                fill={light ? `url(#${lgid})` : `url(#${rgid})`}
-                opacity={(0.42 * c).toFixed(3)} />,
+          const marks = []
+          for (let k = 0; k < 3; k++) {
+            const a = rPhase + (k * 2 * Math.PI) / 3
+            const p0 = [R.cx + R.rx * Math.cos(a) * 0.34, R.cy + R.ry * Math.sin(a) * 0.34]
+            const p1 = [R.cx + R.rx * Math.cos(a) * 0.99, R.cy + R.ry * Math.sin(a) * 0.99]
+            marks.push(
+              <line key={'rm' + k}
+                x1={p0[0].toFixed(2)} y1={p0[1].toFixed(2)}
+                x2={p1[0].toFixed(2)} y2={p1[1].toFixed(2)}
+                stroke={`url(#${k === 0 ? lgid : rgid})`}
+                strokeWidth={k === 0 ? 3.0 : 2.6}
+                strokeLinecap="round"
+                opacity={k === 0 ? 0.6 : 0.42} />,
             )
           }
           return (
@@ -596,17 +598,20 @@ function MotionLayer({ items }) {
                   <circle cx={M.cx} cy={M.cy} r={M.r} />
                 </clipPath>
                 <mask id={rid} maskUnits="userSpaceOnUse" x="120" y="100" width="60" height="45">
-                  <ellipse cx={R.cx} cy={R.cy} rx={R.rx} ry={R.ry} fill="#fff" />
+                  <ellipse cx={R.cx} cy={R.cy} rx={R.rx - 0.6} ry={R.ry - 0.4} fill="#fff" />
                   <rect x={R.postX0} y="100" width={R.postX1 - R.postX0} height="45" fill="#000" />
+                  {/* 正前方金色环（压在鼓面的前下方）与顶上那块黑电刷，都得挡住转过去的线圈边 */}
+                  <circle cx="147.4" cy="126.2" r="7.4" fill="#000" />
+                  <rect x="140.2" y="100" width="12.6" height="13.6" fill="#000" />
                 </mask>
-                <linearGradient id={rgid} x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id={rgid} x1="0" y1="0" x2="1" y2="0">
                   <stop offset="0%" stopColor="#5a3208" stopOpacity="0" />
-                  <stop offset="50%" stopColor="#4a2905" stopOpacity="0.85" />
+                  <stop offset="50%" stopColor="#46260a" stopOpacity="0.95" />
                   <stop offset="100%" stopColor="#5a3208" stopOpacity="0" />
                 </linearGradient>
-                <linearGradient id={lgid} x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id={lgid} x1="0" y1="0" x2="1" y2="0">
                   <stop offset="0%" stopColor="#ffe2b8" stopOpacity="0" />
-                  <stop offset="50%" stopColor="#ffeccb" stopOpacity="0.8" />
+                  <stop offset="50%" stopColor="#fff0d4" stopOpacity="0.95" />
                   <stop offset="100%" stopColor="#ffe2b8" stopOpacity="0" />
                 </linearGradient>
               </defs>
@@ -618,7 +623,7 @@ function MotionLayer({ items }) {
                   preserveAspectRatio="none"
                   transform={`rotate(${deg.toFixed(1)} ${M.cx} ${M.cy})`} />
               </g>
-              <g mask={`url(#${rid})`}>{bands}</g>
+              <g mask={`url(#${rid})`}>{marks}</g>
             </g>
           )
         }
