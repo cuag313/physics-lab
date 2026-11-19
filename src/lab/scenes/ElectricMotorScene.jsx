@@ -798,9 +798,19 @@ function drawMotorBody(ctx, o) {
 
   /* 磁极：照 NOBOOK 的样子 —— 两块厚块**内侧挖出大圆弧凹面**，两块拼成一个圆柱腔，
      线圈就在腔里扫。极面是弧面（不是直板），这才是真电动机的"弧形极靴"，
-     一眼能看出"磁场充满整个空腔、线圈整圈都在场里"。 */
-  const poleTop = cy - 108, poleBot = cy + 108
+     一眼能看出"磁场充满整个空腔、线圈整圈都在场里"。
+     ★ 立体感靠三层：腔体暗晕（凹进去）→ 块体前面渐变 + 顶面（厚）→ 弧面高光带（曲面）。 */
+  const poleTop = cy - 112, poleBot = cy + 112
   const cavR = 116                       // 凹面半径：两块合起来是圆柱腔，弧面吃进块宽约 55%
+
+  /* 腔体：空腔是"空气"，几乎不留色 —— 只给一点点边缘暗晕，让弧面显得往里凹 */
+  const cavG = ctx.createRadialGradient(cx - cavR * 0.12, cy - cavR * 0.22, cavR * 0.10, cx, cy, cavR)
+  cavG.addColorStop(0, 'rgba(255,253,246,0.72)')
+  cavG.addColorStop(0.74, 'rgba(250,242,226,0.45)')
+  cavG.addColorStop(1, 'rgba(214,201,178,0.30)')
+  ctx.beginPath(); ctx.arc(cx, cy, cavR, 0, Math.PI * 2)
+  ctx.fillStyle = cavG; ctx.fill()
+
   for (const [x0, w0, col, pole, isLeft] of [
     [magL, magLw, lc, lPole, true],
     [magR, magRw, rc, rPole, false],
@@ -812,42 +822,82 @@ function drawMotorBody(ctx, o) {
     const base = Math.atan2(hitY, dx)
     const a0 = isLeft ? Math.PI - base : -base
     const a1 = isLeft ? Math.PI + base : base
+
+    /* ② 前面（带弧形内边；外侧两角做成圆角，像真器材的倒角） */
+    const cr = 10
     ctx.beginPath()
-    ctx.moveTo(xOut, poleTop); ctx.lineTo(xIn, poleTop)
-    ctx.lineTo(xIn, cy - hitY)
-    ctx.arc(cx, cy, cavR, a0, a1, false)
-    ctx.lineTo(xIn, poleBot); ctx.lineTo(xOut, poleBot)
+    if (isLeft) {
+      ctx.moveTo(xOut + cr, poleTop); ctx.lineTo(xIn, poleTop)
+      ctx.lineTo(xIn, cy - hitY)
+      ctx.arc(cx, cy, cavR, a0, a1, false)
+      ctx.lineTo(xIn, poleBot); ctx.lineTo(xOut + cr, poleBot)
+      ctx.quadraticCurveTo(xOut, poleBot, xOut, poleBot - cr)
+      ctx.lineTo(xOut, poleTop + cr)
+      ctx.quadraticCurveTo(xOut, poleTop, xOut + cr, poleTop)
+    } else {
+      ctx.moveTo(xOut - cr, poleTop); ctx.lineTo(xIn, poleTop)
+      ctx.lineTo(xIn, cy - hitY)
+      ctx.arc(cx, cy, cavR, a0, a1, false)
+      ctx.lineTo(xIn, poleBot); ctx.lineTo(xOut - cr, poleBot)
+      ctx.quadraticCurveTo(xOut, poleBot, xOut, poleBot - cr)
+      ctx.lineTo(xOut, poleTop + cr)
+      ctx.quadraticCurveTo(xOut, poleTop, xOut - cr, poleTop)
+    }
     ctx.closePath()
-    const g = ctx.createLinearGradient(x0, 0, x0 + w0, 0)
-    g.addColorStop(0, shade(col, 0.30))
-    g.addColorStop(0.42, col)
+    const g = ctx.createLinearGradient(0, poleTop, 0, poleBot)
+    g.addColorStop(0, shade(col, 0.16))
+    g.addColorStop(0.22, col)
+    g.addColorStop(0.72, shade(col, -0.10))
     g.addColorStop(1, shade(col, -0.34))
     ctx.fillStyle = g
     ctx.fill()
     ctx.strokeStyle = shade(col, -0.45); ctx.lineWidth = 1.4
     ctx.stroke()
-    /* 弧面的立体感：只在块内（clip 到块轮廓）沿弧画一条"上暗—中亮—下暗"的窄带，
-       像 NB 那样让极面看起来是一张**曲面**，而不是一条贴在块上的亮弧。 */
+
+    /* ②b 倒角：顶沿一道亮带、外侧竖沿一道亮带、底沿一道暗带 —— 厚度感全靠这三条 */
+    ctx.save()
+    ctx.clip()
+    const bvT = ctx.createLinearGradient(0, poleTop, 0, poleTop + 10)
+    bvT.addColorStop(0, 'rgba(255,255,255,0.62)'); bvT.addColorStop(1, 'rgba(255,255,255,0)')
+    ctx.fillStyle = bvT; ctx.fillRect(xOut, poleTop, w0, 10)
+    const xs = isLeft ? xOut : xOut - 8
+    const bvS = ctx.createLinearGradient(xs, 0, xs + 8, 0)
+    bvS.addColorStop(isLeft ? 0 : 1, 'rgba(255,255,255,0.46)')
+    bvS.addColorStop(isLeft ? 1 : 0, 'rgba(255,255,255,0)')
+    ctx.fillStyle = bvS; ctx.fillRect(xs, poleTop, 8, poleBot - poleTop)
+    const bvB = ctx.createLinearGradient(0, poleBot - 12, 0, poleBot)
+    bvB.addColorStop(0, 'rgba(0,0,0,0)'); bvB.addColorStop(1, 'rgba(0,0,0,0.30)')
+    ctx.fillStyle = bvB; ctx.fillRect(xOut, poleBot - 12, w0, 12)
+    ctx.restore()
+
+    /* ④ 弧面：一条宽高光带贴在内弧上（clip 到块内），上暗—中亮—下暗 = 曲面 */
     ctx.save()
     ctx.clip()
     const ag = ctx.createLinearGradient(0, poleTop, 0, poleBot)
-    ag.addColorStop(0, shade(col, -0.18))
-    ag.addColorStop(0.40, shade(col, 0.26))
-    ag.addColorStop(0.60, shade(col, 0.30))
-    ag.addColorStop(1, shade(col, -0.24))
-    ctx.beginPath(); ctx.arc(cx, cy, cavR - 7, a0 + 0.015, a1 - 0.015)
-    ctx.strokeStyle = ag; ctx.lineWidth = 15; ctx.globalAlpha = 0.82; ctx.stroke()
+    ag.addColorStop(0, shade(col, -0.26))
+    ag.addColorStop(0.34, shade(col, 0.34))
+    ag.addColorStop(0.56, shade(col, 0.40))
+    ag.addColorStop(1, shade(col, -0.30))
+    ctx.beginPath(); ctx.arc(cx, cy, cavR - 9, a0 + 0.012, a1 - 0.012)
+    ctx.strokeStyle = ag; ctx.lineWidth = 21; ctx.stroke()
+    /* 弧的内沿再压一条暗线，弧面边界才清楚 */
+    ctx.beginPath(); ctx.arc(cx, cy, cavR - 1.2, a0, a1)
+    ctx.strokeStyle = shade(col, -0.52); ctx.lineWidth = 2.2; ctx.stroke()
+    /* 极面外沿一圈极淡的暖光，模拟反光 */
+    ctx.beginPath(); ctx.arc(cx, cy, cavR - 19, a0 + 0.06, a1 - 0.06)
+    ctx.strokeStyle = 'rgba(255,255,255,0.34)'; ctx.lineWidth = 3; ctx.stroke()
     ctx.restore()
-    /* 块顶面窄亮条 + 底面窄暗条（NB 两块都有这个厚度感） */
-    ctx.fillStyle = shade(col, 0.46)
-    ctx.fillRect(x0 + 1, poleTop + 1, w0 - 2, 5)
-    ctx.fillStyle = shade(col, -0.50)
-    ctx.fillRect(x0 + 1, poleBot - 4, w0 - 2, 3)
+
+    /* ⑤ 块底阴影（落在腔底上的投影） */
+    ctx.fillStyle = shade(col, -0.55)
+    ctx.fillRect(xOut + 1, poleBot - 3, w0 - 2, 3)
     // 极标（只留 N / S 两个大字，不再标"磁极"）
     ctx.fillStyle = '#FFFFFF'
     ctx.font = `900 ${FS(26)}px "Microsoft YaHei", sans-serif`
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText(pole, x0 + w0 / 2, cy - 64)
+    ctx.shadowColor = 'rgba(0,0,0,0.28)'; ctx.shadowBlur = FS(4); ctx.shadowOffsetY = FS(1)
+    ctx.fillText(pole, x0 + w0 / 2, cy - 58)
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0
   }
 
   /* 磁感线：只留 4 条很淡的（N→S），是"底图"，不能抢线圈 */
@@ -876,7 +926,7 @@ function drawMotorBody(ctx, o) {
   const REDC = '#DC2626', BLUEC = '#2563EB', DIMC = '#9A8A76'
   const colRight = hasI ? (curSign > 0 ? REDC : BLUEC) : DIMC
   const colLeft = hasI ? (curSign > 0 ? BLUEC : REDC) : DIMC
-  const nearW = 4.0, farW = 2.4
+  const nearW = 6.4, farW = 3.6
   const farX = frontIsRight ? xl : xr
   const nearX = frontIsRight ? xr : xl
 
@@ -887,26 +937,34 @@ function drawMotorBody(ctx, o) {
   const yTopN = cy - bH + off, yBotN = cy + bH + off
   const yTopF = cy - bH - off, yBotF = cy + bH - off
 
+  /* 一根"铜管"：暗描边 → 铜色管身 → 电流色的芯 → 高光。三段叠起来才有圆柱感 */
+  const tube = (x1, y1, x2, y2, w, core, alpha = 1) => {
+    const ang = Math.atan2(y2 - y1, x2 - x1)
+    const nx = -Math.sin(ang), ny = Math.cos(ang)     // 管的法向（用来错高光）
+    ctx.save()
+    ctx.globalAlpha = alpha
+    ctx.lineCap = 'round'
+    ctx.strokeStyle = 'rgba(52,30,10,0.42)'; ctx.lineWidth = w + 2.2
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
+    ctx.strokeStyle = '#C2854E'; ctx.lineWidth = w
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
+    ctx.strokeStyle = core; ctx.lineWidth = Math.max(1.6, w * 0.56)
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke()
+    const hx = nx * w * 0.26, hy = ny * w * 0.26
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)'; ctx.lineWidth = Math.max(1, w * 0.16)
+    ctx.beginPath(); ctx.moveTo(x1 + hx, y1 + hy); ctx.lineTo(x2 + hx, y2 + hy); ctx.stroke()
+    ctx.restore()
+  }
+
   // 远侧竖边（先画，被近侧压住）
-  ctx.save()
-  ctx.globalAlpha = 0.74
-  ctx.strokeStyle = frontIsRight ? colLeft : colRight
-  ctx.lineWidth = farW
-  ctx.beginPath(); ctx.moveTo(farX, yTopF); ctx.lineTo(farX, yBotF); ctx.stroke()
-  ctx.restore()
+  tube(farX, yTopF, farX, yBotF, farW, frontIsRight ? colLeft : colRight, 0.80)
 
   // 上下两条边（铜色的"框"，从远边连到近边）
-  ctx.strokeStyle = on ? '#B45309' : '#A2917C'
-  ctx.lineWidth = 2.6
-  ctx.beginPath(); ctx.moveTo(farX, yTopF); ctx.lineTo(nearX, yTopN); ctx.stroke()
-  ctx.beginPath(); ctx.moveTo(farX, yBotF); ctx.lineTo(nearX, yBotN); ctx.stroke()
+  tube(farX, yTopF, nearX, yTopN, 3.8, on ? '#B45309' : '#A2917C')
+  tube(farX, yBotF, nearX, yBotN, 3.8, on ? '#B45309' : '#A2917C')
 
-  // 近侧竖边（粗、亮、带暗描边）
-  ctx.strokeStyle = 'rgba(60,40,20,0.30)'; ctx.lineWidth = nearW + 1.6
-  ctx.beginPath(); ctx.moveTo(nearX, yTopN); ctx.lineTo(nearX, yBotN); ctx.stroke()
-  ctx.strokeStyle = frontIsRight ? colRight : colLeft
-  ctx.lineWidth = nearW
-  ctx.beginPath(); ctx.moveTo(nearX, yTopN); ctx.lineTo(nearX, yBotN); ctx.stroke()
+  // 近侧竖边（最粗最亮）
+  tube(nearX, yTopN, nearX, yBotN, nearW, frontIsRight ? colRight : colLeft)
 
   // 线圈里的电流方向（小箭头，颜色与那条边一致）
   if (hasI && halfW > 8) {
@@ -1017,6 +1075,15 @@ function drawMotorBody(ctx, o) {
   }
 
   ctx.save(); ctx.translate(cx, egy)
+  /* 换向器：一块铜"鼓"—— 落地阴影 + 外圈暗边 + 两半各自上下渐变，才不是一枚贴纸圆盘 */
+  if (commutator) {
+    ctx.save()
+    ctx.fillStyle = 'rgba(60,40,20,0.28)'
+    ctx.beginPath(); ctx.ellipse(0, egyR * 0.62, egyR * 0.96, egyR * 0.26, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.restore()
+    ctx.beginPath(); ctx.arc(0, 0, egyR + 2.2, 0, Math.PI * 2)
+    ctx.strokeStyle = '#7A4A18'; ctx.lineWidth = 2.6; ctx.stroke()
+  }
   if (!commutator) {
     // 拆掉：留一块淡灰"拆空"区和虚线外廓，表示"铜片没了、不导电"
     ctx.fillStyle = 'rgba(148,163,184,0.16)'
@@ -1028,7 +1095,13 @@ function drawMotorBody(ctx, o) {
   for (let k = 0; k < 2 && commutator; k++) {
     const a0 = seamBase + k * Math.PI
     // 实心半圆片（外圆弧 + 收回到圆心 → 半圆面）；两片用**明显不同**的铜色，才看得出是"两片"
-    ctx.fillStyle = k === 0 ? '#C4763C' : '#8A3E0C'
+    const halfG = ctx.createLinearGradient(0, -egyR, 0, egyR)
+    if (k === 0) {
+      halfG.addColorStop(0, '#E7AC6E'); halfG.addColorStop(0.42, '#BA7233'); halfG.addColorStop(1, '#8A4A16')
+    } else {
+      halfG.addColorStop(0, '#A9682F'); halfG.addColorStop(0.42, '#7E3E10'); halfG.addColorStop(1, '#4E2306')
+    }
+    ctx.fillStyle = halfG
     ctx.beginPath(); ctx.arc(0, 0, egyR, a0, a0 + Math.PI); ctx.lineTo(0, 0); ctx.closePath(); ctx.fill()
     ctx.strokeStyle = shade(copper, -0.32); ctx.lineWidth = 1.2; ctx.stroke()
     // 铜面高光（沿弧偏内）
