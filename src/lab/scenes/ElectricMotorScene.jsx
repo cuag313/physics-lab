@@ -675,7 +675,9 @@ export default function ElectricMotorScene() {
             purpose="看懂通电线圈在磁场中转动、换向器为什么必须有，以及转向和转速各由什么决定。"
             steps={[
               '磁极是两块带圆弧凹面的厚块 —— 中间是圆柱腔，线圈整圈都在磁场里',
+              '电流只走"左竖边 → 上边 → 右竖边"，两个开口端接换向器（线圈不闭合，所以不是短路）',
               '点开关：线圈绕竖直轴转，两条竖边一前一后扫过，θ=90° 时侧身成一条线',
+              'θ=0 时竖边运动方向 ⊥ 磁感线 → 切割最快（此刻转矩也最大）；θ=90° 时竖边顺着磁感线走，不切割',
               '竖边的红 / 蓝就是电流方向；每半圈换向器换边 → 红蓝对调 → 仍朝同一边转',
               '若卡在平衡位置不动（"死点"），点「✋ 手拨一下」给它个初速度',
               '点「✗ 换向器已接入」拆掉它：红蓝不再对调，线圈摆几下停住',
@@ -959,9 +961,11 @@ function drawMotorBody(ctx, o) {
   // 远侧竖边（先画，被近侧压住）
   tube(farX, yTopF, farX, yBotF, farW, frontIsRight ? colLeft : colRight, 0.80)
 
-  // 上下两条边（铜色的"框"，从远边连到近边）
+  // 上边（铜色的"框"，从远边连到近边）
   tube(farX, yTopF, nearX, yTopN, 3.8, on ? '#B45309' : '#A2917C')
-  tube(farX, yBotF, nearX, yBotN, 3.8, on ? '#B45309' : '#A2917C')
+  /* ★ 底边不能画：单匝电枢是**开口**的 —— 电流从左端进来、绕"左边→上边→右边"、
+     从右端出去接换向器。若把底边也连上，两只引线就被底边直接短接，线圈里没有电流，
+     也就谈不上"通电导线在磁场里受力"。 */
 
   // 近侧竖边（最粗最亮）
   tube(nearX, yTopN, nearX, yBotN, nearW, frontIsRight ? colRight : colLeft)
@@ -1063,9 +1067,10 @@ function drawMotorBody(ctx, o) {
   const copper = '#B45309'
   const seamBase = theta - Math.PI / 2
   const segCenter = (k) => seamBase + k * Math.PI + Math.PI / 2
-  /* 线圈两条引线：几乎竖直地插进圆盘中心（终点被铜片盖住），不要画成"V"形吊在盘上 */
+  /* 线圈两条引线：从**开口的两端**（左侧竖边的下端、右侧竖边的下端）直插进换向器中心。
+     这两条是电流唯一的进出通道 —— 线圈本身不闭合，才不会"两根引线被底边短接"。 */
   for (let k = 0; k < 2; k++) {
-    const from = { x: cx + (k === 0 ? 1 : -1) * Math.max(halfW * 0.72, 6), y: cy + bH }
+    const from = k === 0 ? { x: nearX, y: yBotN } : { x: farX, y: yBotF }
     ctx.strokeStyle = commutator ? shade(copper, -0.15) : '#9AA7B1'
     ctx.lineWidth = 1.8
     ctx.beginPath()

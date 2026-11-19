@@ -618,14 +618,13 @@ function MotionLayer({ items }) {
                   fill="#fff" fontFamily="system-ui,-apple-system,'Segoe UI',sans-serif">S</text>
                 {/* 转轴 */}
                 <line x1={CX} y1={CY - bH - 8} x2={CX} y2="130" stroke="#94a3b8" strokeWidth="2" />
-                {/* 线圈：远边 → 上下边 → 近边 */}
+                {/* 线圈：远边 → 上边 → 近边（**不画下边**：单匝电枢开口，电流一端进一端出，否则两根引线被底边短接） */}
                 <line x1={farX2} y1={yTF} x2={farX2} y2={yBF} stroke={frontIsRight ? colL2 : colR2}
                   strokeWidth="2.2" opacity="0.72" strokeLinecap="round" />
                 <line x1={farX2} y1={yTF} x2={nearX2} y2={yTN} stroke="#B45309" strokeWidth="2.4" />
-                <line x1={farX2} y1={yBF} x2={nearX2} y2={yBN} stroke="#B45309" strokeWidth="2.4" />
                 <line x1={nearX2} y1={yTN} x2={nearX2} y2={yBN} stroke={frontIsRight ? colR2 : colL2}
                   strokeWidth="3.6" strokeLinecap="round" />
-                {/* 两条引线接进换向器 */}
+                {/* 两条引线：从开口两端直接接进换向器 */}
                 <line x1={xl2} y1={yBN} x2={CX - 4} y2="119" stroke="#B45309" strokeWidth="1.4" />
                 <line x1={xr2} y1={yBN} x2={CX + 4} y2="119" stroke="#B45309" strokeWidth="1.4" />
                 {/* 换向器：两片半环（随线圈转） */}
