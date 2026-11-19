@@ -616,9 +616,13 @@ function MotionLayer({ items }) {
                 </linearGradient>
               </defs>
               <g clipPath={`url(#${cid})`}>
-                {/* 图标里的 5 个孔是"真镂空"(alpha=0)，卡片的孔亮是因为露出白底；
-                    这里先垫一层白圆，转过去的孔才始终是白的，否则只会透出底下静止的旧孔。 */}
+                {/* 图标里的 6 个孔都是"真镂空"(alpha=0)，卡片的孔亮是因为露出白底；
+                    这里先垫一层白圆，转过去的孔才始终是白的，否则只会透出底下静止的旧孔。
+                    ★ 但孔背后不是到处都白：轮子后面立着黑色支撑柱（柱子在图标里 x60..88 源、卡内 x46.9..68.8，
+                    一直顶到轮轴）。所以白圆上再压一条黑柱，孔转到柱子前面时看到黑柱、转到别处看到白底 ——
+                    跟实拍一致（原来那只孔在照片里被烤成实心黑，转过去也一直是黑的，见 scripts/_bake_motor_hole.py）。 */}
                 <circle cx={M.cx} cy={M.cy} r={M.r - 1} fill="#ffffff" />
+                <path d="M50.2 58.2 L65.8 58.2 L68.8 106 L46.9 106 Z" fill="#191a1f" />
                 <image href={figURL('motor_c.png')} x="0" y="0" width="200" height="169"
                   preserveAspectRatio="none"
                   transform={`rotate(${deg.toFixed(1)} ${M.cx} ${M.cy})`} />
