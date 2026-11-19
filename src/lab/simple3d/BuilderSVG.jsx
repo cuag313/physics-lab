@@ -578,6 +578,7 @@ function MotionLayer({ items }) {
               }
               return d
             }
+            const ptOn = (ccx, ccy, r, a) => `${(ccx + r * Math.cos(a)).toFixed(2)},${(ccy + r * Math.sin(a)).toFixed(2)}`
             const leftD = `M${L1 - BLKW},${PT} L${L1},${PT} L${L1},${(CY - hitY).toFixed(2)} `
               + arcD(CX, CY, CR, Math.PI + base, Math.PI - base)
               + `L${L1},${PB} L${L1 - BLKW},${PB} Z`
@@ -601,17 +602,44 @@ function MotionLayer({ items }) {
             const colR2 = it.dir > 0 ? RED2 : BLUE2
             const colL2 = it.dir > 0 ? BLUE2 : RED2
             const seam = phi - Math.PI / 2
-            const disk = (k) => {
-              const a0 = seam + k * Math.PI
-              return `M${CX},128 ${arcD(CX, 128, 12, a0, a0 + Math.PI, 10)}Z`
+            /* 环形件（半环换向器 / 孔壁）用"外弧 → 内弧"闭合 */
+            const ringD = (r1, r2, a0, a1, cyy) => {
+              const p0 = `${(CX + r1 * Math.cos(a0)).toFixed(2)},${(cyy + r1 * Math.sin(a0)).toFixed(2)}`
+              return `M${p0} ${arcD(CX, cyy, r1, a0, a1, 10)} ${arcD(CX, cyy, r2, a1, a0, 10)}Z`
             }
+            const gN = `mcut-n-${it.id}`, gS = `mcut-s-${it.id}`
+            const gC1 = `mcut-c1-${it.id}`, gC2 = `mcut-c2-${it.id}`
             return (
               <g key={it.id} transform={`translate(${it.x},${it.y})`}>
+                <defs>
+                  <linearGradient id={gN} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stopColor="#E6575A" /><stop offset="0.26" stopColor="#DC2626" />
+                    <stop offset="0.72" stopColor="#B81C1C" /><stop offset="1" stopColor="#8E1212" />
+                  </linearGradient>
+                  <linearGradient id={gS} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stopColor="#5588F0" /><stop offset="0.26" stopColor="#2563EB" />
+                    <stop offset="0.72" stopColor="#1B49C4" /><stop offset="1" stopColor="#123590" />
+                  </linearGradient>
+                  <linearGradient id={gC1} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stopColor="#E7AC6E" /><stop offset="0.5" stopColor="#BA7233" />
+                    <stop offset="1" stopColor="#8A4A16" />
+                  </linearGradient>
+                  <linearGradient id={gC2} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stopColor="#A9682F" /><stop offset="0.5" stopColor="#7E3E10" />
+                    <stop offset="1" stopColor="#4E2306" />
+                  </linearGradient>
+                </defs>
                 {/* 剖面底版：盖住卡片上的实拍图标（导线从卡底边穿进去，读作"接在机内"） */}
                 <rect x="2" y="2" width="196" height="165" rx="10" fill="#fffaf1" stroke="#e8dcc6" strokeWidth="1.2" />
-                {/* 两块弧形极靴 */}
-                <path d={leftD} fill="#DC2626" stroke="#8f1414" strokeWidth="1" />
-                <path d={rightD} fill="#2563EB" stroke="#123f8f" strokeWidth="1" />
+                {/* 腔体是通孔：中间留空；只在下缘留一道孔壁反光、上缘一层落影（卡片小，孔壁不画宽环，免得像贴了个"微笑"） */}
+                <path d={`M${ptOn(CX, CY, CR - 2, 0.20 * Math.PI)} ${arcD(CX, CY, CR - 2, 0.20 * Math.PI, 0.80 * Math.PI, 12)}`}
+                  fill="none" stroke="#FFFDF6" strokeWidth="2.6" strokeLinecap="round" opacity="0.9" />
+                <path d={`M${ptOn(CX, CY, CR - 3, Math.PI * 1.10)} ${arcD(CX, CY, CR - 3, Math.PI * 1.10, Math.PI * 1.90, 14)}`}
+                  fill="none" stroke="#6B5A42" strokeWidth="1.2" strokeLinecap="round" opacity="0.35" />
+                <circle cx={CX} cy={CY} r={CR} fill="none" stroke="#C6B79C" strokeWidth="0.9" opacity="0.8" />
+                {/* 两块弧形极靴（上下渐变，像有厚度的实心块） */}
+                <path d={leftD} fill={`url(#${gN})`} stroke="#8f1414" strokeWidth="0.9" />
+                <path d={rightD} fill={`url(#${gS})`} stroke="#123f8f" strokeWidth="0.9" />
                 <text x={L1 - 31} y={CY + 6} textAnchor="middle" fontSize="17" fontWeight="800"
                   fill="#fff" fontFamily="system-ui,-apple-system,'Segoe UI',sans-serif">N</text>
                 <text x={R0 + 31} y={CY + 6} textAnchor="middle" fontSize="17" fontWeight="800"
@@ -625,18 +653,16 @@ function MotionLayer({ items }) {
                 <line x1={nearX2} y1={yTN} x2={nearX2} y2={yBN} stroke={frontIsRight ? colR2 : colL2}
                   strokeWidth="3.6" strokeLinecap="round" />
                 {/* 两条引线：从开口两端直接接进换向器 */}
-                <line x1={xl2} y1={yBN} x2={CX - 4} y2="119" stroke="#B45309" strokeWidth="1.4" />
-                <line x1={xr2} y1={yBN} x2={CX + 4} y2="119" stroke="#B45309" strokeWidth="1.4" />
-                {/* 换向器：两片半环（随线圈转） */}
-                <path d={disk(0)} fill="#C4763C" stroke="#7a3a10" strokeWidth="1" />
-                <path d={disk(1)} fill="#8A3E0C" stroke="#7a3a10" strokeWidth="1" />
-                <line x1={CX - 12 * Math.cos(seam)} y1={128 - 12 * Math.sin(seam)}
-                  x2={CX + 12 * Math.cos(seam)} y2={128 + 12 * Math.sin(seam)}
-                  stroke="#5C1F10" strokeWidth="1.6" />
-                <circle cx={CX} cy="128" r="3.2" fill="#a8b3c0" stroke="#7c8798" strokeWidth="0.8" />
+                <line x1={xl2} y1={yBN} x2={CX - 4} y2="121" stroke="#B45309" strokeWidth="1.4" />
+                <line x1={xr2} y1={yBN} x2={CX + 4} y2="121" stroke="#B45309" strokeWidth="1.4" />
+                {/* 换向器：**圆环**（不是实心盘），两半随线圈转，中间是轴孔 */}
+                <path d={ringD(12, 5.4, seam, seam + Math.PI, 128)} fill={`url(#${gC1})`} stroke="#7a3a10" strokeWidth="0.9" />
+                <path d={ringD(12, 5.4, seam + Math.PI, seam + 2 * Math.PI, 128)} fill={`url(#${gC2})`} stroke="#7a3a10" strokeWidth="0.9" />
+                <circle cx={CX} cy="128" r="5" fill="#251708" />
+                <circle cx={CX} cy="128" r="2.6" fill="#a8b3c0" stroke="#7c8798" strokeWidth="0.8" />
                 {/* 两个电刷（固定不动） */}
                 {[-1, 1].map((s) => (
-                  <rect key={'br' + s} x={CX + s * 19 - 3.4} y="123.4" width="6.8" height="9.2" rx="1.4"
+                  <rect key={'br' + s} x={CX + s * 13.6 - 2.4} y="122.8" width="4.8" height="10.4" rx="1.2"
                     fill="#3E4653" stroke="#1e2530" strokeWidth="0.8" />
                 ))}
               </g>

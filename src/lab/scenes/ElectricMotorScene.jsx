@@ -36,8 +36,8 @@ const D = {
   cx: 292, cy: 244,          // 电动机剖面中心
   aH: 66,                    // 线圈半宽（θ=0 时）
   bH: 50,                    // 线圈半高
-  magL: 152, magLw: 54,      // 左磁极（N）
-  magR: 378, magRw: 54,      // 右磁极（S）
+  magL: 138, magLw: 72,      // 左磁极（N）—— 块画宽些，N/S 才能像 NB 那样落在块心、不被凹弧压住
+  magR: 374, magRw: 72,      // 右磁极（S）
   egy: 368, egyR: 26,        // 换向器中心 / 半径（实心半圆片，外圆 26）
   brushDx: 35,               // 两电刷离轴的距离（碳块外沿 = 26+9，正好压住铜片外圆）
   L: 118, R: 468, T: 424, B: 574,   // 回路矩形
@@ -805,13 +805,26 @@ function drawMotorBody(ctx, o) {
   const poleTop = cy - 112, poleBot = cy + 112
   const cavR = 116                       // 凹面半径：两块合起来是圆柱腔，弧面吃进块宽约 55%
 
-  /* 腔体：空腔是"空气"，几乎不留色 —— 只给一点点边缘暗晕，让弧面显得往里凹 */
-  const cavG = ctx.createRadialGradient(cx - cavR * 0.12, cy - cavR * 0.22, cavR * 0.10, cx, cy, cavR)
-  cavG.addColorStop(0, 'rgba(255,253,246,0.72)')
-  cavG.addColorStop(0.74, 'rgba(250,242,226,0.45)')
-  cavG.addColorStop(1, 'rgba(214,201,178,0.30)')
-  ctx.beginPath(); ctx.arc(cx, cy, cavR, 0, Math.PI * 2)
-  ctx.fillStyle = cavG; ctx.fill()
+  /* 腔体：两块磁极之间是一个**圆柱形通孔**（照 NB 的画法）—— 中间留空；
+     只在**下缘**画一段孔壁（视线略高，能看见孔的内壁下半圈），上缘只留一条落影线。
+     整个孔都描边会让它变成"圆环"，反而不像通了。 */
+  const wallT = 15
+  ctx.save()
+  ctx.beginPath()
+  ctx.arc(cx, cy, cavR, 0.12 * Math.PI, 0.88 * Math.PI)
+  ctx.arc(cx, cy, cavR - wallT, 0.88 * Math.PI, 0.12 * Math.PI, true)
+  ctx.closePath()
+  const wallG = ctx.createLinearGradient(0, cy, 0, cy + cavR)
+  wallG.addColorStop(0, 'rgba(196,180,152,0.28)')
+  wallG.addColorStop(0.55, 'rgba(240,232,214,0.45)')
+  wallG.addColorStop(1, 'rgba(255,253,247,0.62)')
+  ctx.fillStyle = wallG; ctx.fill()
+  ctx.restore()
+  /* 孔沿：外沿一圈暗线（洞口边界） + 上缘一层淡影（从上方落进去的阴影） */
+  ctx.strokeStyle = 'rgba(118,98,72,0.46)'; ctx.lineWidth = 1.3
+  ctx.beginPath(); ctx.arc(cx, cy, cavR, 0, Math.PI * 2); ctx.stroke()
+  ctx.strokeStyle = 'rgba(96,78,56,0.30)'; ctx.lineWidth = 5
+  ctx.beginPath(); ctx.arc(cx, cy, cavR - 5, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke()
 
   for (const [x0, w0, col, pole, isLeft] of [
     [magL, magLw, lc, lPole, true],
@@ -893,12 +906,12 @@ function drawMotorBody(ctx, o) {
     /* ⑤ 块底阴影（落在腔底上的投影） */
     ctx.fillStyle = shade(col, -0.55)
     ctx.fillRect(xOut + 1, poleBot - 3, w0 - 2, 3)
-    // 极标（只留 N / S 两个大字，不再标"磁极"）
+    // 极标（只留 N / S 两个大字，落在块外侧的实心部分，与线圈同高，像 NB）
     ctx.fillStyle = '#FFFFFF'
-    ctx.font = `900 ${FS(26)}px "Microsoft YaHei", sans-serif`
+    ctx.font = `900 ${FS(30)}px "Microsoft YaHei", sans-serif`
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     ctx.shadowColor = 'rgba(0,0,0,0.28)'; ctx.shadowBlur = FS(4); ctx.shadowOffsetY = FS(1)
-    ctx.fillText(pole, x0 + w0 / 2, cy - 58)
+    ctx.fillText(pole, isLeft ? xOut + 22 : xOut - 22, cy + 2)
     ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0
   }
 
@@ -1066,6 +1079,7 @@ function drawMotorBody(ctx, o) {
      这才是换向发生的时刻（转矩在 θ=±90° 处变号，换向必须在这里）。 */
   const copper = '#B45309'
   const seamBase = theta - Math.PI / 2
+  const ringIn = egyR * 0.42          // 换向器是圆环：中间轴孔半径
   const segCenter = (k) => seamBase + k * Math.PI + Math.PI / 2
   /* 线圈两条引线：从**开口的两端**（左侧竖边的下端、右侧竖边的下端）直插进换向器中心。
      这两条是电流唯一的进出通道 —— 线圈本身不闭合，才不会"两根引线被底边短接"。 */
@@ -1099,7 +1113,7 @@ function drawMotorBody(ctx, o) {
   }
   for (let k = 0; k < 2 && commutator; k++) {
     const a0 = seamBase + k * Math.PI
-    // 实心半圆片（外圆弧 + 收回到圆心 → 半圆面）；两片用**明显不同**的铜色，才看得出是"两片"
+    /* 半环（照 NB：换向器是**圆环**，不是实心圆盘）—— 外弧 + 内弧围成一条铜箍，中间留出轴孔 */
     const halfG = ctx.createLinearGradient(0, -egyR, 0, egyR)
     if (k === 0) {
       halfG.addColorStop(0, '#E7AC6E'); halfG.addColorStop(0.42, '#BA7233'); halfG.addColorStop(1, '#8A4A16')
@@ -1107,11 +1121,20 @@ function drawMotorBody(ctx, o) {
       halfG.addColorStop(0, '#A9682F'); halfG.addColorStop(0.42, '#7E3E10'); halfG.addColorStop(1, '#4E2306')
     }
     ctx.fillStyle = halfG
-    ctx.beginPath(); ctx.arc(0, 0, egyR, a0, a0 + Math.PI); ctx.lineTo(0, 0); ctx.closePath(); ctx.fill()
+    ctx.beginPath()
+    ctx.arc(0, 0, egyR, a0, a0 + Math.PI)
+    ctx.arc(0, 0, ringIn, a0 + Math.PI, a0, true)
+    ctx.closePath(); ctx.fill()
     ctx.strokeStyle = shade(copper, -0.32); ctx.lineWidth = 1.2; ctx.stroke()
-    // 铜面高光（沿弧偏内）
+    // 铜箍高光（沿环中线）
     ctx.strokeStyle = k === 0 ? '#F7CE7A' : '#D97706'; ctx.lineWidth = 1.6
-    ctx.beginPath(); ctx.arc(0, 0, egyR - 3.2, a0 + 0.2, a0 + Math.PI - 0.2); ctx.stroke()
+    ctx.beginPath(); ctx.arc(0, 0, (egyR + ringIn) / 2, a0 + 0.2, a0 + Math.PI - 0.2); ctx.stroke()
+  }
+  // 中间轴孔（黑洞）—— 有了它，"环"才成立
+  if (commutator) {
+    ctx.beginPath(); ctx.arc(0, 0, ringIn - 1, 0, Math.PI * 2)
+    ctx.fillStyle = '#251708'; ctx.fill()
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1.2; ctx.stroke()
   }
   // 绝缘缝（两条直径方向的细缝，跟着线圈转）
   if (commutator) {
@@ -1119,7 +1142,7 @@ function drawMotorBody(ctx, o) {
     ctx.beginPath()
     for (const d of [0, Math.PI]) {
       const a = seamBase + d
-      ctx.moveTo(Math.cos(a) * 5.4, Math.sin(a) * 5.4)
+      ctx.moveTo(Math.cos(a) * ringIn, Math.sin(a) * ringIn)
       ctx.lineTo(Math.cos(a) * egyR, Math.sin(a) * egyR)
     }
     ctx.stroke()
@@ -1128,7 +1151,7 @@ function drawMotorBody(ctx, o) {
     for (let k = 0; k < 2; k++) {
       const plus = Math.cos(segCenter(k)) > 0
       const az = plus ? 0 : Math.PI
-      const sx = Math.cos(az) * (egyR - 9), sy = Math.sin(az) * (egyR - 9)
+      const sx = Math.cos(az) * ((egyR + ringIn) / 2), sy = Math.sin(az) * ((egyR + ringIn) / 2)
       ctx.fillStyle = plus ? '#ECFDF5' : '#FFF7ED'
       ctx.strokeStyle = plus ? '#15803D' : '#B45309'
       ctx.lineWidth = 1
@@ -1144,10 +1167,11 @@ function drawMotorBody(ctx, o) {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     for (let k = 0; k < 2; k++) {
       const ac = segCenter(k) + 0.62
+      const rr2 = (egyR + ringIn) / 2 
       ctx.fillStyle = '#FFF7ED'
       ctx.strokeStyle = 'rgba(70,26,4,0.75)'; ctx.lineWidth = 2.2
-      ctx.strokeText(k === 0 ? '①' : '②', Math.cos(ac) * (egyR * 0.56), Math.sin(ac) * (egyR * 0.56))
-      ctx.fillText(k === 0 ? '①' : '②', Math.cos(ac) * (egyR * 0.56), Math.sin(ac) * (egyR * 0.56))
+      ctx.strokeText(k === 0 ? '①' : '②', Math.cos(ac) * rr2, Math.sin(ac) * rr2)
+      ctx.fillText(k === 0 ? '①' : '②', Math.cos(ac) * rr2, Math.sin(ac) * rr2)
     }
   }
   // 转轴（从圆心穿过，压在铜片之上）
