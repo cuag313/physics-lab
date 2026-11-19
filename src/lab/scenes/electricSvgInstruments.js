@@ -993,9 +993,9 @@ function breakerInner() {
  * 图里按**合闸**位画（横杆在上 66..74.6、两根腿 74.6..97.6），转 180° 后横杆正好落到 84.4..93、
  * 两根腿翻到 61.4..84.4 —— 就是实拍里"横在下、两竖在上"。 */
 export function breakerLeverSVG(dark) {
-  const barFill = dark ? '#16365f' : 'url(#es-lv-lever)'
-  const legFill = dark ? '#12304f' : 'url(#es-lv-leg)'
-  const edge = dark ? '#0b2440' : '#123f6d'
+  const barFill = dark ? '#23538c' : 'url(#es-lv-lever)'
+  const legFill = dark ? '#1c4674' : 'url(#es-lv-leg)'
+  const edge = dark ? '#0e2d50' : '#123f6d'
   return `
     <svg width="124" height="152" viewBox="0 0 124 152">
       <defs>

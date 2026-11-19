@@ -1431,10 +1431,10 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
            见 flipAngle 的注释：那条缝的位置不是随便取的，它是唯一能让两个终态都留在滑槽里的线。 */
         @keyframes esbFlipToTrip{
           0%{transform:perspective(520px) rotateX(0deg)}
-          100%{transform:perspective(520px) rotateX(var(--esb-flip-deg, 74deg))}
+          100%{transform:perspective(520px) rotateX(var(--esb-flip-deg, -74deg))}
         }
         @keyframes esbFlipToClose{
-          0%{transform:perspective(520px) rotateX(var(--esb-flip-deg, 74deg))}
+          0%{transform:perspective(520px) rotateX(var(--esb-flip-deg, -74deg))}
           100%{transform:perspective(520px) rotateX(0deg)}
         }
         .esb-bklever.to-trip{animation:esbFlipToTrip .46s cubic-bezier(.4,.08,.32,1) both}
@@ -1624,7 +1624,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
                 left: c.x, top: c.y, width: 124, height: 152,
                 transform: c.closed
                   ? 'none'
-                  : 'perspective(520px) rotateX(var(--esb-flip-deg, 74deg))',
+                  : 'perspective(520px) rotateX(var(--esb-flip-deg, -74deg))',
               }}
             >
               {LEVER_SLABS.map((z, i) => (
