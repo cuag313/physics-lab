@@ -1488,6 +1488,14 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         .esb-boxhl{position:absolute;inset:-6px;border:2px dashed #2563eb;border-radius:12px;
           opacity:0;pointer-events:none;transition:opacity .15s}
         .esb-comp:hover .esb-boxhl{opacity:.45}
+        /* 单件删除：鼠标停在器材上时，卡片左上角长出红色 ✕（不用再"全部重置"）；
+           平时 opacity:0 + pointer-events:none，免得挡住拖动和接线柱 */
+        .esb-del{position:absolute;left:-6px;top:-24px;width:22px;height:22px;border-radius:50%;
+          background:#e11d48;color:#fff;border:2px solid #fff;display:grid;place-items:center;
+          font-size:12px;font-weight:700;line-height:1;cursor:pointer;z-index:13;
+          opacity:0;pointer-events:none;transition:opacity .15s,transform .15s;
+          box-shadow:0 3px 9px rgba(2,6,23,.22);transform:scale(.8)}
+        .esb-comp:hover .esb-del{opacity:1;pointer-events:auto;transform:scale(1)}
         .esb-term{position:absolute;width:20px;height:20px;border-radius:50%;
           background:transparent;border:2px solid transparent;cursor:crosshair;z-index:5;
           pointer-events:auto;transition:transform .12s,box-shadow .12s,border-color .12s}
@@ -1609,6 +1617,13 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
                 onDragStart={(e) => e.preventDefault()}
               >
                 <div className="esb-boxhl" />
+                {/* 单件删除按钮：悬停出现，点它就删这只（连着它身上的导线一起删） */}
+                <div
+                  className="esb-del"
+                  title="删除这个器材"
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); removeComp(c.id) }}
+                >✕</div>
                 <div dangerouslySetInnerHTML={{ __html: t.render(c, dyn) }} />
                 {t.meter && ro && (
                   <div className="esb-readout" style={{ opacity: c.showRead ? 1 : 0, color: ro.color }}>{ro.text}</div>
