@@ -434,7 +434,7 @@ function steamWisps(st, o, { n = 4, rise = 14, r0 = 2.4, r1 = 5.2, drift = 2, sp
  * 起始帧 —— 看起来就是"抖一下 / 冻住"。所以"会动的东西"单独放在这一层，自己跑 rAF，
  * 只重渲染自己，与整场景重渲染解耦（和 ElectronFlow 同一套做法）。
  */
-function MotionLayer({ items }) {
+function MotionLayer({ items, dissect }) {
   const [, setTick] = useState(0)
   const phRef = useRef(new Map())
   const itemsRef = useRef(items)
@@ -560,6 +560,89 @@ function MotionLayer({ items }) {
            只把轮盘裁成圆、绕轮心旋转；皮带、磁极、底座都不动（所以裁到 r=44，避开皮带）。
            转速 ∝ 电流；接线柱 1、2 接反 → dir=-1 → 反转。 */
         if (it.kind === 'motor') {
+          /* ── 透视（剖视）：卡片直接变成 NOBOOK 式剖面 ——
+             两块带圆弧凹面的磁极拼成圆柱腔，单匝线圈绕竖直轴在里面扫，
+             下面接两片半环换向器、左右两只电刷。这样"自己动手"里也能看见原理，
+             而不是只看见一只黑皮带轮在转。 ── */
+          if (dissect) {
+            const CX = 100, CY = 68, CR = 62
+            const PT = 15, PB = 121, BLKW = 46, L1 = 54, R0 = 146
+            const dx = Math.abs(CX - L1)
+            const hitY = Math.sqrt(Math.max(1, CR * CR - dx * dx))
+            const base = Math.atan2(hitY, dx)
+            const arcD = (ccx, ccy, r, a0, a1, n = 12) => {
+              let d = ''
+              for (let i = 0; i <= n; i++) {
+                const a = a0 + ((a1 - a0) * i) / n
+                d += `L${(ccx + r * Math.cos(a)).toFixed(2)},${(ccy + r * Math.sin(a)).toFixed(2)} `
+              }
+              return d
+            }
+            const leftD = `M${L1 - BLKW},${PT} L${L1},${PT} L${L1},${(CY - hitY).toFixed(2)} `
+              + arcD(CX, CY, CR, Math.PI + base, Math.PI - base)
+              + `L${L1},${PB} L${L1 - BLKW},${PB} Z`
+            const rightD = `M${R0 + BLKW},${PT} L${R0},${PT} L${R0},${(CY - hitY).toFixed(2)} `
+              + arcD(CX, CY, CR, -base, base)
+              + `L${R0},${PB} L${R0 + BLKW},${PB} Z`
+
+            /* 线圈：与 Tab1 同一套投影（竖边一近一远 → 转起来是平行四边形） */
+            const phi = -st.a * it.dir
+            const cphi = Math.cos(phi)
+            const aW = 29, bH = 25
+            const halfW = aW * Math.abs(cphi)
+            const off2 = 4.2 * Math.abs(Math.sin(phi))
+            const frontIsRight = cphi >= 0
+            const xl2 = CX - halfW, xr2 = CX + halfW
+            const nearX2 = frontIsRight ? xr2 : xl2
+            const farX2 = frontIsRight ? xl2 : xr2
+            const yTN = CY - bH + off2, yBN = CY + bH + off2
+            const yTF = CY - bH - off2, yBF = CY + bH - off2
+            const RED2 = '#DC2626', BLUE2 = '#2563EB'
+            const colR2 = it.dir > 0 ? RED2 : BLUE2
+            const colL2 = it.dir > 0 ? BLUE2 : RED2
+            const seam = phi - Math.PI / 2
+            const disk = (k) => {
+              const a0 = seam + k * Math.PI
+              return `M${CX},128 ${arcD(CX, 128, 12, a0, a0 + Math.PI, 10)}Z`
+            }
+            return (
+              <g key={it.id} transform={`translate(${it.x},${it.y})`}>
+                {/* 剖面底版：盖住卡片上的实拍图标（导线从卡底边穿进去，读作"接在机内"） */}
+                <rect x="2" y="2" width="196" height="165" rx="10" fill="#fffaf1" stroke="#e8dcc6" strokeWidth="1.2" />
+                {/* 两块弧形极靴 */}
+                <path d={leftD} fill="#DC2626" stroke="#8f1414" strokeWidth="1" />
+                <path d={rightD} fill="#2563EB" stroke="#123f8f" strokeWidth="1" />
+                <text x={L1 - 31} y={CY + 6} textAnchor="middle" fontSize="17" fontWeight="800"
+                  fill="#fff" fontFamily="system-ui,-apple-system,'Segoe UI',sans-serif">N</text>
+                <text x={R0 + 31} y={CY + 6} textAnchor="middle" fontSize="17" fontWeight="800"
+                  fill="#fff" fontFamily="system-ui,-apple-system,'Segoe UI',sans-serif">S</text>
+                {/* 转轴 */}
+                <line x1={CX} y1={CY - bH - 8} x2={CX} y2="130" stroke="#94a3b8" strokeWidth="2" />
+                {/* 线圈：远边 → 上下边 → 近边 */}
+                <line x1={farX2} y1={yTF} x2={farX2} y2={yBF} stroke={frontIsRight ? colL2 : colR2}
+                  strokeWidth="2.2" opacity="0.72" strokeLinecap="round" />
+                <line x1={farX2} y1={yTF} x2={nearX2} y2={yTN} stroke="#B45309" strokeWidth="2.4" />
+                <line x1={farX2} y1={yBF} x2={nearX2} y2={yBN} stroke="#B45309" strokeWidth="2.4" />
+                <line x1={nearX2} y1={yTN} x2={nearX2} y2={yBN} stroke={frontIsRight ? colR2 : colL2}
+                  strokeWidth="3.6" strokeLinecap="round" />
+                {/* 两条引线接进换向器 */}
+                <line x1={xl2} y1={yBN} x2={CX - 4} y2="119" stroke="#B45309" strokeWidth="1.4" />
+                <line x1={xr2} y1={yBN} x2={CX + 4} y2="119" stroke="#B45309" strokeWidth="1.4" />
+                {/* 换向器：两片半环（随线圈转） */}
+                <path d={disk(0)} fill="#C4763C" stroke="#7a3a10" strokeWidth="1" />
+                <path d={disk(1)} fill="#8A3E0C" stroke="#7a3a10" strokeWidth="1" />
+                <line x1={CX - 12 * Math.cos(seam)} y1={128 - 12 * Math.sin(seam)}
+                  x2={CX + 12 * Math.cos(seam)} y2={128 + 12 * Math.sin(seam)}
+                  stroke="#5C1F10" strokeWidth="1.6" />
+                <circle cx={CX} cy="128" r="3.2" fill="#a8b3c0" stroke="#7c8798" strokeWidth="0.8" />
+                {/* 两个电刷（固定不动） */}
+                {[-1, 1].map((s) => (
+                  <rect key={'br' + s} x={CX + s * 19 - 3.4} y="123.4" width="6.8" height="9.2" rx="1.4"
+                    fill="#3E4653" stroke="#1e2530" strokeWidth="0.8" />
+                ))}
+              </g>
+            )
+          }
           const M = MOTOR_PULLEY
           /* 转向口径（2026-11-19 用户确认）：从纸面外往里看（视线基本沿电机轴），转子在**纸面内逆时针**转。
              SVG 里 rotate(+deg) 是顺时针，所以统一取负号：dir=+1（接线柱 a→b 的那个电流方向）→ 逆时针；
@@ -1345,13 +1428,13 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         /* 这三台只按"绝对时间"演进（汽往上飘、指示灯呼吸、电阻丝闪），不用转速，
            所以 v 给 0 —— st.led 每帧照加，动画照样跑；断电（P=0）就整条不画。 */
         out.push({ id: c.id, kind: c.type, x: c.x, y: c.y, v: 0 })
-      } else if (c.type === 'motor' && I > 0.02) {
+      } else if (c.type === 'motor' && (I > 0.02 || dissect)) {
         // 单位：rad / 秒；0.6 A 约半转每秒，1 A 再快一点（NB 里就是这个观感）
         out.push({
           id: c.id, kind: 'motor', x: c.x, y: c.y,
-          v: 1.9 + 2.2 * Math.min(1.4, I),
+          v: I > 0.02 ? 1.9 + 2.2 * Math.min(1.4, I) : 0,
           dir: (o._Iraw || 0) < -1e-6 ? -1 : 1,
-          dim: dissect,   // 透视时自己也要淡下去，否则轮盘像一块实心盖住内部标注
+          dim: false,
         })
       }
     }
@@ -1656,7 +1739,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         <ElectronFlow items={flowItems} />
 
         {/* 运动层：铝盘在转 / 滚筒在洗（自带 rAF，不进器材的字符串重渲染） */}
-        <MotionLayer items={motionItems} />
+        <MotionLayer items={motionItems} dissect={dissect} />
 
         {/* 元件层：电器排在插座之后渲染（机器压在插座上＝"插进去了"）。
             插座顶部那三个接线端被插上的机器盖住是正常的：真机上插座在机器背后，

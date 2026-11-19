@@ -673,12 +673,12 @@ export default function ElectricMotorScene() {
             offset={{ left: 22, top: 18 }}
             purpose="看懂通电线圈在磁场中转动、换向器为什么必须有，以及转向和转速各由什么决定。"
             steps={[
-              '先看两块磁极：N 红在左、S 蓝在右，中间是水平磁感线',
-              '点开关闭合，线圈转起来；观察换向器两片铜片跟着翻 + 右侧俯视小图的转向',
-              '若线圈正好停在平衡位置不动（"死点"），点「✋ 手拨一下」给它个初速度',
-              '看右下曲线：直流 + 换向器 → τ–θ 恒为正；拆掉换向器 → 一正一负',
-              '点「✗ 换向器已接入」拆掉它，线圈摆几下就停在平衡位置',
-              '把电流 I 调大或调小，看转速跟着变；点「磁场」对调 N/S，看俯视转向反过来',
+              '磁极是两块带圆弧凹面的厚块 —— 中间是圆柱腔，线圈整圈都在磁场里',
+              '点开关：线圈绕竖直轴转，两条竖边一前一后扫过，θ=90° 时侧身成一条线',
+              '竖边的红 / 蓝就是电流方向；每半圈换向器换边 → 红蓝对调 → 仍朝同一边转',
+              '若卡在平衡位置不动（"死点"），点「✋ 手拨一下」给它个初速度',
+              '点「✗ 换向器已接入」拆掉它：红蓝不再对调，线圈摆几下停住',
+              '调电流 I / 点「磁场」对调 N、S，看转速与转向怎么变',
             ]}
             hint="转矩 τ = K·I·cosθ；换向器在平衡位置处每半圈翻转电流 → τ 恒同向；改变电流方向或磁场方向任一 → 俯视转向反。"
           />
@@ -775,7 +775,7 @@ function drawMotorBody(ctx, o) {
   const c = Math.cos(theta)
   const aH = D.aH, bH = D.bH
   const magL = D.magL, magLw = D.magLw, magR = D.magR, magRw = D.magRw
-  const egy = D.egy, egyR = D.egyR, brushDx = D.brushDx
+  const egy = D.egy, egyR = D.egyR
 
   /* 电流/转矩的符号约定（把"电流方向"和"受力方向"分开算，不再混用一个 dirSign）：
    *   curSign > 0 → 右侧竖边的电流朝上（左侧朝下）
@@ -795,90 +795,127 @@ function drawMotorBody(ctx, o) {
   const lPole = leftIsN ? 'N' : 'S'
   const rPole = leftIsN ? 'S' : 'N'
 
-  for (const [x0, w0, col, pole] of [
-    [magL, magLw, lc, lPole],
-    [magR, magRw, rc, rPole],
+  /* 磁极：照 NOBOOK 的样子 —— 两块厚块**内侧挖出大圆弧凹面**，两块拼成一个圆柱腔，
+     线圈就在腔里扫。极面是弧面（不是直板），这才是真电动机的"弧形极靴"，
+     一眼能看出"磁场充满整个空腔、线圈整圈都在场里"。 */
+  const poleTop = cy - 108, poleBot = cy + 108
+  const cavR = 116                       // 凹面半径：两块合起来是圆柱腔，弧面吃进块宽约 55%
+  for (const [x0, w0, col, pole, isLeft] of [
+    [magL, magLw, lc, lPole, true],
+    [magR, magRw, rc, rPole, false],
   ]) {
+    const xIn = isLeft ? x0 + w0 : x0
+    const xOut = isLeft ? x0 : x0 + w0
+    const dx = Math.abs(cx - xIn)
+    const hitY = Math.sqrt(Math.max(0, cavR * cavR - dx * dx))
+    const base = Math.atan2(hitY, dx)
+    const a0 = isLeft ? Math.PI - base : -base
+    const a1 = isLeft ? Math.PI + base : base
+    ctx.beginPath()
+    ctx.moveTo(xOut, poleTop); ctx.lineTo(xIn, poleTop)
+    ctx.lineTo(xIn, cy - hitY)
+    ctx.arc(cx, cy, cavR, a0, a1, false)
+    ctx.lineTo(xIn, poleBot); ctx.lineTo(xOut, poleBot)
+    ctx.closePath()
     const g = ctx.createLinearGradient(x0, 0, x0 + w0, 0)
-    g.addColorStop(0, shade(col, 0.28))
-    g.addColorStop(0.45, col)
-    g.addColorStop(1, shade(col, -0.25))
+    g.addColorStop(0, shade(col, 0.30))
+    g.addColorStop(0.42, col)
+    g.addColorStop(1, shade(col, -0.34))
     ctx.fillStyle = g
-    ctx.strokeStyle = shade(col, -0.35); ctx.lineWidth = 1.6
-    ctx.beginPath(); ctx.roundRect(x0, cy - 108, w0, 216, 7); ctx.fill(); ctx.stroke()
-    // 极面高光
-    ctx.fillStyle = shade(col, 0.42)
-    ctx.fillRect(pole === 'N' ? x0 + w0 - 7 : x0, cy - 104, 7, 208)
-    // 极标
+    ctx.fill()
+    ctx.strokeStyle = shade(col, -0.45); ctx.lineWidth = 1.4
+    ctx.stroke()
+    /* 弧面的立体感：只在块内（clip 到块轮廓）沿弧画一条"上暗—中亮—下暗"的窄带，
+       像 NB 那样让极面看起来是一张**曲面**，而不是一条贴在块上的亮弧。 */
+    ctx.save()
+    ctx.clip()
+    const ag = ctx.createLinearGradient(0, poleTop, 0, poleBot)
+    ag.addColorStop(0, shade(col, -0.18))
+    ag.addColorStop(0.40, shade(col, 0.26))
+    ag.addColorStop(0.60, shade(col, 0.30))
+    ag.addColorStop(1, shade(col, -0.24))
+    ctx.beginPath(); ctx.arc(cx, cy, cavR - 7, a0 + 0.015, a1 - 0.015)
+    ctx.strokeStyle = ag; ctx.lineWidth = 15; ctx.globalAlpha = 0.82; ctx.stroke()
+    ctx.restore()
+    /* 块顶面窄亮条 + 底面窄暗条（NB 两块都有这个厚度感） */
+    ctx.fillStyle = shade(col, 0.46)
+    ctx.fillRect(x0 + 1, poleTop + 1, w0 - 2, 5)
+    ctx.fillStyle = shade(col, -0.50)
+    ctx.fillRect(x0 + 1, poleBot - 4, w0 - 2, 3)
+    // 极标（只留 N / S 两个大字，不再标"磁极"）
     ctx.fillStyle = '#FFFFFF'
     ctx.font = `900 ${FS(26)}px "Microsoft YaHei", sans-serif`
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText(pole, x0 + w0 / 2, cy - 56)
-    ctx.font = `${FS(8.5)}px "Microsoft YaHei", sans-serif`
-    ctx.fillStyle = 'rgba(255,255,255,0.9)'
-    ctx.fillText('磁极', x0 + w0 / 2, cy + 62)
+    ctx.fillText(pole, x0 + w0 / 2, cy - 64)
   }
 
-  /* 磁感线：从 N 极面水平指向 S 极面（永磁体，一直在） */
-  const ys = [-84, -50, -17, 17, 50, 84]
-  ctx.strokeStyle = on ? 'rgba(100,116,139,0.62)' : 'rgba(120,134,146,0.45)'
-  ctx.lineWidth = 1.3
+  /* 磁感线：只留 4 条很淡的（N→S），是"底图"，不能抢线圈 */
+  const ys = [-70, -24, 24, 70]
+  ctx.strokeStyle = on ? 'rgba(100,116,139,0.30)' : 'rgba(120,134,146,0.22)'
+  ctx.lineWidth = 1
   for (const y of ys) {
-    ctx.setLineDash([5, 5])
+    ctx.setLineDash([6, 6])
     ctx.beginPath(); ctx.moveTo(magL + magLw, cy + y); ctx.lineTo(magR, cy + y); ctx.stroke()
     ctx.setLineDash([])
-    // 箭头（指向 S 极）
-    const ax = leftIsN ? magR - 6 : magL + magLw + 6
-    drawArrow(ctx, leftIsN ? magR - 16 : magL + magLw + 16, cy + y, ax, cy + y,
-      on ? 'rgba(71,85,105,0.75)' : 'rgba(120,134,146,0.45)', 1.2, 7)
+    const ax = leftIsN ? magR - 10 : magL + magLw + 10
+    drawArrow(ctx, leftIsN ? magR - 20 : magL + magLw + 20, cy + y, ax, cy + y,
+      'rgba(100,116,139,0.36)', 1, 6)
   }
 
   /* 转轴（竖直，在屏幕平面内 —— 线圈绕它旋转） */
   ctx.strokeStyle = '#94A3B8'; ctx.lineWidth = 2.4
   ctx.beginPath(); ctx.moveTo(cx, cy - bH - 14); ctx.lineTo(cx, egy + 6); ctx.stroke()
 
-  /* 线圈：宽度随 cosθ 收缩（侧视时"转出屏幕"的那一半变细变淡） */
+  /* 线圈：单匝矩形，绕**竖直轴**转（θ=0 → 线圈平面在纸面内；θ=±90° → 侧身成一条线）。
+     两条竖边用**红 / 蓝**表示电流朝上 / 朝下（换向器每半圈把两色对调，这就是"换向"看得见的那一下）；
+     靠观者的那条边画粗画亮、远的一条画细画暗，才有"侧身掠过"的立体感。 */
   const halfW = aH * Math.abs(c)
   const frontIsRight = c >= 0
   const xl = cx - halfW, xr = cx + halfW
-  const frontW = 4.2, backW = 2.2
+  const REDC = '#DC2626', BLUEC = '#2563EB', DIMC = '#9A8A76'
+  const colRight = hasI ? (curSign > 0 ? REDC : BLUEC) : DIMC
+  const colLeft = hasI ? (curSign > 0 ? BLUEC : REDC) : DIMC
+  const nearW = 4.0, farW = 2.4
+  const farX = frontIsRight ? xl : xr
+  const nearX = frontIsRight ? xr : xl
 
-  // 上下两条边
-  ctx.strokeStyle = on ? '#B45309' : '#8A7A66'
-  ctx.lineWidth = 3
-  ctx.beginPath(); ctx.moveTo(xl, cy - bH); ctx.lineTo(xr, cy - bH); ctx.stroke()
-  ctx.beginPath(); ctx.moveTo(xl, cy + bH); ctx.lineTo(xr, cy + bH); ctx.stroke()
+  /* 立体感：线圈两条竖边一近一远，透视上"近的一条偏下、远的一条偏上"，
+     转过角度时整只矩形框就变成平行四边形 —— 这样眼睛看到的是"门在转"，
+     而不是"宽度被压扁"。 */
+  const off = 5.6 * Math.abs(Math.sin(theta))
+  const yTopN = cy - bH + off, yBotN = cy + bH + off
+  const yTopF = cy - bH - off, yBotF = cy + bH - off
 
-  // 左右两条竖边（前边粗、后边细）
-  const lwL = frontIsRight ? backW : frontW
-  const lwR = frontIsRight ? frontW : backW
-  const colF = on ? '#C2410C' : '#8A7A66'
-  const colB = on ? '#D9A18A' : '#B3A797'
-  ctx.strokeStyle = frontIsRight ? colB : colF
-  ctx.lineWidth = lwL
-  ctx.beginPath(); ctx.moveTo(xl, cy - bH); ctx.lineTo(xl, cy + bH); ctx.stroke()
-  ctx.strokeStyle = frontIsRight ? colF : colB
-  ctx.lineWidth = lwR
-  ctx.beginPath(); ctx.moveTo(xr, cy - bH); ctx.lineTo(xr, cy + bH); ctx.stroke()
+  // 远侧竖边（先画，被近侧压住）
+  ctx.save()
+  ctx.globalAlpha = 0.74
+  ctx.strokeStyle = frontIsRight ? colLeft : colRight
+  ctx.lineWidth = farW
+  ctx.beginPath(); ctx.moveTo(farX, yTopF); ctx.lineTo(farX, yBotF); ctx.stroke()
+  ctx.restore()
 
-  // 线圈里的电流方向（有电流时画箭头；交流时随 i(t) 每半周期翻向，粗细随 |i(t)|）
-  if (hasI && halfW > 6) {
-    const col = '#F59E0B'
-    const ay = bH - 16
-    const lwI = 1.5 + 1.5 * irel
-    if (curSign > 0) {
-      drawArrow(ctx, xr, cy + ay, xr, cy - ay, col, lwI, 8)
-      drawArrow(ctx, xl, cy - ay, xl, cy + ay, col, lwI, 8)
-    } else {
-      drawArrow(ctx, xr, cy - ay, xr, cy + ay, col, lwI, 8)
-      drawArrow(ctx, xl, cy + ay, xl, cy - ay, col, lwI, 8)
-    }
-    if (irel > 0.18) {
-      ctx.fillStyle = col
-      ctx.font = `bold ${FS(9)}px "Microsoft YaHei", sans-serif`
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('I', cx, cy + 3)
-    }
+  // 上下两条边（铜色的"框"，从远边连到近边）
+  ctx.strokeStyle = on ? '#B45309' : '#A2917C'
+  ctx.lineWidth = 2.6
+  ctx.beginPath(); ctx.moveTo(farX, yTopF); ctx.lineTo(nearX, yTopN); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(farX, yBotF); ctx.lineTo(nearX, yBotN); ctx.stroke()
+
+  // 近侧竖边（粗、亮、带暗描边）
+  ctx.strokeStyle = 'rgba(60,40,20,0.30)'; ctx.lineWidth = nearW + 1.6
+  ctx.beginPath(); ctx.moveTo(nearX, yTopN); ctx.lineTo(nearX, yBotN); ctx.stroke()
+  ctx.strokeStyle = frontIsRight ? colRight : colLeft
+  ctx.lineWidth = nearW
+  ctx.beginPath(); ctx.moveTo(nearX, yTopN); ctx.lineTo(nearX, yBotN); ctx.stroke()
+
+  // 线圈里的电流方向（小箭头，颜色与那条边一致）
+  if (hasI && halfW > 8) {
+    const ay = bH - 14
+    const lwI = 1.2 + 1.6 * irel
+    const upR = curSign > 0
+    const rA = cy + ay + off, rB = cy - ay + off
+    const lA = cy + ay - off, lB = cy - ay - off
+    drawArrow(ctx, xr, upR ? rA : rB, xr, upR ? rB : rA, colRight, lwI, 7)
+    drawArrow(ctx, xl, upR ? lB : lA, xl, upR ? lA : lB, colLeft, lwI, 7)
   }
 
   /* 两侧安培力：侧视图里力垂直于纸面 → 用 ⊙（朝纸外）/ ⊗（朝纸内）表达，
@@ -906,18 +943,13 @@ function drawMotorBody(ctx, o) {
     const dotDx = Math.max(halfW, 12) + 7
     drawDot(cx - dotDx, cy, lOut)
     drawDot(cx + dotDx, cy, !lOut)
-    ctx.fillStyle = col
-    ctx.font = `bold ${FS(9)}px "Microsoft YaHei", sans-serif`
-    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-    ctx.fillText('F', cx - dotDx, cy - fx - 4)
-    ctx.fillText('F', cx + dotDx, cy - fx - 4)
   }
 
   /* 转向示意（轴顶）：线圈是绕**竖直轴转出纸面**的，屏幕里看不到旋向，
      所以画一枚很小的"俯视"小图（从上往下看），箭头才是真正的转向。 */
   if (on && Math.abs(iNow) > 0.001) {
     const col = tauSign >= 0 ? '#15803D' : '#7C3AED'
-    const cxm = cx - 44, cym = cy - bH - 22, rr = 9
+    const cxm = cx, cym = cy - bH - 28, rr = 8.6
     ctx.save()
     ctx.strokeStyle = 'rgba(100,116,139,0.7)'; ctx.lineWidth = 1
     ctx.beginPath(); ctx.arc(cxm, cym, rr, 0, Math.PI * 2); ctx.stroke()
@@ -1066,19 +1098,12 @@ function drawMotorBody(ctx, o) {
   ctx.fillStyle = commutator ? '#5D4037' : '#94A3B8'
   ctx.font = `bold ${FS(9)}px "Microsoft YaHei", sans-serif`
   ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-  ctx.fillText(commutator ? '换向器（① ② 两片铜片，每半圈换边翻电流）' : '换向器（已拆掉）', cx, egy + egyR + 8)
+  ctx.fillText(commutator ? '换向器（每半圈换边 → 电流反向）' : '换向器（已拆掉）', cx, egy + egyR + 8)
   if (!commutator) {
     ctx.fillStyle = '#DC2626'
     ctx.font = `bold ${FS(8.8)}px "Microsoft YaHei", sans-serif`
     ctx.fillText('铜片断开 → 半圈后电流不换向', cx, egy + egyR + 23)
   }
-  // 电刷标注
-  ctx.fillStyle = '#64748B'
-  ctx.font = `${FS(8.5)}px "Microsoft YaHei", sans-serif`
-  ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-  ctx.fillText('电刷', cx + brushDx + 6, egy - 16)
-  ctx.textAlign = 'right'
-  ctx.fillText('电刷', cx - brushDx - 6, egy - 16)
 
   /* 换向器放大窗：直径 52px 的接触处实在看不清"此刻哪片贴哪刷"，
      所以照教学片的做法在旁边挂一个同步放大的接触处（同一套相位、同一套颜色）。 */
