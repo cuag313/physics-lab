@@ -44,6 +44,7 @@ const D = {
   batX: 196, swX: 350,
   row1: 624, row2: 680,
   chX: 596, chY: 456, chW: 256, chH: 132,   // τ–θ 曲线
+  zx: 566, zy: 292, zr: 64,   // 换向器"放大窗"（呼应教学片里"下方同步放大接触处"）
   VW: 900, VH: 730,
 }
 
@@ -202,7 +203,7 @@ export default function ElectricMotorScene() {
       cx, cy, theta: s.theta, on, Iamp: s.I,
       iNow: typeof s.iNow === 'number' ? s.iNow : s.I,
       field: s.field, commutator: s.commutator, FS, time: s.time, closed: on,
-      omega: s.omega,
+      omega: s.omega, ac,
     })
 
     /* ─── 电源 / 开关 ─── */
@@ -511,6 +512,7 @@ export default function ElectricMotorScene() {
           [['线圈转到'], ['平衡位置', '#7C3AED', 1], ['（平面与磁感线垂直）时，两侧安培力在同一直线上、方向相反 → 转矩为零，'], ['再转不过去', '#DC2626', 1], ['。']],
           [['拆掉换向器：线圈在平衡位置附近'], ['来回摆动几下就停住', '#DC2626', 1], ['（右下 τ–θ 曲线上一半正、一半负，净功为零）。']],
           [['换向器每半圈把线圈里的'], ['电流方向翻转一次', '#15803D', 1], ['，转矩方向就永远是同一侧 → 连续转动。']],
+          [['换向那一瞬（铜片上两道缝同时对着两只电刷）电流断开、转矩为零，全靠'], ['惯性冲过去', '#7C3AED', 1], ['——右上放大窗会闪红提醒你"就是这一刻换的边"。']],
           [['点「换向器」按钮拆掉它，就是本实验最直观的一次对比。']],
           [['再点「电源」切到'], ['交流 ~', '#1D4ED8', 1], ['：电流每半周期自己就反一次向，换向器也救不回来，线圈只原地抖动——所以'], ['直流电动机必须有换向器', '#15803D', 1], ['，交流电动机要用别的办法（如旋转磁场）。']],
         ],
@@ -1025,6 +1027,17 @@ function drawMotorBody(ctx, o) {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
       ctx.fillText(plus ? '+' : '−', sx, sy)
     }
+    /* ① ② 编号：给两片铜片"起名字"，这样"每半圈换边"才看得见（片转了、名字跟着转）。
+       角度避开压在同一方位的 ＋/－ 圆牌，否则小盘上会互相盖住。 */
+    ctx.font = `900 ${FS(9)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    for (let k = 0; k < 2; k++) {
+      const ac = segCenter(k) + 0.62
+      ctx.fillStyle = '#FFF7ED'
+      ctx.strokeStyle = 'rgba(70,26,4,0.75)'; ctx.lineWidth = 2.2
+      ctx.strokeText(k === 0 ? '①' : '②', Math.cos(ac) * (egyR * 0.56), Math.sin(ac) * (egyR * 0.56))
+      ctx.fillText(k === 0 ? '①' : '②', Math.cos(ac) * (egyR * 0.56), Math.sin(ac) * (egyR * 0.56))
+    }
   }
   // 转轴（从圆心穿过，压在铜片之上）
   ctx.fillStyle = '#A8B3C0'
@@ -1032,27 +1045,28 @@ function drawMotorBody(ctx, o) {
   ctx.beginPath(); ctx.arc(0, 0, 4.6, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
   ctx.restore()
 
-  /* ─── 两个电刷（固定不转）：碳块压在外圆上 + 弹簧片 + 引线 ─── */
+  /* ─── 两个电刷（固定不转）：碳块**压在外圆上**（内沿压进铜片 1.2px）+ 弹簧片 + 引线 ─── */
+  const brushIn = egyR - 1.2, brushOut = egyR + 11.8
   for (const s of [-1, 1]) {
-    const bx = cx + s * (egyR + 3.5)          // 碳块中心：外圆边上，内沿压进铜片 1.5px
+    const bx = cx + s * (brushIn + brushOut) / 2
     ctx.fillStyle = commutator ? '#3E4653' : '#9AA3AE'
     ctx.strokeStyle = commutator ? '#1E2530' : '#8A939E'
     ctx.lineWidth = 1.2
-    ctx.beginPath(); ctx.roundRect(bx - 4.5, egy - 7.5, 9, 15, 2.5); ctx.fill(); ctx.stroke()
+    ctx.beginPath(); ctx.roundRect(bx - 6.5, egy - 7.5, 13, 15, 2.5); ctx.fill(); ctx.stroke()
     // 碳块上的磨痕高光
     ctx.fillStyle = commutator ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.18)'
-    ctx.beginPath(); ctx.roundRect(bx - 3.4, egy - 6.4, 2.2, 12.8, 1.1); ctx.fill()
-    // 弹簧（外侧一小段压紧的弹片，只画一笔，别做成两个黄点）
+    ctx.beginPath(); ctx.roundRect(bx - 5.2, egy - 6.4, 2.2, 12.8, 1.1); ctx.fill()
+    // 弹簧（压在碳块外侧的一小段弹片）
     ctx.strokeStyle = commutator ? '#9A7B3A' : '#B7BFC9'; ctx.lineWidth = 1.4
     ctx.beginPath()
-    ctx.moveTo(cx + s * (egyR + 8.4), egy)
-    ctx.lineTo(cx + s * (brushDx - 1), egy)
+    ctx.moveTo(cx + s * brushOut, egy)
+    ctx.lineTo(cx + s * (brushOut + 6.4), egy)
     ctx.stroke()
   }
   ctx.fillStyle = commutator ? '#5D4037' : '#94A3B8'
   ctx.font = `bold ${FS(9)}px "Microsoft YaHei", sans-serif`
   ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-  ctx.fillText(commutator ? '换向器（两片半圆铜片，每半圈翻一次电流）' : '换向器（已拆掉）', cx, egy + egyR + 8)
+  ctx.fillText(commutator ? '换向器（① ② 两片铜片，每半圈换边翻电流）' : '换向器（已拆掉）', cx, egy + egyR + 8)
   if (!commutator) {
     ctx.fillStyle = '#DC2626'
     ctx.font = `bold ${FS(8.8)}px "Microsoft YaHei", sans-serif`
@@ -1065,6 +1079,140 @@ function drawMotorBody(ctx, o) {
   ctx.fillText('电刷', cx + brushDx + 6, egy - 16)
   ctx.textAlign = 'right'
   ctx.fillText('电刷', cx - brushDx - 6, egy - 16)
+
+  /* 换向器放大窗：直径 52px 的接触处实在看不清"此刻哪片贴哪刷"，
+     所以照教学片的做法在旁边挂一个同步放大的接触处（同一套相位、同一套颜色）。 */
+  drawCommutatorZoom(ctx, { FS, theta, commutator, on, omega: o.omega || 0, ac: o.ac })
+}
+
+/** 换向器 / 电刷接触处的放大窗：① ② 编号 + 固定不动的「＋刷 / −刷」+ 此刻谁贴谁 */
+function drawCommutatorZoom(ctx, o) {
+  const { FS, theta, commutator, on, ac } = o
+  const omega = o.omega || 0
+  const { cx, egy, egyR } = D
+  const zx = D.zx, zy = D.zy, zr = D.zr
+  const seamBase = theta - Math.PI / 2
+  const segCenter = (k) => seamBase + k * Math.PI + Math.PI / 2
+  const neutral = !!commutator && on && Math.abs(Math.cos(theta)) < 0.14
+  const kScale = (zr - 3) / 46
+
+  // 引出线：从右电刷外侧拉到放大窗边缘（细虚线，不抢戏）
+  const lx0 = cx + egyR + 19.8
+  const ux = (zx - lx0), uy = (zy - egy)
+  const ul = Math.hypot(ux, uy) || 1
+  ctx.strokeStyle = 'rgba(100,116,139,0.5)'; ctx.lineWidth = 1
+  ctx.setLineDash([5, 4])
+  ctx.beginPath()
+  ctx.moveTo(lx0, egy)
+  ctx.lineTo(zx - (ux / ul) * (zr + 2), zy - (uy / ul) * (zr + 2))
+  ctx.stroke()
+  ctx.setLineDash([])
+
+  // 圆窗
+  ctx.beginPath(); ctx.arc(zx, zy, zr, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(255,255,255,0.97)'; ctx.fill()
+  ctx.strokeStyle = neutral ? '#DC2626' : 'rgba(100,116,139,0.85)'
+  ctx.lineWidth = neutral ? 2.6 : 1.8
+  ctx.stroke()
+
+  ctx.save(); ctx.translate(zx, zy); ctx.scale(kScale, kScale)
+  if (commutator) {
+    for (let k = 0; k < 2; k++) {
+      const a0 = seamBase + k * Math.PI
+      ctx.fillStyle = k === 0 ? '#C4763C' : '#8A3E0C'
+      ctx.beginPath(); ctx.arc(0, 0, egyR, a0, a0 + Math.PI); ctx.lineTo(0, 0); ctx.closePath(); ctx.fill()
+      ctx.strokeStyle = 'rgba(92,31,16,0.85)'; ctx.lineWidth = 1.1; ctx.stroke()
+    }
+    ctx.strokeStyle = '#5C1F10'; ctx.lineWidth = 2.2
+    ctx.beginPath()
+    for (const d of [0, Math.PI]) {
+      const a = seamBase + d
+      ctx.moveTo(Math.cos(a) * 5.0, Math.sin(a) * 5.0)
+      ctx.lineTo(Math.cos(a) * egyR, Math.sin(a) * egyR)
+    }
+    ctx.stroke()
+    // ① ② 跟着铜片一起转
+    ctx.font = `900 ${FS(13)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    for (let k = 0; k < 2; k++) {
+      const ac = segCenter(k)
+      const nx = Math.cos(ac) * (egyR * 0.52), ny = Math.sin(ac) * (egyR * 0.52)
+      ctx.fillStyle = '#FFF7ED'
+      ctx.strokeStyle = 'rgba(70,26,4,0.7)'; ctx.lineWidth = 1.8
+      ctx.strokeText(k === 0 ? '①' : '②', nx, ny)
+      ctx.fillText(k === 0 ? '①' : '②', nx, ny)
+    }
+  } else {
+    ctx.fillStyle = 'rgba(148,163,184,0.16)'
+    ctx.beginPath(); ctx.arc(0, 0, egyR, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = '#94A3B8'; ctx.lineWidth = 1.2; ctx.setLineDash([4, 3])
+    ctx.beginPath(); ctx.arc(0, 0, egyR, 0, Math.PI * 2); ctx.stroke()
+    ctx.setLineDash([])
+  }
+  // 两把电刷（固定不动，碳块内沿压进铜片）
+  for (const s of [-1, 1]) {
+    const bx = s * (egyR - 1.2 + egyR + 11.8) / 2
+    ctx.fillStyle = commutator ? '#3E4653' : '#9AA3AE'
+    ctx.strokeStyle = commutator ? '#1E2530' : '#8A939E'
+    ctx.lineWidth = 1.2
+    ctx.beginPath(); ctx.roundRect(bx - 6.5, -7.5, 13, 15, 2.5); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = commutator ? 'rgba(255,255,255,0.28)' : 'rgba(255,255,255,0.18)'
+    ctx.beginPath(); ctx.roundRect(bx - 5.2, -6.4, 2.2, 12.8, 1.1); ctx.fill()
+  }
+  // 刷的极性（固定不动的两只刷）：右刷 ＋、左刷 −（与回路"＋极 → 右电刷"一致），做成小圆牌，别和弹簧片糊在一起
+  for (const s of [-1, 1]) {
+    const bx = s * (egyR + 13.2), by = -17
+    const plus = s > 0
+    ctx.fillStyle = plus ? '#ECFDF5' : '#FFF7ED'
+    ctx.strokeStyle = plus ? '#15803D' : '#B45309'
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.arc(bx, by, 6.2, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = plus ? '#15803D' : '#B45309'
+    ctx.font = `900 ${FS(10.5)}px "Microsoft YaHei", sans-serif`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText(plus ? '+' : '−', bx, by)
+  }
+  // 小字：哪只刷接哪一极
+  ctx.restore()
+
+  // 标题 / 读数
+  ctx.textAlign = 'center'
+  ctx.fillStyle = '#5D4037'
+  ctx.font = `bold ${FS(8.2)}px "Microsoft YaHei", sans-serif`
+  ctx.textBaseline = 'bottom'
+  ctx.fillText('放大：电刷 / 铜片接触处', zx, zy - zr - 8)
+
+  const rightK = Math.cos(segCenter(0)) >= 0 ? 0 : 1
+  ctx.textBaseline = 'top'
+  if (!commutator) {
+    ctx.fillStyle = '#DC2626'
+    ctx.font = `bold ${FS(8.6)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText('铜片已拆：没有换向导通 → 电流不再换边', zx, zy + zr + 10)
+    ctx.font = `${FS(8.2)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText('线圈越过后转矩变号 → 只来回摆几下就被阻尼停住', zx, zy + zr + 24)
+  } else if (on && ac) {
+    ctx.fillStyle = '#DC2626'
+    ctx.font = `bold ${FS(8.6)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText('交流：电流自己每半周期就反向一次', zx, zy + zr + 10)
+    ctx.font = `${FS(8.2)}px "Microsoft YaHei", sans-serif`
+    ctx.fillStyle = '#B45309'
+    ctx.fillText('换向器救不回来 → 线圈只原地抖动，不会连续转', zx, zy + zr + 24)
+  } else if (neutral) {
+    ctx.fillStyle = '#DC2626'
+    ctx.font = `bold ${FS(8.8)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText('换向瞬间：铜片与电刷换边 → 线圈电流反向', zx, zy + zr + 10)
+    ctx.font = `${FS(8.2)}px "Microsoft YaHei", sans-serif`
+    ctx.fillStyle = '#B45309'
+    ctx.fillText(omega > 0.35 ? '转矩零点只一闪 → 靠惯性冲过去，所以能一直转'
+      : '停在这里就没有转矩（单线圈死点）→ 点「手拨一下」', zx, zy + zr + 24)
+  } else {
+    ctx.fillStyle = '#15803D'
+    ctx.font = `bold ${FS(8.6)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText(rightK === 0 ? '此刻 ①贴 ＋刷 · ②贴 −刷' : '此刻 ①贴 −刷 · ②贴 ＋刷', zx, zy + zr + 10)
+    ctx.fillStyle = '#64748B'
+    ctx.font = `${FS(8.2)}px "Microsoft YaHei", sans-serif`
+    ctx.fillText('电刷固定不动 · 铜片每半圈换边 → 电流反向、转矩同向', zx, zy + zr + 24)
+  }
 }
 
 /** 两行字的气泡提示 + 引出线（用于"平衡位置""死点"这类注释，别压在图形上） */
