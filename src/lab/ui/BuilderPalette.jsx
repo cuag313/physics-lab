@@ -20,6 +20,7 @@ const COLORS = [
   { color: '#F44336', name: '红（火线 L）' },
   { color: '#2f6fdc', name: '蓝（零线 N）' },
   { color: '#8bc34a', name: '黄绿（地线 E）' },
+  { color: '#1c1f24', name: '黑（接地/负极）' },
   { color: '#FFC107', name: '黄' },
   { color: '#4CAF50', name: '绿' },
 ]
