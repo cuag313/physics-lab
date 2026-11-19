@@ -41,7 +41,7 @@ const D = {
   magR: 374, magRw: 72,      // 右磁极（S）
   egy: 368, egyR: 26,        // 换向器中心 / 半径（实心半圆片，外圆 26）
   brushDx: 35,               // 两电刷离轴的距离（碳块外沿 = 26+9，正好压住铜片外圆）
-  L: 118, R: 468, T: 424, B: 574,   // 回路矩形
+  L: 118, R: 468, T: 458, B: 574,   // 回路矩形
   batX: 196, swX: 350,
   row1: 624, row2: 680,
   chX: 590, chY: 452, chW: 200, chH: 132,   // τ–θ 曲线（瘦身，把横向空间让给电机）
@@ -172,25 +172,28 @@ export default function ElectricMotorScene() {
     const ink = on ? SYM_INK : '#7c8a93'
     const lw = 2.6
 
-    /* ─── 回路（电源 + 开关，经电刷进换向器）─── */
-    const { L, R, T, B, cx, cy, egy, brushDx } = D
+    /* ─── 回路（电源 + 开关，经底座接线柱进换向器）─── */
+    const { L, R, T, B, cx, cy, egy } = D
+    /* 接线柱：真实器材上是底座两端的两个插座（左黑右红），导线从这里进出；
+       电刷在底座内部与接线柱相通，所以外面看不到"从电刷拉出来的线" */
+    const postDx = 152, postY = egy + 21
     const hSw = symHalf('switch', 1)
     const ac = s.power === 'ac'
     const hBat = ac ? 20 : symHalf('battery', 1, 2)
     const iNow = typeof s.iNow === 'number' ? s.iNow : s.I
-    drawLine(ctx, L, T, cx - brushDx, T, wc, lw)
-    drawLine(ctx, cx + brushDx, T, R, T, wc, lw)
+    drawLine(ctx, L, T, cx - postDx, T, wc, lw)
+    drawLine(ctx, cx + postDx, T, R, T, wc, lw)
     drawLine(ctx, L, T, L, B, wc, lw)
     drawLine(ctx, R, T, R, B, wc, lw)
     drawLine(ctx, L, B, D.batX - hBat, B, wc, lw)
     drawLine(ctx, D.batX + hBat, B, D.swX - hSw, B, wc, lw)
     drawLine(ctx, D.swX + hSw, B, R, B, wc, lw)
 
-    /* 电刷 → 回路顶边的引线（竖直） */
-    drawLine(ctx, cx - brushDx, egy, cx - brushDx, T, wc, lw)
-    drawLine(ctx, cx + brushDx, egy, cx + brushDx, T, wc, lw)
+    /* 接线柱 → 回路顶边的引线（竖直，贴着接线柱外侧） */
+    drawLine(ctx, cx - postDx, postY, cx - postDx, T, wc, lw)
+    drawLine(ctx, cx + postDx, postY, cx + postDx, T, wc, lw)
 
-    /* 电流流动示意（正极 → 开关 → 右电刷；换向器 → 左电刷 → 左竖边 → 负极）
+    /* 电流流动示意（正极 → 开关 → 右接线柱 → 换向器；换向器 → 左接线柱 → 负极）
      * 交流时按瞬时电流的正负决定流向，灯带会随 4 Hz 来回“抽动”。 */
     if (on && (!ac || Math.abs(iNow) > 0.04 * s.I)) {
       const rev = ac && iNow < 0
@@ -200,10 +203,10 @@ export default function ElectricMotorScene() {
       ]), s.time, '#FBBF24')
       drawFlow(ctx, P([
         { x: D.swX + hSw, y: B }, { x: R, y: B }, { x: R, y: T },
-        { x: cx + brushDx, y: T }, { x: cx + brushDx, y: egy },
+        { x: cx + postDx, y: T }, { x: cx + postDx, y: postY },
       ]), s.time, '#FBBF24')
       drawFlow(ctx, P([
-        { x: cx - brushDx, y: egy }, { x: cx - brushDx, y: T },
+        { x: cx - postDx, y: postY }, { x: cx - postDx, y: T },
         { x: L, y: T }, { x: L, y: B }, { x: D.batX - hBat, y: B },
       ]), s.time, '#FBBF24')
     }
@@ -1238,11 +1241,12 @@ function drawMotorBody(ctx, o) {
   ctx.fillStyle = commutator ? '#5D4037' : '#94A3B8'
   ctx.font = `bold ${FS(9)}px "Microsoft YaHei", sans-serif`
   ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-  ctx.fillText(commutator ? '换向器（每半圈换边 → 电流反向）' : '换向器（已拆掉）', cx, egy + egyR + 8)
+  /* 底座的台面就在换向器正下方，所以这句说明挪到台面下面去 */
+  ctx.fillText(commutator ? '换向器（每半圈换边 → 电流反向）' : '换向器（已拆掉）', cx, D.T + 18)
   if (!commutator) {
     ctx.fillStyle = '#DC2626'
     ctx.font = `bold ${FS(8.8)}px "Microsoft YaHei", sans-serif`
-    ctx.fillText('铜片断开 → 半圈后电流不换向', cx, egy + egyR + 23)
+    ctx.fillText('铜片断开 → 半圈后电流不换向', cx, D.T + 33)
   }
 
   /* 换向器放大窗：直径 52px 的接触处实在看不清"此刻哪片贴哪刷"，

@@ -28,6 +28,8 @@ const EG_RM = 21.5     // 外壳内沿 = 半环外沿
 const EG_RIN = 7.5     // 轴孔半径
 const EG_D = 9         // 换向器厚度
 const BR_DX = 35       // 电刷中心到轴的距离（= D.brushDx）
+const BASE_Y = -152    // 底座台面上表面的 y（换向器下方 28 单位）
+const POST_DX = 152    // 接线柱离轴的距离（2D 电路的接线点也在 cx ± 152）
 
 const C_RED = new THREE.Color('#E23B3B')
 const C_BLUE = new THREE.Color('#2E6BE5')
@@ -237,7 +239,7 @@ function MotorBody({ getState }) {
           </mesh>
         </group>
         <mesh position={[0, 0, -EG_D / 2 + 1]}>
-          <cylinderGeometry args={[EG_RIN, EG_RIN, EG_D + 6, 24]} />
+          <cylinderGeometry args={[EG_RIN, EG_RIN, EG_D + 1.5, 24]} />
           <meshStandardMaterial color="#F7F2E8" metalness={0.05} roughness={0.7} />
         </mesh>
       </group>
@@ -249,6 +251,37 @@ function MotorBody({ getState }) {
           <meshStandardMaterial color="#39414D" roughness={0.78} metalness={0.18} />
         </mesh>
       ))}
+
+      {/* 底座 + 立柱 + 两个接线柱（照素材库图标：银灰台面、左黑右红香蕉插座） */}
+      <group>
+        {/* 台面（上小下大，像个铸铁台） */}
+        <mesh position={[0, BASE_Y - 10, 0]}>
+          <boxGeometry args={[352, 20, 88]} />
+          <meshStandardMaterial color="#D8DFE7" metalness={0.3} roughness={0.45} />
+        </mesh>
+        <mesh position={[0, BASE_Y - 29, 0]}>
+          <boxGeometry args={[368, 18, 96]} />
+          <meshStandardMaterial color="#B7C1CB" metalness={0.28} roughness={0.52} />
+        </mesh>
+        {/* 立柱：把换向器撑在台面上 */}
+        <mesh position={[0, -EGY - (Math.abs(BASE_Y) - EGY) / 2, 0]}>
+          <boxGeometry args={[22, Math.abs(BASE_Y) - EGY - EG_D / 2, 38]} />
+          <meshStandardMaterial color="#C4CCD5" metalness={0.34} roughness={0.44} />
+        </mesh>
+        {/* 接线柱：左黑右红 */}
+        {[-1, 1].map((sx) => (
+          <group key={'po' + sx} position={[sx * POST_DX, BASE_Y, 0]}>
+            <mesh position={[0, 6, 0]}>
+              <cylinderGeometry args={[6.6, 7.6, 12, 18]} />
+              <meshStandardMaterial color={sx < 0 ? '#33383F' : '#C6303A'} metalness={0.42} roughness={0.4} />
+            </mesh>
+            <mesh position={[0, 13, 0]}>
+              <cylinderGeometry args={[8.8, 8.8, 4, 18]} />
+              <meshStandardMaterial color={sx < 0 ? '#3D434B' : '#D8393F'} metalness={0.4} roughness={0.42} />
+            </mesh>
+          </group>
+        ))}
+      </group>
     </group>
   )
 }
