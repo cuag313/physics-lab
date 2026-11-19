@@ -992,7 +992,10 @@ function breakerInner() {
  * 于是翻转是**真的绕"两竖与面板接触处"（30.6, 79.5）转过去**，而不是跳到另一个位置。
  * 图里按**合闸**位画（横杆在上 66..74.6、两根腿 74.6..97.6），转 180° 后横杆正好落到 84.4..93、
  * 两根腿翻到 61.4..84.4 —— 就是实拍里"横在下、两竖在上"。 */
-export function breakerLeverSVG() {
+export function breakerLeverSVG(dark) {
+  const barFill = dark ? '#16365f' : 'url(#es-lv-lever)'
+  const legFill = dark ? '#12304f' : 'url(#es-lv-leg)'
+  const edge = dark ? '#0b2440' : '#123f6d'
   return `
     <svg width="124" height="152" viewBox="0 0 124 152">
       <defs>
@@ -1005,20 +1008,23 @@ export function breakerLeverSVG() {
           <stop offset="66%" stop-color="#3a80d2"/><stop offset="100%" stop-color="#1f5aa6"/>
         </linearGradient>
       </defs>
+      ${dark ? '' : `
       <!-- 投在面板/滑槽上的落影 -->
-      <rect x="4.6" y="73.4" width="55.3" height="13" rx="3" fill="rgba(23,37,58,.10)"/>
+      <rect x="4.6" y="73.4" width="55.3" height="13" rx="3" fill="rgba(23,37,58,.10)"/>`}
       <!-- 两根腿（横杆压在上面） -->
-      <rect x="9.9" y="74.6" width="18" height="23" rx="2.2" fill="url(#es-lv-leg)" stroke="#153f70" stroke-width=".8"/>
-      <rect x="32.7" y="74.6" width="18" height="23" rx="2.2" fill="url(#es-lv-leg)" stroke="#153f70" stroke-width=".8"/>
+      <rect x="9.9" y="74.6" width="18" height="23" rx="2.2" fill="${legFill}" stroke="${edge}" stroke-width=".8"/>
+      <rect x="32.7" y="74.6" width="18" height="23" rx="2.2" fill="${legFill}" stroke="${edge}" stroke-width=".8"/>
+      ${dark ? '' : `
       <!-- 腿的自由端亮面 + 贴横杆那头压暗 -->
       <rect x="10.9" y="91.2" width="16" height="4.8" rx="2" fill="#a6ccf2" opacity=".45"/>
       <rect x="33.7" y="91.2" width="16" height="4.8" rx="2" fill="#a6ccf2" opacity=".45"/>
       <rect x="9.9" y="75.4" width="18" height="2.6" fill="rgba(9,26,48,.32)"/>
-      <rect x="32.7" y="75.4" width="18" height="2.6" fill="rgba(9,26,48,.32)"/>
+      <rect x="32.7" y="75.4" width="18" height="2.6" fill="rgba(9,26,48,.32)"/>`}
       <!-- 横杆 -->
-      <rect x="3.6" y="66" width="55.3" height="8.6" rx="2.2" fill="url(#es-lv-lever)" stroke="#123f6d" stroke-width=".9"/>
+      <rect x="3.6" y="66" width="55.3" height="8.6" rx="2.2" fill="${barFill}" stroke="${edge}" stroke-width=".9"/>
+      ${dark ? '' : `
       <rect x="4.8" y="67.1" width="53" height="2.6" rx="1.3" fill="#ffffff" opacity=".40"/>
-      <rect x="3.6" y="73.4" width="55.3" height="1.4" rx=".7" fill="rgba(9,26,48,.35)"/>
+      <rect x="3.6" y="73.4" width="55.3" height="1.4" rx=".7" fill="rgba(9,26,48,.35)"/>`}
     </svg>`
 }
 

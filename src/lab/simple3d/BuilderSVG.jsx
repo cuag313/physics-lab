@@ -79,6 +79,12 @@ const PLUG_BACK_ANCHOR = { x: 24, y: 34 }
 
 /* 空开闸刀的翻转动画只在"状态真的变了"那一帧挂上，避免新加一只空开时也演一遍 */
 const FLIP_SEEN = new Set()
+/* 闸刀的"厚度"：同一块件沿 Z 叠 9 层（最前那层是亮面，其余是暗的侧壁色）。
+   叠层在平放时完全重合（看不出变化），一旦绕横轴转起来，各层在 y 方向被拉开 => 侧壁露出来，
+   所以转到 70° 横杆也不会变成一条细线（件是"实心"的，不是一张纸）。 */
+const LEVER_FACE = breakerLeverSVG(false)
+const LEVER_SIDE = breakerLeverSVG(true)
+const LEVER_SLABS = [-4.8, -3.6, -2.4, -1.2, 0, 1.2, 2.4, 3.6, 4.8]
 function flipCls(c) {
   if (!FLIP_SEEN.has(c.id)) { FLIP_SEEN.add(c.id); return '' }
   return c.closed ? ' to-closed' : ' to-trip'
@@ -1413,9 +1419,11 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         .esb-partlayer{position:absolute;inset:0;z-index:3;pointer-events:none}
         /* 空开闸刀层：压在器材之上、导线之下；翻转走 transition，所以是"转"过去的 */
         .esb-leverlayer{position:absolute;inset:0;z-index:4;pointer-events:none}
-        /* 转轴的 y 与翻转角度都可调（--esb-flip-y / --esb-flip-deg），默认＝页缝 79.5px / 180° */
-        .esb-bklever{position:absolute;transform-origin:50% var(--esb-flip-y, 79.5px);backface-visibility:visible}
+        /* 转轴的 y 与翻转角度都可调（--esb-flip-y / --esb-flip-deg）：
+           默认＝用户划的那条红线 y=100px（两竖脚与滑槽底口之间），角度 74°（再大横杆就钻到槽底下去了） */
+        .esb-bklever{position:absolute;transform-origin:50% var(--esb-flip-y, 100px);backface-visibility:visible;transform-style:preserve-3d}
         .esb-bklever svg{display:block;overflow:visible}
+        .esb-lvslab{position:absolute;left:0;top:0;width:124px;height:152px}
         /* 绕"两竖与面板接触处"那条横线（y=97.6）上下倒：
            前半程脚不动、杆往下落；转到 ~90° 与面板垂直、正好看不见时，才把它挪到另一侧（36.2px），
            后半程继续转到 180° 翻出来 —— 所以不会看见"整块件翻到滑槽外面" */
@@ -1423,10 +1431,10 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
            见 flipAngle 的注释：那条缝的位置不是随便取的，它是唯一能让两个终态都留在滑槽里的线。 */
         @keyframes esbFlipToTrip{
           0%{transform:perspective(520px) rotateX(0deg)}
-          100%{transform:perspective(520px) rotateX(var(--esb-flip-deg, 180deg))}
+          100%{transform:perspective(520px) rotateX(var(--esb-flip-deg, 74deg))}
         }
         @keyframes esbFlipToClose{
-          0%{transform:perspective(520px) rotateX(var(--esb-flip-deg, 180deg))}
+          0%{transform:perspective(520px) rotateX(var(--esb-flip-deg, 74deg))}
           100%{transform:perspective(520px) rotateX(0deg)}
         }
         .esb-bklever.to-trip{animation:esbFlipToTrip .46s cubic-bezier(.4,.08,.32,1) both}
@@ -1605,8 +1613,8 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
           })}
         </div>
 
-        {/* 空开闸刀单独一层：合闸 0° / 跳闸 180°，转轴就在"两竖与面板接触处"(30.6,79.5)。
-            有了 CSS transition，翻转是**真的转过去**（能看见横杆扫下来、两竖扫上去），不是跳到另一个位置 */}
+        {/* 空开闸刀单独一层：绕用户划的那条红线（y=100，两竖脚与滑槽底口之间）上下转动。
+            转轴全程固定、没有任何平移；件本身叠了 9 层 Z，转起来会露出侧壁（有厚度，不会变纸片） */}
         <div className="esb-leverlayer">
           {comps.filter((c) => c.type === 'breaker').map((c) => (
             <div
@@ -1614,15 +1622,20 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
               className={`esb-bklever${flipCls(c)}`}
               style={{
                 left: c.x, top: c.y, width: 124, height: 152,
-                /* 转轴＝横杆与两根竖杆交界那条"页缝"（y=79.5），固定不动、全程没有任何平移；
-                   整块件绕它转 180°，中途被压成一条线再翻出来，就是翻书页的样子。
-                   为什么不能把缝放到"两竖的脚"(y=97.6)：件高 31.6、滑槽净高只有 34.4，
-                   绕脚转时横杆必然转到 97.6 以下（120° 时落在 108~113，压到下面那颗螺钉上），
-                   所以只有靠近件中点的那条线能让"横在上"和"横在下"两个终态都留在槽里。 */
-                transform: c.closed ? 'none' : 'rotateX(var(--esb-flip-deg, 180deg))',
+                transform: c.closed
+                  ? 'none'
+                  : 'perspective(520px) rotateX(var(--esb-flip-deg, 74deg))',
               }}
-              dangerouslySetInnerHTML={{ __html: breakerLeverSVG() }}
-            />
+            >
+              {LEVER_SLABS.map((z, i) => (
+                <div
+                  key={z}
+                  className="esb-lvslab"
+                  style={{ transform: `translateZ(${z}px)` }}
+                  dangerouslySetInnerHTML={{ __html: i === LEVER_SLABS.length - 1 ? LEVER_FACE : LEVER_SIDE }}
+                />
+              ))}
+            </div>
           ))}
         </div>
 
