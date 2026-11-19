@@ -371,11 +371,22 @@ function ElectronFlow({ items }) {
    → 卡内 cx=(40.7+83.5×0.4107)=75.0、cy=(26+128×0.4107)=78.6、r≈15.6（取 16.2 盖住门圈内沿）。 */
 const METER_SLOT = { x: 52, y: 75.5, w: 79, h: 11.5 }
 const WASHER_DRUM = { cx: 75.0, cy: 78.6, r: 16.2 }
-/* 小电动机卡 200×169：图标 256×216 里的黑色皮带轮 —— 用左侧/顶侧轮缘做最小二乘圆拟合，
-   得圆心 (73.9,65.7)、半径 65.5（源坐标），按 200/256 与 169/216 换算 → 卡内 (57.8,51.4)、半径 51.1。
-   旋转层裁到 r=44：5 个白孔 + 1 个黑孔的最外沿只到 r≈34，留足余量；外圈轮缘与皮带保持静止
-   （轮缘本身是圆，不转也看不出来），这样压在轮缘上的皮带就不会被带着甩。 */
-const MOTOR_PULLEY = { cx: 57.8, cy: 51.4, r: 44 }
+/* 小电动机卡 200×169：图标 256×216 里的黑皮带轮。
+   **旋转轴必须压在"6 个镂空孔"的孔心群中心**（孔对称分布，质心即轮心）：实测 5 个孔的孔心
+   (45.5,53.5)(45.5,87.5)(103,53.5)(103,87.5)(74.5,37.0)（源坐标，第 6 个被轮毂挡掉），
+   对称四孔的中间点 (74.25,70.5) + 顶孔落在 x=74.5 ⇒ 轮心 (74.4,70.5)、孔圈半径 33.5、轮缘半径 67；
+   再用"从轮心向外打射线、只看 55<r<80 的最外暗边界"做稳健圆拟合复核：圆心 (74.11,69.36)、r 67.55（被轮座挡住的
+   下缘自动落进离群点被剔除）。两法互为独立、差 1.1px 以内 ⇒ 取均值 (74.25,69.9)。
+   按 200/256 与 169/216 换算 → 卡内圆心 **(58.0,54.6)**、孔圈 26.2、轮缘 52.8。
+   （原来写 (57.8,51.4) 是按"左侧+顶侧轮缘"做最小二乘拟合出来的，被轮缘下半/右侧缺失带偏了 3.2px，
+   于是整块圆盘绕着轮心上方 3.2px 的点公转 → 看起来"转心偏左上"。）
+   旋转层裁到 r=44：孔的最外沿 r≈34，留足余量；外圈轮缘与皮带保持静止（轮缘本身是圆，不转也看不出来），
+   这样压在轮缘上的皮带就不会被带着甩。 */
+const MOTOR_PULLEY = { cx: 58.0, cy: 54.6, r: 44 }
+/* 转子（N/S 之间那只铜鼓）：轴是**左右方向**，转起来只能看到表面亮暗带上下扫过（轮廓不变）。
+   下面这组数是从图标里量的：铜鼓面 x 166..208 / y 142..166（源）→ 卡内 129.7..162.5 / 111.1..129.9，
+   正前方那根灰色支架（会挡住转过去的面）x 186.9..196.9 → 卡内 146.0..153.8。 */
+const MOTOR_ROTOR = { cx: 146.0, cy: 120.5, rx: 16.4, ry: 9.4, postX0: 146.0, postX1: 153.8 }
 /* 三台家电的"工作痕迹"位置（按器材图在卡里的实际落点量出来，卡都是 150×168、图框 x22 y18 w106 h92）：
  * 电热水壶 kettle_body 152×212 → meet 收成 65.96×92、左起 42.0；壶嘴尖在源图 (16,88) → 卡内 (49.0,56.2)；
  * 电饭煲 ricecooker_body 176×146 → 收成 106×87.9、上起 20.0；盖顶排气孔 (88,10) → 卡内 (75,26)，
@@ -552,12 +563,52 @@ function MotionLayer({ items }) {
           const M = MOTOR_PULLEY
           const deg = (st.a * it.dir * 180) / Math.PI
           const cid = `esbm-pul-${it.id}`
+          /* 转子（N/S 之间那只铜鼓）：轴左右向，轮廓转起来不变，所以只能靠**表面亮暗带上下扫过**
+             表现转动。带子位置 y = cy + ry·sinθ、可见度 ∝ cosθ（转到上下边沿时被压扁、变暗），
+             转过前方那根灰色支架时被遮住（用 mask 挖掉支架那一条竖带）——
+             皮带传动：大皮带轮 r≈52 由转子上小轮带动，所以转子比大轮快（×2.4）。
+             接线柱 1、2 接反 → dir=-1 → 反向。 */
+          const R = MOTOR_ROTOR
+          const rPhase = st.a * it.dir * 2.4
+          const rid = `esbm-rot-${it.id}`
+          const rgid = `esbm-rotg-${it.id}`
+          const lgid = `esbm-rotl-${it.id}`
+          const bands = []
+          /* 表面 6 条"明暗带"（上下方向均匀铺在柱面上）：转到上/下边沿时被压扁、变暗 → cosθ 收尾。
+             用竖直渐变的软带（不是硬条纹），读起来是"光/阴在扫过"，不是"画了黑条"。 */
+          for (let k = 0; k < 6; k++) {
+            const th = rPhase + (k * Math.PI) / 3
+            const c = Math.cos(th)
+            if (c < 0.12) continue
+            const y = R.cy + R.ry * Math.sin(th)
+            const light = ((k % 3) + 3) % 3 === 1
+            bands.push(
+              <rect key={'rb' + k}
+                x={R.cx - R.rx} y={y - 3.4} width={R.rx * 2} height={6.8}
+                fill={light ? `url(#${lgid})` : `url(#${rgid})`}
+                opacity={(0.42 * c).toFixed(3)} />,
+            )
+          }
           return (
             <g key={it.id} transform={`translate(${it.x},${it.y})`} opacity={it.dim ? 0.22 : 1}>
               <defs>
                 <clipPath id={cid}>
                   <circle cx={M.cx} cy={M.cy} r={M.r} />
                 </clipPath>
+                <mask id={rid} maskUnits="userSpaceOnUse" x="120" y="100" width="60" height="45">
+                  <ellipse cx={R.cx} cy={R.cy} rx={R.rx} ry={R.ry} fill="#fff" />
+                  <rect x={R.postX0} y="100" width={R.postX1 - R.postX0} height="45" fill="#000" />
+                </mask>
+                <linearGradient id={rgid} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#5a3208" stopOpacity="0" />
+                  <stop offset="50%" stopColor="#4a2905" stopOpacity="0.85" />
+                  <stop offset="100%" stopColor="#5a3208" stopOpacity="0" />
+                </linearGradient>
+                <linearGradient id={lgid} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#ffe2b8" stopOpacity="0" />
+                  <stop offset="50%" stopColor="#ffeccb" stopOpacity="0.8" />
+                  <stop offset="100%" stopColor="#ffe2b8" stopOpacity="0" />
+                </linearGradient>
               </defs>
               <g clipPath={`url(#${cid})`}>
                 {/* 图标里的 5 个孔是"真镂空"(alpha=0)，卡片的孔亮是因为露出白底；
@@ -567,6 +618,7 @@ function MotionLayer({ items }) {
                   preserveAspectRatio="none"
                   transform={`rotate(${deg.toFixed(1)} ${M.cx} ${M.cy})`} />
               </g>
+              <g mask={`url(#${rid})`}>{bands}</g>
             </g>
           )
         }
