@@ -1743,7 +1743,7 @@ export const TYPES = {
         </mask>
         <clipPath id="${cid}body">
           <rect x="12" y="15" width="73" height="123.5"/>
-          <rect x="84.2" y="15" width="35.2" height="123.5"/>
+          <rect x="83.4" y="15" width="36.8" height="123.5"/>
           <rect x="117.8" y="15" width="72.2" height="123.5"/>
           <circle cx="101.4" cy="77.6" r="53"/>
         </clipPath>
@@ -1779,7 +1779,7 @@ export const TYPES = {
       <!-- 腔 + 板间槽：盖在板上（NB 实测平色 #343941），顺带吃掉 mask 边缘的白缝 -->
       <g clip-path="url(#${cid}body)">
         <circle cx="101.4" cy="77.6" r="53" fill="#343941"/>
-        <rect x="84.2" y="15" width="35.2" height="123.5" fill="#343941"/>
+        <rect x="83.4" y="15" width="36.8" height="123.5" fill="#343941"/>
         <circle cx="101.4" cy="77.6" r="53" fill="none" stroke="rgba(0,0,0,.20)" stroke-width="1.4"/>
       </g>
 
@@ -1842,6 +1842,7 @@ export const TYPES = {
       ${on ? motorSpinBadgeSVG(176, 116, dir) : ''}
     </svg>` }
   },
+
 
 
   /* ── 发光二极管（长脚正 · 短脚负 · 反向不亮） ── */
