@@ -560,111 +560,29 @@ function MotionLayer({ items }) {
            只把轮盘裁成圆、绕轮心旋转；皮带、磁极、底座都不动（所以裁到 r=44，避开皮带）。
            转速 ∝ 电流；接线柱 1、2 接反 → dir=-1 → 反转。 */
         if (it.kind === 'motor') {
-          /* ── 透视（剖视）：卡片直接变成 NOBOOK 式剖面 ——
-             两块带圆弧凹面的磁极拼成圆柱腔，单匝线圈绕竖直轴在里面扫，
-             下面接两片半环换向器、左右两只电刷。这样"自己动手"里也能看见原理，
-             而不是只看见一只黑皮带轮在转。 ── */
+          /* ── 透视（剖视）：卡片换成「电路演示」那台真 3D 电动机的机芯图（磁极通孔 + 单匝线圈 + 半环换向器 + 电刷），
+             这样"自己动手"里也能看见原理，而不是只看见一只黑皮带轮在转。 ── */
           if (it.cut) {
-            const CX = 100, CY = 68, CR = 62
-            const PT = 15, PB = 121, BLKW = 46, L1 = 54, R0 = 146
-            const dx = Math.abs(CX - L1)
-            const hitY = Math.sqrt(Math.max(1, CR * CR - dx * dx))
-            const base = Math.atan2(hitY, dx)
-            const arcD = (ccx, ccy, r, a0, a1, n = 12) => {
-              let d = ''
-              for (let i = 0; i <= n; i++) {
-                const a = a0 + ((a1 - a0) * i) / n
-                d += `L${(ccx + r * Math.cos(a)).toFixed(2)},${(ccy + r * Math.sin(a)).toFixed(2)} `
-              }
-              return d
-            }
-            const ptOn = (ccx, ccy, r, a) => `${(ccx + r * Math.cos(a)).toFixed(2)},${(ccy + r * Math.sin(a)).toFixed(2)}`
-            const leftD = `M${L1 - BLKW},${PT} L${L1},${PT} L${L1},${(CY - hitY).toFixed(2)} `
-              + arcD(CX, CY, CR, Math.PI + base, Math.PI - base)
-              + `L${L1},${PB} L${L1 - BLKW},${PB} Z`
-            const rightD = `M${R0 + BLKW},${PT} L${R0},${PT} L${R0},${(CY - hitY).toFixed(2)} `
-              + arcD(CX, CY, CR, -base, base)
-              + `L${R0},${PB} L${R0 + BLKW},${PB} Z`
-
-            /* 线圈：与 Tab1 同一套投影（竖边一近一远 → 转起来是平行四边形） */
-            const phi = -st.a * it.dir
-            const cphi = Math.cos(phi)
-            const aW = 29, bH = 25
-            const halfW = aW * Math.abs(cphi)
-            const off2 = 4.2 * Math.abs(Math.sin(phi))
-            const frontIsRight = cphi >= 0
-            const xl2 = CX - halfW, xr2 = CX + halfW
-            const nearX2 = frontIsRight ? xr2 : xl2
-            const farX2 = frontIsRight ? xl2 : xr2
-            const yTN = CY - bH + off2, yBN = CY + bH + off2
-            const yTF = CY - bH - off2, yBF = CY + bH - off2
-            const RED2 = '#DC2626', BLUE2 = '#2563EB'
-            const colR2 = it.dir > 0 ? RED2 : BLUE2
-            const colL2 = it.dir > 0 ? BLUE2 : RED2
-            const seam = phi - Math.PI / 2
-            /* 环形件（半环换向器 / 孔壁）用"外弧 → 内弧"闭合 */
-            const ringD = (r1, r2, a0, a1, cyy) => {
-              const p0 = `${(CX + r1 * Math.cos(a0)).toFixed(2)},${(cyy + r1 * Math.sin(a0)).toFixed(2)}`
-              return `M${p0} ${arcD(CX, cyy, r1, a0, a1, 10)} ${arcD(CX, cyy, r2, a1, a0, 10)}Z`
-            }
-            const gN = `mcut-n-${it.id}`, gS = `mcut-s-${it.id}`
-            const gC1 = `mcut-c1-${it.id}`, gC2 = `mcut-c2-${it.id}`
+            /* 剖面 = Motor3D 渲染的机芯图（与「电路演示」同一套真 3D 几何，PNG 由 scripts/_render-motorcut.cjs 出图）：
+               磁极有真厚度、中间是真通孔、换向器是立体半环 —— 不再是一张平涂矢量图。
+               图是静态的，转向靠右上角的小角标读；电流方向看端环哪片红哪片蓝。 */
+            const on = it.v > 0.05
+            const brDir = it.dir >= 0 ? 1 : -1
             return (
               <g key={it.id} transform={`translate(${it.x},${it.y})`}>
-                <defs>
-                  <linearGradient id={gN} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0" stopColor="#E6575A" /><stop offset="0.26" stopColor="#DC2626" />
-                    <stop offset="0.72" stopColor="#B81C1C" /><stop offset="1" stopColor="#8E1212" />
-                  </linearGradient>
-                  <linearGradient id={gS} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0" stopColor="#5588F0" /><stop offset="0.26" stopColor="#2563EB" />
-                    <stop offset="0.72" stopColor="#1B49C4" /><stop offset="1" stopColor="#123590" />
-                  </linearGradient>
-                  <linearGradient id={gC1} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0" stopColor="#E7AC6E" /><stop offset="0.5" stopColor="#BA7233" />
-                    <stop offset="1" stopColor="#8A4A16" />
-                  </linearGradient>
-                  <linearGradient id={gC2} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0" stopColor="#A9682F" /><stop offset="0.5" stopColor="#7E3E10" />
-                    <stop offset="1" stopColor="#4E2306" />
-                  </linearGradient>
-                </defs>
-                {/* 剖面底版：盖住卡片上的实拍图标（导线从卡底边穿进去，读作"接在机内"） */}
+                {/* 卡片底：盖住下层的实拍图标（导线从卡底边穿进去，读作"接在机内"） */}
                 <rect x="2" y="2" width="196" height="165" rx="10" fill="#fffaf1" stroke="#e8dcc6" strokeWidth="1.2" />
-                {/* 腔体是通孔：中间留空；只在下缘留一道孔壁反光、上缘一层落影（卡片小，孔壁不画宽环，免得像贴了个"微笑"） */}
-                <path d={`M${ptOn(CX, CY, CR - 2, 0.20 * Math.PI)} ${arcD(CX, CY, CR - 2, 0.20 * Math.PI, 0.80 * Math.PI, 12)}`}
-                  fill="none" stroke="#FFFDF6" strokeWidth="2.6" strokeLinecap="round" opacity="0.9" />
-                <path d={`M${ptOn(CX, CY, CR - 3, Math.PI * 1.10)} ${arcD(CX, CY, CR - 3, Math.PI * 1.10, Math.PI * 1.90, 14)}`}
-                  fill="none" stroke="#6B5A42" strokeWidth="1.2" strokeLinecap="round" opacity="0.35" />
-                <circle cx={CX} cy={CY} r={CR} fill="none" stroke="#C6B79C" strokeWidth="0.9" opacity="0.8" />
-                {/* 两块弧形极靴（上下渐变，像有厚度的实心块） */}
-                <path d={leftD} fill={`url(#${gN})`} stroke="#8f1414" strokeWidth="0.9" />
-                <path d={rightD} fill={`url(#${gS})`} stroke="#123f8f" strokeWidth="0.9" />
-                <text x={L1 - 31} y={CY + 6} textAnchor="middle" fontSize="17" fontWeight="800"
-                  fill="#fff" fontFamily="system-ui,-apple-system,'Segoe UI',sans-serif">N</text>
-                <text x={R0 + 31} y={CY + 6} textAnchor="middle" fontSize="17" fontWeight="800"
-                  fill="#fff" fontFamily="system-ui,-apple-system,'Segoe UI',sans-serif">S</text>
-                {/* 转轴 */}
-                <line x1={CX} y1={CY - bH - 8} x2={CX} y2="130" stroke="#94a3b8" strokeWidth="2" />
-                {/* 线圈：远边 → 上边 → 近边（**不画下边**：单匝电枢开口，电流一端进一端出，否则两根引线被底边短接） */}
-                <line x1={farX2} y1={yTF} x2={farX2} y2={yBF} stroke={frontIsRight ? colL2 : colR2}
-                  strokeWidth="2.2" opacity="0.72" strokeLinecap="round" />
-                <line x1={farX2} y1={yTF} x2={nearX2} y2={yTN} stroke="#B45309" strokeWidth="2.4" />
-                <line x1={nearX2} y1={yTN} x2={nearX2} y2={yBN} stroke={frontIsRight ? colR2 : colL2}
-                  strokeWidth="3.6" strokeLinecap="round" />
-                {/* 两条引线：从开口两端直接接进换向器 */}
-                <line x1={xl2} y1={yBN} x2={CX - 4} y2="121" stroke="#B45309" strokeWidth="1.4" />
-                <line x1={xr2} y1={yBN} x2={CX + 4} y2="121" stroke="#B45309" strokeWidth="1.4" />
-                {/* 换向器：**圆环**（不是实心盘），两半随线圈转，中间是轴孔 */}
-                <path d={ringD(12, 5.4, seam, seam + Math.PI, 128)} fill={`url(#${gC1})`} stroke="#7a3a10" strokeWidth="0.9" />
-                <path d={ringD(12, 5.4, seam + Math.PI, seam + 2 * Math.PI, 128)} fill={`url(#${gC2})`} stroke="#7a3a10" strokeWidth="0.9" />
-                <circle cx={CX} cy="128" r="5" fill="#251708" />
-                <circle cx={CX} cy="128" r="2.6" fill="#a8b3c0" stroke="#7c8798" strokeWidth="0.8" />
-                {/* 两个电刷（固定不动） */}
-                {[-1, 1].map((s) => (
-                  <rect key={'br' + s} x={CX + s * 13.6 - 2.4} y="122.8" width="4.8" height="10.4" rx="1.2"
-                    fill="#3E4653" stroke="#1e2530" strokeWidth="0.8" />
-                ))}
+                <image href={figURL('motor_cut.png')} x="0" y="0" width="200" height="169" preserveAspectRatio="none" />
+                {/* 转向角标：↺ / ↻ 随接线柱左右对调翻转 */}
+                {on && (
+                  <g transform="translate(174,26)">
+                    <circle r="12" fill="#ffffff" opacity="0.94" stroke="#f59e0b" strokeWidth="1.2" />
+                    <text x="0" y="5.4" textAnchor="middle" fontSize="15" fontWeight="700"
+                      fill="#b45309" fontFamily="'Segoe UI Symbol','Noto Sans Symbols',system-ui,sans-serif">
+                      {brDir > 0 ? '↺' : '↻'}
+                    </text>
+                  </g>
+                )}
               </g>
             )
           }

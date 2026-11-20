@@ -120,7 +120,7 @@ function GradBar({ from, to, r = TUBE, matRefs, idx }) {
 }
 
 /* ─────────── 场景内部 ─────────── */
-function MotorBody({ getState }) {
+function MotorBody({ getState, bare }) {
   const coilRef = useRef(), comRef = useRef()
   const matL = useRef(), matR = useRef()
   const sprN1 = useRef(), sprS1 = useRef(), sprN2 = useRef(), sprS2 = useRef()
@@ -253,7 +253,9 @@ function MotorBody({ getState }) {
         </mesh>
       ))}
 
-      {/* 底座 + 立柱 + 两个接线柱（照素材库图标：银灰台面、左黑右红香蕉插座） */}
+      {/* 底座 + 立柱 + 两个接线柱（照素材库图标：银灰台面、左黑右红香蕉插座）
+          bare = 只画机芯（Tab2「自己动手」的剖面图用：卡片底部要留给接线柱与导线） */}
+      {!bare && (
       <group>
         {/* 台面（上小下大，两个圆角铸铁台） */}
         <RoundedBox args={[352, 17, 88]} radius={3} smoothness={3} position={[0, BASE_Y - 10, 0]} castShadow receiveShadow>
@@ -281,6 +283,7 @@ function MotorBody({ getState }) {
           </group>
         ))}
       </group>
+      )}
     </group>
   )
 }
@@ -299,24 +302,32 @@ function LockCamera({ vw, vh }) {
   return null
 }
 
-export default function Motor3D({ sc, ox, oy, vw, vh, cx, cy, getState }) {
+export default function Motor3D({ sc, ox, oy, vw, vh, cx, cy, getState, cut, bare }) {
+  /* cut = 想看的设计坐标窗口 {x,y,w,h}（不传就用整块 vw×vh，行为与以前完全一致）。
+     1 单位 = sc 个 CSS 像素，窗口左上角对齐画布左上角。 */
+  const fw = cut ? cut.w : vw
+  const fh = cut ? cut.h : vh
+  const fx = cut ? cut.x : 0
+  const fy = cut ? cut.y : 0
+  const gx = cx - fx - fw / 2
+  const gy = fh / 2 + fy - cy
   return (
     <Canvas
       orthographic
       dpr={Math.min(2, window.devicePixelRatio || 1)}
       gl={{ alpha: true, antialias: true }}
-      camera={{ position: [0, 0, 1200], left: -vw / 2, right: vw / 2, top: vh / 2, bottom: -vh / 2, near: 0.5, far: 4000 }}
-      style={{ position: 'absolute', left: ox, top: oy, width: vw * sc, height: vh * sc, pointerEvents: 'none' }}
+      camera={{ position: [0, 0, 1200], left: -fw / 2, right: fw / 2, top: fh / 2, bottom: -fh / 2, near: 0.5, far: 4000 }}
+      style={{ position: 'absolute', left: ox, top: oy, width: fw * sc, height: fh * sc, pointerEvents: 'none' }}
     >
-      <LockCamera vw={vw} vh={vh} />
+      <LockCamera vw={fw} vh={fh} />
       <ambientLight intensity={0.7} />
       <directionalLight position={[-560, 860, 940]} intensity={1.2} color="#ffffff" />
       <directionalLight position={[720, -260, 700]} intensity={0.48} color="#d9e6ff" />
       <directionalLight position={[120, 380, -900]} intensity={0.4} color="#ffe9cc" />
-      <group position={[cx - vw / 2, vh / 2 - cy, 0]}>
+      <group position={[gx, gy, 0]}>
         {/* 微微斜一点：正对着看两块板就成了平面贴纸，斜一点才露出孔的深度与块的顶面 */}
         <group rotation={[0.035, 0.1, 0]}>
-          <MotorBody getState={getState} />
+          <MotorBody getState={getState} bare={bare} />
         </group>
       </group>
     </Canvas>
