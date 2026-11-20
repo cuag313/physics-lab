@@ -377,8 +377,8 @@ const WASHER_DRUM = { cx: 75.0, cy: 78.6, r: 16.2 }
    同一窗口、同一台相机渲的，逐帧叠上去就等于转子真转，且与底图零重影。
    渲染窗口 392×331（x96 y120）对应卡 200×169（缩放 0.510），据此量出标注几何：
    极靴 x36.6..159.4 / y6..120.6；线圈框 x64..136 / y33..96；换向器圆心 (100,127)；底座上沿 y≈147。 */
-const MOTOR_COIL = { x: 76, y: 40, w: 40, h: 86 }
-const MOTOR_COM = { cx: 101.6, cy: 146, r: 21 }
+const MOTOR_COIL = { x: 80, y: 45, w: 44, h: 94 }
+const MOTOR_COM = { cx: 101.9, cy: 155, r: 18 }
 /* 三台家电的"工作痕迹"位置（按器材图在卡里的实际落点量出来，卡都是 150×168、图框 x22 y18 w106 h92）：
  * 电热水壶 kettle_body 152×212 → meet 收成 65.96×92、左起 42.0；壶嘴尖在源图 (16,88) → 卡内 (49.0,56.2)；
  * 电饭煲 ricecooker_body 176×146 → 收成 106×87.9、上起 20.0；盖顶排气孔 (88,10) → 卡内 (75,26)，
@@ -565,13 +565,13 @@ function MotionLayer({ items }) {
                   rx="6" fill="none" stroke="#f59e0b" strokeWidth="1.2" strokeDasharray="5 3" opacity="0.9" />
                 <circle cx={MOTOR_COM.cx} cy={MOTOR_COM.cy} r={MOTOR_COM.r} fill="none" stroke="#f59e0b"
                   strokeWidth="1.2" strokeDasharray="4 3" opacity="0.9" />
-                <text x="60" y="34" textAnchor="middle" fontSize="7" fontWeight="600" fill="#b45309"
+                <text x="40" y="29" textAnchor="middle" fontSize="7" fontWeight="600" fill="#b45309"
                   stroke="#fffaf1" strokeWidth="2.2" paintOrder="stroke">转子（线圈）</text>
-                <text x="99" y="165" textAnchor="middle" fontSize="7" fontWeight="600" fill="#b45309"
+                <text x="34" y="158" textAnchor="middle" fontSize="7" fontWeight="600" fill="#b45309"
                   stroke="#fffaf1" strokeWidth="2.2" paintOrder="stroke">换向器 · 电刷</text>
-                <text x="44" y="164" textAnchor="middle" fontSize="7" fontWeight="600" fill="#b45309"
+                <text x="26" y="197" textAnchor="middle" fontSize="7" fontWeight="600" fill="#b45309"
                   stroke="#fffaf1" strokeWidth="2.2" paintOrder="stroke">接线柱</text>
-                <text x="158" y="164" textAnchor="middle" fontSize="7" fontWeight="600" fill="#b45309"
+                <text x="152" y="197" textAnchor="middle" fontSize="7" fontWeight="600" fill="#b45309"
                   stroke="#fffaf1" strokeWidth="2.2" paintOrder="stroke">接线柱</text>
               </g>
             )
@@ -1961,6 +1961,10 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
 })
 
 export default BuilderSVG
+
+
+
+
 
 
 
