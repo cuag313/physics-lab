@@ -12,7 +12,7 @@ import { capPaint } from '../theme/termColors.js'
 export const FIG = '/physics-lab/assets/equipment/fig'
 /* 实拍图版本号：同名图片被覆盖后浏览器会继续用旧缓存（元件库缩略图尤其明显），
    所有 fig 图片 URL 统一带这串版本参数，改图时把它 +1 即可强制刷新。 */
-export const FIG_V = '20261120b'
+export const FIG_V = '20261120f'
 export const figURL = (file) => `${FIG}/${file}?v=${FIG_V}`
 
 /** 滑动变阻器滑片轨道（显示坐标）：与实拍图里瓷筒绕线的左右端对齐（33..159） */
@@ -1694,23 +1694,47 @@ export const TYPES = {
     </svg>` }
   },
 
-  /* ── 小电动机（立式机组：木底座 + 大线圈环 + 蹄形磁铁 + 带滑环的转子，照素材库「电磁学实验器材.png」；
-        通电后的电流带与滑环在 BuilderSVG 的 MotionLayer 里叠） ── */
+  /* ── 小电动机（＝ Tab1 那台 3D 电动机整机的离线渲染：红 N / 蓝 S 弧形极靴 + 单匝线圈转子 +
+        灰色外壳换向器 + 两片电刷 + 银灰底座 + 左右黑/红接线柱）。
+        底图 motor_body.png 只含不动的部分；转子另出 24 帧拼成一条精灵图 motor_sheet.png，
+        通电后靠卡片自带的 CSS steps(24) 逐帧推过去 —— 不用逐帧重画、也不会掉帧。 ── */
   motor: {
     label: '小电动机', w: 200, h: 169,
     terminals: [
-      { id: 'a', label: '1', name: '接线柱 1', x: 116, y: 153 },
-      { id: 'b', label: '2', name: '接线柱 2', x: 182, y: 149 },
+      { id: 'a', label: '1', name: '接线柱 1', x: 22, y: 148 },
+      { id: 'b', label: '2', name: '接线柱 2', x: 178, y: 148 },
     ],
     render(c, dyn = {}) {
       const I = dyn.I || 0
       const on = Math.abs(I) > 0.005
+      const dir = dyn.dir || 1
+      /* 转速口径与 Tab1 一致（rad/s）：0.6 A 约半转每秒；一圈的时长 = 2π / ω */
+      const speed = 1.9 + 2.2 * Math.min(1.4, Math.abs(I))
+      const dur = (2 * Math.PI) / speed
+      const cid = `esmr${c.id}`
+      /* 24 帧精灵图按 200 一格横排；用 SMIL 的 animateTransform（calcMode=discrete）逐格跳，
+         每格 = 一张转子图。CSS transform 在这套卡片里只管算不管画（实测画面不动），SMIL 才动。 */
+      const step = 200
+      const offs = Array.from({ length: 24 }, (_, i) => `${-i * step} 0`)
+      const vals = dir > 0 ? offs : offs.slice().reverse()
+      const keys = Array.from({ length: 24 }, (_, i) => (i / 24).toFixed(4)).join(';')
+      const smil = on
+        ? `<animateTransform attributeName="transform" type="translate" calcMode="discrete"
+             values="${vals.join(';')}" keyTimes="${keys}" dur="${dur.toFixed(2)}s" repeatCount="indefinite"/>`
+        : ''
       return `
     <svg width="200" height="169" viewBox="0 0 200 169">
       ${fitInner(200, 169, 200, 169, INNER.motor())}
-      ${photo('motor_ring.png', 200, 169)}
-      ${on ? noteChipSVG(150, 16, `I = ${Math.abs(I).toFixed(2)} A`, '#4ade80', 96) : noteChipSVG(56, 138, '未通电', '#94a3b8', 58)}
-      ${on ? motorSpinBadgeSVG(186, 40, dyn.dir || 1) : ''}
+      ${photo('motor_body.png', 200, 169)}
+      <defs>
+        <clipPath id="${cid}"><rect x="0" y="0" width="200" height="169"/></clipPath>
+      </defs>
+      <g clip-path="url(#${cid})">
+        <image href="${figURL('motor_sheet.png')}" x="0" y="0" width="4800" height="169"
+          preserveAspectRatio="none">${smil}</image>
+      </g>
+      ${on ? noteChipSVG(150, 15, `I = ${Math.abs(I).toFixed(2)} A`, '#4ade80', 96) : noteChipSVG(54, 15, '未通电', '#94a3b8', 58)}
+      ${on ? motorSpinBadgeSVG(184, 74, dir) : ''}
     </svg>` }
   },
 
@@ -2730,3 +2754,7 @@ function compassSVG(x, y, r, ang) {
         <circle cx="${x}" cy="${y}" r="${(r * 0.15).toFixed(1)}" fill="#B8860B"/>
       </g>`
 }
+
+
+
+

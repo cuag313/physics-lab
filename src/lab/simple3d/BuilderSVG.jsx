@@ -371,16 +371,14 @@ function ElectronFlow({ items }) {
    → 卡内 cx=(40.7+83.5×0.4107)=75.0、cy=(26+128×0.4107)=78.6、r≈15.6（取 16.2 盖住门圈内沿）。 */
 const METER_SLOT = { x: 52, y: 75.5, w: 79, h: 11.5 }
 const WASHER_DRUM = { cx: 75.0, cy: 78.6, r: 16.2 }
-/* 小电动机卡 200×169（2026-11-20 起改成素材库「电磁学实验器材.png」里那台立式机组：
-   木底座 + 左侧大线圈环 + 右侧红 N / 蓝 S 蹄形磁铁 + 磁极间那只带滑环的转子）。
-   卡片本体直接用整机裁剪图 motor_ring.png（940×794 → 200×169），运动层只叠两处会动的东西：
-   ① 大线圈环上的电流带（环是圆的，取环带中线半径画弧就够了）；
-   ② 磁极间那只小环（滑环/换向片）两半红蓝随轴转。
-   几何都对 940×794 图按 200/940、169/794 换算量出来：
-   大环外缘 x 10..555 / y 8..555 ⇒ 环心 (60.0, 59.8)、外半径 57.9、内半径 42.6、环带中线 50.2；
-   小环（照片里那只浅灰环）圆心 (156.2,112.8)、外半径 5.9、内半径 3.15，轴往下伸到 y≈135。 */
-const MOTOR_RING = { cx: 60.0, cy: 59.8, r: 50.2 }
-const MOTOR_GAUGE = { cx: 156.2, cy: 112.8, rOut: 5.9, rIn: 3.15 }
+/* 小电动机卡 200×169（2026-11-20 起改成 Tab1 那台 3D 电动机整机的离线渲染：
+   红 N / 蓝 S 弧形极靴 + 单匝线圈转子 + 灰色外壳换向器 + 两片电刷 + 银灰底座 + 左右黑/红接线柱）。
+   卡片本体是 motor_body.png（只画极靴/电刷/底座/接线柱），转子另出 24 帧 motor_r0..23.png
+   同一窗口、同一台相机渲的，逐帧叠上去就等于转子真转，且与底图零重影。
+   渲染窗口 392×331（x96 y120）对应卡 200×169（缩放 0.510），据此量出标注几何：
+   极靴 x36.6..159.4 / y6..120.6；线圈框 x64..136 / y33..96；换向器圆心 (100,127)；底座上沿 y≈147。 */
+const MOTOR_COIL = { x: 64, y: 33, w: 72, h: 63 }
+const MOTOR_COM = { cx: 100, cy: 127, r: 14.6 }
 /* 三台家电的"工作痕迹"位置（按器材图在卡里的实际落点量出来，卡都是 150×168、图框 x22 y18 w106 h92）：
  * 电热水壶 kettle_body 152×212 → meet 收成 65.96×92、左起 42.0；壶嘴尖在源图 (16,88) → 卡内 (49.0,56.2)；
  * 电饭煲 ricecooker_body 176×146 → 收成 106×87.9、上起 20.0；盖顶排气孔 (88,10) → 卡内 (75,26)，
@@ -550,66 +548,35 @@ function MotionLayer({ items }) {
             </g>
           )
         }
-        /* 小电动机（2026-11-20 按素材库「电磁学实验器材.png」重做）：卡片本体是整机裁剪图
-           motor_ring.png（木底座 + 立式大线圈环 + 红 N / 蓝 S 蹄形磁铁），运动层只叠两处会动的东西：
-           ① 大线圈环上的电流带（环带中线上的左右两段弧，左红右蓝，接反时对调）；
-           ② 磁极间那只小环（滑环/换向片）：两半红蓝随轴转，"换向"因此是看得见的。
+        /* 小电动机（2026-11-20 改回"电动机本体"）：卡片本体是 motor_body.png（定子底图）+ 运动层 24 帧 motor_r*.png（只有轴/线圈/换向片）—— Tab1 那台 3D 电动机整机
+           （红 N / 蓝 S 弧形极靴 + 单匝线圈转子 + 灰色换向器 + 两片电刷 + 银灰底座 + 左右黑/红接线柱）。
+           运动层不再画假动画，而是按转角挑一张 motor_sN.png 盖上去：12 帧同一台相机渲的，
+           逐帧换图 = 转子（线圈）真转，底座、接线柱、电刷原封不动。
            转速 ∝ 电流；接线柱 1、2 接反 → dir=-1 → 反转。 */
         if (it.kind === 'motor') {
-          const on = it.v > 0.05
-          /* 转向口径（用户 2026-11-19 确认）：视线从纸面外往里看，转子在纸面内逆时针转；
-             SVG 的 rotate(+deg) 是顺时针，所以统一取负号。dir=+1 → 逆时针，接线柱对调 → 顺时针。 */
-          const spin = -st.a * it.dir
-          const deg = (spin * 180) / Math.PI
-          const RG = MOTOR_RING
-          const GG = MOTOR_GAUGE
-          /* 电流带：环带中线上的左右两段弧（A r r 0 0 0/1 决定从顶点走左半还是右半） */
-          const bandL = `M ${RG.cx} ${RG.cy - RG.r} A ${RG.r} ${RG.r} 0 0 0 ${RG.cx} ${RG.cy + RG.r}`
-          const bandR = `M ${RG.cx} ${RG.cy - RG.r} A ${RG.r} ${RG.r} 0 0 1 ${RG.cx} ${RG.cy + RG.r}`
-          const left = it.dir > 0 ? '#dc2626' : '#2563eb'   // 红=电流一个方向，蓝=相反方向
-          const right = it.dir > 0 ? '#2563eb' : '#dc2626'
-          /* 小环两半：外弧 + 内弧拼成半环，跟着轴一起转（转到哪边就是哪片贴住电刷） */
-          const half = (sw, rO, rI) =>
-            `M ${GG.cx} ${GG.cy - rO} A ${rO} ${rO} 0 0 ${sw} ${GG.cx} ${GG.cy + rO} ` +
-            `L ${GG.cx} ${GG.cy + rI} A ${rI} ${rI} 0 0 ${1 - sw} ${GG.cx} ${GG.cy - rI} Z`
-          /* 通电才有：① 大线圈环上的电流带 + 跑动的白虚线；② 磁极间小环（滑环/换向片）两半红蓝随轴转 */
-          const overlay = on ? (
-            <>
-              <path d={bandL} fill="none" stroke={left} strokeWidth="4.6" strokeLinecap="round" opacity="0.5" />
-              <path d={bandR} fill="none" stroke={right} strokeWidth="4.6" strokeLinecap="round" opacity="0.5" />
-              <path d={bandL} fill="none" stroke="#ffffff" strokeWidth="1.5"
-                strokeDasharray="4 10" strokeDashoffset={-((st.a * 26) % 14)} opacity="0.72" />
-              <path d={bandR} fill="none" stroke="#ffffff" strokeWidth="1.5"
-                strokeDasharray="4 10" strokeDashoffset={-((st.a * 26) % 14)} opacity="0.72" />
-              <g transform={`rotate(${deg.toFixed(1)} ${GG.cx} ${GG.cy})`}>
-                <path d={half(1, GG.rOut, GG.rIn)} fill={right} opacity="0.92" />
-                <path d={half(0, GG.rOut, GG.rIn)} fill={left} opacity="0.92" />
-              </g>
-              <circle cx={GG.cx} cy={GG.cy} r={GG.rIn - 0.2} fill="#cfd5dc" stroke="#8f98a3" strokeWidth="0.5" />
-            </>
-          ) : null
+          /* 转子动画交给卡片自己：motor_sheet.png + 卡片内联的 CSS steps(24)（见 TYPES.motor），
+             运动层这里不再叠图（React 侧的 <image> 在这套渲染链路里不出图，卡片内联的才认）。 */
           /* ── 透视（🔍 电机结构）：不换图，直接在整机图上打标注 ——
-             这台器材的"内部"本来就在明处（磁极间就是转子），换成别的机芯图反而对不上。 ── */
+             这台器材的"内部"本来就在明处（两极靴中间就是转子），换成别的机芯图反而对不上。 ── */
           if (it.cut) {
             return (
               <g key={it.id} transform={`translate(${it.x},${it.y})`}>
-                {overlay}
-                <circle cx={RG.cx} cy={RG.cy} r="57.9" fill="none" stroke="#f59e0b" strokeWidth="1.2"
-                  strokeDasharray="5 3" opacity="0.9" />
-                <rect x="145" y="103" width="24" height="36" rx="5" fill="none" stroke="#f59e0b"
-                  strokeWidth="1.2" strokeDasharray="4 3" />
-                <text x="60" y="24" textAnchor="middle" fontSize="7.5" fontWeight="600" fill="#b45309"
-                  stroke="#fffaf1" strokeWidth="2.2" paintOrder="stroke">线圈环（通电流）</text>
-                <text x="157" y="84" textAnchor="middle" fontSize="7.5" fontWeight="600" fill="#b45309"
-                  stroke="#fffaf1" strokeWidth="2.2" paintOrder="stroke">蹄形磁铁 N / S</text>
-                <text x="157" y="148" textAnchor="middle" fontSize="7.5" fontWeight="600" fill="#b45309"
-                  stroke="#fffaf1" strokeWidth="2.2" paintOrder="stroke">转子 · 滑环</text>
+                <rect x={MOTOR_COIL.x} y={MOTOR_COIL.y} width={MOTOR_COIL.w} height={MOTOR_COIL.h}
+                  rx="6" fill="none" stroke="#f59e0b" strokeWidth="1.2" strokeDasharray="5 3" opacity="0.9" />
+                <circle cx={MOTOR_COM.cx} cy={MOTOR_COM.cy} r={MOTOR_COM.r} fill="none" stroke="#f59e0b"
+                  strokeWidth="1.2" strokeDasharray="4 3" opacity="0.9" />
+                <text x="46" y="20" textAnchor="middle" fontSize="7" fontWeight="600" fill="#b45309"
+                  stroke="#fffaf1" strokeWidth="2.2" paintOrder="stroke">转子（线圈）</text>
+                <text x="99" y="148" textAnchor="middle" fontSize="7.5" fontWeight="600" fill="#b45309"
+                  stroke="#fffaf1" strokeWidth="2.2" paintOrder="stroke">换向器 · 电刷</text>
+                <text x="24" y="134" textAnchor="middle" fontSize="7" fontWeight="600" fill="#b45309"
+                  stroke="#fffaf1" strokeWidth="2.2" paintOrder="stroke">接线柱</text>
+                <text x="176" y="134" textAnchor="middle" fontSize="7" fontWeight="600" fill="#b45309"
+                  stroke="#fffaf1" strokeWidth="2.2" paintOrder="stroke">接线柱</text>
               </g>
             )
           }
-          return (
-            <g key={it.id} transform={`translate(${it.x},${it.y})`}>{overlay}</g>
-          )
+          return <g key={it.id} transform={`translate(${it.x},${it.y})`} />
         }
         /* 电热水壶：壶嘴冒汽 —— 三缕汽柱错相位往上飘，越飘越大越淡（汽是白的，用灰蓝衬一层才在暖底上看得见）。
            不做"水在壶里翻滚"：实拍壶身是不透明的，只能看见壶嘴出来的这一股汽。 */
@@ -1994,4 +1961,9 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
 })
 
 export default BuilderSVG
+
+
+
+
+
 

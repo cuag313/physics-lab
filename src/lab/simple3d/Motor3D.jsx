@@ -120,7 +120,9 @@ function GradBar({ from, to, r = TUBE, matRefs, idx }) {
 }
 
 /* ─────────── 场景内部 ─────────── */
-function MotorBody({ getState, bare }) {
+/* parts: 'all' 全画 | 'stator' 只画不动的（极靴/字母/电刷/底座/接线柱）| 'rotor' 只画转的（轴/线圈/换向片）
+   给 Tab2「自己动手」用：底图存 stator、运动层逐帧存 rotor，叠起来才是"转子在转、底座一动不动"。 */
+function MotorBody({ getState, bare, parts = 'all' }) {
   const coilRef = useRef(), comRef = useRef()
   const matL = useRef(), matR = useRef()
   const sprN1 = useRef(), sprS1 = useRef(), sprN2 = useRef(), sprS2 = useRef()
@@ -188,7 +190,9 @@ function MotorBody({ getState, bare }) {
 
   return (
     <group>
-      {/* 两块极靴：内侧面就是孔壁（通孔是真的，没有一块"挡在后面"的板） */}
+      {parts !== 'rotor' && (
+      <group>
+        {/* 两块极靴：内侧面就是孔壁（通孔是真的，没有一块"挡在后面"的板） */}
       <mesh geometry={geoL} position={[0, 0, -DEPTH / 2]} castShadow receiveShadow>
         <meshStandardMaterial ref={matL} color="#D8302F" metalness={0.14} roughness={0.4} />
       </mesh>
@@ -208,8 +212,11 @@ function MotorBody({ getState, bare }) {
       <sprite ref={sprS2} position={[(R + W / 2), 2, DEPTH / 2 + 26]} scale={[72, 72, 1]} renderOrder={3} visible={false}>
         <spriteMaterial map={texS} transparent depthTest={false} depthWrite={false} />
       </sprite>
+      </group>
+      )}
 
       {/* 转轴（竖直，贯穿孔，落到换向器） */}
+      {parts !== 'stator' && (<group>
       <mesh position={[0, (BH - EGY) / 2 - 4, 0]}>
         <cylinderGeometry args={[2.8, 2.8, BH + EGY + 8, 18]} />
         <meshStandardMaterial color="#B6BFC9" metalness={0.6} roughness={0.34} />
@@ -244,8 +251,11 @@ function MotorBody({ getState, bare }) {
           <meshStandardMaterial color="#F7F2E8" metalness={0.05} roughness={0.7} />
         </mesh>
       </group>
+      </group>
+      )}
 
       {/* 两个电刷（固定）：碳块压住换向片 */}
+      {parts !== 'rotor' && (<group>
       {[-1, 1].map((sx) => (
         <mesh key={'br' + sx} position={[sx * BR_DX, -EGY, 0]}>
           <boxGeometry args={[12, 11, 17]} />
@@ -284,6 +294,8 @@ function MotorBody({ getState, bare }) {
         ))}
       </group>
       )}
+      </group>
+      )}
     </group>
   )
 }
@@ -302,7 +314,7 @@ function LockCamera({ vw, vh }) {
   return null
 }
 
-export default function Motor3D({ sc, ox, oy, vw, vh, cx, cy, getState, cut, bare }) {
+export default function Motor3D({ sc, ox, oy, vw, vh, cx, cy, getState, cut, bare, parts }) {
   /* cut = 想看的设计坐标窗口 {x,y,w,h}（不传就用整块 vw×vh，行为与以前完全一致）。
      1 单位 = sc 个 CSS 像素，窗口左上角对齐画布左上角。 */
   const fw = cut ? cut.w : vw
@@ -327,9 +339,10 @@ export default function Motor3D({ sc, ox, oy, vw, vh, cx, cy, getState, cut, bar
       <group position={[gx, gy, 0]}>
         {/* 微微斜一点：正对着看两块板就成了平面贴纸，斜一点才露出孔的深度与块的顶面 */}
         <group rotation={[0.035, 0.1, 0]}>
-          <MotorBody getState={getState} bare={bare} />
+          <MotorBody getState={getState} bare={bare} parts={parts} />
         </group>
       </group>
     </Canvas>
   )
 }
+
