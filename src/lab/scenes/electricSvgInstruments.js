@@ -274,7 +274,7 @@ const INNER = {
       <circle cx="68" cy="24" r="12" fill="none" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="3 2"/>
       <line x1="68" y1="36" x2="68" y2="112" stroke="#9aa3ad" stroke-width="2.4"/>
       <rect x="34" y="110" width="68" height="68" rx="8" fill="none" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="4 3"/>
-      <path d="M65 114 L58 158 M71 114 L78 158" stroke="#c9a227" stroke-width="3" stroke-linecap="round"/>
+      <path d="M65 114 L58 158 M71 114 L78 158" stroke="#c9a227" stroke-width="3.4" stroke-linecap="round"/>
       <text class="plabel" x="68" y="14">金属球（带电体接触）</text>
       <text class="plabel" x="88" y="80">金属杆</text>
       <text class="plabel" x="68" y="172">金属箔片（同种电荷相斥）</text>
@@ -1694,47 +1694,96 @@ export const TYPES = {
     </svg>` }
   },
 
-  /* ── 小电动机（＝ Tab1 那台 3D 电动机整机的离线渲染：红 N / 蓝 S 弧形极靴 + 单匝线圈转子 +
-        灰色外壳换向器 + 两片电刷 + 银灰底座 + 左右黑/红接线柱）。
-        底图 motor_body.png 只含不动的部分；转子另出 24 帧拼成一条精灵图 motor_sheet.png，
-        通电后靠卡片自带的 CSS steps(24) 逐帧推过去 —— 不用逐帧重画、也不会掉帧。 ── */
+  /* ── 小电动机（2026-11-20 按用户参考图做成"一体式"矢量器材，第 2 版）：
+        红 N / 蓝 S 两块圆角磁铁合成一块体，中间挖出圆柱腔；腔心一根竖轴，轴上挂着单匝
+        平行四边形线圈；轴落到下方换向环（左红右蓝两半），换向环直接坐进同一块小底座，
+        底座左右两端就是两个接线柱 —— 磁铁 · 线圈 · 换向器 · 底座 · 接线柱连成一整件。
+        通电后线圈绕竖直轴翻转（SMIL scaleX 1→-1→1），换向环同相自转。 ── */
   motor: {
     label: '小电动机', w: 200, h: 169,
     terminals: [
-      { id: 'a', label: '1', name: '接线柱 1', x: 22, y: 148 },
-      { id: 'b', label: '2', name: '接线柱 2', x: 178, y: 148 },
+      { id: 'a', label: '1', name: '接线柱 1', x: 66, y: 114 },
+      { id: 'b', label: '2', name: '接线柱 2', x: 133, y: 114 },
     ],
     render(c, dyn = {}) {
       const I = dyn.I || 0
       const on = Math.abs(I) > 0.005
       const dir = dyn.dir || 1
-      /* 转速口径与 Tab1 一致（rad/s）：0.6 A 约半转每秒；一圈的时长 = 2π / ω */
+      /* 转速口径与 Tab1 一致（rad/s）：0.6 A 约半转每秒 */
       const speed = 1.9 + 2.2 * Math.min(1.4, Math.abs(I))
-      const dur = (2 * Math.PI) / speed
-      const cid = `esmr${c.id}`
-      /* 24 帧精灵图按 200 一格横排；用 SMIL 的 animateTransform（calcMode=discrete）逐格跳，
-         每格 = 一张转子图。CSS transform 在这套卡片里只管算不管画（实测画面不动），SMIL 才动。 */
-      const step = 200
-      const offs = Array.from({ length: 24 }, (_, i) => `${-i * step} 0`)
-      const vals = dir > 0 ? offs : offs.slice().reverse()
-      const keys = Array.from({ length: 24 }, (_, i) => (i / 24).toFixed(4)).join(';')
-      const smil = on
-        ? `<animateTransform attributeName="transform" type="translate" calcMode="discrete"
-             values="${vals.join(';')}" keyTimes="${keys}" dur="${dur.toFixed(2)}s" repeatCount="indefinite"/>`
+      const half = (Math.PI / speed).toFixed(2)      // 翻转一个来回 = 半圈
+      const cid = `esmm${c.id}`
+      const flip = [1, 0.85, 0.5, 0.1, -0.3, -0.7, -1, -0.7, -0.3, 0.1, 0.5, 0.85, 1]
+      const kt = flip.map((_, i) => (i / (flip.length - 1)).toFixed(4)).join(';')
+      const vv = (dir > 0 ? flip : flip.slice().reverse()).map((v) => `${v} 1`).join(';')
+      const coilAnim = on
+        ? `<animateTransform attributeName="transform" type="scale" calcMode="linear"
+             values="${vv}" keyTimes="${kt}" dur="${half}s" repeatCount="indefinite"/>`
+        : ''
+      const ringAnim = on
+        ? `<animateTransform attributeName="transform" type="rotate"
+             from="0" to="${-360 * dir}" dur="${((2 * Math.PI) / speed).toFixed(2)}s" repeatCount="indefinite"/>`
         : ''
       return `
     <svg width="200" height="169" viewBox="0 0 200 169">
-      ${fitInner(200, 169, 200, 169, INNER.motor())}
-      ${photo('motor_body.png', 200, 169)}
       <defs>
-        <clipPath id="${cid}"><rect x="0" y="0" width="200" height="169"/></clipPath>
+        <mask id="${cid}m">
+          <rect x="0" y="0" width="200" height="169" fill="#fff"/>
+          <circle cx="100" cy="51" r="41" fill="#000"/>
+        </mask>
+        <radialGradient id="${cid}cav" cx="100" cy="40" r="52" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#525b66"/>
+          <stop offset="62%" stop-color="#39414b"/>
+          <stop offset="100%" stop-color="#2a3038"/>
+        </radialGradient>
       </defs>
-      <g clip-path="url(#${cid})">
-        <image href="${figURL('motor_sheet.png')}" x="0" y="0" width="4800" height="169"
-          preserveAspectRatio="none">${smil}</image>
+      <!-- 磁铁：一整块开一个圆柱腔（红 N 在左，蓝 S 在右） -->
+      <g mask="url(#${cid}m)">
+        <rect class="casing" x="13" y="6" width="88" height="90" rx="8" fill="#d8302f"/>
+        <rect class="casing" x="99" y="6" width="88" height="90" rx="8" fill="#2e6be5"/>
+        <rect x="13" y="6" width="174" height="90" rx="8" fill="none" stroke="rgba(0,0,0,.20)" stroke-width="1"/>
       </g>
-      ${on ? noteChipSVG(150, 15, `I = ${Math.abs(I).toFixed(2)} A`, '#4ade80', 96) : noteChipSVG(54, 15, '未通电', '#94a3b8', 58)}
-      ${on ? motorSpinBadgeSVG(184, 74, dir) : ''}
+      <text x="34" y="58" fontSize="25" fontWeight="700" fill="#ffffff" opacity=".92">N</text>
+      <text x="164" y="58" fontSize="25" fontWeight="700" fill="#ffffff" opacity=".92">S</text>
+      <!-- 腔体：暗灰圆柱腔（内壁有一圈亮边和一圈深影），读作"通孔" -->
+      <circle cx="100" cy="51" r="40.4" fill="url(#${cid}cav)"/>
+      <circle cx="100" cy="51" r="40.4" fill="none" stroke="rgba(20,26,34,.55)" stroke-width="1.6"/>
+      <circle cx="100" cy="51" r="37.4" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="1"/>
+
+      <!-- 转轴：细银柱，从腔心落到换向环 -->
+      <line x1="100" y1="13" x2="100" y2="99" stroke="#cfd8e2" stroke-width="2.2"/>
+      <circle cx="100" cy="13" r="3.2" fill="#dfe6ee" stroke="#9aa5b1" stroke-width=".8"/>
+
+      <!-- 线圈：单匝平行四边形框（左红 / 右下蓝），绕竖直轴翻转 -->
+      <g transform="translate(100,51)">
+        <g>${coilAnim}
+          <path d="M -17 23 L -20 -24 L 15 -20" fill="none" stroke="#ef4a3a"
+            stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
+          <path d="M 15 -20 L 12 26 L -17 23" fill="none" stroke="#4a86f0"
+            stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
+          <!-- 线圈收口：两根细臂向下插到换向环上 -->
+          <path d="M -15 23 L -4 45" stroke="#ef4a3a" stroke-width="3.4" stroke-linecap="round"/>
+          <path d="M 12 25 L 4 45" stroke="#4a86f0" stroke-width="3.4" stroke-linecap="round"/>
+        </g>
+      </g>
+
+      <!-- 换向环：两片半环（左红右蓝），随轴自转 -->
+      <g transform="translate(100,105)">
+        <g>${ringAnim}
+          <path d="M 0 -11 A 11 11 0 0 0 0 11" fill="none" stroke="#d8302f" stroke-width="4.6" stroke-linecap="round"/>
+          <path d="M 0 -11 A 11 11 0 0 1 0 11" fill="none" stroke="#2e6be5" stroke-width="4.6" stroke-linecap="round"/>
+        </g>
+        <circle r="3.2" fill="#f6f8fb" stroke="#9aa5b1" stroke-width="1"/>
+      </g>
+
+      <!-- 一体式小底座 + 左右两个接线柱（左黑右红） -->
+      <rect class="casing" x="44" y="118" width="112" height="15" rx="4" fill="#c7d0da"/>
+      <rect x="44" y="127" width="112" height="6" rx="3" fill="#a9b4c0"/>
+      <rect x="64" y="108" width="9" height="12" rx="2" fill="#33383f"/>
+      <rect x="127" y="108" width="9" height="12" rx="2" fill="#c6303a"/>
+
+      ${on ? noteChipSVG(100, 158, `I = ${Math.abs(I).toFixed(2)} A`, '#4ade80', 96) : noteChipSVG(100, 158, '未通电', '#94a3b8', 58)}
+      ${on ? motorSpinBadgeSVG(170, 84, dir) : ''}
     </svg>` }
   },
 
@@ -2754,6 +2803,10 @@ function compassSVG(x, y, r, ang) {
         <circle cx="${x}" cy="${y}" r="${(r * 0.15).toFixed(1)}" fill="#B8860B"/>
       </g>`
 }
+
+
+
+
 
 
 
