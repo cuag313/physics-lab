@@ -1694,24 +1694,26 @@ export const TYPES = {
     </svg>` }
   },
 
-  /* ── 小电动机（2026-11-20 按用户参考图做成"一体式"矢量器材，第 2 版）：
-        红 N / 蓝 S 两块圆角磁铁合成一块体，中间挖出圆柱腔；腔心一根竖轴，轴上挂着单匝
-        平行四边形线圈；轴落到下方换向环（左红右蓝两半），换向环直接坐进同一块小底座，
-        底座左右两端就是两个接线柱 —— 磁铁 · 线圈 · 换向器 · 底座 · 接线柱连成一整件。
-        通电后线圈绕竖直轴翻转（SMIL scaleX 1→-1→1），换向环同相自转。 ── */
+  /* ── 小电动机（2026-11-20 第 5 版：按 NB「电动机原理」那张图按比例量、逐块校）
+        坐标来源：NB 截图 242×246，整机按 0.826 缩到 200×204 的画幅（再加底部状态胶囊）。
+        红 N / 蓝 S 两块厚磁铁板（顶面暗带 + 顶沿亮边 + 正面下压暗），共同挖出一个圆柱腔；
+        腔壁是 16 宽的立体倒角（左暗红 / 右亮蓝），腔里深色 = 通孔。
+        腔内一片细长斜四边形单匝线圈（上/右红、下/左蓝，底下有一小段反折），
+        两根引线落到换向环；换向环红（右半）蓝（左半），略压扁 = 俯视角度，两侧各一根细电刷杆。
+        底座是一条很窄的银灰板（顶面亮、前沿暗），两端是带金黄柱脚的黑 / 红接线柱。
+        通电：线圈绕竖直轴翻转（SMIL scale 1→-1→1），换向环同相自转。 ── */
   motor: {
-    label: '小电动机', w: 200, h: 169,
+    label: '小电动机', w: 200, h: 212,
     terminals: [
-      { id: 'a', label: '1', name: '接线柱 1', x: 66, y: 114 },
-      { id: 'b', label: '2', name: '接线柱 2', x: 133, y: 114 },
+      { id: 'a', label: '1', name: '接线柱 1', x: 56, y: 185 },
+      { id: 'b', label: '2', name: '接线柱 2', x: 142, y: 185 },
     ],
     render(c, dyn = {}) {
       const I = dyn.I || 0
       const on = Math.abs(I) > 0.005
       const dir = dyn.dir || 1
-      /* 转速口径与 Tab1 一致（rad/s）：0.6 A 约半转每秒 */
       const speed = 1.9 + 2.2 * Math.min(1.4, Math.abs(I))
-      const half = (Math.PI / speed).toFixed(2)      // 翻转一个来回 = 半圈
+      const half = (Math.PI / speed).toFixed(2)
       const cid = `esmm${c.id}`
       const flip = [1, 0.85, 0.5, 0.1, -0.3, -0.7, -1, -0.7, -0.3, 0.1, 0.5, 0.85, 1]
       const kt = flip.map((_, i) => (i / (flip.length - 1)).toFixed(4)).join(';')
@@ -1724,68 +1726,156 @@ export const TYPES = {
         ? `<animateTransform attributeName="transform" type="rotate"
              from="0" to="${-360 * dir}" dur="${((2 * Math.PI) / speed).toFixed(2)}s" repeatCount="indefinite"/>`
         : ''
+      const R = 16.5
+      const a1 = (-100 * Math.PI) / 180
+      const a2 = (100 * Math.PI) / 180
+      const p1 = [R * Math.cos(a1), R * Math.sin(a1)].map((v) => v.toFixed(1))
+      const p2 = [R * Math.cos(a2), R * Math.sin(a2)].map((v) => v.toFixed(1))
       return `
-    <svg width="200" height="169" viewBox="0 0 200 169">
+    <svg width="200" height="212" viewBox="0 0 200 212">
       <defs>
         <mask id="${cid}m">
-          <rect x="0" y="0" width="200" height="169" fill="#fff"/>
-          <circle cx="100" cy="51" r="41" fill="#000"/>
+          <rect x="0" y="0" width="200" height="212" fill="#fff"/>
+          <circle cx="99" cy="81" r="63" fill="#000"/>
         </mask>
-        <radialGradient id="${cid}cav" cx="100" cy="40" r="52" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stop-color="#525b66"/>
-          <stop offset="62%" stop-color="#39414b"/>
-          <stop offset="100%" stop-color="#2a3038"/>
+        <radialGradient id="${cid}hole" cx="99" cy="72" r="64" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#3e434a"/>
+          <stop offset="70%" stop-color="#343940"/>
+          <stop offset="100%" stop-color="#2b3036"/>
         </radialGradient>
+        <linearGradient id="${cid}red" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ef4346"/>
+          <stop offset="62%" stop-color="#de3033"/>
+          <stop offset="100%" stop-color="#c52a2e"/>
+        </linearGradient>
+        <linearGradient id="${cid}blue" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#3b8ae2"/>
+          <stop offset="62%" stop-color="#2a78d2"/>
+          <stop offset="100%" stop-color="#1b64be"/>
+        </linearGradient>
+        <linearGradient id="${cid}bvL" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#9c1a1f"/>
+          <stop offset="50%" stop-color="#c42c31"/>
+          <stop offset="100%" stop-color="#ee5254"/>
+        </linearGradient>
+        <linearGradient id="${cid}bvR" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#1b5391"/>
+          <stop offset="50%" stop-color="#2d75c9"/>
+          <stop offset="100%" stop-color="#63a8f2"/>
+        </linearGradient>
+        <linearGradient id="${cid}sh" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
+          <stop offset="58%" stop-color="rgba(0,0,0,0)"/>
+          <stop offset="100%" stop-color="rgba(0,0,0,.13)"/>
+        </linearGradient>
+        <linearGradient id="${cid}vg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="rgba(0,0,0,.34)"/>
+          <stop offset="60%" stop-color="rgba(0,0,0,.12)"/>
+          <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+        </linearGradient>
+        <clipPath id="${cid}hc"><circle cx="99" cy="81" r="63"/></clipPath>
+        <linearGradient id="${cid}pl" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ecf0f3"/>
+          <stop offset="38%" stop-color="#c8cfd7"/>
+          <stop offset="100%" stop-color="#96a1ab"/>
+        </linearGradient>
       </defs>
-      <!-- 磁铁：一整块开一个圆柱腔（红 N 在左，蓝 S 在右） -->
+
+      <!-- 磁铁板：整块开一个圆柱腔（腔里是深色背景 = 通孔） -->
+      <circle cx="99" cy="81" r="63" fill="url(#${cid}hole)"/>
+
       <g mask="url(#${cid}m)">
-        <rect class="casing" x="13" y="6" width="88" height="90" rx="8" fill="#d8302f"/>
-        <rect class="casing" x="99" y="6" width="88" height="90" rx="8" fill="#2e6be5"/>
-        <rect x="13" y="6" width="174" height="90" rx="8" fill="none" stroke="rgba(0,0,0,.20)" stroke-width="1"/>
+        <rect class="casing" x="12" y="15" width="78" height="126" rx="7" fill="url(#${cid}red)"/>
+        <rect class="casing" x="112" y="15" width="76" height="126" rx="7" fill="url(#${cid}blue)"/>
+        <!-- 顶面 = 板的厚度 -->
+        <rect x="12" y="15" width="78" height="7.5" rx="3.5" fill="#a31c20"/>
+        <rect x="112" y="15" width="76" height="7.5" rx="3.5" fill="#134e8c"/>
+        <rect x="13" y="15.5" width="76" height="1.7" fill="rgba(255,150,150,.55)"/>
+        <rect x="113" y="15.5" width="74" height="1.7" fill="rgba(150,200,255,.55)"/>
+        <line x1="12" y1="22.8" x2="90" y2="22.8" stroke="rgba(255,255,255,.28)" stroke-width="1"/>
+        <line x1="112" y1="22.8" x2="188" y2="22.8" stroke="rgba(255,255,255,.22)" stroke-width="1"/>
+        <!-- 正面下压暗 -->
+        <rect x="12" y="24" width="78" height="117" fill="url(#${cid}sh)"/>
+        <rect x="112" y="24" width="76" height="117" fill="url(#${cid}sh)"/>
+        <rect x="12" y="15" width="78" height="126" rx="7" fill="none" stroke="rgba(0,0,0,.15)" stroke-width="1"/>
+        <rect x="112" y="15" width="76" height="126" rx="7" fill="none" stroke="rgba(0,0,0,.15)" stroke-width="1"/>
       </g>
-      <text x="34" y="58" fontSize="25" fontWeight="700" fill="#ffffff" opacity=".92">N</text>
-      <text x="164" y="58" fontSize="25" fontWeight="700" fill="#ffffff" opacity=".92">S</text>
-      <!-- 腔体：暗灰圆柱腔（内壁有一圈亮边和一圈深影），读作"通孔" -->
-      <circle cx="100" cy="51" r="40.4" fill="url(#${cid}cav)"/>
-      <circle cx="100" cy="51" r="40.4" fill="none" stroke="rgba(20,26,34,.55)" stroke-width="1.6"/>
-      <circle cx="100" cy="51" r="37.4" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="1"/>
+      <!-- 腔壁：内圆柱面（正好落在腔的开口里，不能被 mask 挡住）。左半红壁、右半蓝壁，上暗下亮 -->
+      <path d="M 99 23.2 A 57.8 57.8 0 0 0 99 138.8" fill="none" stroke="url(#${cid}bvL)" stroke-width="11"/>
+      <path d="M 99 23.2 A 57.8 57.8 0 0 1 99 138.8" fill="none" stroke="url(#${cid}bvR)" stroke-width="11"/>
+      <!-- 腔底的上暗下亮（孔有深度） -->
+      <g clip-path="url(#${cid}hc)">
+        <rect x="30" y="16" width="140" height="60" fill="url(#${cid}vg)"/>
+      </g>
+      <circle cx="99" cy="81" r="52.3" fill="none" stroke="rgba(255,255,255,.20)" stroke-width="1.2"/>
+      <circle cx="99" cy="81" r="62.8" fill="none" stroke="rgba(0,0,0,.20)" stroke-width="1.2"/>
+      <text x="24" y="88" fontSize="22" fontWeight="700" fill="#fff"
+        stroke="rgba(90,0,4,.35)" stroke-width="1" paintOrder="stroke">N</text>
+      <text x="166" y="88" fontSize="22" fontWeight="700" fill="#fff"
+        stroke="rgba(0,30,80,.35)" stroke-width="1" paintOrder="stroke">S</text>
 
-      <!-- 转轴：细银柱，从腔心落到换向环 -->
-      <line x1="100" y1="13" x2="100" y2="99" stroke="#cfd8e2" stroke-width="2.2"/>
-      <circle cx="100" cy="13" r="3.2" fill="#dfe6ee" stroke="#9aa5b1" stroke-width=".8"/>
+      <!-- 电刷杆：两根细银杆，立在底座顶面、正好夹住换向环 -->
+      <rect x="83.5" y="128" width="3.2" height="46" rx="1.3" fill="#e3e9ef"/>
+      <rect x="83.5" y="128" width="1" height="46" fill="rgba(80,95,112,.38)"/>
+      <rect x="119.5" y="128" width="3.2" height="46" rx="1.3" fill="#e3e9ef"/>
+      <rect x="119.5" y="128" width="1" height="46" fill="rgba(80,95,112,.38)"/>
 
-      <!-- 线圈：单匝平行四边形框（左红 / 右下蓝），绕竖直轴翻转 -->
-      <g transform="translate(100,51)">
+      <!-- 线圈：细长斜四边形单匝框（上/右红、下/左蓝），绕竖直轴翻转 -->
+      <g transform="translate(99,81) scale(1.08)">
         <g>${coilAnim}
-          <path d="M -17 23 L -20 -24 L 15 -20" fill="none" stroke="#ef4a3a"
-            stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-          <path d="M 15 -20 L 12 26 L -17 23" fill="none" stroke="#4a86f0"
-            stroke-width="4.6" stroke-linejoin="round" stroke-linecap="round"/>
-          <!-- 线圈收口：两根细臂向下插到换向环上 -->
-          <path d="M -15 23 L -4 45" stroke="#ef4a3a" stroke-width="3.4" stroke-linecap="round"/>
-          <path d="M 12 25 L 4 45" stroke="#4a86f0" stroke-width="3.4" stroke-linecap="round"/>
+          <!-- 长边（自右上往左下）：红 -->
+          <path d="M 3 -36 L -8 -12" fill="none" stroke="#d23a3d"
+            stroke-width="4.2" stroke-linejoin="round" stroke-linecap="round"/>
+          <!-- 右边 + 右下短边：红 -->
+          <path d="M 3 -36 L 6 -7 L 0 2" fill="none" stroke="#d23a3d"
+            stroke-width="4.2" stroke-linejoin="round" stroke-linecap="round"/>
+          <!-- 左边 + 底边 + 左下反折：蓝 -->
+          <path d="M -8 -12 L -17 7 L -17 37 L -29 39 L -14 26" fill="none" stroke="#3f80d2"
+            stroke-width="4.2" stroke-linejoin="round" stroke-linecap="round"/>
+          <!-- 两根引线落到换向环 -->
+          <path d="M 0 2 L 2 48" stroke="#d23a3d" stroke-width="2.4" stroke-linecap="round"/>
+          <path d="M -14 26 L -8 50" stroke="#7aa7dd" stroke-width="2.4" stroke-linecap="round"/>
         </g>
       </g>
 
-      <!-- 换向环：两片半环（左红右蓝），随轴自转 -->
-      <g transform="translate(100,105)">
+      <!-- 换向环：红（右半）/ 蓝（左半）的立体环，略压扁 = 俯视角度，随轴自转 -->
+      <g transform="translate(101.6,146) scale(1,0.94)">
         <g>${ringAnim}
-          <path d="M 0 -11 A 11 11 0 0 0 0 11" fill="none" stroke="#d8302f" stroke-width="4.6" stroke-linecap="round"/>
-          <path d="M 0 -11 A 11 11 0 0 1 0 11" fill="none" stroke="#2e6be5" stroke-width="4.6" stroke-linecap="round"/>
+          <circle r="${R}" fill="none" stroke="#2a2e34" stroke-width="8.4"/>
+          <path d="M ${p1[0]} ${p1[1]} A ${R} ${R} 0 0 1 ${p2[0]} ${p2[1]}"
+            fill="none" stroke="#d23a3d" stroke-width="7.8" stroke-linecap="round"/>
+          <path d="M ${p2[0]} ${p2[1]} A ${R} ${R} 0 0 1 ${p1[0]} ${p1[1]}"
+            fill="none" stroke="#3f80d2" stroke-width="7.8" stroke-linecap="round"/>
+          <circle r="${R + 3.5}" fill="none" stroke="rgba(0,0,0,.26)" stroke-width="1.2"/>
+          <circle r="${R - 3.3}" fill="none" stroke="rgba(255,255,255,.28)" stroke-width="1"/>
+          <circle r="8.7" fill="none" stroke="rgba(0,0,0,.32)" stroke-width="1.4"/>
+          <ellipse cx="-8.5" cy="-10" rx="5" ry="2.6" fill="rgba(255,255,255,.28)"/>
+          <ellipse cx="9" cy="11" rx="4.4" ry="2" fill="rgba(0,0,0,.18)"/>
         </g>
-        <circle r="3.2" fill="#f6f8fb" stroke="#9aa5b1" stroke-width="1"/>
+        <circle r="7.4" fill="url(#${cid}hole)"/>
       </g>
 
-      <!-- 一体式小底座 + 左右两个接线柱（左黑右红） -->
-      <rect class="casing" x="44" y="118" width="112" height="15" rx="4" fill="#c7d0da"/>
-      <rect x="44" y="127" width="112" height="6" rx="3" fill="#a9b4c0"/>
-      <rect x="64" y="108" width="9" height="12" rx="2" fill="#33383f"/>
-      <rect x="127" y="108" width="9" height="12" rx="2" fill="#c6303a"/>
+      <!-- 窄底座：顶面亮、前沿压暗，两端是接线柱 -->
+      <rect x="56" y="169" width="86" height="21" rx="4.5" fill="url(#${cid}pl)"/>
+      <rect x="56" y="169" width="86" height="6.5" rx="3.5" fill="#eff3f6"/>
+      <rect x="56" y="184" width="86" height="6" rx="3" fill="#8e99a3"/>
+      <rect x="56" y="169" width="86" height="25" rx="4.5" fill="none" stroke="rgba(70,82,96,.22)" stroke-width="1"/>
+      <!-- 接线柱：左黑右红，各带一根金黄柱脚 -->
+      <rect x="64" y="170" width="12" height="12" rx="3.5" fill="#2c3034"/>
+      <rect x="64" y="170" width="12" height="4" rx="2" fill="#41464c"/>
+      <rect x="67.5" y="181" width="5" height="9" fill="#c79a4a"/>
+      <rect x="122" y="170" width="12" height="12" rx="3.5" fill="#c62f37"/>
+      <rect x="122" y="170" width="12" height="4" rx="2" fill="#e0555c"/>
+      <rect x="125.5" y="181" width="5" height="9" fill="#c79a4a"/>
 
-      ${on ? noteChipSVG(100, 158, `I = ${Math.abs(I).toFixed(2)} A`, '#4ade80', 96) : noteChipSVG(100, 158, '未通电', '#94a3b8', 58)}
-      ${on ? motorSpinBadgeSVG(170, 84, dir) : ''}
+      ${on ? noteChipSVG(100, 202, `I = ${Math.abs(I).toFixed(2)} A`, '#4ade80', 96) : noteChipSVG(100, 202, '未通电', '#94a3b8', 58)}
+      ${on ? motorSpinBadgeSVG(174, 128, dir) : ''}
     </svg>` }
   },
+
+
+
+
 
   /* ── 发光二极管（长脚正 · 短脚负 · 反向不亮） ── */
   diode: {
