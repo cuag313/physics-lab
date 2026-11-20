@@ -1736,11 +1736,11 @@ export const TYPES = {
         <mask id="${cid}m">
           <rect x="0" y="0" width="200" height="212" fill="#fff"/>
           <circle cx="101.4" cy="77.6" r="53" fill="#000"/>
-          <rect x="84.2" y="0" width="35.2" height="212" fill="#000"/>
+          <rect x="96" y="0" width="10.8" height="212" fill="#000"/>
         </mask>
         <clipPath id="${cid}body">
           <rect x="12" y="15" width="73" height="123.5"/>
-          <rect x="83.4" y="15" width="36.8" height="123.5"/>
+          <rect x="96" y="15" width="10.8" height="123.5"/>
           <rect x="117.8" y="15" width="72.2" height="123.5"/>
           <circle cx="101.4" cy="77.6" r="53"/>
         </clipPath>
@@ -1793,9 +1793,11 @@ export const TYPES = {
       </defs>
 
       <ellipse cx="101" cy="188" rx="74" ry="11" fill="rgba(22,28,36,.30)" filter="url(#${cid}sh)"/>
-      <!-- 板厚：两块板的侧壁整块垫在后面，向右下错一点，露出厚度 -->
-      <rect x="16.5" y="19.5" width="72" height="122" rx="10" fill="#a82531"/>
-      <rect x="119" y="19.5" width="72" height="122" rx="10" fill="#14548f"/>
+      <!-- 板厚：两块板的侧壁整块垫在后面，向右下错一点，露出厚度（同样要过 mask，否则会从镂空的孔里透出来） -->
+      <g mask="url(#${cid}m)">
+        <rect x="16.5" y="19.5" width="72" height="122" rx="10" fill="#a82531"/>
+        <rect x="119" y="19.5" width="72" height="122" rx="10" fill="#14548f"/>
+      </g>
 
       <!-- 板正面（圆角 + 顶面亮带 + 侧壁暗边 + 底面压暗） -->
       <g mask="url(#${cid}m)">
@@ -1817,26 +1819,22 @@ export const TYPES = {
         </g>
       </g>
 
-      <!-- 腔 + 板间槽（盖在板上） -->
-      <g clip-path="url(#${cid}body)">
-        <circle cx="101.4" cy="77.6" r="53" fill="#343941"/>
-        <rect x="83.4" y="15" width="36.8" height="123.5" fill="#343941"/>
-      </g>
+      <!-- 孔 / 板间槽不填色 = 镂空，直接露卡片背景（NB 就是"挖穿的板"），厚度全靠孔沿那圈压暗的倒角 -->
       <!-- 腔口的彩色倒角环（r53→65，左红右蓝）：NB 的板内边其实绕着孔转了一圈，
            靠这圈倒角把孔上方那道缝桥接住，孔才有纵深 -->
       <g clip-path="url(#${cid}body)">
-        <path d="M 101.4 19.6 A 57 57 0 0 0 101.4 134.6 A 53 53 0 0 1 101.4 24.6 Z"
+        <path d="M 101.4 20.6 A 57 57 0 0 0 101.4 134.6 L 101.4 130.6 A 53 53 0 0 1 101.4 24.6 Z"
           fill="url(#${cid}colR)"/>
-        <path d="M 101.4 19.6 A 57 57 0 0 1 101.4 134.6 A 53 53 0 0 0 101.4 24.6 Z"
+        <path d="M 101.4 20.6 A 57 57 0 0 1 101.4 134.6 L 101.4 130.6 A 53 53 0 0 0 101.4 24.6 Z"
           fill="url(#${cid}colB)"/>
-        <path d="M 101.4 20.6 L 101.4 134.6" stroke="rgba(0,0,0,.22)" stroke-width="1"/>
-        <circle cx="101.4" cy="77.6" r="53" fill="none" stroke="rgba(0,0,0,.32)" stroke-width="1.4"/>
-        <circle cx="101.4" cy="77.6" r="57" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="1"/>
-      </g>
-      <!-- 环内仍是深色腔底，底部再压一层暗 -->
-      <circle cx="101.4" cy="77.6" r="53" fill="#343941"/>
-      <g clip-path="url(#${cid}bore)">
-        <rect x="42" y="20" width="118" height="112" fill="url(#${cid}boreSh)"/>
+        <!-- 倒角整体压暗：板的切口在暗处，厚度才读得出来 -->
+        <path d="M 101.4 20.6 A 57 57 0 0 0 101.4 134.6 L 101.4 130.6 A 53 53 0 0 1 101.4 24.6 Z"
+          fill="rgba(12,16,22,.20)"/>
+        <path d="M 101.4 20.6 A 57 57 0 0 1 101.4 134.6 L 101.4 130.6 A 53 53 0 0 0 101.4 24.6 Z"
+          fill="rgba(12,16,22,.20)"/>
+        <path d="M 101.4 20.6 L 101.4 134.6" stroke="rgba(0,0,0,.30)" stroke-width="1.2"/>
+        <circle cx="101.4" cy="77.6" r="53" fill="none" stroke="rgba(0,0,0,.42)" stroke-width="1.6"/>
+        <circle cx="101.4" cy="77.6" r="57" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="1"/>
       </g>
 
       <text x="25.4" y="78" fontSize="21" fontWeight="700" fill="#fff" textAnchor="middle"
@@ -1858,14 +1856,14 @@ export const TYPES = {
         <g transform="${on ? '' : 'rotate(-16)'}">${coilAnim}
           <g transform="skewY(-11)">
             <!-- 后沿（暗）露出厚度 -->
-            <path d="M -9 -46 L 9 -44 L 9 25 L -9 23 Z"
+            <path d="M -8 -46 L 8 -44 L 8 25 L -8 23 Z"
               fill="none" stroke="rgba(72,128,180,.50)" stroke-width="2.2"/>
             <!-- 叶片框：左蓝右红 -->
             
-            <path d="M -10 -45 L -10 24" stroke="#4a97dc" stroke-width="2.6"/>
-            <path d="M 10 -44 L 10 26" stroke="#d8454f" stroke-width="2.6"/>
-            <path d="M -10 -45 L 10 -44" stroke="#7fb2e2" stroke-width="2.2"/>
-            <path d="M -10 24 L 10 26" stroke="#e0777e" stroke-width="2.2"/>
+            <path d="M -9 -45 L -9 24" stroke="#4a97dc" stroke-width="2.6"/>
+            <path d="M 9 -44 L 9 26" stroke="#d8454f" stroke-width="2.6"/>
+            <path d="M -9 -45 L 9 -44" stroke="#7fb2e2" stroke-width="2.2"/>
+            <path d="M -9 24 L 9 26" stroke="#e0777e" stroke-width="2.2"/>
           </g>
         </g>
       </g>
@@ -1904,6 +1902,12 @@ export const TYPES = {
       ${on ? motorSpinBadgeSVG(176, 116, dir) : ''}
     </svg>` }
   },
+
+
+
+
+
+
 
 
 
