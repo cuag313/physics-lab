@@ -12,6 +12,7 @@
  * 3D 里 y 向上，2D 设计坐标 y 向下 → 以孔心为原点建模，再用 group.position 搬到 (cx, cy)。
  */
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { RoundedBox } from '@react-three/drei'
 import { useMemo, useRef } from 'react'
 import * as THREE from 'three'
 
@@ -23,12 +24,12 @@ const AH = 66          // 线圈半宽（= D.aH）
 const BH = 50          // 线圈半高（= D.bH）
 const TUBE = 3.4       // 线圈铜条半径
 const EGY = 124        // 换向器中心到孔心的距离（= D.egy - D.cy）
-const EG_R = 26.5      // 换向器灰色外壳外半径
-const EG_RM = 21.5     // 外壳内沿 = 半环外沿
+const EG_R = 34        // 换向器灰色外壳外半径（= 2D 的 D.egyR）
+const EG_RM = 26       // 外壳内沿 = 半环外沿
 const EG_RIN = 7.5     // 轴孔半径
 const EG_D = 9         // 换向器厚度
-const BR_DX = 35       // 电刷中心到轴的距离（= D.brushDx）
-const BASE_Y = -152    // 底座台面上表面的 y（换向器下方 28 单位）
+const BR_DX = 42       // 电刷中心到轴的距离（压在环带上）
+const BASE_Y = -164    // 底座台面上表面的 y（换向器下沿 -158 下方 6 单位）
 const POST_DX = 152    // 接线柱离轴的距离（2D 电路的接线点也在 cx ± 152）
 
 const C_RED = new THREE.Color('#E23B3B')
@@ -239,7 +240,7 @@ function MotorBody({ getState }) {
           </mesh>
         </group>
         <mesh position={[0, 0, -EG_D / 2 + 1]}>
-          <cylinderGeometry args={[EG_RIN, EG_RIN, EG_D + 1.5, 24]} />
+          <cylinderGeometry args={[EG_RIN, EG_RIN, EG_D, 24]} />
           <meshStandardMaterial color="#F7F2E8" metalness={0.05} roughness={0.7} />
         </mesh>
       </group>
@@ -254,18 +255,16 @@ function MotorBody({ getState }) {
 
       {/* 底座 + 立柱 + 两个接线柱（照素材库图标：银灰台面、左黑右红香蕉插座） */}
       <group>
-        {/* 台面（上小下大，像个铸铁台） */}
-        <mesh position={[0, BASE_Y - 10, 0]}>
-          <boxGeometry args={[352, 20, 88]} />
-          <meshStandardMaterial color="#D8DFE7" metalness={0.3} roughness={0.45} />
-        </mesh>
-        <mesh position={[0, BASE_Y - 29, 0]}>
-          <boxGeometry args={[368, 18, 96]} />
-          <meshStandardMaterial color="#B7C1CB" metalness={0.28} roughness={0.52} />
-        </mesh>
+        {/* 台面（上小下大，两个圆角铸铁台） */}
+        <RoundedBox args={[352, 17, 88]} radius={3} smoothness={3} position={[0, BASE_Y - 10, 0]} castShadow receiveShadow>
+          <meshStandardMaterial color="#DCE3EA" metalness={0.28} roughness={0.44} />
+        </RoundedBox>
+        <RoundedBox args={[368, 15, 96]} radius={3.5} smoothness={3} position={[0, BASE_Y - 29, 0]} castShadow receiveShadow>
+          <meshStandardMaterial color="#B4BEC9" metalness={0.26} roughness={0.52} />
+        </RoundedBox>
         {/* 立柱：把换向器撑在台面上 */}
         <mesh position={[0, -EGY - (Math.abs(BASE_Y) - EGY) / 2, 0]}>
-          <boxGeometry args={[22, Math.abs(BASE_Y) - EGY - EG_D / 2, 38]} />
+          <boxGeometry args={[24, Math.abs(BASE_Y) - EGY - EG_D / 2, 8]} />
           <meshStandardMaterial color="#C4CCD5" metalness={0.34} roughness={0.44} />
         </mesh>
         {/* 接线柱：左黑右红 */}

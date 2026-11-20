@@ -39,7 +39,7 @@ const D = {
   bH: 50,                    // 线圈半高
   magL: 138, magLw: 72,      // 左磁极（N）—— 块画宽些，N/S 才能像 NB 那样落在块心、不被凹弧压住
   magR: 374, magRw: 72,      // 右磁极（S）
-  egy: 368, egyR: 26,        // 换向器中心 / 半径（实心半圆片，外圆 26）
+  egy: 368, egyR: 34,        // 换向器中心 / 半径（3D 的灰壳环外径同为 34）
   brushDx: 35,               // 两电刷离轴的距离（碳块外沿 = 26+9，正好压住铜片外圆）
   L: 118, R: 468, T: 458, B: 574,   // 回路矩形
   batX: 196, swX: 350,
@@ -176,7 +176,7 @@ export default function ElectricMotorScene() {
     const { L, R, T, B, cx, cy, egy } = D
     /* 接线柱：真实器材上是底座两端的两个插座（左黑右红），导线从这里进出；
        电刷在底座内部与接线柱相通，所以外面看不到"从电刷拉出来的线" */
-    const postDx = 152, postY = egy + 21
+    const postDx = 152, postY = egy + 33
     const hSw = symHalf('switch', 1)
     const ac = s.power === 'ac'
     const hBat = ac ? 20 : symHalf('battery', 1, 2)
@@ -1114,7 +1114,7 @@ function drawMotorBody(ctx, o) {
      这才是换向发生的时刻（转矩在 θ=±90° 处变号，换向必须在这里）。 */
   const copper = '#B45309'
   const seamBase = theta - Math.PI / 2
-  const ringIn = egyR * 0.42          // 换向器是圆环：中间轴孔半径
+  const ringIn = egyR * 0.22          // 换向器是圆环：中间轴孔半径（与 3D 的 EG_RIN 同一口径）
   const segCenter = (k) => seamBase + k * Math.PI + Math.PI / 2
   /* 线圈两条引线：从**开口的两端**（左侧竖边的下端、右侧竖边的下端）直插进换向器中心。
      这两条是电流唯一的进出通道 —— 线圈本身不闭合，才不会"两根引线被底边短接"。 */
@@ -1173,16 +1173,18 @@ function drawMotorBody(ctx, o) {
     ctx.fillStyle = '#251708'; ctx.fill()
     ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1.2; ctx.stroke()
   }
-  // 绝缘缝（两条直径方向的细缝，跟着线圈转）
+  // 绝缘缝（两条直径方向的细缝，跟着线圈转）——3D 版半环之间本来就留了 1.2° 真缝，2D 就不再描一遍
   if (commutator) {
-    ctx.strokeStyle = '#5C1F10'; ctx.lineWidth = 2.4
-    ctx.beginPath()
-    for (const d of [0, Math.PI]) {
-      const a = seamBase + d
-      ctx.moveTo(Math.cos(a) * ringIn, Math.sin(a) * ringIn)
-      ctx.lineTo(Math.cos(a) * egyR, Math.sin(a) * egyR)
+    if (!SOLID3D) {
+      ctx.strokeStyle = '#5C1F10'; ctx.lineWidth = 2.4
+      ctx.beginPath()
+      for (const d of [0, Math.PI]) {
+        const a = seamBase + d
+        ctx.moveTo(Math.cos(a) * ringIn, Math.sin(a) * ringIn)
+        ctx.lineTo(Math.cos(a) * egyR, Math.sin(a) * egyR)
+      }
+      ctx.stroke()
     }
-    ctx.stroke()
     /* ＋/－：画在缝之后（压在最上层），位置贴着"电刷压着的那个方位"，
        一眼看出"此刻这块铜片接的是哪只电刷"，每换向一次互换 */
     for (let k = 0; k < 2; k++) {
@@ -1263,7 +1265,7 @@ function drawCommutatorZoom(ctx, o) {
   const seamBase = theta - Math.PI / 2
   const segCenter = (k) => seamBase + k * Math.PI + Math.PI / 2
   const neutral = !!commutator && on && Math.abs(Math.cos(theta)) < 0.14
-  const kScale = (zr - 3) / 46
+  const kScale = (zr - 3) / (egyR + 20)
 
   // 引出线：从右电刷外侧拉到放大窗边缘（细虚线，不抢戏）
   const lx0 = cx + egyR + 19.8
@@ -1286,18 +1288,36 @@ function drawCommutatorZoom(ctx, o) {
 
   ctx.save(); ctx.translate(zx, zy); ctx.scale(kScale, kScale)
   if (commutator) {
+    /* 与 3D 同一套配色：灰色外壳环（固定不转）+ 两片红/蓝半环（跟着线圈转）+ 白轴孔 */
+    const ringIn = egyR * 0.22, shellIn = egyR * 0.765
+    ctx.fillStyle = '#BFC7D1'
+    ctx.beginPath(); ctx.arc(0, 0, egyR, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = 'rgba(255,255,255,0)'
+    ctx.beginPath(); ctx.arc(0, 0, shellIn, 0, Math.PI * 2)
+    ctx.fillStyle = '#9DA7B2'; ctx.fill()
+    ctx.strokeStyle = 'rgba(60,70,85,0.55)'; ctx.lineWidth = 1.1
+    ctx.beginPath(); ctx.arc(0, 0, egyR, 0, Math.PI * 2); ctx.stroke()
+    const plus0 = Math.cos(segCenter(0)) >= 0
     for (let k = 0; k < 2; k++) {
       const a0 = seamBase + k * Math.PI
-      ctx.fillStyle = k === 0 ? '#C4763C' : '#8A3E0C'
-      ctx.beginPath(); ctx.arc(0, 0, egyR, a0, a0 + Math.PI); ctx.lineTo(0, 0); ctx.closePath(); ctx.fill()
-      ctx.strokeStyle = 'rgba(92,31,16,0.85)'; ctx.lineWidth = 1.1; ctx.stroke()
+      const isPlus = k === 0 ? plus0 : !plus0
+      ctx.fillStyle = isPlus ? '#E23B3B' : '#2E6BE5'
+      ctx.beginPath()
+      ctx.arc(0, 0, shellIn, a0, a0 + Math.PI)
+      ctx.arc(0, 0, ringIn, a0 + Math.PI, a0, true)
+      ctx.closePath(); ctx.fill()
+      ctx.strokeStyle = 'rgba(25,28,40,0.45)'; ctx.lineWidth = 1.1; ctx.stroke()
     }
+    // 白轴孔
+    ctx.fillStyle = '#F7F2E8'
+    ctx.beginPath(); ctx.arc(0, 0, ringIn, 0, Math.PI * 2); ctx.fill()
+    // 绝缘缝（两道，跟着转）
     ctx.strokeStyle = '#5C1F10'; ctx.lineWidth = 2.2
     ctx.beginPath()
     for (const d of [0, Math.PI]) {
       const a = seamBase + d
-      ctx.moveTo(Math.cos(a) * 5.0, Math.sin(a) * 5.0)
-      ctx.lineTo(Math.cos(a) * egyR, Math.sin(a) * egyR)
+      ctx.moveTo(Math.cos(a) * ringIn, Math.sin(a) * ringIn)
+      ctx.lineTo(Math.cos(a) * shellIn, Math.sin(a) * shellIn)
     }
     ctx.stroke()
     // ① ② 跟着铜片一起转
