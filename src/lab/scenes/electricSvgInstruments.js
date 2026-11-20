@@ -1725,7 +1725,7 @@ export const TYPES = {
         ? `<animateTransform attributeName="transform" type="rotate"
              from="0" to="${-360 * dir}" dur="${dur}s" repeatCount="indefinite"/>`
         : ''
-      const R = 12.4
+      const R = 11
       const a1 = (-120 * Math.PI) / 180
       const a2 = (30 * Math.PI) / 180
       const p1 = [R * Math.cos(a1), R * Math.sin(a1)].map((v) => v.toFixed(2))
@@ -1757,8 +1757,8 @@ export const TYPES = {
           <stop offset="58%" stop-color="#2488dc"/>
           <stop offset="100%" stop-color="#1866ae"/>
         </linearGradient>
-        <clipPath id="${cid}pr"><rect x="12" y="15" width="73" height="123.5" rx="6"/></clipPath>
-        <clipPath id="${cid}pb"><rect x="117.8" y="15" width="72.2" height="123.5" rx="6"/></clipPath>
+        <clipPath id="${cid}pr"><rect x="12" y="15" width="73" height="123.5" rx="10"/></clipPath>
+        <clipPath id="${cid}pb"><rect x="117.8" y="15" width="72.2" height="123.5" rx="10"/></clipPath>
         <radialGradient id="${cid}colR" gradientUnits="userSpaceOnUse" cx="101.4" cy="77.6" r="58">
           <stop offset="90%" stop-color="#7e1b23"/>
           <stop offset="98%" stop-color="#b73540"/>
@@ -1779,6 +1779,11 @@ export const TYPES = {
           <stop offset="68%" stop-color="rgba(0,0,0,0)"/>
           <stop offset="100%" stop-color="rgba(0,0,0,.42)"/>
         </linearGradient>
+        <linearGradient id="${cid}sheen" x1="0" y1="0" x2="0.55" y2="1">
+          <stop offset="0%" stop-color="rgba(255,255,255,.30)"/>
+          <stop offset="45%" stop-color="rgba(255,255,255,.06)"/>
+          <stop offset="100%" stop-color="rgba(0,0,0,.10)"/>
+        </linearGradient>
         <filter id="${cid}sh" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="5.5"/></filter>
         <linearGradient id="${cid}pl" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stop-color="#f0f4f7"/>
@@ -1789,8 +1794,8 @@ export const TYPES = {
 
       <ellipse cx="101" cy="188" rx="74" ry="11" fill="rgba(22,28,36,.30)" filter="url(#${cid}sh)"/>
       <!-- 板厚：两块板的侧壁整块垫在后面，向右下错一点，露出厚度 -->
-      <rect x="16.5" y="19.5" width="72" height="122" rx="6" fill="#a82531"/>
-      <rect x="119" y="19.5" width="72" height="122" rx="6" fill="#14548f"/>
+      <rect x="16.5" y="19.5" width="72" height="122" rx="10" fill="#a82531"/>
+      <rect x="119" y="19.5" width="72" height="122" rx="10" fill="#14548f"/>
 
       <!-- 板正面（圆角 + 顶面亮带 + 侧壁暗边 + 底面压暗） -->
       <g mask="url(#${cid}m)">
@@ -1800,7 +1805,7 @@ export const TYPES = {
           <rect x="12" y="21.4" width="73" height="1.6" fill="rgba(120,10,20,.30)"/>
           <rect x="12" y="15" width="4.6" height="123.5" fill="rgba(0,0,0,.17)"/>
           <rect x="12" y="129.5" width="73" height="9" fill="rgba(0,0,0,.22)"/>
-          <rect x="12" y="15" width="73" height="123.5" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="1"/>
+          <rect x="12" y="15" width="73" height="123.5" fill="url(#${cid}sheen)"/>\n          <rect x="12" y="15" width="73" height="123.5" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="1"/>
         </g>
         <g clip-path="url(#${cid}pb)">
           <rect class="casing" x="117.8" y="15" width="72.2" height="123.5" fill="url(#${cid}blue)"/>
@@ -1808,7 +1813,7 @@ export const TYPES = {
           <rect x="117.8" y="21.4" width="72.2" height="1.6" fill="rgba(10,40,80,.30)"/>
           <rect x="185.4" y="15" width="4.6" height="123.5" fill="rgba(255,255,255,.16)"/>
           <rect x="117.8" y="129.5" width="72.2" height="9" fill="rgba(0,0,0,.24)"/>
-          <rect x="117.8" y="15" width="72.2" height="123.5" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="1"/>
+          <rect x="117.8" y="15" width="72.2" height="123.5" fill="url(#${cid}sheen)"/>\n          <rect x="117.8" y="15" width="72.2" height="123.5" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="1"/>
         </g>
       </g>
 
@@ -1825,7 +1830,7 @@ export const TYPES = {
         <path d="M 101.4 19.6 A 57 57 0 0 1 101.4 134.6 A 53 53 0 0 0 101.4 24.6 Z"
           fill="url(#${cid}colB)"/>
         <path d="M 101.4 20.6 L 101.4 134.6" stroke="rgba(0,0,0,.22)" stroke-width="1"/>
-        <circle cx="101.4" cy="77.6" r="53" fill="none" stroke="rgba(0,0,0,.45)" stroke-width="1.6"/>
+        <circle cx="101.4" cy="77.6" r="53" fill="none" stroke="rgba(0,0,0,.32)" stroke-width="1.4"/>
         <circle cx="101.4" cy="77.6" r="57" fill="none" stroke="rgba(255,255,255,.06)" stroke-width="1"/>
       </g>
       <!-- 环内仍是深色腔底，底部再压一层暗 -->
@@ -1853,14 +1858,14 @@ export const TYPES = {
         <g transform="${on ? '' : 'rotate(-16)'}">${coilAnim}
           <g transform="skewY(-11)">
             <!-- 后沿（暗）露出厚度 -->
-            <path d="M -11 -46 L 11 -43 L 11 25 L -11 22 Z"
+            <path d="M -9 -46 L 9 -44 L 9 25 L -9 23 Z"
               fill="none" stroke="rgba(72,128,180,.50)" stroke-width="2.2"/>
             <!-- 叶片框：左蓝右红 -->
             
-            <path d="M -12 -45 L -12 24" stroke="#4a97dc" stroke-width="2.6"/>
-            <path d="M 12 -44 L 12 26" stroke="#d8454f" stroke-width="2.6"/>
-            <path d="M -12 -45 L 12 -44" stroke="#7fb2e2" stroke-width="2.2"/>
-            <path d="M -12 24 L 12 26" stroke="#e0777e" stroke-width="2.2"/>
+            <path d="M -10 -45 L -10 24" stroke="#4a97dc" stroke-width="2.6"/>
+            <path d="M 10 -44 L 10 26" stroke="#d8454f" stroke-width="2.6"/>
+            <path d="M -10 -45 L 10 -44" stroke="#7fb2e2" stroke-width="2.2"/>
+            <path d="M -10 24 L 10 26" stroke="#e0777e" stroke-width="2.2"/>
           </g>
         </g>
       </g>
@@ -1868,18 +1873,18 @@ export const TYPES = {
       <!-- 换向环（透视略压扁） -->
       <g transform="translate(101.9,155.1) scale(1,0.96)">
         <g>${ringAnim}
-          <circle r="${R}" fill="none" stroke="#e0404c" stroke-width="8.8"/>
+          <circle r="${R}" fill="none" stroke="#e0404c" stroke-width="7.4"/>
           <path d="M ${p1[0]} ${p1[1]} A ${R} ${R} 0 0 1 ${p2[0]} ${p2[1]}"
-            fill="none" stroke="#e8454f" stroke-width="8.8" stroke-linecap="butt"/>
+            fill="none" stroke="#e8454f" stroke-width="7.4" stroke-linecap="butt"/>
           <path d="M ${p2[0]} ${p2[1]} A ${R} ${R} 0 1 1 ${p1[0]} ${p1[1]}"
-            fill="none" stroke="#2e9ae8" stroke-width="8.8" stroke-linecap="butt"/>
+            fill="none" stroke="#2e9ae8" stroke-width="7.4" stroke-linecap="butt"/>
           <path d="M -3 -12 A ${R} ${R} 0 0 1 11.6 4.4" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="2.6"/>
           <path d="M 3 12 A ${R} ${R} 0 0 1 -11.6 -4.4" fill="none" stroke="rgba(0,0,0,.26)" stroke-width="2.6"/>
           <circle r="${R + 4.4}" fill="none" stroke="rgba(0,0,0,.26)" stroke-width="1.2"/>
           <circle r="${R - 4.4}" fill="none" stroke="rgba(0,0,0,.30)" stroke-width="1.4"/>
         </g>
-        <circle r="7.4" fill="#2b3037"/>
-        <circle r="7.4" fill="none" stroke="rgba(0,0,0,.35)" stroke-width="1.2"/>
+        <circle r="6.2" fill="#2b3037"/>
+        <circle r="6.2" fill="none" stroke="rgba(0,0,0,.35)" stroke-width="1.1"/>
       </g>
 
       <!-- 底座 -->
@@ -1899,6 +1904,8 @@ export const TYPES = {
       ${on ? motorSpinBadgeSVG(176, 116, dir) : ''}
     </svg>` }
   },
+
+
 
 
 
