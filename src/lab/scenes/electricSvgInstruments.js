@@ -12,7 +12,7 @@ import { capPaint } from '../theme/termColors.js'
 export const FIG = '/physics-lab/assets/equipment/fig'
 /* 实拍图版本号：同名图片被覆盖后浏览器会继续用旧缓存（元件库缩略图尤其明显），
    所有 fig 图片 URL 统一带这串版本参数，改图时把它 +1 即可强制刷新。 */
-export const FIG_V = '20261120a'
+export const FIG_V = '20261120b'
 export const figURL = (file) => `${FIG}/${file}?v=${FIG_V}`
 
 /** 滑动变阻器滑片轨道（显示坐标）：与实拍图里瓷筒绕线的左右端对齐（33..159） */
@@ -225,21 +225,9 @@ const INNER = {
       <circle cx="90" cy="102" r="11" fill="none" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="3 2"/>`
   },
   motor() {
-    return `
-      <!-- 教学剖视：磁极 / 转子线圈 / 换向器 / 电刷 -->
-      <rect x="118" y="86" width="30" height="44" rx="3" fill="#e11d48" opacity=".7"/>
-      <rect x="176" y="86" width="30" height="44" rx="3" fill="#2563eb" opacity=".7"/>
-      <text class="plabel" x="133" y="80">N 极</text>
-      <text class="plabel" x="191" y="80">S 极</text>
-      <rect x="152" y="94" width="22" height="28" rx="3" fill="#a16207" stroke="#78350f"/>
-      <line x1="152" y1="100" x2="174" y2="100" stroke="#fde68a" stroke-width="1.4"/>
-      <line x1="152" y1="106" x2="174" y2="106" stroke="#fde68a" stroke-width="1.4"/>
-      <line x1="152" y1="112" x2="174" y2="112" stroke="#fde68a" stroke-width="1.4"/>
-      <text class="plabel" x="163" y="140">转子线圈</text>
-      <rect x="150" y="122" width="26" height="8" rx="2" fill="#c9a227" stroke="#8a6a3c"/>
-      <text class="plabel" x="163" y="158">换向器 · 电刷</text>
-      <text class="plabel" x="59" y="120">皮带轮（随电流转动）</text>
-      <line x1="59" y1="60" x2="59" y2="104" stroke="#2563eb" stroke-width="1.2" stroke-dasharray="5 3"/>`
+    /* 透视标注改在 BuilderSVG 的 MotionLayer 里画（那里能同时把通电的电流带叠上去），
+       这里留空，避免「内部结构」和「电机结构」两个开关同时打开时标注叠两遍。 */
+    return ''
   },
   diode() {
     return `
@@ -1706,7 +1694,8 @@ export const TYPES = {
     </svg>` }
   },
 
-  /* ── 小电动机模型（真实图标 + 皮带轮真转，见 BuilderSVG 的 MotionLayer） ── */
+  /* ── 小电动机（立式机组：木底座 + 大线圈环 + 蹄形磁铁 + 带滑环的转子，照素材库「电磁学实验器材.png」；
+        通电后的电流带与滑环在 BuilderSVG 的 MotionLayer 里叠） ── */
   motor: {
     label: '小电动机', w: 200, h: 169,
     terminals: [
@@ -1719,9 +1708,9 @@ export const TYPES = {
       return `
     <svg width="200" height="169" viewBox="0 0 200 169">
       ${fitInner(200, 169, 200, 169, INNER.motor())}
-      ${photo('motor_c.png', 200, 169)}
-      ${on ? noteChipSVG(150, 18, `I = ${Math.abs(I).toFixed(2)} A`, '#4ade80', 96) : noteChipSVG(59, 140, '未通电', '#94a3b8', 58)}
-      ${on ? motorSpinBadgeSVG(184, 44, dyn.dir || 1) : ''}
+      ${photo('motor_ring.png', 200, 169)}
+      ${on ? noteChipSVG(150, 16, `I = ${Math.abs(I).toFixed(2)} A`, '#4ade80', 96) : noteChipSVG(56, 138, '未通电', '#94a3b8', 58)}
+      ${on ? motorSpinBadgeSVG(186, 40, dyn.dir || 1) : ''}
     </svg>` }
   },
 

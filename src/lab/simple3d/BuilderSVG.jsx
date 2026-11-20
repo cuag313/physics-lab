@@ -371,22 +371,16 @@ function ElectronFlow({ items }) {
    → 卡内 cx=(40.7+83.5×0.4107)=75.0、cy=(26+128×0.4107)=78.6、r≈15.6（取 16.2 盖住门圈内沿）。 */
 const METER_SLOT = { x: 52, y: 75.5, w: 79, h: 11.5 }
 const WASHER_DRUM = { cx: 75.0, cy: 78.6, r: 16.2 }
-/* 小电动机卡 200×169：图标 256×216 里的黑皮带轮。
-   **旋转轴必须压在"6 个镂空孔"的孔心群中心**（孔对称分布，质心即轮心）：实测 5 个孔的孔心
-   (45.5,53.5)(45.5,87.5)(103,53.5)(103,87.5)(74.5,37.0)（源坐标，第 6 个被轮毂挡掉），
-   对称四孔的中间点 (74.25,70.5) + 顶孔落在 x=74.5 ⇒ 轮心 (74.4,70.5)、孔圈半径 33.5、轮缘半径 67；
-   再用"从轮心向外打射线、只看 55<r<80 的最外暗边界"做稳健圆拟合复核：圆心 (74.11,69.36)、r 67.55（被轮座挡住的
-   下缘自动落进离群点被剔除）。两法互为独立、差 1.1px 以内 ⇒ 取均值 (74.25,69.9)。
-   按 200/256 与 169/216 换算 → 卡内圆心 **(58.0,54.6)**、孔圈 26.2、轮缘 52.8。
-   （原来写 (57.8,51.4) 是按"左侧+顶侧轮缘"做最小二乘拟合出来的，被轮缘下半/右侧缺失带偏了 3.2px，
-   于是整块圆盘绕着轮心上方 3.2px 的点公转 → 看起来"转心偏左上"。）
-   旋转层裁到 r=44：孔的最外沿 r≈34，留足余量；外圈轮缘与皮带保持静止（轮缘本身是圆，不转也看不出来），
-   这样压在轮缘上的皮带就不会被带着甩。 */
-const MOTOR_PULLEY = { cx: 58.0, cy: 54.6, r: 44 }
-/* 转子（N/S 之间那只铜鼓）：轴是**左右方向**，转起来只能看到表面亮暗带上下扫过（轮廓不变）。
-   下面这组数是从图标里量的：铜鼓面 x 166..208 / y 142..166（源）→ 卡内 129.7..162.5 / 111.1..129.9，
-   正前方那根灰色支架（会挡住转过去的面）x 186.9..196.9 → 卡内 146.0..153.8。 */
-const MOTOR_ROTOR = { cx: 146.0, cy: 120.5, rx: 16.4, ry: 9.4, postX0: 146.0, postX1: 153.8 }
+/* 小电动机卡 200×169（2026-11-20 起改成素材库「电磁学实验器材.png」里那台立式机组：
+   木底座 + 左侧大线圈环 + 右侧红 N / 蓝 S 蹄形磁铁 + 磁极间那只带滑环的转子）。
+   卡片本体直接用整机裁剪图 motor_ring.png（940×794 → 200×169），运动层只叠两处会动的东西：
+   ① 大线圈环上的电流带（环是圆的，取环带中线半径画弧就够了）；
+   ② 磁极间那只小环（滑环/换向片）两半红蓝随轴转。
+   几何都对 940×794 图按 200/940、169/794 换算量出来：
+   大环外缘 x 10..555 / y 8..555 ⇒ 环心 (60.0, 59.8)、外半径 57.9、内半径 42.6、环带中线 50.2；
+   小环（照片里那只浅灰环）圆心 (156.2,112.8)、外半径 5.9、内半径 3.15，轴往下伸到 y≈135。 */
+const MOTOR_RING = { cx: 60.0, cy: 59.8, r: 50.2 }
+const MOTOR_GAUGE = { cx: 156.2, cy: 112.8, rOut: 5.9, rIn: 3.15 }
 /* 三台家电的"工作痕迹"位置（按器材图在卡里的实际落点量出来，卡都是 150×168、图框 x22 y18 w106 h92）：
  * 电热水壶 kettle_body 152×212 → meet 收成 65.96×92、左起 42.0；壶嘴尖在源图 (16,88) → 卡内 (49.0,56.2)；
  * 电饭煲 ricecooker_body 176×146 → 收成 106×87.9、上起 20.0；盖顶排气孔 (88,10) → 卡内 (75,26)，
@@ -556,105 +550,65 @@ function MotionLayer({ items }) {
             </g>
           )
         }
-        /* 小电动机：实拍图标里那只黑色皮带轮（6 个圆孔 + 中心螺帽）真转起来。
-           只把轮盘裁成圆、绕轮心旋转；皮带、磁极、底座都不动（所以裁到 r=44，避开皮带）。
+        /* 小电动机（2026-11-20 按素材库「电磁学实验器材.png」重做）：卡片本体是整机裁剪图
+           motor_ring.png（木底座 + 立式大线圈环 + 红 N / 蓝 S 蹄形磁铁），运动层只叠两处会动的东西：
+           ① 大线圈环上的电流带（环带中线上的左右两段弧，左红右蓝，接反时对调）；
+           ② 磁极间那只小环（滑环/换向片）：两半红蓝随轴转，"换向"因此是看得见的。
            转速 ∝ 电流；接线柱 1、2 接反 → dir=-1 → 反转。 */
         if (it.kind === 'motor') {
-          /* ── 透视（剖视）：卡片换成「电路演示」那台真 3D 电动机的机芯图（磁极通孔 + 单匝线圈 + 半环换向器 + 电刷），
-             这样"自己动手"里也能看见原理，而不是只看见一只黑皮带轮在转。 ── */
-          if (it.cut) {
-            /* 剖面 = Motor3D 渲染的机芯图（与「电路演示」同一套真 3D 几何，PNG 由 scripts/_render-motorcut.cjs 出图）：
-               磁极有真厚度、中间是真通孔、换向器是立体半环 —— 不再是一张平涂矢量图。
-               图是静态的，转向靠右上角的小角标读；电流方向看端环哪片红哪片蓝。 */
-            const on = it.v > 0.05
-            const brDir = it.dir >= 0 ? 1 : -1
-            return (
-              <g key={it.id} transform={`translate(${it.x},${it.y})`}>
-                {/* 卡片底：盖住下层的实拍图标（导线从卡底边穿进去，读作"接在机内"） */}
-                <rect x="2" y="2" width="196" height="165" rx="10" fill="#fffaf1" stroke="#e8dcc6" strokeWidth="1.2" />
-                <image href={figURL('motor_cut.png')} x="0" y="0" width="200" height="169" preserveAspectRatio="none" />
-                {/* 转向角标：↺ / ↻ 随接线柱左右对调翻转 */}
-                {on && (
-                  <g transform="translate(174,26)">
-                    <circle r="12" fill="#ffffff" opacity="0.94" stroke="#f59e0b" strokeWidth="1.2" />
-                    <text x="0" y="5.4" textAnchor="middle" fontSize="15" fontWeight="700"
-                      fill="#b45309" fontFamily="'Segoe UI Symbol','Noto Sans Symbols',system-ui,sans-serif">
-                      {brDir > 0 ? '↺' : '↻'}
-                    </text>
-                  </g>
-                )}
-              </g>
-            )
-          }
-          const M = MOTOR_PULLEY
-          /* 转向口径（2026-11-19 用户确认）：从纸面外往里看（视线基本沿电机轴），转子在**纸面内逆时针**转。
-             SVG 里 rotate(+deg) 是顺时针，所以统一取负号：dir=+1（接线柱 a→b 的那个电流方向）→ 逆时针；
-             把两根接线柱换过来（dir=-1）→ 顺时针。皮带是开口传动、两轴同向，所以大皮带轮用同一个符号。 */
+          const on = it.v > 0.05
+          /* 转向口径（用户 2026-11-19 确认）：视线从纸面外往里看，转子在纸面内逆时针转；
+             SVG 的 rotate(+deg) 是顺时针，所以统一取负号。dir=+1 → 逆时针，接线柱对调 → 顺时针。 */
           const spin = -st.a * it.dir
           const deg = (spin * 180) / Math.PI
-          const cid = `esbm-pul-${it.id}`
-          /* 转子（N/S 之间那只铜鼓）：视线几乎沿轴，转起来是"盘面绕圆心转"，不是"柱面上下滚"。
-             所以画 3 道软边的"线圈边"（亮铜 ×1 / 暗铜 ×2）绕圆心逆时针扫；椭圆透视不额外压，
-             直接用盘面上各向等速的角位置（rx/ry 分别取分量），转到正前方的支架、金环、黑电刷后面会被挡住。
-             皮带传动：转子上小轮带大轮，所以转子比大轮快（×2.4）。 */
-          const R = MOTOR_ROTOR
-          const rPhase = spin * 2.4
-          const rid = `esbm-rot-${it.id}`
-          const rgid = `esbm-rotg-${it.id}`
-          const lgid = `esbm-rotl-${it.id}`
-          const marks = []
-          for (let k = 0; k < 3; k++) {
-            const a = rPhase + (k * 2 * Math.PI) / 3
-            const p0 = [R.cx + R.rx * Math.cos(a) * 0.34, R.cy + R.ry * Math.sin(a) * 0.34]
-            const p1 = [R.cx + R.rx * Math.cos(a) * 0.99, R.cy + R.ry * Math.sin(a) * 0.99]
-            marks.push(
-              <line key={'rm' + k}
-                x1={p0[0].toFixed(2)} y1={p0[1].toFixed(2)}
-                x2={p1[0].toFixed(2)} y2={p1[1].toFixed(2)}
-                stroke={`url(#${k === 0 ? lgid : rgid})`}
-                strokeWidth={k === 0 ? 3.0 : 2.6}
-                strokeLinecap="round"
-                opacity={k === 0 ? 0.6 : 0.42} />,
+          const RG = MOTOR_RING
+          const GG = MOTOR_GAUGE
+          /* 电流带：环带中线上的左右两段弧（A r r 0 0 0/1 决定从顶点走左半还是右半） */
+          const bandL = `M ${RG.cx} ${RG.cy - RG.r} A ${RG.r} ${RG.r} 0 0 0 ${RG.cx} ${RG.cy + RG.r}`
+          const bandR = `M ${RG.cx} ${RG.cy - RG.r} A ${RG.r} ${RG.r} 0 0 1 ${RG.cx} ${RG.cy + RG.r}`
+          const left = it.dir > 0 ? '#dc2626' : '#2563eb'   // 红=电流一个方向，蓝=相反方向
+          const right = it.dir > 0 ? '#2563eb' : '#dc2626'
+          /* 小环两半：外弧 + 内弧拼成半环，跟着轴一起转（转到哪边就是哪片贴住电刷） */
+          const half = (sw, rO, rI) =>
+            `M ${GG.cx} ${GG.cy - rO} A ${rO} ${rO} 0 0 ${sw} ${GG.cx} ${GG.cy + rO} ` +
+            `L ${GG.cx} ${GG.cy + rI} A ${rI} ${rI} 0 0 ${1 - sw} ${GG.cx} ${GG.cy - rI} Z`
+          /* 通电才有：① 大线圈环上的电流带 + 跑动的白虚线；② 磁极间小环（滑环/换向片）两半红蓝随轴转 */
+          const overlay = on ? (
+            <>
+              <path d={bandL} fill="none" stroke={left} strokeWidth="4.6" strokeLinecap="round" opacity="0.5" />
+              <path d={bandR} fill="none" stroke={right} strokeWidth="4.6" strokeLinecap="round" opacity="0.5" />
+              <path d={bandL} fill="none" stroke="#ffffff" strokeWidth="1.5"
+                strokeDasharray="4 10" strokeDashoffset={-((st.a * 26) % 14)} opacity="0.72" />
+              <path d={bandR} fill="none" stroke="#ffffff" strokeWidth="1.5"
+                strokeDasharray="4 10" strokeDashoffset={-((st.a * 26) % 14)} opacity="0.72" />
+              <g transform={`rotate(${deg.toFixed(1)} ${GG.cx} ${GG.cy})`}>
+                <path d={half(1, GG.rOut, GG.rIn)} fill={right} opacity="0.92" />
+                <path d={half(0, GG.rOut, GG.rIn)} fill={left} opacity="0.92" />
+              </g>
+              <circle cx={GG.cx} cy={GG.cy} r={GG.rIn - 0.2} fill="#cfd5dc" stroke="#8f98a3" strokeWidth="0.5" />
+            </>
+          ) : null
+          /* ── 透视（🔍 电机结构）：不换图，直接在整机图上打标注 ——
+             这台器材的"内部"本来就在明处（磁极间就是转子），换成别的机芯图反而对不上。 ── */
+          if (it.cut) {
+            return (
+              <g key={it.id} transform={`translate(${it.x},${it.y})`}>
+                {overlay}
+                <circle cx={RG.cx} cy={RG.cy} r="57.9" fill="none" stroke="#f59e0b" strokeWidth="1.2"
+                  strokeDasharray="5 3" opacity="0.9" />
+                <rect x="145" y="103" width="24" height="36" rx="5" fill="none" stroke="#f59e0b"
+                  strokeWidth="1.2" strokeDasharray="4 3" />
+                <text x="60" y="24" textAnchor="middle" fontSize="7.5" fontWeight="600" fill="#b45309"
+                  stroke="#fffaf1" strokeWidth="2.2" paintOrder="stroke">线圈环（通电流）</text>
+                <text x="157" y="84" textAnchor="middle" fontSize="7.5" fontWeight="600" fill="#b45309"
+                  stroke="#fffaf1" strokeWidth="2.2" paintOrder="stroke">蹄形磁铁 N / S</text>
+                <text x="157" y="148" textAnchor="middle" fontSize="7.5" fontWeight="600" fill="#b45309"
+                  stroke="#fffaf1" strokeWidth="2.2" paintOrder="stroke">转子 · 滑环</text>
+              </g>
             )
           }
           return (
-            <g key={it.id} transform={`translate(${it.x},${it.y})`} opacity={it.dim ? 0.22 : 1}>
-              <defs>
-                <clipPath id={cid}>
-                  <circle cx={M.cx} cy={M.cy} r={M.r} />
-                </clipPath>
-                <mask id={rid} maskUnits="userSpaceOnUse" x="120" y="100" width="60" height="45">
-                  <ellipse cx={R.cx} cy={R.cy} rx={R.rx - 0.6} ry={R.ry - 0.4} fill="#fff" />
-                  <rect x={R.postX0} y="100" width={R.postX1 - R.postX0} height="45" fill="#000" />
-                  {/* 正前方金色环（压在鼓面的前下方）与顶上那块黑电刷，都得挡住转过去的线圈边 */}
-                  <circle cx="147.4" cy="126.2" r="7.4" fill="#000" />
-                  <rect x="140.2" y="100" width="12.6" height="13.6" fill="#000" />
-                </mask>
-                <linearGradient id={rgid} x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#5a3208" stopOpacity="0" />
-                  <stop offset="50%" stopColor="#46260a" stopOpacity="0.95" />
-                  <stop offset="100%" stopColor="#5a3208" stopOpacity="0" />
-                </linearGradient>
-                <linearGradient id={lgid} x1="0" y1="0" x2="1" y2="0">
-                  <stop offset="0%" stopColor="#ffe2b8" stopOpacity="0" />
-                  <stop offset="50%" stopColor="#fff0d4" stopOpacity="0.95" />
-                  <stop offset="100%" stopColor="#ffe2b8" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              <g clipPath={`url(#${cid})`}>
-                {/* 图标里的 6 个孔都是"真镂空"(alpha=0)，卡片的孔亮是因为露出白底；
-                    这里先垫一层白圆，转过去的孔才始终是白的，否则只会透出底下静止的旧孔。
-                    ★ 但孔背后不是到处都白：轮子后面立着黑色支撑柱（柱子在图标里 x60..88 源、卡内 x46.9..68.8，
-                    一直顶到轮轴）。所以白圆上再压一条黑柱，孔转到柱子前面时看到黑柱、转到别处看到白底 ——
-                    跟实拍一致（原来那只孔在照片里被烤成实心黑，转过去也一直是黑的，见 scripts/_bake_motor_hole.py）。 */}
-                <circle cx={M.cx} cy={M.cy} r={M.r - 1} fill="#ffffff" />
-                <path d="M50.2 58.2 L65.8 58.2 L68.8 106 L46.9 106 Z" fill="#191a1f" />
-                <image href={figURL('motor_c.png')} x="0" y="0" width="200" height="169"
-                  preserveAspectRatio="none"
-                  transform={`rotate(${deg.toFixed(1)} ${M.cx} ${M.cy})`} />
-              </g>
-              <g mask={`url(#${rid})`}>{marks}</g>
-            </g>
+            <g key={it.id} transform={`translate(${it.x},${it.y})`}>{overlay}</g>
           )
         }
         /* 电热水壶：壶嘴冒汽 —— 三缕汽柱错相位往上飘，越飘越大越淡（汽是白的，用灰蓝衬一层才在暖底上看得见）。
@@ -1962,14 +1916,14 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         {dissect ? '🔍 内部结构（开）' : '🔍 内部结构（透视）'}
       </button>
 
-      {/* 小电动机专用剖面：只把电动机卡片换成内部结构，其它器材外壳保持原样 */}
+      {/* 小电动机专用透视：只给电动机卡片打内部标注（线圈环 / 蹄形磁铁 / 转子滑环），其它器材外壳保持原样 */}
       {comps.some((c) => c.type === 'motor') && (
         <button
           className={`esb-cut${motorCut ? ' on' : ''}`}
-          title="只把小电动机换成剖面：磁极弧形极靴、绕竖直轴扫动的线圈、换向器与电刷"
+          title="只给小电动机标内部结构：线圈环（通电流成磁场）、蹄形磁铁 N-S、磁极间的转子与滑环"
           onClick={() => setMotorCut((v) => !v)}
         >
-          {motorCut ? '✂ 电机剖面（开）' : '✂ 电机剖面'}
+          {motorCut ? '🔍 电机结构（开）' : '🔍 电机结构'}
         </button>
       )}
 
