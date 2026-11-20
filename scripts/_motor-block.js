@@ -22,18 +22,19 @@
       const cid = `esmm${c.id}`
       const dur = ((2 * Math.PI) / speed).toFixed(2)
       const coilAnim = on
-        ? `<animateTransform attributeName="transform" type="rotate"
-             from="-16" to="${-16 + 360 * dir}" dur="${dur}s" repeatCount="indefinite"/>`
+        ? `<animateTransform attributeName="transform" type="scale"
+             values="1 1;0.18 1;-1 1;-0.18 1;1 1" keyTimes="0;.25;.5;.75;1"
+             dur="${dur}s" repeatCount="indefinite"/>`
         : ''
-      const ringAnim = on
-        ? `<animateTransform attributeName="transform" type="rotate"
-             from="0" to="${-360 * dir}" dur="${dur}s" repeatCount="indefinite"/>`
-        : ''
-      const R = 11
-      const a1 = (-120 * Math.PI) / 180
-      const a2 = (30 * Math.PI) / 180
-      const p1 = [R * Math.cos(a1), R * Math.sin(a1)].map((v) => v.toFixed(2))
-      const p2 = [R * Math.cos(a2), R * Math.sin(a2)].map((v) => v.toFixed(2))
+      const ringAnim = ''
+      const RR = 15.2
+      const ga = (16 * Math.PI) / 180
+      const sx = (RR * Math.sin(ga)).toFixed(2)
+      const sy = (RR * Math.cos(ga)).toFixed(2)
+      const segTopBlue = [-sx, `-${sy}`]
+      const segBotBlue = [-sx, sy]
+      const segTopRed = [sx, `-${sy}`]
+      const segBotRed = [sx, sy]
       return `
     <svg width="200" height="212" viewBox="0 0 200 212">
       <defs>
@@ -49,20 +50,26 @@
           <circle cx="101.4" cy="77.6" r="53"/>
         </clipPath>
         <clipPath id="${cid}bore"><circle cx="101.4" cy="77.6" r="53"/></clipPath>
+        <clipPath id="${cid}rhalf"><rect x="0" y="-60" width="60" height="120"/></clipPath>
         <linearGradient id="${cid}red" gradientUnits="userSpaceOnUse" x1="0" y1="15" x2="0" y2="138.5">
-          <stop offset="0%" stop-color="#ff5f6a"/>
-          <stop offset="7%" stop-color="#f74754"/>
-          <stop offset="58%" stop-color="#ef3a47"/>
-          <stop offset="100%" stop-color="#c62f3d"/>
+          <stop offset="0%" stop-color="#fb3d4b"/>
+          <stop offset="12%" stop-color="#f83c49"/>
+          <stop offset="58%" stop-color="#e63844"/>
+          <stop offset="100%" stop-color="#ca303b"/>
         </linearGradient>
         <linearGradient id="${cid}blue" gradientUnits="userSpaceOnUse" x1="0" y1="15" x2="0" y2="138.5">
-          <stop offset="0%" stop-color="#4aaef7"/>
-          <stop offset="7%" stop-color="#3395e8"/>
-          <stop offset="58%" stop-color="#2488dc"/>
-          <stop offset="100%" stop-color="#1866ae"/>
+          <stop offset="0%" stop-color="#258be1"/>
+          <stop offset="12%" stop-color="#2589de"/>
+          <stop offset="58%" stop-color="#2381cf"/>
+          <stop offset="100%" stop-color="#1c6aac"/>
         </linearGradient>
-        <clipPath id="${cid}pr"><rect x="12" y="15" width="73" height="123.5" rx="10"/></clipPath>
-        <clipPath id="${cid}pb"><rect x="117.8" y="15" width="72.2" height="123.5" rx="10"/></clipPath>
+        <clipPath id="${cid}pr"><rect x="12" y="15" width="73" height="123.5" rx="7"/></clipPath>
+        <clipPath id="${cid}pb"><rect x="117.8" y="15" width="72.2" height="123.5" rx="7"/></clipPath>
+        <radialGradient id="${cid}boreIn" gradientUnits="userSpaceOnUse" cx="101.4" cy="77.6" r="53">
+          <stop offset="78%" stop-color="rgba(20,26,36,0)"/>
+          <stop offset="93%" stop-color="rgba(20,26,36,.05)"/>
+          <stop offset="100%" stop-color="rgba(16,20,30,.30)"/>
+        </radialGradient>
         <radialGradient id="${cid}colR" gradientUnits="userSpaceOnUse" cx="101.4" cy="77.6" r="58">
           <stop offset="90%" stop-color="#7e1b23"/>
           <stop offset="98%" stop-color="#b73540"/>
@@ -88,6 +95,11 @@
           <stop offset="45%" stop-color="rgba(255,255,255,.06)"/>
           <stop offset="100%" stop-color="rgba(0,0,0,.10)"/>
         </linearGradient>
+        <linearGradient id="${cid}belowSh" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="rgba(24,32,44,.20)"/>
+          <stop offset="55%" stop-color="rgba(24,32,44,.07)"/>
+          <stop offset="100%" stop-color="rgba(24,32,44,0)"/>
+        </linearGradient>
         <filter id="${cid}sh" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="5.5"/></filter>
         <linearGradient id="${cid}pl" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stop-color="#f0f4f7"/>
@@ -99,26 +111,32 @@
       <ellipse cx="101" cy="188" rx="74" ry="11" fill="rgba(22,28,36,.30)" filter="url(#${cid}sh)"/>
       <!-- 板厚：两块板的侧壁整块垫在后面，向右下错一点，露出厚度（同样要过 mask，否则会从镂空的孔里透出来） -->
       <g mask="url(#${cid}m)">
-        <rect x="16.5" y="19.5" width="72" height="122" rx="10" fill="#a82531"/>
-        <rect x="119" y="19.5" width="72" height="122" rx="10" fill="#14548f"/>
+        <rect x="16.5" y="19.5" width="72" height="122" rx="7" fill="#a82531"/>
+        <rect x="119" y="19.5" width="72" height="122" rx="7" fill="#14548f"/>
       </g>
 
       <!-- 板正面（圆角 + 顶面亮带 + 侧壁暗边 + 底面压暗） -->
       <g mask="url(#${cid}m)">
         <g clip-path="url(#${cid}pr)">
           <rect class="casing" x="12" y="15" width="73" height="123.5" fill="url(#${cid}red)"/>
-          <rect x="12" y="15" width="73" height="6.4" fill="#ff7378"/>
-          <rect x="12" y="21.4" width="73" height="1.6" fill="rgba(120,10,20,.30)"/>
-          <rect x="12" y="15" width="4.6" height="123.5" fill="rgba(0,0,0,.17)"/>
-          <rect x="12" y="129.5" width="73" height="9" fill="rgba(0,0,0,.22)"/>
+          <rect x="12" y="15" width="73" height="3.4" fill="#8a1c23"/>
+          <rect x="12" y="18.4" width="73" height="3.3" fill="#a32029"/>
+          <rect x="12" y="21.7" width="73" height="0.9" fill="#fb4758"/>
+          <rect x="12" y="21.7" width="73" height="0.9" fill="rgba(255,255,255,.30)"/>
+          <rect x="12" y="15" width="4.6" height="123.5" fill="rgba(0,0,0,.10)"/>
+          <rect x="12" y="133.5" width="73" height="5" fill="rgba(0,0,0,.13)"/>
+          <rect x="12" y="137.1" width="73" height="1.4" fill="#2a2e35"/>
           <rect x="12" y="15" width="73" height="123.5" fill="url(#${cid}sheen)"/>\n          <rect x="12" y="15" width="73" height="123.5" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="1"/>
         </g>
         <g clip-path="url(#${cid}pb)">
           <rect class="casing" x="117.8" y="15" width="72.2" height="123.5" fill="url(#${cid}blue)"/>
-          <rect x="117.8" y="15" width="72.2" height="6.4" fill="#6dc2fb"/>
-          <rect x="117.8" y="21.4" width="72.2" height="1.6" fill="rgba(10,40,80,.30)"/>
-          <rect x="185.4" y="15" width="4.6" height="123.5" fill="rgba(255,255,255,.16)"/>
-          <rect x="117.8" y="129.5" width="72.2" height="9" fill="rgba(0,0,0,.24)"/>
+          <rect x="117.8" y="15" width="72.2" height="3.4" fill="#0e3f6b"/>
+          <rect x="117.8" y="18.4" width="72.2" height="3.3" fill="#105690"/>
+          <rect x="117.8" y="21.7" width="72.2" height="0.9" fill="#2b9be8"/>
+          <rect x="117.8" y="21.7" width="72.2" height="0.9" fill="rgba(255,255,255,.28)"/>
+          <rect x="185.4" y="15" width="4.6" height="123.5" fill="rgba(255,255,255,.14)"/>
+          <rect x="117.8" y="133.5" width="72.2" height="5" fill="rgba(0,0,0,.15)"/>
+          <rect x="117.8" y="137.1" width="72.2" height="1.4" fill="#232a33"/>
           <rect x="117.8" y="15" width="72.2" height="123.5" fill="url(#${cid}sheen)"/>\n          <rect x="117.8" y="15" width="72.2" height="123.5" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="1"/>
         </g>
       </g>
@@ -131,62 +149,81 @@
           fill="url(#${cid}colR)"/>
         <path d="M 101.4 20.6 A 57 57 0 0 1 101.4 134.6 L 101.4 130.6 A 53 53 0 0 0 101.4 24.6 Z"
           fill="url(#${cid}colB)"/>
-        <!-- 倒角整体压暗：板的切口在暗处，厚度才读得出来 -->
         <path d="M 101.4 20.6 A 57 57 0 0 0 101.4 134.6 L 101.4 130.6 A 53 53 0 0 1 101.4 24.6 Z"
-          fill="rgba(12,16,22,.20)"/>
+          fill="rgba(12,16,22,.22)"/>
         <path d="M 101.4 20.6 A 57 57 0 0 1 101.4 134.6 L 101.4 130.6 A 53 53 0 0 0 101.4 24.6 Z"
-          fill="rgba(12,16,22,.20)"/>
+          fill="rgba(12,16,22,.22)"/>
         <path d="M 101.4 20.6 L 101.4 134.6" stroke="rgba(0,0,0,.30)" stroke-width="1.2"/>
-        <circle cx="101.4" cy="77.6" r="53" fill="none" stroke="rgba(0,0,0,.42)" stroke-width="1.6"/>
-        <circle cx="101.4" cy="77.6" r="57" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="1"/>
+        <circle cx="101.4" cy="77.6" r="53" fill="none" stroke="rgba(0,0,0,.46)" stroke-width="1.6"/>
+        <circle cx="101.4" cy="77.6" r="57" fill="none" stroke="rgba(0,0,0,.18)" stroke-width="1"/>
       </g>
+      <!-- 孔里的内阴影（孔本身是透的 = 露背景，靠这一圈才读得出"洞"） -->
+      <g clip-path="url(#${cid}bore)">
+        <circle cx="101.4" cy="77.6" r="53" fill="url(#${cid}boreIn)"/>
+      </g>
+
+      <!-- 板底投在背景上的软阴影：这块空间亮着才显得"板是浮在面板前的" -->
+      <ellipse cx="48" cy="146" rx="38" ry="15" fill="rgba(24,32,44,.20)" filter="url(#${cid}sh)"/>
+      <ellipse cx="154" cy="146" rx="38" ry="15" fill="rgba(24,32,44,.20)" filter="url(#${cid}sh)"/>
 
       <text x="25.4" y="78" fontSize="21" fontWeight="700" fill="#fff" textAnchor="middle"
         stroke="rgba(96,0,8,.32)" stroke-width="1" paintOrder="stroke">N</text>
       <text x="179" y="78" fontSize="21" fontWeight="700" fill="#fff" textAnchor="middle"
         stroke="rgba(0,34,84,.32)" stroke-width="1" paintOrder="stroke">S</text>
 
-      <!-- 电刷杆 -->
-      <rect x="82.6" y="134" width="2.4" height="50" rx="1" fill="#dfe6ec"/>
-      <rect x="82.6" y="134" width="0.8" height="50" fill="rgba(74,90,108,.42)"/>
-      <rect x="118.4" y="134" width="2.4" height="50" rx="1" fill="#dfe6ec"/>
-      <rect x="118.4" y="134" width="0.8" height="50" fill="rgba(74,90,108,.42)"/>
+      <!-- 电刷杆：两根细杆，落在环外两侧（NB 里它们从环的两边升到底座） -->
+      <rect x="79.4" y="128" width="2.4" height="56" rx="1" fill="#dfe6ec"/>
+      <rect x="79.4" y="128" width="0.8" height="56" fill="rgba(74,90,108,.42)"/>
+      <rect x="121.6" y="128" width="2.4" height="56" rx="1" fill="#dfe6ec"/>
+      <rect x="121.6" y="128" width="0.8" height="56" fill="rgba(74,90,108,.42)"/>
 
-      <!-- 线圈：一片矩形单匝框（左蓝右红）+ 中间引线杆；绕竖直轴转 = 水平压缩 -->
-      <!-- 线圈：绕朝向屏幕的轴自转（画面里像叶片扫过），这正是 NB 的观感；
-           叶片本身带一点斜切（skew）才显得是"有厚度的一片框" -->
-      <path d="M 101.9 128 L 101.9 146" stroke="#cf7480" stroke-width="2.2"/>
-      <g transform="translate(101.9,92)">
-        <g transform="${on ? '' : 'rotate(-16)'}">${coilAnim}
-          <g transform="skewY(-11)">
-            <!-- 后沿（暗）露出厚度 -->
-            <path d="M -8 -46 L 8 -44 L 8 25 L -8 23 Z"
-              fill="none" stroke="rgba(72,128,180,.50)" stroke-width="2.2"/>
-            <!-- 叶片框：左蓝右红 -->
-            
-            <path d="M -9 -45 L -9 24" stroke="#4a97dc" stroke-width="2.6"/>
-            <path d="M 9 -44 L 9 26" stroke="#d8454f" stroke-width="2.6"/>
-            <path d="M -9 -45 L 9 -44" stroke="#7fb2e2" stroke-width="2.2"/>
-            <path d="M -9 24 L 9 26" stroke="#e0777e" stroke-width="2.2"/>
+      <!-- 线圈：NB 是一匝线的"T 形"轮廓（左半蓝、右半红，x=0 处硬切），
+           框底两钩直接落成两条竖直引线，钉在换向环顶部的两段上；
+           框绕竖直引线轴转 → 宽/薄两个相位（NB 截图里就是这两种姿态） -->
+      <g transform="translate(101.4,92)">
+        <!-- 两条引线（竖直，不跟着转）：左蓝右红，正好落在换向环顶沿 -->
+        <path d="M -6.5 2 L -6.5 44" stroke="#3f90d8" stroke-width="2.6"/>
+        <path d="M 6.5 2 L 6.5 44" stroke="#d9434e" stroke-width="2.6"/>
+        <g transform="${on ? '' : 'scale(0.9,1)'}">${coilAnim}
+          <!-- 背沿：深一档的同形线，错一格，框就有了厚度 -->
+          <g transform="translate(1.1,1.8)" opacity=".40">
+            <path d="M -6.5 2 V -12 H -33 V -32 Q -33 -38 -27 -38 H 0" fill="none" stroke="#20303c" stroke-width="2.4"/>
+            <path d="M 6.5 2 V -12 H 33 V -32 Q 33 -38 27 -38 H 0" fill="none" stroke="#20303c" stroke-width="2.4"/>
+          </g>
+          <!-- 左半（蓝）：从引线顶端绕到框顶中线 -->
+          <path d="M -6.5 2 V -12 H -33 V -32 Q -33 -38 -27 -38 H 0"
+            fill="none" stroke="#3f90d8" stroke-width="2.6" stroke-linejoin="round"/>
+          <!-- 右半（红）：同一形，clip 在 x=0 处硬切 -->
+          <g clip-path="url(#${cid}rhalf)">
+            <path d="M 6.5 2 V -12 H 33 V -32 Q 33 -38 27 -38 H 0"
+              fill="none" stroke="#d9434e" stroke-width="2.6" stroke-linejoin="round"/>
           </g>
         </g>
       </g>
 
-      <!-- 换向环（透视略压扁） -->
-      <g transform="translate(101.9,155.1) scale(1,0.96)">
+      <!-- 换向环：两段（左蓝右红）带上下两个缺口，缺口就在两条引线落下的地方 -->
+      <g transform="translate(101.9,156)">
         <g>${ringAnim}
-          <circle r="${R}" fill="none" stroke="#e0404c" stroke-width="7.4"/>
-          <path d="M ${p1[0]} ${p1[1]} A ${R} ${R} 0 0 1 ${p2[0]} ${p2[1]}"
-            fill="none" stroke="#e8454f" stroke-width="7.4" stroke-linecap="butt"/>
-          <path d="M ${p2[0]} ${p2[1]} A ${R} ${R} 0 1 1 ${p1[0]} ${p1[1]}"
-            fill="none" stroke="#2e9ae8" stroke-width="7.4" stroke-linecap="butt"/>
-          <path d="M -3 -12 A ${R} ${R} 0 0 1 11.6 4.4" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="2.6"/>
-          <path d="M 3 12 A ${R} ${R} 0 0 1 -11.6 -4.4" fill="none" stroke="rgba(0,0,0,.26)" stroke-width="2.6"/>
-          <circle r="${R + 4.4}" fill="none" stroke="rgba(0,0,0,.26)" stroke-width="1.2"/>
-          <circle r="${R - 4.4}" fill="none" stroke="rgba(0,0,0,.30)" stroke-width="1.4"/>
+          <path d="M ${segTopBlue[0]} ${segTopBlue[1]} A 15.2 15.2 0 0 1 ${segBotBlue[0]} ${segBotBlue[1]}"
+            fill="none" stroke="#2e9ae8" stroke-width="8.4" stroke-linecap="butt"/>
+          <path d="M ${segTopRed[0]} ${segTopRed[1]} A 15.2 15.2 0 0 1 ${segBotRed[0]} ${segBotRed[1]}"
+            fill="none" stroke="#e0424e" stroke-width="8.4" stroke-linecap="butt"/>
+          <path d="M -12 -9 A 15.2 15.2 0 0 1 -4 -14.8" fill="none" stroke="rgba(255,255,255,.40)" stroke-width="2.4"/>
+          <path d="M 12 9 A 15.2 15.2 0 0 1 4 14.8" fill="none" stroke="rgba(255,255,255,.28)" stroke-width="2.4"/>
+          <circle r="19.4" fill="none" stroke="rgba(0,0,0,.30)" stroke-width="1.2"/>
+          <circle r="11" fill="none" stroke="rgba(0,0,0,.34)" stroke-width="1.4"/>
         </g>
-        <circle r="6.2" fill="#2b3037"/>
-        <circle r="6.2" fill="none" stroke="rgba(0,0,0,.35)" stroke-width="1.1"/>
+        <circle r="7.4" fill="#2b3037"/>
+        <circle r="7.4" fill="none" stroke="rgba(0,0,0,.35)" stroke-width="1.1"/>
+        <circle r="3.2" fill="#3d444d"/>
+      </g>
+
+      <!-- 引线压在环上的"焊点"：两条引线的末端确实搭在两段换向片上 -->
+      <g transform="translate(101.9,156)">
+        <path d="M -6.5 -19.6 L -6.5 -14.4" stroke="#3f90d8" stroke-width="2.8"/>
+        <path d="M 6.5 -19.6 L 6.5 -14.4" stroke="#d9434e" stroke-width="2.8"/>
+        <circle cx="-6.5" cy="-15.4" r="2.1" fill="#7cbcee"/>
+        <circle cx="6.5" cy="-15.4" r="2.1" fill="#ec7d85"/>
       </g>
 
       <!-- 底座 -->
