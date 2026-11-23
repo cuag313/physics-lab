@@ -1539,13 +1539,21 @@ export const TYPES = {
     ],
     render(c) {
       const open = !c.closed
-      return `
+      /* 渐变 id 按实例加后缀：同一页面里同时有器材栏缩略图 + 桌面卡片 + 演示页时，
+         固定 id（swi-bt 等）会互相撞名 —— 撞名后 refs 落到被 display:none 藏起来的那一份上，
+         整件器材就只剩线框（没有金属渐变）。这里把 id 与 url(#…) 一次性改成实例专属。 */
+      const sfx = `sw${String(c.id || 'x').replace(/[^a-zA-Z0-9]/g, '')}`
+      const html = `
     <svg width="176" height="110" viewBox="0 0 176 110">
       ${fitInner(176, 100, 176, 110, INNER.switch())}
       ${switchBodySVG()}
       ${bladeSVG(open)}
       ${switchKnobsSVG()}
-    </svg>` }
+    </svg>`
+      return html
+        .replace(/id="swi-/g, `id="${sfx}-swi-`)
+        .replace(/url\(#swi-/g, `url(#${sfx}-swi-`)
+    },
   },
 
   /* ── 电流表（1:1 复刻 iconsnewname/电流表_6.png：中心零位 −50..0..50，黑/红两柱） ── */

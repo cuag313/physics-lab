@@ -513,7 +513,7 @@ export default function ElectricMotorScene() {
           <BuilderSVG
             ref={builderRef}
             wireColor={ui.wireColor}
-            emptyHint="从右侧器材栏拖入「电动机」「电池组」「开关」，再点接线柱连线"
+            emptyHint="从右侧器材栏拖入「电动机」「电池组」「闸刀开关」，再点接线柱连线"
           />
         )}
 
@@ -539,7 +539,7 @@ export default function ElectricMotorScene() {
             offset={{ left: 26, top: 26 }}
             purpose="自己把器材拖进桌面搭一台电动机的电路：转不转、往哪转、转多快，全看你自己的接法。"
             steps={[
-              '① 从右侧器材栏拖「电动机」「电池组」「开关」到桌面（点一下也能加进来）',
+              '① 从右侧器材栏拖「电动机」「电池组」「闸刀开关」到桌面（点一下也能加进来）',
               '② 点一个接线柱 → 再点另一个接线柱，把电池、开关、电动机接成一个圈',
               '③ 点开关的闸刀合上电路：电动机的红/黑柱接对了正转，接反了反转',
               '电流越大转得越快（可串一个滑动变阻器调电流）；断路时转子不动',
@@ -556,7 +556,7 @@ export default function ElectricMotorScene() {
             items={[
               { type: 'motorNB', name: '电动机', icon: thumb('motorNB') },
               { type: 'battery', name: '电池组', icon: thumb('battery') },
-              { type: 'switch', name: '开关', icon: thumb('switch') },
+              { type: 'switch', name: '闸刀开关', icon: thumb('switch') },
               { type: 'ammeterA', name: '电流表', icon: thumb('ammeterA') },
               { type: 'voltmeter', name: '电压表', icon: thumb('voltmeter') },
               { type: 'rheostat', name: '滑动变阻器', icon: thumb('rheostat') },
