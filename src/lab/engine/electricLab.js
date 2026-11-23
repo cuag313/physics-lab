@@ -24,8 +24,10 @@
 export const CFG = {
   VS: { V: 3.0, r: 0.1 },       // 电池组：电动势 3V，内阻 0.1Ω
   ACC_V: 12,                     // 蓄电池电动势 12V
-  BULB_R: 5.0,                  // 灯泡电阻
+  BULB_R: 5.0,                  // 灯泡电阻（3 V 小灯泡，配电池组）
   BULB_RATED: 1.8,              // 灯泡额定功率（亮度 100%）
+  BULB6_R: 48.0,                // 6 V 小灯泡灯丝电阻（配手摇发电机：6V/0.75W）
+  BULB6_RATED: 0.75,            // 6 V 小灯泡额定功率
   AMM_R: 0.01,                  // 电流表内阻
   VOLT_R: 1e7,                  // 电压表内阻
   AMM_FS: 0.6,                  // 电流量程（0.6A 柱）
@@ -37,6 +39,8 @@ export const CFG = {
   DIODE_RF: 4,                  // 正向动态电阻（Ω）
   DIODE_RR: 1e9,                // 反向截止电阻（Ω）
   MOTOR_R: 4.0,                 // 小电动机线圈电阻（Ω）
+  HANDGEN_R: 0.1,               // 手摇发电机内阻（Ω，与 NB HandGenerator 一致）
+  HANDGEN_V_PER_RS: 1.0,        // 峰值电动势 / 转速：6 r/s ↔ 6 V（Em 与转速成正比）
   FUSE_R: 0.02,                 // 保险丝冷态电阻（Ω）
   FUSE_OPEN_R: 1e8,             // 熔断后断口电阻（Ω）
   FUSE_RATING: 0.5,             // 保险丝额定熔断电流（A）
@@ -89,6 +93,7 @@ export const TERM_IDS = {
   battery: ['n', 'p'],
   accumulator: ['n', 'p'],
   bulb: ['a', 'b'],
+  bulb6: ['a', 'b'],                  // 6 V 小灯泡（配手摇发电机）：灯丝 48 Ω
   switch: ['a', 'b'],
   ammeter: ['neg', 'pos'],            // 中心零位 mA 表（−500~500 那台）：只有黑(−)/红(+)两柱，正反都能偏
   ammeterA: ['neg', 'mid', 'full'],  // 安培表（黑壳双刻度那台）：端子与电流表相同
@@ -122,6 +127,8 @@ export const TERM_IDS = {
   electromagnet: ['a', 'b'],         // 电磁铁（线圈 + 软铁芯）：线圈两端两接线柱
   ostersBoard: ['a', 'b'],           // 奥斯特实验板（通电直导线 + 小磁针）：直导线两端两接线柱
   galvanometer: ['neg', 'pos'],      // 灵敏电流计（中央零点，两柱）：电磁感应实验专用
+  handGenerator: ['a', 'b'],         // 手摇发电机：黑柱 a（负）/ 红柱 b（正）
+  handGeneratorDC: ['a', 'b'],       // 手摇发电机（直流款，换向器整流，同样的两柱）
 }
 
 const keyOf = (cid, tid) => cid + ':' + tid
@@ -275,11 +282,26 @@ export function solveCircuit(comps, wires, opts) {
       b[a] -= emf / CFG.VS.r
       b[bb] += emf / CFG.VS.r
       els.push({ kind: 'V', a, b: bb, V: emf, r: CFG.VS.r, comp: c, tA: 'n', tB: 'p' })
-    } else if (c.type === 'bulb') {
+    } else if (c.type === 'handGenerator' || c.type === 'handGeneratorDC') {
+      /* 手摇发电机：电动势由飞轮转速决定（每 ~70 ms 由 BuilderSVG 写回 c.emf），
+         交流款瞬时值在正负之间摆、直流款靠换向器整成同一方向；
+         内阻 0.1 Ω 与 Tab1 演示同一套参数。黑柱 a = 负极，红柱 b = 正极。 */
       const a = netOf(c, 'a')
       const bb = netOf(c, 'b')
-      stampR(A, a, bb, CFG.BULB_R)
-      els.push({ kind: 'R', a, b: bb, R: CFG.BULB_R, comp: c, tA: 'a', tB: 'b' })
+      const emf = Number(c.emf) || 0
+      const rIn = CFG.HANDGEN_R
+      const g = 1 / rIn
+      A[a][a] += g; A[bb][bb] += g; A[a][bb] -= g; A[bb][a] -= g
+      b[a] -= emf / rIn
+      b[bb] += emf / rIn
+      els.push({ kind: 'V', a, b: bb, V: emf, r: rIn, comp: c, tA: 'a', tB: 'b' })
+    } else if (c.type === 'bulb' || c.type === 'bulb6') {
+      const a = netOf(c, 'a')
+      const bb = netOf(c, 'b')
+      /* 3 V 小灯泡 5 Ω（配电池组）；6 V 小灯泡 48 Ω（配手摇发电机） */
+      const R = c.type === 'bulb6' ? CFG.BULB6_R : CFG.BULB_R
+      stampR(A, a, bb, R)
+      els.push({ kind: 'R', a, b: bb, R, comp: c, tA: 'a', tB: 'b' })
     } else if (c.type === 'switch' || c.type === 'wallSwitch') {
       const a = netOf(c, 'a')
       const bb = netOf(c, 'b')
@@ -515,9 +537,11 @@ export function solveCircuit(comps, wires, opts) {
     const I = e.I // 迭代收敛后已算好（带符号：由 tA 端流入元件为正）
     const c = e.comp
     const o = out[c.id]
-    if (c.type === 'bulb') {
+    if (c.type === 'bulb' || c.type === 'bulb6') {
+      const R = c.type === 'bulb6' ? CFG.BULB6_R : CFG.BULB_R
       o._I = Math.abs(I)
-      o._P = I * I * CFG.BULB_R
+      o._P = I * I * R
+      o._rated = c.type === 'bulb6' ? CFG.BULB6_RATED : CFG.BULB_RATED
     } else if (c.type === 'galvanometer') {
       o._I = I // 电流由「+」柱流入为正（中央零点，负值就是指针往另一边偏）
       o._fs = e.fs ?? CFG.GALV_FS
@@ -534,15 +558,24 @@ export function solveCircuit(comps, wires, opts) {
       o._rev = o._V < -1e-6
       o._fs = e.fs ?? CFG.VOLT_FS
       o._over = Math.abs(o._V) > o._fs * 1.001
-    } else if (c.type === 'battery' || c.type === 'accumulator' || c.type === 'mains' || c.type === 'acSource') {
+    } else if (c.type === 'battery' || c.type === 'accumulator' || c.type === 'mains' || c.type === 'acSource'
+      || c.type === 'handGenerator' || c.type === 'handGeneratorDC') {
       o._I = I
       // 端电压 = 电动势 − 内阻分压；短路时 I 很大，端电压趋近 0（这是「短路为什么危险」的教学点）
-      const isAC = c.type === 'mains' || c.type === 'acSource'
+      const isAC = c.type === 'mains' || c.type === 'acSource' || c.type === 'handGenerator' || c.type === 'handGeneratorDC'
       const emf = isAC ? CFG.MAINS_V : c.type === 'accumulator' ? CFG.ACC_V : CFG.VS.V
       const rIn = isAC ? CFG.MAINS_R : CFG.VS.r
-      o._V = Math.abs(v[e.b] - v[e.a])
-      o._Ir = Math.abs(I) * rIn
-      o._emf = emf
+      if (c.type === 'handGenerator' || c.type === 'handGeneratorDC') {
+        o._emf = Math.abs(Number(c.emf) || 0)
+        o._rIn = CFG.HANDGEN_R
+        o._Ir = Math.abs(I) * CFG.HANDGEN_R
+        o._V = Math.abs(v[e.b] - v[e.a])
+        o._ac = c.type === 'handGenerator'
+      } else {
+        o._V = Math.abs(v[e.b] - v[e.a])
+        o._Ir = Math.abs(I) * rIn
+        o._emf = emf
+      }
     } else if (c.type === 'breaker') {
       // 双极各一条支路，读数取两路中较大的那个（合闸后两路一样）
       o._I = Math.max(o._I || 0, Math.abs(I))
@@ -786,6 +819,8 @@ function detectMisuse(comps, wires, out) {
     // 电池 + 电磁铁 ≈ 2.3 A 属于正常实验回路，不能误报 → 阈值放到 2.5 A
     if ((c.type === 'battery' || c.type === 'accumulator') && Math.abs(out[c.id]?._I || 0) > 2.5) diag.short = true
     if ((c.type === 'mains' || c.type === 'acSource') && Math.abs(out[c.id]?._I || 0) > 15) diag.short = true
+    // 手摇发电机内阻只有 0.1 Ω：两极直接短接能到几十安，超过 3 A 就算短路
+    if ((c.type === 'handGenerator' || c.type === 'handGeneratorDC') && Math.abs(out[c.id]?._I || 0) > 3) diag.short = true
     if ((c.type === 'ammeter' || c.type === 'ammeterA')) {
       // 未串在支路（与另一元件同节点对 = 被并联在元件两端）且两端电位差 > 0.5V
       const par = sharesPair(comps, wires, c)
@@ -851,9 +886,10 @@ function probeSolve(comps, wires, compId, probeR) {
 
 /** 状态栏摘要（纯文本片段，与源实验的状态条语义一致） */
 export function circuitStatus(comps, wires, out) {
-  const bat = comps.filter((c) => c.type === 'battery' || c.type === 'accumulator' || c.type === 'mains' || c.type === 'acSource')
+  const bat = comps.filter((c) => c.type === 'battery' || c.type === 'accumulator' || c.type === 'mains' || c.type === 'acSource'
+    || c.type === 'handGenerator' || c.type === 'handGeneratorDC')
   const switches = comps.filter((c) => c.type === 'switch')
-  const bulbs = comps.filter((c) => c.type === 'bulb')
+  const bulbs = comps.filter((c) => c.type === 'bulb' || c.type === 'bulb6')
   const amms = comps.filter((c) => (c.type === 'ammeter' || c.type === 'ammeterA'))
   const vms = comps.filter((c) => c.type === 'voltmeter')
   const rh = comps.filter((c) => c.type === 'rheostat')
@@ -863,7 +899,7 @@ export function circuitStatus(comps, wires, out) {
 
   let shorted = false
   for (const c of bat) {
-    const lim = (c.type === 'mains' || c.type === 'acSource') ? 15 : 1.2
+    const lim = (c.type === 'mains' || c.type === 'acSource') ? 15 : (c.type === 'handGenerator' || c.type === 'handGeneratorDC') ? 3 : 1.2
     if (Math.abs(out[c.id]?._I || 0) > lim) shorted = true
   }
   if (shorted) parts.push({ tone: 'bad', text: '⚠ 电源短路！电流过大，请检查导线连接' })
@@ -881,7 +917,7 @@ export function circuitStatus(comps, wires, out) {
 
   if (bulbs.length) {
     const b = out[bulbs[0].id]
-    const pct = Math.round(Math.min(1, (b?._P || 0) / CFG.BULB_RATED) * 100)
+    const pct = Math.round(Math.min(1, (b?._P || 0) / (b?._rated || CFG.BULB_RATED)) * 100)
     parts.push({ text: `灯泡亮度 ${(b?._P || 0) > 0.001 ? pct + '%' : '不发光'}` })
   }
   if (rh.length) {

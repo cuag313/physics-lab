@@ -282,6 +282,17 @@ export const EXPERIMENT_CATALOG = [
     examLevel: '★★',
   },
   {
+    key: 'handGenerator',
+    name: '演示手摇发电机',
+    description: '摇动飞轮带动转子线圈切割磁感线：灯泡发光、电流计左右摆动、双反接二极管交替闪',
+    category: 'electric',
+    subCategory: '初中电学',
+    difficulty: 2,
+    grade: '九年级',
+    tags: ['发电机', '磁生电', '交变电流', '二极管', '转速'],
+    examLevel: '★★',
+  },
+  {
     key: 'electromagneticInduction',
     name: '电磁感应（法拉第实验）',
     description: '磁生电：导体切割磁感线产生感应电流',

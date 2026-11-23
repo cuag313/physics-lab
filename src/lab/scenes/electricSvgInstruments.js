@@ -1197,6 +1197,143 @@ const breakerType = {
     </svg>` }
 }
 
+/* 小电动机的转子本体（线圈 + 两条引线 + 换向器），deg = 转角（度）。
+   卡片在「未通电 / 导出预览」时用 deg=0 画静态转子；通电时卡片让开（dyn.hideRotor），
+   由 Scenario 的转子层每帧按转角重画 —— 因为器材字符串每 250ms 会被 dangerouslySetInnerHTML
+   重建成起始帧，字符串里的 SMIL/CSS 动画根本转不起来（见 BuilderSVG 里 MotionLayer 的注释）。
+
+   **线圈 → 引线 → 换向器是同一台转子，共用一个 deg，同步转。**
+   线圈绕竖轴 (x=101.4) 转，按"略俯视"的正视图投影：
+       X = 101.4 + x·cosθ ，  Y = y − sinθ·K·x   （K = 0.34，就是略俯视的"看下去"量）
+   所以它不是原地平面打转：转到 90° 时线圈侧身、只剩一条边，红蓝两半上下错开；
+   转到 180° 时红蓝左右互换，但 T 不会翻个底朝天。这就是真实线圈绕轴转的正视图。
+   换向器是与轴垂直的圆盘：外径恒定（转到哪一格，铜片外沿都压在两侧碳刷上），
+   两片扇形随同一个 θ 扫过电刷 —— 它"环内原地转"和线圈"侧身"是同一根轴的两种投影，不是两套动画。
+   换向器不能挂在线圈下面当子对象（那样它绕线圈圆心公转，会跑出磁极）；线圈也不能绕换向器转（会甩出极缝）。
+
+   引线是**刚性铜线**，上端焊在颈口（线圈正面），下端**接进换向器背面**（局部 ±7.0, −6.4，r=9.5 正好落在铜片
+   背面：铜片压住末端，看不到接头，和标杆图一样）。两端各自随所属零件动，引线不会被抽成长条、也不会斜穿线圈。 */
+function motorRotorBody(cid, deg = 0) {
+  /* 静止相位：整台转子（线圈 + 两条引线 + 换向器）绕竖轴**向左偏 10°**。
+     0° 时线圈完全正对镜头、俯视一点厚度都看不出；偏 10° 才像标杆那样"侧面略露"。
+     只改这一个入口 = 静态卡片与 rAF 转子层一起偏，转子内部仍然只用一个角度。 */
+  const deg0 = deg - 10
+  const rad = (deg0 * Math.PI) / 180
+  const c = Math.cos(rad), s = Math.sin(rad)
+  const K = 0.34                                   // 略俯视的"看下去"量
+  /* 线圈局部 (x, y)（x 是离轴距离，y 以 107.5 为基准）→ 页面绝对坐标：绕竖轴转 + 略俯视错位。
+     deg=0 时 X = 101.4+x、Y = 107.5+y，与原来的静态画法逐像素一致。
+     符号取 +s·K·x：θ>0 时线圈右侧转向观众 —— 略俯视下"离眼睛更近"的点在屏幕上更低，
+     这和换向器 rotate(+θ) 是顺时针、整台转子同一根轴的同一个 ω 对得上。 */
+  const px = (x, y) => [101.4 + x * c, 107.5 + y + s * K * x]
+  const P = (x, y) => { const [X, Y] = px(x, y); return `${X.toFixed(2)} ${Y.toFixed(2)}` }
+  /* 线圈半边轮廓：肩 → 外圆角 → 侧边 → 上圆角 → 顶中线（可按 ox/oy 偏移一份深色描边当阴影）。
+     CO = 线圈整体的竖向位置：宽部（高 29）的**中心**压在磁铁块中心（15..140 → 77.5），窄部因此加长 */
+  const CO = 0
+  const half = (sgn, col, w, ox = 0, oy = 0) =>
+    `<path d="M ${P(8.3 * sgn + ox, -11 + oy + CO)} L ${P(34.5 * sgn + ox, -11 + oy + CO)}` +
+    ` Q ${P(39 * sgn + ox, -11 + oy + CO)} ${P(39 * sgn + ox, -15.5 + oy + CO)}` +
+    ` L ${P(39 * sgn + ox, -35.5 + oy + CO)} Q ${P(39 * sgn + ox, -40 + oy + CO)} ${P(35 * sgn + ox, -40 + oy + CO)}` +
+    ` L ${P(ox, -40 + oy + CO)}" fill="none" stroke="${col}" stroke-width="${w}" stroke-linejoin="round"/>`
+  const tib = (sgn) => px(8.3 * sgn, -11 + CO)                              // 颈口下端（在线圈上）
+  const sol = (sgn) => [101.4 + (8.3 * sgn) * c + 4.6 * s,
+                        153.5 + (8.3 * sgn) * s - 4.6 * c]                    // 换向片背面接点（r=9.5，落在铜片后面）
+  const lead = (sgn, dark, main) => {
+    const [x1, y1] = tib(sgn)
+    const [x2, y2] = sol(sgn)
+    const d = `M ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)}`
+    return `
+          <path d="${d}" fill="none" stroke="${dark}" stroke-width="4.2" stroke-linecap="round"/>
+          <path d="${d}" fill="none" stroke="${main}" stroke-width="3.3" stroke-linecap="round"/>
+          <path d="${d}" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="1.0" stroke-linecap="round"/>`
+  }
+  return `
+          <defs>
+            <linearGradient id="${cid}rr" x1="0" y1="0" x2="0.7" y2="1">
+              <stop offset="0%" stop-color="#f4575f"/><stop offset="55%" stop-color="#e0424e"/>
+              <stop offset="100%" stop-color="#b52c37"/>
+            </linearGradient>
+            <linearGradient id="${cid}rb" x1="0" y1="0" x2="0.7" y2="1">
+              <stop offset="0%" stop-color="#57b4f2"/><stop offset="55%" stop-color="#2e9ae8"/>
+              <stop offset="100%" stop-color="#1b6fb2"/>
+            </linearGradient>
+            <linearGradient id="${cid}sh" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#7f8992"/><stop offset="38%" stop-color="#e8eff6"/>
+              <stop offset="100%" stop-color="#616b75"/>
+            </linearGradient>
+          </defs>
+          <!-- 转轴：线圈与换向器同装在这一根轴上，轴心 x=101.4 就是两者的旋转轴 ——
+               看图纸就能看出是"一台转子"，不是两件各转各的。轴从线圈臂里穿出来，
+               经换向器的内孔（r=7.6 的空心正好给轴让位）一直扎进底座。 -->
+          <rect x="99.7" y="96.5" width="3.4" height="74.5" rx="1.7" fill="url(#${cid}sh)"/>
+          <rect x="99.7" y="96.5" width="1.1" height="74.5" rx="0.55" fill="rgba(255,255,255,.40)"/>
+          <!-- 线圈：一匝闭合框（宽 78 / 高 29），左红右蓝在中缝相接；按"绕竖轴 + 略俯视"的投影画，
+               与换向器拿同一个 deg —— 一台转子，同步转。
+               描边用各自色系的深色（深红/深蓝），不用黑线：轮廓靠"颜色深浅"体现 -->
+          <g opacity=".22" transform="translate(1 1.1)">
+            ${half(-1, '#8c1a24', 3.4)}
+            ${half(1, '#0e3d68', 3.4)}
+          </g>
+          ${half(-1, '#d9434e', 3.2)}
+          ${half(1, '#3f90d8', 3.2)}
+
+          <!-- 两条引线：刚性铜线，上端焊在线圈颈口（正面），下端**从换向器背面接进去** ——
+               所以先画引线、后画换向器：铜片压住引线末端，接头看不见（和标杆图一致） -->
+          ${lead(-1, '#b03340', '#d9434e')}
+          ${lead(1, '#2b6ba6', '#3f90d8')}
+
+          <!-- 换向器：两片扇形（缝 15° 落在 12 点与 6 点），环心是空的（r=7.4 让轴穿过）；
+               绕自己圆心 (101.4,153.5) 转，与线圈同一个 deg —— 这就是 NB 的 luna/lunb 共用 rotation。
+               外径 24（两个半环外沿 89.4 / 113.4）收在极间缝里，与两侧磁极各留 3.4px -->
+          <g transform="translate(101.4 153.5) rotate(${deg0})">
+            <!-- 环心与两片之间都透（不刷底），只有两片扇形本身是红/蓝 -->
+            <path d="M 0 -12 A 12 12 0 0 0 0 12" fill="none" stroke="rgba(126,18,26,.42)" stroke-width="1"/>
+            <path d="M 0 -12 A 12 12 0 0 1 0 12" fill="none" stroke="rgba(10,48,90,.42)" stroke-width="1"/>
+            <path d="M -1.566 -11.897 A 12 12 0 0 0 -1.566 11.897 L -0.966 7.337 A 7.4 7.4 0 0 1 -0.966 -7.337 Z"
+              fill="url(#${cid}rr)"/>
+            <path d="M 1.566 -11.897 A 12 12 0 0 1 1.566 11.897 L 0.966 7.337 A 7.4 7.4 0 0 0 0.966 -7.337 Z"
+              fill="url(#${cid}rb)"/>
+            <path d="M -1.566 -11.897 A 12 12 0 0 0 -1.566 11.897" fill="none" stroke="rgba(126,18,26,.55)" stroke-width="1.1"/>
+            <path d="M 1.566 -11.897 A 12 12 0 0 1 1.566 11.897" fill="none" stroke="rgba(10,48,90,.55)" stroke-width="1.1"/>
+            <circle r="7.4" fill="none" stroke="rgba(74,42,48,.32)" stroke-width="1.2"/>
+            <circle r="7.4" fill="none" stroke="rgba(255,255,255,.16)" stroke-width=".8"/>
+            <path d="M -10.7 -4.73 A 12 12 0 0 0 -4.51 -11" fill="none" stroke="rgba(255,255,255,.42)" stroke-width="1.2"/>
+            <path d="M 10.7 4.73 A 12 12 0 0 1 4.51 11" fill="none" stroke="rgba(255,255,255,.34)" stroke-width="1.2"/>
+          </g>`
+}
+
+/* 换向器两侧的两片碳刷（不随转子转；压在 r=12 的环外沿 x=89.4 / 113.4 上，内缘咬进 0.1px，
+   外缘离磁极内缘仍有 1~1.2px，不再压在磁极上） */
+function motorBrushBody() {
+  return `
+    <rect x="87.0" y="147.8" width="2.4" height="10.6" rx="1.0" fill="#2b3036"/>
+    <rect x="87.0" y="147.8" width="2.4" height="2.4" rx="1.0" fill="#525a62"/>
+    <rect x="113.4" y="147.8" width="2.4" height="10.6" rx="1.0" fill="#2b3036"/>
+    <rect x="113.4" y="147.8" width="2.4" height="2.4" rx="1.0" fill="#525a62"/>`
+}
+
+/* ── 手摇发电机的卡片几何（N B 原厂图集按 0.6237 从机身坐标换算）──
+ * 机身 497×419 → 卡 310×261；飞轮轴心 (145,138.5)、线圈轴心 (365.35,300)（皮带增速 2 倍）、
+ * 黑柱 (272,366)、红柱 (452,361)。飞轮与线圈由场景的 HandCrankLayer 真转，
+ * 卡片只在缩略图（dyn.hideCrank 为假）里静态画一份。 */
+export const HG_CRANK = {
+  hubX: 90.4, hubY: 86.4, hubR: 65.5,
+  coilX: 227.9, coilY: 187.1, coilW: 51.8, coilH: 32.4,
+}
+export function handGenSVG(bodyFile, hideCrank) {
+  const k = HG_CRANK
+  return `
+    <svg width="310" height="261" viewBox="0 0 310 261">
+      <image href="${figURL(bodyFile)}" x="0" y="0" width="310" height="261"
+        preserveAspectRatio="none"/>
+      ${hideCrank ? '' : `
+      <image href="${figURL('hg_crank.png')}" x="${k.hubX - k.hubR}" y="${k.hubY - k.hubR}"
+        width="${k.hubR * 2}" height="${k.hubR * 2}" preserveAspectRatio="none"/>
+      <image href="${figURL('hg_coil.png')}" x="${k.coilX - k.coilW / 2}" y="${k.coilY - k.coilH / 2}"
+        width="${k.coilW}" height="${k.coilH}" preserveAspectRatio="none"/>`}
+    </svg>`
+}
+
 export const TYPES = {
   /* ── 电池组（两节干电池串联 3V，平放电池槽实拍图；黑/红柱就是照片上的接线柱，不再另画帽子） ──
    * 图 battery_c.png 已按实体紧裁（原图 y 92~164）并 4 倍放大锐化，1024×288，按 150×42 等比贴。
@@ -1694,18 +1831,34 @@ export const TYPES = {
     </svg>` }
   },
 
-  /* ── 小电动机（2026-11-20 第 7 版：补"立体感"和真转动）
-      尺寸仍按 NB 242×246 逐行扫描结果（§8.51），这一版改的是"形体"：
-        1) 磁铁板做成有厚度的板：后面垫一层错位的暗侧壁 + 左侧折边 + 顶沿亮倒角 + 底面压暗；
-        2) 圆柱腔做成"隧道"：腔底平色 #343941，腔口内侧一道内壁（下半圈红/蓝各半，往上收成黑），
-           顶部再加一层内阴影，孔才有纵深；
-        3) 线圈改成 NB 那样的大片矩形线圈（宽 ≈ 0.58 腔径、高 ≈ 0.5 腔径）+ 中间引线杆，
-           而不是细楔子。通电时绕竖直轴转（SMIL x 向 scale，16 采样），转到侧视整片收成一条竖线
-           —— 这是"转圈"，不是"左右晃"；
-        4) 换向环按 NB 透视略压扁，红 −120°→+30°、蓝补剩余，正面加亮边。
-      绘制顺序：侧壁 → 板正面（mask 开腔开槽）→ 腔/槽暗色 + 内壁 → 转子 → 环 → 底座 → 柱。 ── */
+  /* ── 小电动机（2026-11-22 第 11 版 = 照 NB"电动机原理"的代码重做转子）
+      NB 物理实验装在 D:\NB物理实验（Electron + 本地 Egg 服务 + nbData 加密缓存）。
+      它的"电动机原理"（nobook.db → experiments id 252，教材/知识点节点同名）是**组件拼装**的：
+        · 组件库 modules 里"小电机" = definitionName "ElecMotors"，is3d:true，model3dName "ElecMotors"；
+        · 组件类落 module 75740 / 65272（原件已导出到 audit/nb_motor/ElecMotors_module.js），
+          转动的全部逻辑就这一行：
+              _lunHandle(){ const t = this.curPower/this._maxV*this._maxAngle;
+                            this.luna.rotation += t;  this.lunb.rotation = this.luna.rotation }
+          —— luna（线圈）与 lunb（换向器）**共用同一个 rotation**，是同一个刚体；
+             磁极 magnet 只按极性 gotoAndStop(0/1)、电刷只换极性，都不转；
+             _maxAngle = toHu(30)、_maxV = 6，所以转速 ∝ 电功率；
+             电气模型：ratedV 2.5/3/6/12V、ratedP 1.5W、ratedI 0.5A、内阻 1/2/5/10Ω，
+             |I·R| > 0.6V 起转、< 0.5V 停、> 1.2·ratedV 烧毁（setWorkElec）。
+      第 11 版据此改三件事：
+        ① 转子做成**一个刚体**：线圈 + 两条引线 + 换向器全包在同一组 <g data-rotor> 里，
+           只挂**一个** animateTransform —— 绕竖直轴旋转的正交投影就是水平 scale
+           （1 → 0 → -1 → 0 → 1）；半个周期里红蓝两片半环随整机翻面，电刷下始终一红一蓝，
+           这就是换向器在换向（不是两套动画各自转）；
+        ② 线圈加宽（半宽 27/33 → 32/38、颈口 6.5 → 12.6），两条引线跟着拉开到 x = 88.8 / 114.0，
+           从线圈框底口直接落进两片铜片（y = 148，锡珠点住）—— 换向器与线圈就是同一根导线；
+        ③ 俯视做实：腔体填深灰（和标杆图一样"挖穿见底"）、极靴顶面由 13px 梯形收成 6px 薄盖板、
+           换向器去掉 ivory 轴套（标杆图环心本来就是空的）。
+      坐标契约不变：w/h = 200×212，terminals (71.6,171)/(128.7,171)，整机 0.95 竖向压缩（y' = 0.95y + 8.55）。 ── */
   motor: {
     label: '小电动机', w: 200, h: 212,
+    /* 供场景转子层调用：同一份转子几何 */
+    rotorBody: motorRotorBody,
+    brushBody: motorBrushBody,
     terminals: [
       { id: 'a', label: '1', name: '接线柱 1', x: 71.6, y: 171 },
       { id: 'b', label: '2', name: '接线柱 2', x: 128.7, y: 171 },
@@ -1714,247 +1867,239 @@ export const TYPES = {
       const I = dyn.I || 0
       const on = Math.abs(I) > 0.005
       const dir = dyn.dir || 1
-      const speed = 1.9 + 2.2 * Math.min(1.4, Math.abs(I))
       const cid = `esmm${c.id}`
-      const dur = ((2 * Math.PI) / speed).toFixed(2)
-      const coilAnim = on
-        ? `<animateTransform attributeName="transform" type="scale"
-             values="1 1;0.18 1;-1 1;-0.18 1;1 1" keyTimes="0;.25;.5;.75;1"
-             dur="${dur}s" repeatCount="indefinite"/>`
-        : ''
-      const ringAnim = ''
-      const RR = 15.2
-      const ga = (16 * Math.PI) / 180
-      const sx = (RR * Math.sin(ga)).toFixed(2)
-      const sy = (RR * Math.cos(ga)).toFixed(2)
-      const segTopBlue = [-sx, `-${sy}`]
-      const segBotBlue = [-sx, sy]
-      const segTopRed = [sx, `-${sy}`]
-      const segBotRed = [sx, sy]
+      /* 转子的转动交给场景转子层（ElectricSvgLabScene 的 MotorRotors）：器材料字符串每 250ms
+         重建，这里挂动画只会被反复冻回起始帧。卡片只在"未通电 / 导出预览"时画静态转子。 */
       return `
     <svg width="200" height="212" viewBox="0 0 200 212">
       <defs>
         <mask id="${cid}m">
           <rect x="0" y="0" width="200" height="212" fill="#fff"/>
-          <circle cx="101.4" cy="77.6" r="53" fill="#000"/>
-          <rect x="96" y="0" width="10.8" height="212" fill="#000"/>
+          <!-- 磁腔：上极点 y=27 不动、左右 ±51 不动；只把下半收短（底 137→128），
+               让它和极间缝竖壁（86/117）在 y≈125.6 相交，磁铁底部于是有一个"台阶" -->
+          <ellipse cx="101.4" cy="77.5" rx="51" ry="50.5" fill="#000"/>
+          <rect x="86" y="0" width="31" height="212" fill="#000"/>
+        </mask>
+        <!-- 只保留"磁铁块"的矩形范围：给孔口倒角带收口用，倒角带不许拖到磁铁下缘以外 -->
+        <mask id="${cid}pm">
+          <rect x="0" y="0" width="200" height="212" fill="#000"/>
+          <rect x="12" y="15" width="74" height="117" fill="#fff"/>
+          <rect x="117" y="15" width="73" height="117" fill="#fff"/>
         </mask>
         <clipPath id="${cid}body">
-          <rect x="12" y="15" width="73" height="123.5"/>
-          <rect x="96" y="15" width="10.8" height="123.5"/>
-          <rect x="117.8" y="15" width="72.2" height="123.5"/>
-          <circle cx="101.4" cy="77.6" r="53"/>
+          <rect x="12" y="15" width="74" height="117"/>
+          <rect x="117" y="15" width="73" height="117"/>
+          <ellipse cx="101.4" cy="77.5" rx="51" ry="50.5"/>
         </clipPath>
-        <clipPath id="${cid}bore"><circle cx="101.4" cy="77.6" r="53"/></clipPath>
-        <clipPath id="${cid}rhalf"><rect x="0" y="-60" width="60" height="120"/></clipPath>
-        <linearGradient id="${cid}red" gradientUnits="userSpaceOnUse" x1="0" y1="15" x2="0" y2="138.5">
+        <!-- 板正面：上沿直角（与顶面共边）、下沿 r8；内缘是一条直边（极间缝 31），
+             换向器（外径 24）、电刷、立柱全都收在这条缝里，谁也不压磁极 -->
+        <clipPath id="${cid}pr"><path d="M12,15 L83,15 Q86,15 86,18 L86,124 A8,8 0 0 1 78,132 L20,132 A8,8 0 0 1 12,124 Z"/></clipPath>
+        <clipPath id="${cid}pb"><path d="M190,15 L120,15 Q117,15 117,18 L117,124 A8,8 0 0 1 125,132 L182,132 A8,8 0 0 1 190,124 Z"/></clipPath>
+        <clipPath id="${cid}bpl"><path d="M58,178 L145,178 L145,187.2 A3.8,3.8 0 0 1 141.2,191 L61.8,191 A3.8,3.8 0 0 1 58,187.2 Z"/></clipPath>
+        <clipPath id="${cid}bore"><ellipse cx="101.4" cy="77.5" rx="51" ry="50.5"/></clipPath>
+        <linearGradient id="${cid}red" gradientUnits="userSpaceOnUse" x1="0" y1="15" x2="0" y2="132">
           <stop offset="0%" stop-color="#fb3d4b"/>
-          <stop offset="12%" stop-color="#f83c49"/>
-          <stop offset="58%" stop-color="#e63844"/>
-          <stop offset="100%" stop-color="#ca303b"/>
+          <stop offset="14%" stop-color="#f4444f"/>
+          <stop offset="62%" stop-color="#e63844"/>
+          <stop offset="100%" stop-color="#c8303b"/>
         </linearGradient>
-        <linearGradient id="${cid}blue" gradientUnits="userSpaceOnUse" x1="0" y1="15" x2="0" y2="138.5">
-          <stop offset="0%" stop-color="#258be1"/>
-          <stop offset="12%" stop-color="#2589de"/>
-          <stop offset="58%" stop-color="#2381cf"/>
-          <stop offset="100%" stop-color="#1c6aac"/>
+        <linearGradient id="${cid}blue" gradientUnits="userSpaceOnUse" x1="0" y1="15" x2="0" y2="132">
+          <stop offset="0%" stop-color="#2a93e8"/>
+          <stop offset="14%" stop-color="#268ce2"/>
+          <stop offset="62%" stop-color="#2381cf"/>
+          <stop offset="100%" stop-color="#1a66a8"/>
         </linearGradient>
-        <clipPath id="${cid}pr"><rect x="12" y="15" width="73" height="123.5" rx="7"/></clipPath>
-        <clipPath id="${cid}pb"><rect x="117.8" y="15" width="72.2" height="123.5" rx="7"/></clipPath>
-        <radialGradient id="${cid}boreIn" gradientUnits="userSpaceOnUse" cx="101.4" cy="77.6" r="53">
-          <stop offset="78%" stop-color="rgba(20,26,36,0)"/>
-          <stop offset="93%" stop-color="rgba(20,26,36,.05)"/>
-          <stop offset="100%" stop-color="rgba(16,20,30,.30)"/>
+        <!-- 腔体：挖穿见底（深灰），跟标杆图一致 -->
+        <radialGradient id="${cid}cav" gradientUnits="userSpaceOnUse" cx="101.4" cy="64" r="116">
+          <stop offset="0%" stop-color="#41474f"/>
+          <stop offset="58%" stop-color="#3a4048"/>
+          <stop offset="100%" stop-color="#333941"/>
         </radialGradient>
-        <radialGradient id="${cid}colR" gradientUnits="userSpaceOnUse" cx="101.4" cy="77.6" r="58">
-          <stop offset="90%" stop-color="#7e1b23"/>
-          <stop offset="98%" stop-color="#b73540"/>
-          <stop offset="100%" stop-color="#d8414c"/>
-        </radialGradient>
-        <radialGradient id="${cid}colB" gradientUnits="userSpaceOnUse" cx="101.4" cy="77.6" r="58">
-          <stop offset="90%" stop-color="#0f3c60"/>
-          <stop offset="98%" stop-color="#1c69a6"/>
-          <stop offset="100%" stop-color="#2277bb"/>
-        </radialGradient>
-        <linearGradient id="${cid}soft" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="rgba(0,0,0,.55)"/>
-          <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+        <linearGradient id="${cid}gap" gradientUnits="userSpaceOnUse" x1="0" y1="3" x2="0" y2="171">
+          <stop offset="0%" stop-color="#4a515a"/>
+          <stop offset="22%" stop-color="#3d434b"/>
+          <stop offset="100%" stop-color="#2f353d"/>
         </linearGradient>
-        <linearGradient id="${cid}boreSh" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="rgba(0,0,0,.30)"/>
-          <stop offset="35%" stop-color="rgba(0,0,0,.06)"/>
-          <stop offset="68%" stop-color="rgba(0,0,0,0)"/>
-          <stop offset="100%" stop-color="rgba(0,0,0,.42)"/>
+        <radialGradient id="${cid}boreIn" gradientUnits="userSpaceOnUse" cx="101.4" cy="77.5" r="51">          <stop offset="76%" stop-color="rgba(20,26,36,0)"/>
+          <stop offset="92%" stop-color="rgba(20,26,36,.07)"/>
+          <stop offset="100%" stop-color="rgba(16,20,30,.34)"/>
+        </radialGradient>
+        <linearGradient id="${cid}boreDir" gradientUnits="userSpaceOnUse" x1="0" y1="27" x2="0" y2="128">
+          <stop offset="0%" stop-color="rgba(20,26,36,.30)"/>
+          <stop offset="26%" stop-color="rgba(20,26,36,0)"/>
+          <stop offset="62%" stop-color="rgba(20,26,36,0)"/>
+          <stop offset="88%" stop-color="rgba(255,255,255,.30)"/>
         </linearGradient>
+        <!-- 孔口倒角：极靴切面的受光带（板色的浅色版），顶部厚度 0、越往下越厚 -->
+        <linearGradient id="${cid}bevR" gradientUnits="userSpaceOnUse" x1="0" y1="27" x2="0" y2="140">
+          <stop offset="0%" stop-color="#ff7d84"/>
+          <stop offset="52%" stop-color="#ff6a72"/>
+          <stop offset="100%" stop-color="#ff9aa1"/>
+        </linearGradient>
+        <linearGradient id="${cid}bevB" gradientUnits="userSpaceOnUse" x1="0" y1="27" x2="0" y2="140">
+          <stop offset="0%" stop-color="#79cbf9"/>
+          <stop offset="52%" stop-color="#4fb1ef"/>
+          <stop offset="100%" stop-color="#a2dafa"/>
+        </linearGradient>
+        <radialGradient id="${cid}colR" gradientUnits="userSpaceOnUse" cx="101.4" cy="82" r="56">
+          <stop offset="88%" stop-color="#7e1b23"/>
+          <stop offset="97%" stop-color="#bd3944"/>
+          <stop offset="100%" stop-color="#e4484f"/>
+        </radialGradient>
+        <radialGradient id="${cid}colB" gradientUnits="userSpaceOnUse" cx="101.4" cy="82" r="56">
+          <stop offset="88%" stop-color="#0e3a5e"/>
+          <stop offset="97%" stop-color="#1e6cab"/>
+          <stop offset="100%" stop-color="#2a86cd"/>
+        </radialGradient>
         <linearGradient id="${cid}sheen" x1="0" y1="0" x2="0.55" y2="1">
-          <stop offset="0%" stop-color="rgba(255,255,255,.30)"/>
-          <stop offset="45%" stop-color="rgba(255,255,255,.06)"/>
-          <stop offset="100%" stop-color="rgba(0,0,0,.10)"/>
+          <stop offset="0%" stop-color="rgba(255,255,255,.28)"/>
+          <stop offset="48%" stop-color="rgba(255,255,255,.05)"/>
+          <stop offset="100%" stop-color="rgba(0,0,0,.12)"/>
         </linearGradient>
-        <linearGradient id="${cid}belowSh" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="rgba(24,32,44,.20)"/>
-          <stop offset="55%" stop-color="rgba(24,32,44,.07)"/>
-          <stop offset="100%" stop-color="rgba(24,32,44,0)"/>
-        </linearGradient>
-        <filter id="${cid}sh" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="5.5"/></filter>
         <linearGradient id="${cid}pl" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#f0f4f7"/>
-          <stop offset="40%" stop-color="#ccd4dc"/>
-          <stop offset="100%" stop-color="#94a0aa"/>
+          <stop offset="0%" stop-color="#edf2f6"/>
+          <stop offset="34%" stop-color="#c4cdd6"/>
+          <stop offset="100%" stop-color="#8793a0"/>
         </linearGradient>
+        <linearGradient id="${cid}ringR" x1="0" y1="0" x2="0.7" y2="1">
+          <stop offset="0%" stop-color="#f4575f"/>
+          <stop offset="55%" stop-color="#e0424e"/>
+          <stop offset="100%" stop-color="#b52c37"/>
+        </linearGradient>
+        <linearGradient id="${cid}ringB" x1="0" y1="0" x2="0.7" y2="1">
+          <stop offset="0%" stop-color="#57b4f2"/>
+          <stop offset="55%" stop-color="#2e9ae8"/>
+          <stop offset="100%" stop-color="#1b6fb2"/>
+        </linearGradient>
+        <!-- 略俯视：底座顶面（放接线柱） -->
+        <linearGradient id="${cid}topP" gradientUnits="userSpaceOnUse" x1="0" y1="172" x2="0" y2="178">
+          <stop offset="0%" stop-color="#fbfdfe"/>
+          <stop offset="100%" stop-color="#dfe6ec"/>
+        </linearGradient>
+        <linearGradient id="${cid}topR" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#ff8a90"/>
+          <stop offset="55%" stop-color="#fb6069"/>
+          <stop offset="100%" stop-color="#f24954"/>
+        </linearGradient>
+        <linearGradient id="${cid}topB" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#8ecdf7"/>
+          <stop offset="55%" stop-color="#57b0ef"/>
+          <stop offset="100%" stop-color="#3b95df"/>
+        </linearGradient>
+        <filter id="${cid}sh" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5.5"/></filter>
+        <filter id="${cid}sh2" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.2"/></filter>
       </defs>
 
-      <ellipse cx="101" cy="188" rx="74" ry="11" fill="rgba(22,28,36,.30)" filter="url(#${cid}sh)"/>
-      <!-- 板厚：两块板的侧壁整块垫在后面，向右下错一点，露出厚度（同样要过 mask，否则会从镂空的孔里透出来） -->
-      <g mask="url(#${cid}m)">
-        <rect x="16.5" y="19.5" width="72" height="122" rx="7" fill="#a82531"/>
-        <rect x="119" y="19.5" width="72" height="122" rx="7" fill="#14548f"/>
-      </g>
+      <ellipse cx="101" cy="189" rx="76" ry="10" fill="rgba(22,28,36,.26)" filter="url(#${cid}sh)"/>
 
-      <!-- 板正面（圆角 + 顶面亮带 + 侧壁暗边 + 底面压暗） -->
+      <!-- 整体 0.95 竖向压缩：等价于镜头抬高 ~18°，接线柱锚点 (y=171) 不动 -->
+      <g transform="translate(0 171) scale(1 .95) translate(0 -171)">
+
+      <!-- 极间与腔体都是空的：不刷任何底色，直接透出场景底色（"黑的是背景，应该透"） -->
+
+      <!-- 左板（N）：略俯视 —— 6px 薄顶盖（后沿右错、只露一道薄面）+ 正面
+           （描边一律用"深红"而不是黑线；底面是看不见的，所以底板下沿不再画厚带，只留一道贴地接触线） -->
       <g mask="url(#${cid}m)">
+        <path d="M 12.4 15 L 84 15 Q 86 15 86 13 L 86 5.4 Q 86 3.2 83.8 3.2 L 13.8 3.2 Q 12.4 3.2 12.4 4.6 Z"
+          fill="url(#${cid}topR)"/>
+        <path d="M 12.4 4.6 Q 12.4 3.2 13.8 3.2 L 83.8 3.2 Q 86 3.2 86 5.4 L 86 13 Q 86 15 84 15 L 12.4 15"
+          fill="none" stroke="rgba(126,12,22,.55)" stroke-width="1.3"/>
+        <path d="M 12.4 15 L 86 15" stroke="rgba(126,12,22,.40)" stroke-width="1"/>
         <g clip-path="url(#${cid}pr)">
-          <rect class="casing" x="12" y="15" width="73" height="123.5" fill="url(#${cid}red)"/>
-          <rect x="12" y="15" width="73" height="3.4" fill="#8a1c23"/>
-          <rect x="12" y="18.4" width="73" height="3.3" fill="#a32029"/>
-          <rect x="12" y="21.7" width="73" height="0.9" fill="#fb4758"/>
-          <rect x="12" y="21.7" width="73" height="0.9" fill="rgba(255,255,255,.30)"/>
-          <rect x="12" y="15" width="4.6" height="123.5" fill="rgba(0,0,0,.10)"/>
-          <rect x="12" y="133.5" width="73" height="5" fill="rgba(0,0,0,.13)"/>
-          <rect x="12" y="137.1" width="73" height="1.4" fill="#2a2e35"/>
-          <rect x="12" y="15" width="73" height="123.5" fill="url(#${cid}sheen)"/>\n          <rect x="12" y="15" width="73" height="123.5" fill="none" stroke="rgba(255,255,255,.14)" stroke-width="1"/>
+          <rect class="casing" x="12" y="15" width="74" height="117" fill="url(#${cid}red)"/>
+
+          <rect x="12" y="15" width="3.4" height="125" fill="rgba(90,0,8,.26)"/>
+          <rect x="12" y="14.9" width="74" height="1.7" fill="rgba(96,4,14,.44)"/>
+          <rect x="12" y="15" width="74" height="117" fill="url(#${cid}sheen)"/>
+          <rect x="12" y="131" width="74" height="1.2" fill="rgba(112,10,20,.55)"/>
+          <rect x="12" y="15" width="74" height="117" fill="none" stroke="rgba(255,255,255,.20)" stroke-width="1"/>
+          <rect x="12" y="15.6" width="74" height="116.8" fill="none" stroke="rgba(128,14,24,.26)" stroke-width="1.1"/>
         </g>
+      </g>
+
+      <!-- 右板（S）：同构，顶盖后沿同样右错 -->
+      <g mask="url(#${cid}m)">
+        <path d="M 190.4 15 L 119 15 Q 117 15 117 13 L 117 5.4 Q 117 3.2 119.2 3.2 L 189 3.2 Q 190.4 3.2 190.4 4.6 Z"
+          fill="url(#${cid}topB)"/>
+        <path d="M 190.4 4.6 Q 190.4 3.2 189 3.2 L 119.2 3.2 Q 117 3.2 117 5.4 L 117 13 Q 117 15 119 15 L 190.4 15"
+          fill="none" stroke="rgba(8,42,80,.55)" stroke-width="1.3"/>
+        <path d="M 117 15 L 190.4 15" stroke="rgba(8,42,80,.40)" stroke-width="1"/>
         <g clip-path="url(#${cid}pb)">
-          <rect class="casing" x="117.8" y="15" width="72.2" height="123.5" fill="url(#${cid}blue)"/>
-          <rect x="117.8" y="15" width="72.2" height="3.4" fill="#0e3f6b"/>
-          <rect x="117.8" y="18.4" width="72.2" height="3.3" fill="#105690"/>
-          <rect x="117.8" y="21.7" width="72.2" height="0.9" fill="#2b9be8"/>
-          <rect x="117.8" y="21.7" width="72.2" height="0.9" fill="rgba(255,255,255,.28)"/>
-          <rect x="185.4" y="15" width="4.6" height="123.5" fill="rgba(255,255,255,.14)"/>
-          <rect x="117.8" y="133.5" width="72.2" height="5" fill="rgba(0,0,0,.15)"/>
-          <rect x="117.8" y="137.1" width="72.2" height="1.4" fill="#232a33"/>
-          <rect x="117.8" y="15" width="72.2" height="123.5" fill="url(#${cid}sheen)"/>\n          <rect x="117.8" y="15" width="72.2" height="123.5" fill="none" stroke="rgba(255,255,255,.16)" stroke-width="1"/>
+          <rect class="casing" x="117" y="15" width="73" height="117" fill="url(#${cid}blue)"/>
+
+          <rect x="186.6" y="15" width="3.4" height="125" fill="rgba(0,18,40,.28)"/>
+          <rect x="117" y="14.9" width="73" height="1.7" fill="rgba(6,34,66,.46)"/>
+          <rect x="117" y="15" width="73" height="117" fill="url(#${cid}sheen)"/>
+          <rect x="117" y="131" width="73" height="1.2" fill="rgba(6,34,66,.55)"/>
+          <rect x="117" y="15" width="73" height="117" fill="none" stroke="rgba(255,255,255,.20)" stroke-width="1"/>
+          <rect x="117" y="15.6" width="73" height="116.8" fill="none" stroke="rgba(10,42,80,.26)" stroke-width="1.1"/>
         </g>
+      </g>      <!-- 孔口倒角（"略俯视"的骨架）：两条弧在顶部 (101.4,24) 并成一条线（厚度 0），
+           往下逐渐分开、到底部最厚 5px —— 这条就是极靴切面的受光带（板色浅色版 + 两侧深线）。
+           深线用"深红/深蓝"而不是黑：红线跟着红板、蓝线跟着蓝板 -->
+      <g mask="url(#${cid}m)"><g mask="url(#${cid}pm)">
+        <path d="M 101.4 27 A 56.5 56.5 0 0 0 101.4 140 L 101.4 128 A 51 50.5 0 0 1 101.4 27 Z"
+          fill="url(#${cid}bevR)"/>
+        <path d="M 101.4 27 A 56.5 56.5 0 0 1 101.4 140 L 101.4 128 A 51 50.5 0 0 0 101.4 27 Z"
+          fill="url(#${cid}bevB)"/>
+        <path d="M 101.4 27 A 56.5 56.5 0 0 0 101.4 140" fill="none" stroke="rgba(122,14,24,.48)" stroke-width="1.6"/>
+        <path d="M 101.4 27 A 56.5 56.5 0 0 1 101.4 140" fill="none" stroke="rgba(8,40,76,.48)" stroke-width="1.6"/>
+        <path d="M 101.4 27 A 51 50.5 0 0 0 101.4 128" fill="none" stroke="rgba(122,14,24,.48)" stroke-width="1.6"/>
+        <path d="M 101.4 27 A 51 50.5 0 0 1 101.4 128" fill="none" stroke="rgba(8,40,76,.48)" stroke-width="1.6"/>
+        <path d="M 101.4 28 A 50.2 49.6 0 0 0 101.4 126" fill="none" stroke="rgba(255,255,255,.34)" stroke-width="1"/>
+        <path d="M 101.4 28 A 50.2 49.6 0 0 1 101.4 126" fill="none" stroke="rgba(255,255,255,.34)" stroke-width="1"/>
+      </g></g>
+
+      <!-- 板底投在面板上的软阴影（磁铁块比底座短：底下照标杆"看不到下表面"处理，只留一道贴身淡影） -->
+      <ellipse cx="48" cy="133.5" rx="36" ry="4.2" fill="rgba(24,32,44,.16)" filter="url(#${cid}sh)"/>
+      <ellipse cx="154" cy="133.5" rx="36" ry="4.2" fill="rgba(24,32,44,.16)" filter="url(#${cid}sh)"/>
+
+      <text x="25.4" y="84" fontSize="21" fontWeight="700" fill="#fff" textAnchor="middle"
+        stroke="rgba(96,0,8,.32)" strokeWidth="1" paintOrder="stroke">N</text>
+      <text x="179" y="84" fontSize="21" fontWeight="700" fill="#fff" textAnchor="middle"
+        stroke="rgba(0,34,84,.32)" strokeWidth="1" paintOrder="stroke">S</text>
+
+      <!-- 电刷支架（支撑柱）：**在换向器后面**、靠环内侧（x=90.4 / 109.4，藏在 r=12 的环后面）。
+           磁铁块下缘抬到 140 之后，柱子只露出环顶上方一小截（139→141.5），其余被铜片盖住，与标杆一致 -->
+      <rect x="90.4" y="151" width="3" height="26.6" rx="1.2" fill="#e6edf3"/>
+      <rect x="92.3" y="151" width="1.1" height="26.6" fill="rgba(84,100,118,.38)"/>
+      <rect x="90.4" y="151" width="1.1" height="26.6" fill="rgba(255,255,255,.55)"/>
+      <rect x="109.4" y="151" width="3" height="26.6" rx="1.2" fill="#e6edf3"/>
+      <rect x="109.4" y="151" width="1.1" height="26.6" fill="rgba(255,255,255,.55)"/>
+      <rect x="111.3" y="151" width="1.1" height="26.6" fill="rgba(84,100,118,.38)"/>
+
+      <!-- ══ 转子：线圈 + 两条引线 + 换向器（同一个刚体；通电时由场景转子层每帧画） ══ -->
+      ${dyn.hideRotor ? '' : `<g>${motorRotorBody(cid, 0)}</g>`}
+
+      <!-- 电刷（碳块）：**不转**，内缘咬进环 0.4px，压在环外沿上
+           （通电时由转子层画在转子之后 = 碳块在环前面，卡片这里让开） -->
+      ${dyn.hideRotor ? '' : motorBrushBody()}
+
+      <!-- 底座：略俯视 —— 顶面（接线柱坐在上面）+ 正面 -->
+      <ellipse cx="101.4" cy="193" rx="46" ry="4.4" fill="rgba(24,32,44,.20)" filter="url(#${cid}sh2)"/>
+      <path d="M 58 178 L 145 178 L 145 172 L 64 172 Z" fill="url(#${cid}topP)"/>
+      <path d="M 64 172 L 145 172" stroke="rgba(118,132,148,.60)" stroke-width="1"/>
+      <path d="M 58 178 L 145 178 L 145 187.2 A 3.8 3.8 0 0 1 141.2 191 L 61.8 191 A 3.8 3.8 0 0 1 58 187.2 Z"
+        fill="url(#${cid}pl)"/>
+      <path d="M 58 178 L 145 178" stroke="rgba(255,255,255,.85)" stroke-width="1.2"/>
+      <rect x="58" y="186.4" width="87" height="4.6" fill="#7b8794" clip-path="url(#${cid}bpl)"/>
+      <path d="M 58 178 L 145 178 L 145 187.2 A 3.8 3.8 0 0 1 141.2 191 L 61.8 191 A 3.8 3.8 0 0 1 58 187.2 Z"
+        fill="none" stroke="rgba(64,76,90,.30)" stroke-width="1"/>
+
+      <!-- 接线柱：圆柱形转帽（俯视能看到顶面椭圆），柱子落在底座顶沿 -->
+      <rect x="66.6" y="170" width="10" height="11" rx="4.6" fill="#1d2126"/>
+      <ellipse cx="71.6" cy="170.9" rx="4.7" ry="2.4" fill="#3c444c"/>
+      <rect x="66.6" y="174.6" width="10" height="1.2" fill="rgba(255,255,255,.10)"/>
+      <rect x="123.7" y="170" width="10" height="11" rx="4.6" fill="#c62f37"/>
+      <ellipse cx="128.7" cy="170.9" rx="4.7" ry="2.4" fill="#e4666d"/>
+      <rect x="123.7" y="174.6" width="10" height="1.2" fill="rgba(255,255,255,.16)"/>
+
       </g>
 
-      <!-- 孔 / 板间槽不填色 = 镂空，直接露卡片背景（NB 就是"挖穿的板"），厚度全靠孔沿那圈压暗的倒角 -->
-      <!-- 腔口的彩色倒角环（r53→65，左红右蓝）：NB 的板内边其实绕着孔转了一圈，
-           靠这圈倒角把孔上方那道缝桥接住，孔才有纵深 -->
-      <g clip-path="url(#${cid}body)">
-        <path d="M 101.4 20.6 A 57 57 0 0 0 101.4 134.6 L 101.4 130.6 A 53 53 0 0 1 101.4 24.6 Z"
-          fill="url(#${cid}colR)"/>
-        <path d="M 101.4 20.6 A 57 57 0 0 1 101.4 134.6 L 101.4 130.6 A 53 53 0 0 0 101.4 24.6 Z"
-          fill="url(#${cid}colB)"/>
-        <path d="M 101.4 20.6 A 57 57 0 0 0 101.4 134.6 L 101.4 130.6 A 53 53 0 0 1 101.4 24.6 Z"
-          fill="rgba(12,16,22,.22)"/>
-        <path d="M 101.4 20.6 A 57 57 0 0 1 101.4 134.6 L 101.4 130.6 A 53 53 0 0 0 101.4 24.6 Z"
-          fill="rgba(12,16,22,.22)"/>
-        <path d="M 101.4 20.6 L 101.4 134.6" stroke="rgba(0,0,0,.30)" stroke-width="1.2"/>
-        <circle cx="101.4" cy="77.6" r="53" fill="none" stroke="rgba(0,0,0,.46)" stroke-width="1.6"/>
-        <circle cx="101.4" cy="77.6" r="57" fill="none" stroke="rgba(0,0,0,.18)" stroke-width="1"/>
-      </g>
-      <!-- 孔里的内阴影（孔本身是透的 = 露背景，靠这一圈才读得出"洞"） -->
-      <g clip-path="url(#${cid}bore)">
-        <circle cx="101.4" cy="77.6" r="53" fill="url(#${cid}boreIn)"/>
-      </g>
-
-      <!-- 板底投在背景上的软阴影：这块空间亮着才显得"板是浮在面板前的" -->
-      <ellipse cx="48" cy="146" rx="38" ry="15" fill="rgba(24,32,44,.20)" filter="url(#${cid}sh)"/>
-      <ellipse cx="154" cy="146" rx="38" ry="15" fill="rgba(24,32,44,.20)" filter="url(#${cid}sh)"/>
-
-      <text x="25.4" y="78" fontSize="21" fontWeight="700" fill="#fff" textAnchor="middle"
-        stroke="rgba(96,0,8,.32)" stroke-width="1" paintOrder="stroke">N</text>
-      <text x="179" y="78" fontSize="21" fontWeight="700" fill="#fff" textAnchor="middle"
-        stroke="rgba(0,34,84,.32)" stroke-width="1" paintOrder="stroke">S</text>
-
-      <!-- 电刷杆：两根细杆，落在环外两侧（NB 里它们从环的两边升到底座） -->
-      <rect x="79.4" y="128" width="2.4" height="56" rx="1" fill="#dfe6ec"/>
-      <rect x="79.4" y="128" width="0.8" height="56" fill="rgba(74,90,108,.42)"/>
-      <rect x="121.6" y="128" width="2.4" height="56" rx="1" fill="#dfe6ec"/>
-      <rect x="121.6" y="128" width="0.8" height="56" fill="rgba(74,90,108,.42)"/>
-
-      <!-- 线圈：NB 是一匝线的"T 形"轮廓（左半蓝、右半红，x=0 处硬切），
-           框底两钩直接落成两条竖直引线，钉在换向环顶部的两段上；
-           框绕竖直引线轴转 → 宽/薄两个相位（NB 截图里就是这两种姿态） -->
-      <g transform="translate(101.4,92)">
-        <!-- 两条引线（竖直，不跟着转）：左蓝右红，正好落在换向环顶沿 -->
-        <path d="M -6.5 2 L -6.5 44" stroke="#3f90d8" stroke-width="2.6"/>
-        <path d="M 6.5 2 L 6.5 44" stroke="#d9434e" stroke-width="2.6"/>
-        <g transform="${on ? '' : 'scale(0.9,1)'}">${coilAnim}
-          <!-- 背沿：深一档的同形线，错一格，框就有了厚度 -->
-          <g transform="translate(1.1,1.8)" opacity=".40">
-            <path d="M -6.5 2 V -12 H -33 V -32 Q -33 -38 -27 -38 H 0" fill="none" stroke="#20303c" stroke-width="2.4"/>
-            <path d="M 6.5 2 V -12 H 33 V -32 Q 33 -38 27 -38 H 0" fill="none" stroke="#20303c" stroke-width="2.4"/>
-          </g>
-          <!-- 左半（蓝）：从引线顶端绕到框顶中线 -->
-          <path d="M -6.5 2 V -12 H -33 V -32 Q -33 -38 -27 -38 H 0"
-            fill="none" stroke="#3f90d8" stroke-width="2.6" stroke-linejoin="round"/>
-          <!-- 右半（红）：同一形，clip 在 x=0 处硬切 -->
-          <g clip-path="url(#${cid}rhalf)">
-            <path d="M 6.5 2 V -12 H 33 V -32 Q 33 -38 27 -38 H 0"
-              fill="none" stroke="#d9434e" stroke-width="2.6" stroke-linejoin="round"/>
-          </g>
-        </g>
-      </g>
-
-      <!-- 换向环：两段（左蓝右红）带上下两个缺口，缺口就在两条引线落下的地方 -->
-      <g transform="translate(101.9,156)">
-        <g>${ringAnim}
-          <path d="M ${segTopBlue[0]} ${segTopBlue[1]} A 15.2 15.2 0 0 1 ${segBotBlue[0]} ${segBotBlue[1]}"
-            fill="none" stroke="#2e9ae8" stroke-width="8.4" stroke-linecap="butt"/>
-          <path d="M ${segTopRed[0]} ${segTopRed[1]} A 15.2 15.2 0 0 1 ${segBotRed[0]} ${segBotRed[1]}"
-            fill="none" stroke="#e0424e" stroke-width="8.4" stroke-linecap="butt"/>
-          <path d="M -12 -9 A 15.2 15.2 0 0 1 -4 -14.8" fill="none" stroke="rgba(255,255,255,.40)" stroke-width="2.4"/>
-          <path d="M 12 9 A 15.2 15.2 0 0 1 4 14.8" fill="none" stroke="rgba(255,255,255,.28)" stroke-width="2.4"/>
-          <circle r="19.4" fill="none" stroke="rgba(0,0,0,.30)" stroke-width="1.2"/>
-          <circle r="11" fill="none" stroke="rgba(0,0,0,.34)" stroke-width="1.4"/>
-        </g>
-        <circle r="7.4" fill="#2b3037"/>
-        <circle r="7.4" fill="none" stroke="rgba(0,0,0,.35)" stroke-width="1.1"/>
-        <circle r="3.2" fill="#3d444d"/>
-      </g>
-
-      <!-- 引线压在环上的"焊点"：两条引线的末端确实搭在两段换向片上 -->
-      <g transform="translate(101.9,156)">
-        <path d="M -6.5 -19.6 L -6.5 -14.4" stroke="#3f90d8" stroke-width="2.8"/>
-        <path d="M 6.5 -19.6 L 6.5 -14.4" stroke="#d9434e" stroke-width="2.8"/>
-        <circle cx="-6.5" cy="-15.4" r="2.1" fill="#7cbcee"/>
-        <circle cx="6.5" cy="-15.4" r="2.1" fill="#ec7d85"/>
-      </g>
-
-      <!-- 底座 -->
-      <rect x="68" y="178" width="67" height="12" rx="3" fill="url(#${cid}pl)"/>
-      <rect x="68" y="178" width="67" height="4.4" rx="2.2" fill="#f1f5f8"/>
-      <rect x="68" y="185.6" width="67" height="4.4" rx="2.2" fill="#8d98a2"/>
-      <rect x="68" y="178" width="67" height="12" rx="3" fill="none" stroke="rgba(64,76,90,.24)" stroke-width="1"/>
-      <!-- 接线柱 -->
-      <rect x="66.6" y="170" width="10" height="11" rx="3.2" fill="#1d2126"/>
-      <rect x="66.6" y="170" width="10" height="3.4" rx="1.8" fill="#333a41"/>
-      <rect x="68.9" y="179.6" width="5.4" height="4" rx="1.4" fill="#c79a4a"/>
-      <rect x="123.7" y="170" width="10" height="11" rx="3.2" fill="#c62f37"/>
-      <rect x="123.7" y="170" width="10" height="3.4" rx="1.8" fill="#e0555c"/>
-      <rect x="126" y="179.6" width="5.4" height="4" rx="1.4" fill="#c79a4a"/>
-
-      ${on ? noteChipSVG(100, 202, `I = ${Math.abs(I).toFixed(2)} A`, '#4ade80', 96) : noteChipSVG(100, 202, '未通电', '#94a3b8', 58)}
+      ${on ? noteChipSVG(100, 202, `I = ${Math.abs(I).toFixed(2)} A`, '#4ade80', 96) : noteChipSVG(100, 202, '未通电 · 转子不转', '#94a3b8', 104)}
       ${on ? motorSpinBadgeSVG(176, 116, dir) : ''}
     </svg>` }
   },
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
   /* ── 发光二极管（长脚正 · 短脚负 · 反向不亮） ── */
   diode: {
@@ -2087,6 +2232,37 @@ export const TYPES = {
       ${noteChipSVG(65, 202, ang > 2 ? '箔片张开 · 带电' : '箔片闭合',
         ang > 2 ? '#4ade80' : '#94a3b8', 118)}
     </svg>` }
+  },
+
+  /* ── 手摇发电机（NB electrical/HandGenerator 的原厂分层贴图拼的整机）──
+   * 卡 310×266：机身 310×261 —— hg_body_ac.png / hg_body_dc.png 已经把木底座、环形护圈、
+   * 极靴、中心轴、接线柱合成好了；飞轮（hg_crank.png 210×210）和转子线圈（hg_coil.png 83×52）
+   * 交给场景的 HandCrankLayer 每帧真转，所以卡片这里只在缩略图里静态画一份（dyn.hideCrank 时让开）。
+   * 几何按 0.6237 从机身坐标换算：飞轮轴心 (145,138.5)、线圈轴心 (365.35,300)（转速是飞轮 2 倍）、
+   * 黑柱 (272,366)、红柱 (452,361)。交流款用左右分体柱，直流款用合并柱块。 */
+  handGenerator: {
+    label: '手摇发电机', w: 310, h: 266, meter: true, alwaysRead: true,
+    terminals: [
+      { id: 'a', label: '−', name: '黑柱（负）', x: 169.6, y: 228.2 },
+      { id: 'b', label: '+', name: '红柱（正）', x: 281.9, y: 225.2 },
+    ],
+    crank: HG_CRANK,
+    render(c, dyn = {}) {
+      return handGenSVG('hg_body_ac.png', !!dyn.hideCrank)
+    },
+  },
+
+  /* ── 手摇发电机（直流款：同一台机器换向器整流，机身换成合并接线柱块） ── */
+  handGeneratorDC: {
+    label: '手摇发电机（直流）', w: 310, h: 266, meter: true, alwaysRead: true,
+    terminals: [
+      { id: 'a', label: '−', name: '黑柱（负）', x: 169.6, y: 228.2 },
+      { id: 'b', label: '+', name: '红柱（正）', x: 281.9, y: 225.2 },
+    ],
+    crank: HG_CRANK,
+    render(c, dyn = {}) {
+      return handGenSVG('hg_body_dc.png', !!dyn.hideCrank)
+    },
   },
 
   /* ── 家用交流电（三孔插座：用户给的面板图标，L / N 两柱接进家庭电路） ── */
@@ -2908,10 +3084,11 @@ export const TYPES = {
           stroke="${zero ? '#DC2626' : '#64748B'}" stroke-width="${zero ? 1.9 : 1}"/>`
       }
 
-      // 指针（中央零点 → 按 frac 左右偏）
+      // 指针（中央零点 → 按 frac 左右偏）；有发电机在转时由动态层按相位重画，这里不画
+      const hideNeedle = !!dyn.hideNeedle
       const aN = -Math.PI / 2 + frac * SWEEP
       const [nx, ny] = pt(aN, NEEDLE)
-      const needle = `<line x1="${PX}" y1="${PY}" x2="${f(nx)}" y2="${f(ny)}"
+      const needle = hideNeedle ? '' : `<line x1="${PX}" y1="${PY}" x2="${f(nx)}" y2="${f(ny)}"
         stroke="${over ? '#DC2626' : '#111827'}" stroke-width="2.2" stroke-linecap="round"/>
         <circle cx="${PX}" cy="${PY}" r="3.6" fill="#334155"/>`
 
@@ -2932,8 +3109,8 @@ export const TYPES = {
           fill="none" stroke="#94A3B8" stroke-width="1"/>
         ${ticks}
         <text x="88" y="33" text-anchor="middle" font-size="10" font-weight="700" fill="#64748B">0</text>
-        <text x="34" y="70" text-anchor="middle" font-size="9" font-weight="600" fill="#64748B">−50</text>
-        <text x="142" y="70" text-anchor="middle" font-size="9" font-weight="600" fill="#64748B">+50</text>
+        <text x="34" y="70" text-anchor="middle" font-size="9" font-weight="600" fill="#64748B">−150</text>
+        <text x="142" y="70" text-anchor="middle" font-size="9" font-weight="600" fill="#64748B">+150</text>
         <text x="150" y="104" text-anchor="middle" font-size="10" font-weight="700" fill="#94A3B8">G</text>
         <text x="24" y="104" text-anchor="middle" font-size="9" font-weight="600" fill="#94A3B8">mA</text>
         ${needle}
@@ -2956,6 +3133,13 @@ export const TYPES = {
     </svg>` }
   },
 }
+
+/* 手摇发电机配套的 6 V 小灯泡：画法 / 尺寸 / 接线柱与 3 V 小灯泡完全一样（直接沿用），
+   只换电学参数：灯丝 48 Ω、额定 0.75 W。手摇发电机 6 r/s 时峰值 6 V、有效值 4.24 V，
+   串这只灯泡约 0.37 W ≈ 额定的一半，肉眼能看见灯丝发亮、有光芒；
+   若用 3 V 那只（5 Ω），6 V 直连功率会到 6.9 W，直接烧掉。 */
+export const BULB6 = { ohm: 48, rated: 0.75 }
+TYPES.bulb6 = { ...TYPES.bulb, label: '小灯泡', ...BULB6 }
 
 /** 一支小磁针（SVG 片段）：白盘 + 红(N)/蓝(S) 针；ang 为 N 极方向（屏幕坐标，y 向下） */
 function compassSVG(x, y, r, ang) {

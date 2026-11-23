@@ -22,6 +22,8 @@ import { TYPES, AC_LEAD, RHEO_TRACK, rheostatMode, figURL, breakerLeverSVG } fro
 import {
   wireCurve, curveD, curveMid, wireLayers, wrapLayers,
 } from '../render/wireSvg.js'
+import MotorRotorLayer from './MotorRotorLayer.jsx'
+import HandCrankLayer from './HandCrankLayer.jsx'
 
 /* 画布逻辑尺寸（与完整实验室一致的 1800×1100 比例，内部等比缩放适配容器） */
 const CW = 1800
@@ -377,11 +379,14 @@ const WASHER_DRUM = { cx: 75.0, cy: 78.6, r: 16.2 }
    同一窗口、同一台相机渲的，逐帧叠上去就等于转子真转，且与底图零重影。
    渲染窗口 392×331（x96 y120）对应卡 200×169（缩放 0.510），据此量出标注几何：
    极靴 x36.6..159.4 / y6..120.6；线圈框 x64..136 / y33..96；换向器圆心 (100,127)；底座上沿 y≈147。 */
-/* 小电动机卡 200×212（2026-11-20 第 7 版：按 NB 实图，纯 SVG 立体化 + 线圈绕屏面法线自转）。
-   转子（线圈）是一片细长框，绕 (101.9,92) 转，扫过的圆半径 ≈37 → 剖视框按这个圆来罩；
-   换向环心 (101.9,155)、外径 16.8，剖视圈取 r=18 留一点余量。 */
-const MOTOR_COIL = { x: 66, y: 52, w: 71, h: 50 }
-const MOTOR_COM = { cx: 101.9, cy: 156, r: 20 }
+/* 小电动机卡 200×212（2026-11-22 第 9 版：第 8 版形体 + 略俯视，见 TYPES.motor 头注释）。
+   整机放在 translate(0 171) scale(1 .95) translate(0 -171) 里做竖向 0.95 压缩（等价镜头抬高 ~18°），
+   接线柱锚点 y=171 不动，所以 y 全部按 y' = 0.95y + 8.55 换算后再留 1px 余量：
+   转子（线圈）一匝 T 形框，绕 (101.4,92) 的竖轴自转；框在 scale=1 时占 x68.4..134.4 / y52..82，
+   压缩后 y56.5..87.5 → 剖视框 y55.5 h33；
+   换向环心 (101.4,156)→156.75、外径 17.5 竖向压成 16.3，两侧电刷伸到 ±22 → 剖视圈 r=23 仍罩得住。 */
+const MOTOR_COIL = { x: 62.4, y: 63.5, w: 78, h: 29 }
+const MOTOR_COM = { cx: 101.4, cy: 153.5, r: 16 }
 /* 三台家电的"工作痕迹"位置（按器材图在卡里的实际落点量出来，卡都是 150×168、图框 x22 y18 w106 h92）：
  * 电热水壶 kettle_body 152×212 → meet 收成 65.96×92、左起 42.0；壶嘴尖在源图 (16,88) → 卡内 (49.0,56.2)；
  * 电饭煲 ricecooker_body 176×146 → 收成 106×87.9、上起 20.0；盖顶排气孔 (88,10) → 卡内 (75,26)，
@@ -657,7 +662,44 @@ function MotionLayer({ items }) {
   )
 }
 
-const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
+/* 灵敏电流计指针的运动层：和 <HandCrankLayer> 读同一份 crankRef（线圈转角），
+   每帧按 sin(2θ) 摆针。这样交流电的换向相位不再取决于"解题节奏"——
+   30 fps 求解遇上 12 Hz 电流时容易锁相，看着就只往一边偏 */
+function GalvNeedleLayer({ genId, crankRef, frac, phase }) {
+  const pathRef = useRef(null)
+  const kRef = useRef(0) // 偏转幅度（带符号）：瞬时 frac ÷ 同刻 sin θ
+  useEffect(() => {
+    if (Math.abs(phase) > 0.35) kRef.current = frac / phase
+  }, [frac, phase])
+  useEffect(() => {
+    let raf = 0
+    const SWEEP = 46 * Math.PI / 180
+    const loop = () => {
+      const st = crankRef.current.get(genId)
+      const ph = st ? Math.sin(2 * st.ang) : 0
+      const f = Math.max(-1, Math.min(1, kRef.current * ph))
+      const a = -Math.PI / 2 + f * SWEEP
+      if (pathRef.current) {
+        const x = 88 + Math.cos(a) * 50, y = 100 + Math.sin(a) * 50
+        pathRef.current.setAttribute('d', `M88,100 L${x.toFixed(2)},${y.toFixed(2)}`)
+      }
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [crankRef, genId])
+  return (
+    <svg
+      viewBox="0 0 176 132" aria-hidden="true"
+      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}
+    >
+      <path ref={pathRef} d="M88,100 L88,50" stroke="#111827" strokeWidth="2.2" strokeLinecap="round" />
+      <circle cx="88" cy="100" r="3.6" fill="#334155" />
+    </svg>
+  )
+}
+
+const BuilderSVG = forwardRef(function BuilderSVG({ wireColor, emptyHint, autoSpin, spinSpeed = 6 }, ref) {
   const [comps, setComps] = useState([])
   const [wires, setWires] = useState([])
   const [selected, setSelected] = useState(null)
@@ -688,13 +730,66 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   /* 电能表的电功累积（kWh）：引擎只给瞬时电流，W = ∫U·I·dt 只能由前端积分。
    * 计数器读数、铝盘转速、记录表都取自这里（机械表本来就只"看见"电流）。 */
   const kwhRef = useRef(new Map())
+  /* 灯泡亮度的热惯性平滑（交流电源下瞬时功率会 0↔峰值 摆，直接显示会闪） */
+  const bulbPRef = useRef(new Map())
   const meterSpeedRef = useRef(1)
   meterSpeedRef.current = meterSpeed
   compsRef.current = comps
   wiresRef.current = wires
 
+  /* ── 手摇发电机：飞轮的转角/转速由 <HandCrankLayer> 自己积分，这里只按 ~70 ms 取一次，
+     把瞬时电动势 e(t) 折算进求解输入（不写回 comps，免得把拖动中的元件对象改脏） ── */
+  const crankRef = useRef(new Map())
+  const [crankTick, setCrankTick] = useState(0)
+  const crankOnRef = useRef(false)
+  /* 工具栏上的「摇起来 / 停止」：开着时把这台机器的转速拉到 spinSpeed 并保持，
+     学生不用一直绕鼠标就能看见灯泡亮（按 Start 前先接好线） */
+  const autoSpinRef = useRef(false)
+  autoSpinRef.current = !!autoSpin
+  const spinSpeedRef = useRef(6)
+  spinSpeedRef.current = Math.min(6, Math.max(0.5, Number(spinSpeed) || 6))
+  const handGenOf = (c) => {
+    if (c.type !== 'handGenerator' && c.type !== 'handGeneratorDC') return null
+    const st = crankRef.current.get(c.id)
+    const spd = st ? Math.min(6, st.spd) : 0
+    const Em = spd * CFG.HANDGEN_V_PER_RS
+    const th = st ? st.ang * 2 : 0
+    /* 交流款 e = Em·sin(2θ)；直流款换向器把线圈里的交流整成同一方向，教学口径取恒定 Em（与演示页一致） */
+    const e = c.type === 'handGeneratorDC'
+      ? (spd > 0.02 ? Em * (st && st.dir < 0 ? -1 : 1) : 0)
+      : Em * Math.sin(th)
+    return { spd, e }
+  }
+  const liveComps = () => {
+    if (!comps.some((c) => c.type === 'handGenerator' || c.type === 'handGeneratorDC')) return comps
+    return comps.map((c) => {
+      const g = handGenOf(c)
+      return g ? { ...c, emf: g.e } : c
+    })
+  }
+  useEffect(() => {
+    /* 33 ms ≈ 30 fps：快摇时线圈 12 Hz 交流，70 ms 采样会跟它"锁相"（指针看着只往一边摆），
+       30 fps 才不会把左右摆塌成单向摆动 */
+    const iv = setInterval(() => {
+      const on = compsRef.current.some((c) => {
+        if (c.type !== 'handGenerator' && c.type !== 'handGeneratorDC') return false
+        const st = crankRef.current.get(c.id)
+        if (st && !st.drag) {
+          st.auto = autoSpinRef.current
+          st.autoSpd = spinSpeedRef.current
+        }
+        return !!st && (st.drag || st.auto || st.spd > 0.004)
+      })
+      if (on || crankOnRef.current) {
+        crankOnRef.current = on
+        setCrankTick((n) => n + 1)
+      }
+    }, 33)
+    return () => clearInterval(iv)
+  }, [])
+
   /* ── 求解（comps/wires 变化即重算）── */
-  const solved = useMemo(() => solveCircuit(comps, wires), [comps, wires])
+  const solved = useMemo(() => solveCircuit(liveComps(), wires), [comps, wires, crankTick])
   solvedRef.current = solved
 
   const nextId = () => uidRef.current++
@@ -1122,15 +1217,42 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       return { kwh: h.kwh || 0, I: Math.abs(o._I || 0) }
     }
     // 小电动机：I 决定转速，dir 决定转向（接线柱 1、2 接反 → 反转）
+    // 转子永远交给 <MotorRotorLayer>（自己跑 rAF 真转）；卡片只画定子/电刷立柱/底座，
+    // 否则卡片里的静态转子会和转子层叠成双影，而且每 250ms 重建会把它冻回 0°。
     if (c.type === 'motor') {
       const raw = o._Iraw || 0
-      return { I: Math.abs(o._I || 0), dir: raw < -1e-6 ? -1 : 1 }
+      return { I: Math.abs(o._I || 0), dir: raw < -1e-6 ? -1 : 1, hideRotor: true }
+    }
+    if (c.type === 'diode') {
+      /* 发光二极管：正向导通才亮（_Vd = 阳—阴电位差，反向截止时给个反向标记） */
+      return { on: !!o._on, rev: (o._Vd || 0) < -0.1 }
+    }
+    // 手摇发电机：飞轮 / 转子线圈交给 <HandCrankLayer>（拖飞轮 = 手摇），卡片只画机身
+    if (c.type === 'handGenerator' || c.type === 'handGeneratorDC') {
+      const g = handGenOf(c)
+      return { hideCrank: true, spd: g.spd, emf: g.e, autoSpd: spinSpeedRef.current }
     }
     // 灵敏电流计：中央零点，带符号（正偏 / 反偏），满偏 0.15 A
-    if (c.type === 'galvanometer') return { frac: (o._I || 0) / (o._fs || CFG.GALV_FS) }
-    if (c.type === 'bulb') {
-      const p = o._P || 0
-      return { bright: p > 0 ? Math.min(1, p / CFG.BULB_RATED) : 0, over: p > CFG.BULB_RATED * 1.02 }
+    if (c.type === 'galvanometer') {
+      const frac = (o._I || 0) / (o._fs || CFG.GALV_FS)
+      /* 交流手摇发电机在回路里时，指针交给 <GalvNeedleLayer> 按线圈转角 60 fps 摆：
+         12 Hz 的电流若只在解题那几次去采，很容易跟采样节奏锁相、看着只往一边偏 */
+      const gen = comps.find((x) => x.type === 'handGenerator')
+      if (gen) {
+        const st = crankRef.current.get(gen.id)
+        return { frac, phase: Math.sin(2 * (st ? st.ang : 0)), hideNeedle: true, genId: gen.id }
+      }
+      return { frac }
+    }
+    if (c.type === 'bulb' || c.type === 'bulb6') {
+      /* 灯丝热惯性：摇起来是 10 Hz 上下的交流，瞬时功率从 0 打到峰值再回 0，
+         直接用会让灯泡在 12 Hz 上闪成一片；这里按 ~0.3 s 平滑（真实灯丝也有这个滞后） */
+      const pRaw = o._P || 0
+      const prev = bulbPRef.current.get(c.id)
+      const p = prev == null ? pRaw : prev + (pRaw - prev) * 0.10
+      bulbPRef.current.set(c.id, p)
+      const rated = o._rated || CFG.BULB_RATED
+      return { bright: p > 0 ? Math.min(1, p / rated) : 0, over: p > rated * 1.02 }
     }
     if (c.type === 'ammeter') return { frac: (o._I || 0) / (o._fs || CFG.AMM_FS_2) } // 中心零位：带符号
     // 安培表 / 电压表：零位在左，接反时指针必须往 0 的左边甩（负 frac），
@@ -1181,6 +1303,16 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
         color: bad || ser || o._over ? '#fb7185' : '#4ade80',
       }
     }
+    if (c.type === 'handGenerator' || c.type === 'handGeneratorDC') {
+      const g = handGenOf(c)
+      const live = !!solved[c.id] && Math.abs(o._I || 0) > 1e-3
+      return {
+        text: g.spd > 0.03
+          ? `${g.spd.toFixed(1)} r/s · Eₘ = ${(g.spd * CFG.HANDGEN_V_PER_RS).toFixed(1)} V${live ? '' : ' · 开路'}`
+          : '拖飞轮摇起来',
+        color: g.spd > 0.03 ? '#4ade80' : '#94a3b8',
+      }
+    }
     if (c.type === 'energyMeter') {
       const h = kwhRef.current.get(c.id) || { kwh: 0 }
       const I = Math.abs(o._I || 0)
@@ -1204,10 +1336,11 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
   const status = useMemo(() => {
     // 电源四种都要认：电池组 / 蓄电池 / 市电三孔插座 / 交流电源符号 —— 家庭电路那一套只接交流电源，不能因为"没电池"就报未开始
     const src = comps.find((c) => c.type === 'battery' || c.type === 'accumulator'
-      || c.type === 'mains' || c.type === 'acSource')
-    const bulbs = comps.filter((c) => c.type === 'bulb')
+      || c.type === 'mains' || c.type === 'acSource'
+      || c.type === 'handGenerator' || c.type === 'handGeneratorDC')
+    const bulbs = comps.filter((c) => c.type === 'bulb' || c.type === 'bulb6')
     const d = solved.diagnostics || {}
-    if (!src) return { tone: 'warn', text: '从右侧拖入电源和用电器，开始搭电路' }
+    if (!src) return { tone: 'warn', text: emptyHint || '从右侧器材栏拖入电源和用电器，开始搭电路' }
     // 先报"接法错误"这个根因，再报它造成的后果（短路）
     if (d.ammeterParallel) return { tone: 'bad', text: '⚠ 电流表并联在元件两端，会烧坏电表！电流表应串联在电路中' }
     if (d.short) return { tone: 'bad', text: '⚠ 电源短路！请立即断开电源' }
@@ -1221,8 +1354,12 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     }
     const batI = Math.abs(solved[src.id]?._I || 0)
     if (batI > 1e-4) {
-      const lit = bulbs.filter((b) => (solved[b.id]?._P || 0) > 0.001)
-      if (lit.length) return { tone: 'ok', text: `✅ 通路 · ${lit.length} 只灯泡发光` }
+      const lit = bulbs.filter((b) => (bulbPRef.current.get(b.id) ?? solved[b.id]?._P ?? 0) > 0.001)
+      /* 亮 = 到额定的 15% 以上；只到个位数百分比时肉眼基本看不见，要如实说"几乎不亮" */
+      const bright = bulbs.filter((b) => (bulbPRef.current.get(b.id) ?? solved[b.id]?._P ?? 0)
+        / (solved[b.id]?._rated || CFG.BULB_RATED) > 0.15)
+      if (bright.length) return { tone: 'ok', text: `✅ 通路 · ${bright.length} 只灯泡发光` }
+      if (lit.length) return { tone: 'warn', text: '⚠ 通路，但灯泡几乎不亮 —— 电流太小' }
       const loads = comps.filter((c) => PLUG_TYPES.includes(c.type)
         && Math.abs(solved[c.id]?._I || 0) > 0.005)
       if (loads.length) {
@@ -1246,8 +1383,12 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     }
     const opened = comps.find((c) => (c.type === 'switch' || c.type === 'wallSwitch' || c.type === 'breaker') && !c.closed)
     if (opened) return { tone: 'warn', text: '⚠ 开关断开 · 电路不通' }
+    if ((src.type === 'handGenerator' || src.type === 'handGeneratorDC') && handGenOf(src).spd < 0.03) {
+      const wired = wires.some((w) => w.a.startsWith(src.id + ':') || w.b.startsWith(src.id + ':'))
+      return { tone: 'warn', text: wired ? '线路接好了 —— 按住飞轮拖动摇起来（转速越快，电动势越大）' : '发电机还没接线：从接线柱引线到灯泡 / 电流计' }
+    }
     return { tone: 'warn', text: '电路未接通（回路不完整或断路）' }
-  }, [comps, solved])
+  }, [comps, solved, emptyHint])
 
   const compById = (id) => comps.find((c) => c.id === id)
 
@@ -1362,7 +1503,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
     const i = am ? solved[am.id]?._I : (em ? solved[em.id]?._I : null)
     const u = vm ? solved[vm.id]?._V : null
     const d = solved.diagnostics || {}
-    const lit = comps.filter((c) => c.type === 'bulb' && (solved[c.id]?._P || 0) > 0.001).length
+    const lit = comps.filter((c) => (c.type === 'bulb' || c.type === 'bulb6') && (solved[c.id]?._P || 0) > 0.001).length
     const num = (v) => (Math.abs(v) < 5e-4 ? '0.000' : (v < 0 ? '\u2212' : '') + Math.abs(v).toFixed(3))
     const emNote = em && on
       ? `${em.turns || 10} 匝 吸 ${solved[em.id]?._pins ?? 0} 针${em.core === false ? '（无铁芯）' : ''}`
@@ -1371,7 +1512,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
       : d.ammeterParallel ? '电流表并联（误接）'
         : d.voltmeterSeries ? '电压表串联（误接）'
           : on ? (emNote || (lit ? `灯泡亮 ${lit} 只` : '电路接通'))
-            : (em && !emNote ? '电磁铁失磁' : comps.some((c) => c.type === 'bulb') ? '灯泡灭' : '电路断开')
+            : (em && !emNote ? '电磁铁失磁' : comps.some((c) => c.type === 'bulb' || c.type === 'bulb6') ? '灯泡灭' : '电路断开')
     seqRef.current += 1
     const row = {
       n: seqRef.current,
@@ -1645,8 +1786,17 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
                   onClick={(e) => { e.stopPropagation(); removeComp(c.id) }}
                 >✕</div>
                 <div dangerouslySetInnerHTML={{ __html: t.render(c, dyn) }} />
+                {c.type === 'motor' && (
+                  <MotorRotorLayer cid={`esmm${c.id}`} I={dyn.I} dir={dyn.dir} />
+                )}
+                {(c.type === 'handGenerator' || c.type === 'handGeneratorDC') && (
+                  <HandCrankLayer id={c.id} crankRef={crankRef} />
+                )}
+                {c.type === 'galvanometer' && dyn.hideNeedle && (
+                  <GalvNeedleLayer genId={dyn.genId} crankRef={crankRef} frac={dyn.frac} phase={dyn.phase} />
+                )}
                 {t.meter && ro && (
-                  <div className="esb-readout" style={{ opacity: c.showRead ? 1 : 0, color: ro.color }}>{ro.text}</div>
+                  <div className="esb-readout" style={{ opacity: (c.showRead || t.alwaysRead) ? 1 : 0, color: ro.color }}>{ro.text}</div>
                 )}
               </div>
             )
@@ -1964,6 +2114,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor }, ref) {
 })
 
 export default BuilderSVG
+
 
 
 

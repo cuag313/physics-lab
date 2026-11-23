@@ -85,6 +85,7 @@ const LOADERS = {
   electricEnergy: () => import('./ElectricEnergyScene'),
   ostersExperiment: () => import('./OstersExperimentScene'),
   electricMotor: () => import('./ElectricMotorScene'),
+  handGenerator: () => import('./HandGeneratorScene'),
   electromagneticInduction: () => import('./ElectromagneticInductionScene'),
   coulombLaw: () => import('./CoulombLawScene'),
   electricFieldLine: () => import('./ElectricFieldLineScene'),
