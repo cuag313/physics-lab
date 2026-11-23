@@ -26,30 +26,55 @@ import {
   TYPES, motorNBSVG, motorFrameImg, MOTOR_NB,
 } from './electricSvgInstruments.js'
 
-/* ─────────────────────────  设计坐标（viewBox 900×470）  ───────────────────────── */
-const D = { W: 900, H: 470 }
-const TABLE_Y = 380
+/* ─────────────────────────  设计坐标（viewBox 760×540）  ─────────────────────────
+   演示区按「电路图」摆：电动机在回路上方正中、电池组在回路底边左段、闸刀开关在底边右段，
+   三条导线把四个接线柱连成一个闭合回路（左竖边 / 右竖边 / 底边）—— 和原版一样的电路图布局。 */
+const D = { W: 760, H: 540 }
 
-const MOTOR = { x: 300, y: 104, s: 0.62 }   // 机身 457×443 → 283×275，底座正好坐在台面上
-const BAT = { x: 74, y: 334 }               // 电池组 150×46（底面坐在台面 y=380 上）
-const SW = { x: 682, y: 270 }               // 闸刀开关 176×110（同样坐在台面上）
+const MOTOR = { x: 261, y: 40, s: 0.52 }   // 机身 457×443 → 237.6×230.3，底座下沿 y=270，接线柱落在回路顶边 y=251
+const BAT = { x: 232, y: 408 }              // 电池组 150×46，两个接线柱在正面中线 y=430
+const SW = { x: 430, y: 348 }               // 闸刀开关 176×110，接线柱 y=430
+
+const LOOP = { L: 76, R: 684, T: 251, B: 430 }   // 回路矩形：顶边过电动机两柱，底边过电池/开关两柱
 
 const N = {
-  batN: { x: BAT.x + 16, y: BAT.y + 22 },
-  batP: { x: BAT.x + 135, y: BAT.y + 22 },
-  sw1: { x: SW.x + 26, y: SW.y + 82 },
-  sw2: { x: SW.x + 151, y: SW.y + 82 },
-  motA: { x: MOTOR.x + MOTOR_NB.terms.a.x * MOTOR.s, y: MOTOR.y + MOTOR_NB.terms.a.y * MOTOR.s },
-  motB: { x: MOTOR.x + MOTOR_NB.terms.b.x * MOTOR.s, y: MOTOR.y + MOTOR_NB.terms.b.y * MOTOR.s },
+  motA: { x: MOTOR.x + 155 * MOTOR.s, y: LOOP.T },      // 电动机黑柱
+  motB: { x: MOTOR.x + 296 * MOTOR.s, y: LOOP.T },      // 电动机红柱
+  batN: { x: BAT.x + 16, y: LOOP.B },                   // 电池 −
+  batP: { x: BAT.x + 135, y: LOOP.B },                  // 电池 +
+  sw1: { x: SW.x + 26, y: LOOP.B },                     // 开关左柱
+  sw2: { x: SW.x + 151, y: LOOP.B },                    // 开关右柱
 }
 
-/* 三条导线：电池 + → 开关 1；开关 2 → 电动机红柱；电动机黑柱 → 电池 −
-   （三段走线各自贴台面不同高度，互相不压） */
+/* 三条导线（折线，沿回路走）：黑 = 电动机黑柱 → 左竖边 → 底边 → 电池 −
+   红 = 电池 + → 开关左柱；蓝 = 开关右柱 → 右竖边 → 顶边 → 电动机红柱 */
 const WIRES = [
-  { a: N.batP, b: N.sw1, color: '#D3382F', base: 386 },
-  { a: N.sw2, b: N.motB, color: '#2F5FBF', base: 398 },
-  { a: N.motA, b: N.batN, color: '#2B2B2B', base: 410 },
+  { color: '#2B2B2B', pts: [N.motA, { x: LOOP.L, y: LOOP.T }, { x: LOOP.L, y: LOOP.B }, N.batN] },
+  { color: '#D3382F', pts: [N.batP, N.sw1] },
+  { color: '#2F5FBF', pts: [N.sw2, { x: LOOP.R, y: LOOP.B }, { x: LOOP.R, y: LOOP.T }, N.motB] },
 ]
+
+const pathOf = (pts) => `M${pts.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L')}`
+
+/* 折线上按弧长比取点（电流小点沿回路流动用） */
+function polyPoint(pts, t) {
+  const segs = []
+  let total = 0
+  for (let i = 0; i < pts.length - 1; i++) {
+    const l = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y)
+    segs.push({ a: pts[i], b: pts[i + 1], l })
+    total += l
+  }
+  let d = ((t % 1) + 1) % 1 * total
+  for (const s of segs) {
+    if (d <= s.l) {
+      const k = s.l === 0 ? 0 : d / s.l
+      return { x: s.a.x + (s.b.x - s.a.x) * k, y: s.a.y + (s.b.y - s.a.y) * k }
+    }
+    d -= s.l
+  }
+  return pts[pts.length - 1]
+}
 
 /* 物理常量 */
 const K = 0.45, R_W = 2.0, J = 0.05, T0 = 0.03, BV = 0.0022
@@ -71,13 +96,121 @@ const labelStyle = {
   display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#374151',
 }
 
-function bzPoint(a, c1, c2, b, t) {
-  const u = 1 - t
-  const w0 = u * u * u, w1 = 3 * u * u * t, w2 = 3 * u * t * t, w3 = t * t * t
-  return {
-    x: w0 * a.x + w1 * c1.x + w2 * c2.x + w3 * b.x,
-    y: w0 * a.y + w1 * c1.y + w2 * c2.y + w3 * b.y,
-  }
+/* 知识卡里的强调字 */
+const Kk = ({ c = '#B45309', children }) => <span style={{ color: c, fontWeight: 700 }}>{children}</span>
+
+/* ─────────  右侧暖色知识卡（照原版 drawKnowledgeCard 的版式：橘色标题药丸 + 小节色块 + 要点 + 底部实时读数）  ───────── */
+function Section({ c, title, items }) {
+  return (
+    <div style={{ marginTop: 11 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ width: 3.4, height: 13, background: c, borderRadius: 2 }} />
+        <span
+          style={{
+            background: `${c}1f`, color: c, fontWeight: 700, fontSize: 12.5,
+            padding: '2px 10px', borderRadius: 11,
+          }}
+        >
+          {title}
+        </span>
+      </div>
+      {items.map((it, i) => (
+        <div key={i} style={{ display: 'flex', gap: 6, marginTop: 3 }}>
+          <span style={{ flex: '0 0 auto', width: 5, height: 5, borderRadius: 3, background: c, marginTop: 7 }} />
+          <span style={{ fontSize: 12.2, lineHeight: 1.62, color: '#5A4636' }}>{it}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function MotorKnowledgeCard({ recRef }) {
+  return (
+    <div
+      style={{
+        flex: '0 0 auto', width: 'min(332px, 36%)', margin: '10px 10px 10px 4px',
+        display: 'flex', flexDirection: 'column', minHeight: 0,
+        background: 'linear-gradient(#FFFBF4, #FFF3E3)',
+        border: '1.2px solid #F2DCC0', borderRadius: 14,
+        boxShadow: '0 6px 18px rgba(203,132,62,0.22)', overflow: 'hidden',
+      }}
+    >
+      <div
+        style={{
+          margin: '12px 14px 6px', padding: '6px 18px', width: 'fit-content',
+          background: 'linear-gradient(90deg,#F59E0B,#EA580C)', color: '#fff',
+          fontWeight: 700, fontSize: 14, borderRadius: 18,
+        }}
+      >
+        📖 电动机知识
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '0 14px 10px' }}>
+        <Section
+          c="#C2410C"
+          title="① 实验目的"
+          items={[
+            <>观察 <Kk c="#C2410C">通电线圈在磁场中受力转动</Kk>（安培力），看懂电动机的原理。</>,
+            <>弄清 <Kk c="#15803D">换向器</Kk> 为什么必须有 —— 没有它，线圈只能摆到平衡位置就停住。</>,
+            <>弄明白 <Kk c="#B45309">转向</Kk> 和 <Kk c="#0EA5E9">转速</Kk> 各由什么决定。</>,
+          ]}
+        />
+        <Section
+          c="#15803D"
+          title="② 实验器材"
+          items={[
+            <>电池组、闸刀开关、导线；<Kk c="#C2410C">蹄形磁铁（N 红 / S 蓝）</Kk>、矩形线圈、<Kk c="#15803D">换向器 + 电刷</Kk> —— 后三样都装在这台小电动机里。</>,
+            <>换向器由两个 <Kk c="#B45309">半圆铜片</Kk> 拼成、随线圈一起转；两片 <Kk>电刷</Kk> 固定不动，贴着铜片滑动取电。</>,
+            <><Kk>红柱接正、黑柱接负</Kk>：红线走 电池 + → 开关，蓝线走 开关 → 红柱，黑线走 黑柱 → 电池 −，连成一个闭合回路。</>,
+          ]}
+        />
+        <Section
+          c="#B45309"
+          title="③ 通电线圈为什么会转"
+          items={[
+            <>线圈两侧在磁场中都受安培力，方向 <Kk c="#DC2626">相反</Kk>、又不在同一直线上 → 形成 <Kk c="#B45309">转矩</Kk>，线圈就转起来。</>,
+            <>方向用 <Kk c="#7C3AED">左手定则</Kk>：四指指电流方向，让磁感线穿入手心，拇指就是受力方向。</>,
+            <><Kk c="#B45309">τ = K·I·cos θ</Kk>：线圈面与磁感线 <Kk c="#15803D">平行</Kk> 时转矩 <Kk c="#15803D">最大</Kk>；<Kk c="#DC2626">垂直</Kk> 时转矩为零。</>,
+          ]}
+        />
+        <Section
+          c="#7C3AED"
+          title="④ 为什么必须有换向器（本实验的核心）"
+          items={[
+            <>线圈转到 <Kk c="#7C3AED">平衡位置</Kk>（面与磁感线垂直）时，两侧安培力在同一直线上、方向相反 → 转矩为零，<Kk c="#DC2626">再转不过去</Kk>。</>,
+            <>拆掉换向器：线圈在平衡位置附近 <Kk c="#DC2626">来回摆几下就停住</Kk>（下面读数里 θ 就停在 90° 附近）。</>,
+            <>换向器每半圈把线圈里的 <Kk c="#15803D">电流方向翻转一次</Kk>，转矩方向就永远是同一侧 → 连续转动。</>,
+            <>换向那一瞬（铜片两道缝同时对着两只电刷）电流断开、转矩为零，全靠 <Kk c="#7C3AED">惯性冲过去</Kk>。</>,
+            <>点工具栏「<Kk>换向器：已拆</Kk>」再启动，就是本实验最直观的一次对比。</>,
+          ]}
+        />
+        <Section
+          c="#0EA5E9"
+          title="⑤ 转速与转向"
+          items={[
+            <>电压↑ → 电流↑ → 转矩↑ → <Kk c="#0EA5E9">转速↑</Kk>。真实电动机还有 <Kk c="#7C3AED">反电动势 e = K·ω</Kk>：转得越快电流越小，最后自动平衡到某个转速。</>,
+            <>只改 <Kk c="#0EA5E9">电流方向</Kk> 或 <Kk c="#B91C1C">磁场方向</Kk> 中的 <Kk c="#DC2626">任意一个</Kk>，转向就反过来；两个同时改 → 转向不变。</>,
+            <>电压滑块 3~9 V 改动会先断开电路，重新合闸再启动（和真实换电池一个道理）。</>,
+          ]}
+        />
+        <Section
+          c="#64748B"
+          title="⑥ 实时读数"
+          items={[
+            <span key="rec" ref={recRef} style={{ fontVariantNumeric: 'tabular-nums' }}>合上闸刀后这里显示 I、n、e、θ 与转动状态</span>,
+          ]}
+        />
+        <Section
+          c="#1D4ED8"
+          title="⑦ 电动机 vs 发电机（一句话分清）"
+          items={[
+            <><Kk c="#15803D">电动机</Kk>：电能 → 机械能，通电导线受安培力（F = BIL，左手定则）——先有电流，才有转动。</>,
+            <><Kk c="#1D4ED8">发电机</Kk>：机械能 → 电能，导体切割磁感线产生感应电动势（E = BLv，右手定则）——先有运动，才有电。</>,
+            <>同一台机器反着用就是另一台 —— 这就是 <Kk c="#B45309">可逆性</Kk>。</>,
+          ]}
+        />
+      </div>
+    </div>
+  )
 }
 
 /* 器材栏缩略图：静态第 1 帧 */
@@ -90,6 +223,7 @@ function thumb(type) {
 /* ─────────────────────────  场景  ───────────────────────── */
 export default function ElectricMotorScene() {
   const dynRef = useRef(null)
+  const recRef = useRef(null)
   const animRef = useRef(null)
   const builderRef = useRef(null)
 
@@ -174,41 +308,34 @@ export default function ElectricMotorScene() {
       + (s.comm ? motorFrameImg('mt_ring_sheet.png', m.ring, frame, 'dmr', m.ring.n) : '')
       + '</g>'
 
-    /* 电流小点：沿三条导线流动，方向随电流翻转 */
+    /* 电流小点：沿回路三条导线流动，方向随电流翻转 */
     let dots = ''
     if (s.closed && Math.abs(s.I) > 0.008) {
+      const alpha = 0.35 + 0.55 * Math.min(1, Math.abs(s.I) / 2)
       for (const w of WIRES) {
-        const c1 = { x: w.a.x + (w.b.x - w.a.x) * 0.16, y: w.base }
-        const c2 = { x: w.a.x + (w.b.x - w.a.x) * 0.84, y: w.base }
-        const alpha = 0.35 + 0.55 * Math.min(1, Math.abs(s.I) / 2)
-        for (let d = 0; d < 9; d++) {
-          let t = (d / 9 + (s.flow % 1) + 1) % 1
+        for (let d = 0; d < 10; d++) {
+          let t = (d / 10 + (s.flow % 1) + 1) % 1
           if (s.I < 0) t = 1 - t
-          const p = bzPoint(w.a, c1, c2, w.b, t)
-          dots += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5" fill="rgba(255,214,102,${alpha.toFixed(2)})"/>`
+          const p = polyPoint(w.pts, t)
+          dots += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.6" fill="rgba(255,214,102,${alpha.toFixed(2)})"/>`
         }
       }
     }
 
-    /* 实时读数板 */
-    const rows = [
-      ['电源电压', `${s.volt.toFixed(1)} V`],
-      ['电流 I', `${s.I >= 0 ? '' : '−'}${Math.abs(s.I).toFixed(2)} A`],
-      ['转速 n', `${(s.om / (Math.PI * 2)).toFixed(2)} r/s`],
-      ['线圈转角', `${(((s.th * 180 / Math.PI) % 360) + 360) % 360 | 0}°`],
-      ['反电动势 e', `${Math.abs(s.e).toFixed(2)} V`],
-      ['状态', statusText(s)],
-    ]
-    const hw = 226, hh = 26 + rows.length * 19, hx = D.W - hw - 14, hy = 14
-    let hud = `<rect x="${hx}" y="${hy}" width="${hw}" height="${hh}" rx="12" fill="rgba(17,24,39,0.84)" stroke="rgba(148,163,184,0.35)" stroke-width="1"/>`
-      + `<text x="${hx + 12}" y="${hy + 17}" font-size="11" font-weight="700" fill="#93C5FD" font-family="Microsoft YaHei, sans-serif">实时数据</text>`
-    rows.forEach(([k, v], i) => {
-      const yy = hy + 36 + i * 19
-      hud += `<text x="${hx + 12}" y="${yy}" font-size="11" fill="#E2E8F0" font-family="Microsoft YaHei, sans-serif">${k}</text>`
-      hud += `<text x="${hx + hw - 12}" y="${yy}" text-anchor="end" font-size="11" font-weight="700" fill="#FDE68A" font-family="Microsoft YaHei, sans-serif">${v}</text>`
-    })
+    g.innerHTML = rotor + dots
 
-    g.innerHTML = rotor + dots + hud
+    /* 右侧知识卡底部的实时读数（每帧只改这一行，不触发 React 重渲染） */
+    if (recRef.current) {
+      const deg = (((s.th * 180 / Math.PI) % 360) + 360) % 360
+      const g1 = 'color:#0369A1;font-weight:700'
+      const sep = '<span style="color:#D6BC97">·</span>'
+      recRef.current.innerHTML = `
+        <span style="${g1}">I = ${s.I >= 0 ? '' : '−'}${Math.abs(s.I).toFixed(2)} A</span>${sep}
+        <span style="${g1}">n = ${(s.om / (Math.PI * 2)).toFixed(2)} r/s</span>${sep}
+        <span style="${g1}">e = ${Math.abs(s.e).toFixed(2)} V</span>${sep}
+        <span style="${g1}">θ = ${deg | 0}°</span>${sep}
+        <span style="color:${s.closed ? (Math.abs(s.om) > 0.9 ? '#15803D' : '#B45309') : '#94A3B8'};font-weight:700">${statusText(s)}</span>`
+    }
   }
 
   function statusText(s) {
@@ -336,36 +463,22 @@ export default function ElectricMotorScene() {
                 <stop offset="55%" stopColor="#FDF4E6" />
                 <stop offset="100%" stopColor="#FBEDD9" />
               </linearGradient>
-              <linearGradient id="em-wood" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#F3DDBE" />
-                <stop offset="12%" stopColor="#E8C79C" />
-                <stop offset="100%" stopColor="#C89A66" />
-              </linearGradient>
             </defs>
 
             <rect x="0" y="0" width={D.W} height={D.H} fill="url(#em-bg)" />
 
-            {/* 台面 */}
-            <rect x="-10" y={TABLE_Y - 8} width={D.W + 20} height="12" rx="6" fill="rgba(120,80,40,0.14)" />
-            <rect x="-10" y={TABLE_Y} width={D.W + 20} height={D.H - TABLE_Y + 6} rx="8" fill="url(#em-wood)" stroke="rgba(122,82,44,0.55)" strokeWidth="1.2" />
-            {[0, 1, 2, 3, 4].map((i) => (
-              <path key={`g${i}`} d={`M6 ${TABLE_Y + 20 + i * 12} C ${D.W * 0.3} ${TABLE_Y + 18 + i * 12}, ${D.W * 0.7} ${TABLE_Y + 23 + i * 12}, ${D.W - 6} ${TABLE_Y + 20 + i * 12}`}
-                stroke="rgba(150,104,58,0.22)" strokeWidth="1" fill="none" />
+            {/* 回路导线：按电路图走 左竖边 / 底边 / 右竖边，把四个接线柱连成一圈 */}
+            {WIRES.map((w, i) => (
+              <g key={`w${i}`}>
+                <path d={pathOf(w.pts)} stroke="rgba(120,90,60,0.18)" strokeWidth="7.5" strokeLinejoin="round" fill="none" />
+                <path d={pathOf(w.pts)} stroke={w.color} strokeWidth="4.2" strokeLinejoin="round" strokeLinecap="round" fill="none" />
+                <path d={pathOf(w.pts)} stroke="rgba(255,255,255,0.35)" strokeWidth="1.1" strokeLinejoin="round" fill="none" />
+              </g>
             ))}
-
-            {/* 导线（静态） */}
-            {WIRES.map((w, i) => {
-              const c1 = { x: w.a.x + (w.b.x - w.a.x) * 0.16, y: w.base }
-              const c2 = { x: w.a.x + (w.b.x - w.a.x) * 0.84, y: w.base }
-              return (
-                <g key={`w${i}`}>
-                  <path d={`M${w.a.x} ${w.a.y} C ${c1.x} ${c1.y}, ${c2.x} ${c2.y}, ${w.b.x} ${w.b.y}`}
-                    stroke={w.color} strokeWidth="4" strokeLinecap="round" fill="none" />
-                  <path d={`M${w.a.x} ${w.a.y - 1} C ${c1.x} ${c1.y - 1}, ${c2.x} ${c2.y - 1}, ${w.b.x} ${w.b.y - 1}`}
-                    stroke="rgba(255,255,255,0.45)" strokeWidth="1.2" strokeLinecap="round" fill="none" />
-                </g>
-              )
-            })}
+            {/* 接线柱处的接头小圆 */}
+            {[N.motA, N.motB, N.batN, N.batP, N.sw1, N.sw2].map((p, i) => (
+              <circle key={`j${i}`} cx={p.x} cy={p.y} r="3" fill="#D9C8AE" stroke="rgba(120,90,60,0.55)" strokeWidth="1" />
+            ))}
 
             {/* 电动机本体（机身贴图），线圈 + 换向器由动态层按转角换帧 */}
             <g transform={`translate(${MOTOR.x},${MOTOR.y})`} dangerouslySetInnerHTML={{ __html: motorBodySVG }} />
@@ -375,10 +488,26 @@ export default function ElectricMotorScene() {
             {/* 闸刀开关（合/断由「启动/停止」控制） */}
             <g transform={`translate(${SW.x},${SW.y})`} dangerouslySetInnerHTML={{ __html: switchSVG }} />
 
-            {/* 动态层：线圈 / 换向器 / 电流小点 / 读数板 */}
+            {/* 动态层：线圈 / 换向器 / 电流小点 */}
             <g ref={dynRef} />
+
+            {/* 器材名牌 */}
+            {[
+              { cx: MOTOR.x + 118.8, y: 286, w: 92, t: '电动机' },
+              { cx: BAT.x + 75, y: 462, w: 84, t: '电池组' },
+              { cx: SW.x + 88, y: 462, w: 76, t: '闸刀开关' },
+            ].map((lb) => (
+              <g key={lb.t}>
+                <rect x={lb.cx - lb.w / 2} y={lb.y} width={lb.w} height={22} rx="11"
+                  fill="rgba(255,255,255,0.82)" stroke="rgba(160,120,80,0.45)" strokeWidth="1" />
+                <text x={lb.cx} y={lb.y + 15.5} textAnchor="middle" fontSize="16"
+                  fill="#6B4A2A" fontFamily="Microsoft YaHei, sans-serif" fontWeight="700">{lb.t}</text>
+              </g>
+            ))}
           </svg>
         </div>
+
+        {ui.tab === 1 && <MotorKnowledgeCard recRef={recRef} />}
 
         {ui.tab === 2 && (
           <BuilderSVG
