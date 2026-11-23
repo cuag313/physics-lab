@@ -5,7 +5,7 @@
  *   · 电动机 = NB electrical/ElectriMotorElectri 图集（nobook.db id 252 那台机器）：
  *     机身 mt_body.png（红 N 左 / 蓝 S 右弧形极靴 + 灰色小底座 + 两立柱 + 黑/红接线柱）、
  *     线圈 28 帧 mt_coil_sheet.png、换向器 28 帧 mt_ring_sheet.png；极性反像 mt_body_rev.png。
- *   · 电池组、闸刀开关直接用器材库的 battery / switch（同一套 NB 实拍图）。
+ *   · 电池、闸刀开关在演示区画成电路图符号（灰蓝细线，照用户给的参考图）；开关点一下就合闸/断闸。
  *
  * 两个 Tab：
  *   ① 📖 实验演示 —— NB 252 的三个现象：
@@ -27,31 +27,35 @@ import {
 } from './electricSvgInstruments.js'
 
 /* ─────────────────────────  设计坐标（viewBox 760×540）  ─────────────────────────
-   演示区按「电路图」摆：电动机在回路上方正中、电池组在回路底边左段、闸刀开关在底边右段，
-   三条导线把四个接线柱连成一个闭合回路（左竖边 / 右竖边 / 底边）—— 和原版一样的电路图布局。 */
+   演示区按「电路图」画：回路矩形（左竖边 / 底边 / 右竖边），底边上 **电源、开关用电路图符号**，
+   电动机用实物贴图挂在回路顶边正中（只有它保留实物照片）。 */
 const D = { W: 760, H: 540 }
 
 const MOTOR = { x: 261, y: 40, s: 0.52 }   // 机身 457×443 → 237.6×230.3，底座下沿 y=270，接线柱落在回路顶边 y=251
-const BAT = { x: 232, y: 408 }              // 电池组 150×46，两个接线柱在正面中线 y=430
-const SW = { x: 430, y: 348 }               // 闸刀开关 176×110，接线柱 y=430
 
-const LOOP = { L: 76, R: 684, T: 251, B: 430 }   // 回路矩形：顶边过电动机两柱，底边过电池/开关两柱
+const LOOP = { L: 76, R: 684, T: 251, B: 430 }   // 回路矩形
+const INK = '#6E7B8B'                            // 电路图线条色（照参考图那种灰蓝细线）
+
+/* 电源符号（两节电池：长线 = 正极、短粗线 = 负极），节点在两端 */
+const BATSYM = { x0: 214, x1: 262, cx: 238 }      // 左节点 = +，右节点 = −
+/* 开关符号（刀闸：左端铰链 + 一条刀片 + 右端触点） */
+const SWSYM = { x0: 470, x1: 566, cx: 518 }
 
 const N = {
   motA: { x: MOTOR.x + 155 * MOTOR.s, y: LOOP.T },      // 电动机黑柱
   motB: { x: MOTOR.x + 296 * MOTOR.s, y: LOOP.T },      // 电动机红柱
-  batN: { x: BAT.x + 16, y: LOOP.B },                   // 电池 −
-  batP: { x: BAT.x + 135, y: LOOP.B },                  // 电池 +
-  sw1: { x: SW.x + 26, y: LOOP.B },                     // 开关左柱
-  sw2: { x: SW.x + 151, y: LOOP.B },                    // 开关右柱
+  batP: { x: BATSYM.x0, y: LOOP.B },                     // 电源 +（左）
+  batN: { x: BATSYM.x1, y: LOOP.B },                     // 电源 −（右）
+  sw1: { x: SWSYM.x0, y: LOOP.B },                       // 开关铰链端
+  sw2: { x: SWSYM.x1, y: LOOP.B },                       // 开关触点端
 }
 
-/* 三条导线（折线，沿回路走）：黑 = 电动机黑柱 → 左竖边 → 底边 → 电池 −
-   红 = 电池 + → 开关左柱；蓝 = 开关右柱 → 右竖边 → 顶边 → 电动机红柱 */
+/* 三段导线（单色细线，电路图风格）：电动机黑柱 → 左竖边 → 底边 → 电源 +；
+   电源 − → 开关铰链；开关触点 → 右竖边 → 顶边 → 电动机红柱 */
 const WIRES = [
-  { color: '#2B2B2B', pts: [N.motA, { x: LOOP.L, y: LOOP.T }, { x: LOOP.L, y: LOOP.B }, N.batN] },
-  { color: '#D3382F', pts: [N.batP, N.sw1] },
-  { color: '#2F5FBF', pts: [N.sw2, { x: LOOP.R, y: LOOP.B }, { x: LOOP.R, y: LOOP.T }, N.motB] },
+  { pts: [N.motA, { x: LOOP.L, y: LOOP.T }, { x: LOOP.L, y: LOOP.B }, N.batP] },
+  { pts: [N.batN, N.sw1] },
+  { pts: [N.sw2, { x: LOOP.R, y: LOOP.B }, { x: LOOP.R, y: LOOP.T }, N.motB] },
 ]
 
 const pathOf = (pts) => `M${pts.map((p) => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' L')}`
@@ -76,8 +80,8 @@ function polyPoint(pts, t) {
   return pts[pts.length - 1]
 }
 
-/* 物理常量 */
-const K = 0.45, R_W = 2.0, J = 0.05, T0 = 0.03, BV = 0.0022
+/* 物理常量：K 反电动势常数 / R_W 回路电阻 / J 转动惯量 / T0 静摩擦 / BV 粘滞阻尼 / BRK 断闸后的刹车（电刷摩擦+涡流） */
+const K = 0.45, R_W = 2.0, J = 0.05, T0 = 0.03, BV = 0.0022, BRK = 0.34
 
 /* ─────────────────────────  工具  ───────────────────────── */
 const chipStyle = (on, color = '#2563EB') => ({
@@ -94,6 +98,55 @@ const chipStyle = (on, color = '#2563EB') => ({
 
 const labelStyle = {
   display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#374151',
+}
+
+/* ─────────────────────────  电路图符号（电池 / 开关）  ─────────────────────────
+   照用户给的参考图：灰蓝细线、长线=正极、短粗线=负极、刀闸开关一个铰链点 + 一条刀片 + 一个触点。 */
+const SYM_FONT = { fontFamily: 'Microsoft YaHei, sans-serif', fontSize: 15, fontWeight: 600, fill: '#5B6675' }
+
+function BatterySymbol() {
+  const y = LOOP.B, x0 = BATSYM.x0, x1 = BATSYM.x1
+  const plates = [
+    { x: x0 + 9, h: 34, w: 2.6 },    // 长线 = 正极
+    { x: x0 + 16, h: 16, w: 4.2 },   // 短粗线 = 负极
+    { x: x0 + 29, h: 34, w: 2.6 },   // 第二节课，串起来
+    { x: x0 + 36, h: 16, w: 4.2 },
+  ]
+  return (
+    <g>
+      <line x1={x0} y1={y} x2={x0 + 9} y2={y} stroke={INK} strokeWidth="2.2" />
+      <line x1={x0 + 36} y1={y} x2={x1} y2={y} stroke={INK} strokeWidth="2.2" />
+      {plates.map((p, i) => (
+        <line key={i} x1={p.x} y1={y - p.h / 2} x2={p.x} y2={y + p.h / 2}
+          stroke={INK} strokeWidth={p.w} strokeLinecap="butt" />
+      ))}
+      <text x={x0 + 9} y={y - 26} textAnchor="middle" {...SYM_FONT}>+</text>
+      <text x={x0 + 36} y={y - 26} textAnchor="middle" {...SYM_FONT}>−</text>
+      <text x={BATSYM.cx} y={y + 30} textAnchor="middle" {...SYM_FONT}>电源</text>
+    </g>
+  )
+}
+
+function SwitchSymbol({ closed, onToggle }) {
+  const y = LOOP.B, x0 = SWSYM.x0, x1 = SWSYM.x1
+  const L = x1 - x0
+  const ang = closed ? 0 : -26
+  const rad = (ang * Math.PI) / 180
+  const tipX = x0 + L * Math.cos(rad)
+  const tipY = y + L * Math.sin(rad)
+  return (
+    <g style={{ cursor: 'pointer' }} onClick={onToggle}
+      onPointerDown={(e) => e.stopPropagation()}>
+      {/* 透明热区：刀片立着的时候也点得到 */}
+      <rect x={x0 - 26} y={y - 78} width={L + 52} height={110} fill="rgba(0,0,0,0)" />
+      <circle cx={x0} cy={y} r="3.6" fill={INK} />
+      <circle cx={x1} cy={y} r="3.6" fill={INK} />
+      <line x1={x0} y1={y} x2={tipX} y2={tipY} stroke={INK} strokeWidth="2.8" strokeLinecap="round" />
+      <text x={SWSYM.cx} y={y + 30} textAnchor="middle" {...SYM_FONT}>
+        {closed ? '开关（闭合）' : '开关（断开）'}
+      </text>
+    </g>
+  )
 }
 
 /* 知识卡里的强调字 */
@@ -159,8 +212,9 @@ function MotorKnowledgeCard({ recRef }) {
           title="② 实验器材"
           items={[
             <>电池组、闸刀开关、导线；<Kk c="#C2410C">蹄形磁铁（N 红 / S 蓝）</Kk>、矩形线圈、<Kk c="#15803D">换向器 + 电刷</Kk> —— 后三样都装在这台小电动机里。</>,
+            <>演示区里电池和开关画成电路图符号：<Kk c="#1D4ED8">长线是「+」，短粗线是「−」</Kk>，刀闸合上电路才通。</>,
             <>换向器由两个 <Kk c="#B45309">半圆铜片</Kk> 拼成、随线圈一起转；两片 <Kk>电刷</Kk> 固定不动，贴着铜片滑动取电。</>,
-            <><Kk>红柱接正、黑柱接负</Kk>：红线走 电池 + → 开关，蓝线走 开关 → 红柱，黑线走 黑柱 → 电池 −，连成一个闭合回路。</>,
+            <><Kk>红柱接正、黑柱接负</Kk>：电路图里电源长线是「+」、短粗线是「−」，电流从 + 经开关到红柱，再从黑柱回到电源 −。</>,
           ]}
         />
         <Section
@@ -282,10 +336,13 @@ export default function ElectricMotorScene() {
 
     let net = s.tau
     /* 拆掉换向器后线圈是"绕着平衡位置来回摆"，真实器材里涡流/空气阻尼比空载转动大得多；
-       这里把粘滞阻尼放大 8 倍（ζ≈0.4），摆两三下就停在平衡位置，才看得出"没有换向器转不起来" */
+       这里把粘滞阻尼放大 14 倍（ζ≈0.4），摆两三下就停在平衡位置，才看得出"没有换向器转不起来" */
     const damp = s.comm ? BV : BV * 14
-    if (Math.abs(s.om) > 1e-4) net -= T0 * Math.sign(s.om) + damp * s.om
-    else if (Math.abs(s.tau) <= T0) { net = 0; s.om = 0 }
+    if (Math.abs(s.om) > 1e-4) {
+      net -= T0 * Math.sign(s.om) + damp * s.om
+      /* 断闸：电刷摩擦 + 铁芯涡流，磨掉动能 —— 只靠惯性再转一两圈就停 */
+      if (!s.closed) net -= BRK * Math.sign(s.om)
+    } else if (Math.abs(s.tau) <= T0) { net = 0; s.om = 0 }
     s.om += (net / J) * dt
     if (Math.abs(s.om) > 60) s.om = Math.sign(s.om) * 60
     s.th += s.om * dt
@@ -340,7 +397,7 @@ export default function ElectricMotorScene() {
 
   function statusText(s) {
     if (!s.closed) {
-      return Math.abs(s.om) > 0.3 ? '断电，惯性滑行' : '未通电'
+      return Math.abs(s.om) > 0.3 ? '断电，靠惯性再转一两圈' : '已断电，停住'
     }
     if (!s.comm) {
       if (Math.abs(s.om) < 0.25) return '停在平衡位置（θ=90°）'
@@ -363,9 +420,7 @@ export default function ElectricMotorScene() {
     builderRef.current?.addAt(type, clientX, clientY)
   }, [])
 
-  /* 演示页器材（电池组 / 开关 / 电动机本体）—— 都是器材库原厂图，直接嵌进大 SVG */
-  const batterySVG = TYPES.battery.render({ id: 'demo-bat' })
-  const switchSVG = TYPES.switch.render({ id: 'demo-sw', closed: ui.closed })
+  /* 演示页器材：电池 / 开关用电路图符号（见 BatterySymbol / SwitchSymbol），只有电动机用 NB 实物贴图 */
   const motorBodySVG = motorNBSVG({
     body: ui.swapMag ? 'mt_body_rev.png' : 'mt_body.png',
     coilFrame: null, ringFrame: null, cid: 'demo', scale: MOTOR.s,
@@ -384,14 +439,10 @@ export default function ElectricMotorScene() {
         <>
           {ui.tab === 1 && (
             <>
-              <button
-                type="button"
-                onClick={() => applyUi({ closed: !ui.closed })}
-                style={chipStyle(ui.closed, '#16A34A')}
-                title="合上闸刀开关，电动机通电"
-              >
-                {ui.closed ? '⏸ 停止' : '▶ 启动'}
-              </button>
+              <span style={{ fontSize: 12.5, color: '#6B7280', whiteSpace: 'nowrap' }}>
+                点画面里的「开关」合闸 / 断闸
+              </span>
+              <span style={{ width: 1, height: 20, background: '#D0D7DE', margin: '0 2px' }} />
               <button
                 type="button"
                 onClick={() => applyUi({ comm: !ui.comm, closed: false })}
@@ -467,43 +518,24 @@ export default function ElectricMotorScene() {
 
             <rect x="0" y="0" width={D.W} height={D.H} fill="url(#em-bg)" />
 
-            {/* 回路导线：按电路图走 左竖边 / 底边 / 右竖边，把四个接线柱连成一圈 */}
+            {/* 回路导线：电路图细线，左竖边 / 底边 / 右竖边连成一圈 */}
             {WIRES.map((w, i) => (
-              <g key={`w${i}`}>
-                <path d={pathOf(w.pts)} stroke="rgba(120,90,60,0.18)" strokeWidth="7.5" strokeLinejoin="round" fill="none" />
-                <path d={pathOf(w.pts)} stroke={w.color} strokeWidth="4.2" strokeLinejoin="round" strokeLinecap="round" fill="none" />
-                <path d={pathOf(w.pts)} stroke="rgba(255,255,255,0.35)" strokeWidth="1.1" strokeLinejoin="round" fill="none" />
-              </g>
-            ))}
-            {/* 接线柱处的接头小圆 */}
-            {[N.motA, N.motB, N.batN, N.batP, N.sw1, N.sw2].map((p, i) => (
-              <circle key={`j${i}`} cx={p.x} cy={p.y} r="3" fill="#D9C8AE" stroke="rgba(120,90,60,0.55)" strokeWidth="1" />
+              <path key={`w${i}`} d={pathOf(w.pts)} stroke={INK} strokeWidth="2.2"
+                strokeLinejoin="round" strokeLinecap="butt" fill="none" />
             ))}
 
-            {/* 电动机本体（机身贴图），线圈 + 换向器由动态层按转角换帧 */}
+            {/* 电动机本体（实物贴图），线圈 + 换向器由动态层按转角换帧 */}
             <g transform={`translate(${MOTOR.x},${MOTOR.y})`} dangerouslySetInnerHTML={{ __html: motorBodySVG }} />
 
-            {/* 电池组 */}
-            <g transform={`translate(${BAT.x},${BAT.y})`} dangerouslySetInnerHTML={{ __html: batterySVG }} />
-            {/* 闸刀开关（合/断由「启动/停止」控制） */}
-            <g transform={`translate(${SW.x},${SW.y})`} dangerouslySetInnerHTML={{ __html: switchSVG }} />
+            {/* 电源、开关：电路图符号（开关可点，点一下合闸/断闸） */}
+            <BatterySymbol />
+            <SwitchSymbol closed={ui.closed} onToggle={() => applyUi({ closed: !ui.closed })} />
 
             {/* 动态层：线圈 / 换向器 / 电流小点 */}
             <g ref={dynRef} />
 
-            {/* 器材名牌 */}
-            {[
-              { cx: MOTOR.x + 118.8, y: 286, w: 92, t: '电动机' },
-              { cx: BAT.x + 75, y: 462, w: 84, t: '电池组' },
-              { cx: SW.x + 88, y: 462, w: 76, t: '闸刀开关' },
-            ].map((lb) => (
-              <g key={lb.t}>
-                <rect x={lb.cx - lb.w / 2} y={lb.y} width={lb.w} height={22} rx="11"
-                  fill="rgba(255,255,255,0.82)" stroke="rgba(160,120,80,0.45)" strokeWidth="1" />
-                <text x={lb.cx} y={lb.y + 15.5} textAnchor="middle" fontSize="16"
-                  fill="#6B4A2A" fontFamily="Microsoft YaHei, sans-serif" fontWeight="700">{lb.t}</text>
-              </g>
-            ))}
+            {/* 器材名 */}
+            <text x={MOTOR.x + 118.8} y={300} textAnchor="middle" {...SYM_FONT}>电动机</text>
           </svg>
         </div>
 
@@ -523,13 +555,13 @@ export default function ElectricMotorScene() {
             offset={{ left: 26, top: 26 }}
             purpose="通电线圈在磁场里受力转动；换向器每半圈改变一次线圈里的电流方向，让线圈能连续转下去。"
             steps={[
-              '① 点「▶ 启动」合上闸刀开关：线圈通电，在 N→S 的磁场里受安培力转起来',
+              '① 点电路图底边那个「开关（断开）」：刀闸合上，线圈通电，在 N→S 的磁场里受安培力转起来',
               '线圈转到与磁感线平行时力矩为零，靠惯性冲过去；换向器此刻把电流反向，力矩方向不变',
-              '② 点「换向器：已拆」再启动：电流方向不再改变，线圈摆几下就停在平衡位置 —— 这就是换向器的作用',
-              '③ 点「接线柱：反接」（或「磁极：N 右 S 左」）再启动：转向反过来',
+              '② 点「换向器：已拆」，再点开关合闸：电流方向不再改变，线圈摆几下就停在平衡位置 —— 这就是换向器的作用',
+              '③ 点「接线柱：反接」（或「磁极：N 右 S 左」），再合闸：转向反过来',
               '两样同时改变（反接 + 对调磁极）：转向又回到原来的方向',
-              '电压从 3 V 调到 9 V：电流变大，转速变快（看右侧实时数据里的 n 和 I）',
-              '「⏸ 停止」断开电路：线圈靠惯性滑行，摩擦让它慢慢停下来',
+              '电压从 3 V 调到 9 V：电流变大，转速变快（看右侧知识卡里的 n 和 I）',
+              '再点一次开关断闸：电流没了，线圈靠惯性再转一两圈就停（电刷摩擦 + 铁芯涡流把动能磨掉）',
             ]}
             hint="通电线圈在磁场中受力转动，是电动机的原理：电能 → 机械能。换向器（两个半环 + 两片电刷）在线圈每转过半圈时交换与电刷的接触，使线圈里的电流反向，于是转矩方向始终一致。"
           />

@@ -1350,8 +1350,10 @@ export function handGenSVG(bodyFile, hideCrank) {
  * 卡片自己只在缩略图（dyn.motorLayer 不设）里静态画第 1 帧。 */
 export const MOTOR_NB = {
   aw: 457, ah: 443, s: 0.5,
-  coil: { x: 124, y: 37, w: 191, h: 324, n: 28 },
-  ring: { x: 180, y: 288, w: 81, h: 85, n: 28 },
+  coil: { x: 133, y: 37, w: 191, h: 324, n: 28 },
+  /* 换向器正坐在两立柱（电刷）之间：立柱在机身 x≈190 / 269，环心 229.5、外径 76 → 两侧贴着电刷，不留缝；
+     线圈两根引线落在环的上表面（左红右蓝），也不留缝 */
+  ring: { x: 189, y: 288, w: 81, h: 85, n: 28 },
   terms: { a: { x: 155, y: 406 }, b: { x: 296, y: 406 } },
 }
 
