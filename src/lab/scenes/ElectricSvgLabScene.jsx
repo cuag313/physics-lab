@@ -106,6 +106,9 @@ const CSS = `
    若把线画在器材后面，线就会被板子"切断"，看着像从底座里穿过去。
    （仪表这类立起来的件会压住经过的线，但本场景里它们都摆在导线之外，不影响） */
 .esvg-wirelayer{position:absolute;inset:0;pointer-events:none;z-index:3}
+/* 转子层：挂在每台电动机自己的 div 里（viewBox 与卡片一致），所以坐标天然对齐；
+   压住卡片本体，但整块不接收事件，柱脚照样能点。 */
+.esvg-rotor{position:absolute;inset:0;pointer-events:none;overflow:visible}
 /* 端头层：裸铜丝绕柱这件事要压在导线之上，否则导线把铜丝盖一半，就看不出"绕在柱子上"。 */
 .esvg-wiretop{position:absolute;inset:0;pointer-events:none;z-index:6}
 .esvg-partlayer{position:absolute;inset:0;z-index:2;pointer-events:none}
@@ -274,6 +277,55 @@ const PALETTE_GROUPS = [
   { title: '家庭电路', keys: ['mains', 'energyMeter', 'fuse', 'testPencil', 'electroscope'] },
   { title: '高中拓展', keys: ['resBox', 'multimeter', 'relay'] },
 ]
+
+/* =======================  小电动机转子层（rAF 自转）  =======================
+ * 为什么不在器材字符串里挂动画：器材层是每 250ms 用 dangerouslySetInnerHTML 重建的字符串，
+ * 字符串里的 SMIL / CSS 动画每次都被重建回起始帧 —— 看起来就是"根本没转、换向器一直贴着电刷"。
+ * （同 BuilderSVG.jsx 中 MotionLayer 头注释的结论。）
+ * 所以转子和卡片拆成两个东西：卡片（认购 hideRotor）不再画转子，这里自己跑 rAF 只重渲染自己。
+ * 关键：这一层挂在**每台电动机自己的 div 里**，viewBox 0 0 200 212 和卡片完全一致，
+ * 所以不用再关心场景的缩放/平移，坐标天然对齐（早先放在场景大 SVG 里就会错位）。
+ * 每帧把「线圈 + 两条引线 + 换向器」各自绕**自己的圆心**转同一个角度
+ * （完全照 NB 的 `luna.rotation += t; lunb.rotation = luna.rotation`），不做水平缩放。
+ * 换向器外径恒定 → 转起来环的外沿始终压在两侧碳刷上，永远不会脱开；
+ * 半周后红蓝两片在电刷下互换 = 换向。
+ */
+function MotorSpin({ cid, I }) {
+  const phase = useRef(0)
+  const [, setTick] = useState(0)
+  const live = Math.abs(I) > 0.02
+  useEffect(() => {
+    if (!live) return undefined
+    let raf = 0
+    let last = performance.now()
+    const loop = (now) => {
+      const dt = Math.min(0.1, Math.max(0, (now - last) / 1000))
+      last = now
+      /* 转速 ∝ 电功率（和卡片上的转速标度一致：1.9 + 2.2·min(1.4, |I|) rad/s） */
+      const w = 1.9 + 2.2 * Math.min(1.4, Math.abs(I))
+      phase.current += dt * w * (I < 0 ? -1 : 1)
+      setTick((n) => n + 1)
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [live, I])
+
+  const t = TYPES.motor
+  if (!t.rotorBody) return null
+  const deg = (phase.current * 180) / Math.PI
+  return (
+    <div className="esvg-rotor">
+      <svg viewBox={`0 0 ${t.w} ${t.h}`} width="100%" height="100%">
+        {/* 线圈绕自己圆心、换向器绕自己圆心，**同一个角度**（NB: luna/lunb 共用 rotation）。
+            换向器外径恒定，所以转起来环的外沿始终压在两侧碳刷上，不会缩进脱开。 */}
+        <g dangerouslySetInnerHTML={{ __html: t.rotorBody(cid, deg) }} />
+        {/* 碳刷压在换向器前面（不随转子转） */}
+        <g dangerouslySetInnerHTML={{ __html: t.brushBody() }} />
+      </svg>
+    </div>
+  )
+}
 
 /* =======================  连续软电线（贝塞尔电缆）  =======================
  * 曾经的 Verlet 粒子链靠重力松弛定形：会坠成圆底袋，还得画成点状才看得出松紧——不像真导线。
@@ -890,7 +942,12 @@ export default function ElectricSvgLabScene() {
       // live：开关合上、线圈里真流过电流时才着色（未接线 / 断路时 _I≈0）
       return { mode: rheostatMode(wired), live: Math.abs(o._I || 0) > 1e-3 }
     }
-    if (c.type === 'motor') return { I: o._I || 0 }
+    if (c.type === 'motor') {
+      const Im = o._I || 0
+      /* 转子永远交给 <MotorSpin>（rAF 真转，静止时就停在上一角度）；卡片只画定子/电刷立柱/底座。
+         这样启停不会"跳一下"（不会从已转角度跳回 0°），也不会出现两份转子。 */
+      return { I: Im, hideRotor: true }
+    }
     if (c.type === 'diode') return { on: !!o._on, rev: !o._on && (o._Vd || 0) < -0.3 }
     if (c.type === 'fuse') return { blown: !!o._blown, I: o._I || 0 }
     if (c.type === 'testPencil') return { glow: !!o._glow }
@@ -1109,7 +1166,26 @@ export default function ElectricSvgLabScene() {
               })()}
             </>
           ) : (
-          <div className={`esvg-canvas${dissect ? ' dissect' : ''}`} ref={canvasRef}>
+          <div className={`esvg-canvas${dissect ? ' dissect' : ''}`} ref={canvasRef}
+            /* 接线柱优先命中：导线层的"点击热区"（18px 透明描边）在 z-index 上压着元件层，
+               导线从接线柱上经过时会把点接线柱的点击吃掉 —— 用户点了半天接不上（读数一直是"未通电"）。
+               所以在捕获阶段先按坐标判定：落在任一接线柱 14px 内就直接当点接线柱，不再往下传。 */
+            onPointerDownCapture={(e) => {
+              if (view3d) return
+              const p = canvasPoint(e)
+              for (const c of comps) {
+                const t = T(c)
+                if (!t || !t.terminals) continue
+                for (const tm of t.terminals) {
+                  if (Math.abs(p.x - (c.x + tm.x)) <= 14 && Math.abs(p.y - (c.y + tm.y)) <= 14) {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onTermDown(e, c, tm.id)
+                    return
+                  }
+                }
+              }
+            }}>
             {/* 导线层（连续电缆：落影/外皮/本色/上偏高光 + 两端护套） */}
             <svg className="esvg-wirelayer" width={CW} height={CH}>
               {wires.map((w) => {
@@ -1175,6 +1251,7 @@ export default function ElectricSvgLabScene() {
                   >
                     <div className="boxhl" />
                     <div dangerouslySetInnerHTML={{ __html: t.render(c, dyn) }} />
+                    {c.type === 'motor' && <MotorSpin cid={`esmm${c.id}`} I={dyn.I} />}
                     {t.terminals.map((tm) => (
                       <div
                         key={tm.id}
