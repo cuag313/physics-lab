@@ -104,6 +104,7 @@ export const TERM_IDS = {
   resistor15: ['a', 'b'],
   switch2: ['com', 'a', 'b'],        // 单刀双掷：com 刀闸，a/b 两个掷点
   motor: ['a', 'b'],                 // 小电动机：两接线柱
+  motorNB: ['a', 'b'],               // 电动机（NB 252 整机贴图款）：两接线柱
   diode: ['a', 'k'],                 // a=阳极（长脚） k=阴极（短脚）
   fuse: ['a', 'b'],                  // 保险丝：两端接线柱
   testPencil: ['tip', 'tail'],       // 测电笔：笔尖金属 / 笔尾金属体
@@ -376,7 +377,7 @@ export function solveCircuit(comps, wires, opts) {
       stampR(A, com, nb, Rb)
       els.push({ kind: 'R', a: com, b: na, R: Ra, comp: c, tA: 'com', tB: 'a' })
       els.push({ kind: 'R', a: com, b: nb, R: Rb, comp: c, tA: 'com', tB: 'b' })
-    } else if (c.type === 'motor') {
+    } else if (c.type === 'motor' || c.type === 'motorNB') {
       const a = netOf(c, 'a')
       const bb = netOf(c, 'b')
       stampR(A, a, bb, CFG.MOTOR_R)
@@ -595,7 +596,7 @@ export function solveCircuit(comps, wires, opts) {
     } else if (c.type === 'switch2') {
       o._I = Math.max(o._I, Math.abs(I)) // 刀闸 + 两个掷点共 2 支路，取大者
       o._pos = (c.pos ?? 0) === 1 ? 1 : 0
-    } else if (c.type === 'motor') {
+    } else if (c.type === 'motor' || c.type === 'motorNB') {
       o._I = Math.abs(I)
       o._Iraw = I                 // 带符号：接线柱 1、2 接反 → 电流反向 → 转子反转
       o._P = I * I * CFG.MOTOR_R

@@ -23,6 +23,7 @@ import {
   wireCurve, curveD, curveMid, wireLayers, wrapLayers,
 } from '../render/wireSvg.js'
 import MotorRotorLayer from './MotorRotorLayer.jsx'
+import MotorNBSpinLayer from './MotorNBSpinLayer.jsx'
 import HandCrankLayer from './HandCrankLayer.jsx'
 
 /* 画布逻辑尺寸（与完整实验室一致的 1800×1100 比例，内部等比缩放适配容器） */
@@ -1223,6 +1224,10 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor, emptyHint, autoSp
       const raw = o._Iraw || 0
       return { I: Math.abs(o._I || 0), dir: raw < -1e-6 ? -1 : 1, hideRotor: true }
     }
+    // 电动机（NB 252 整机贴图款）：线圈 28 帧逐帧换，交给 <MotorNBSpinLayer>
+    if (c.type === 'motorNB') {
+      return { I: o._Iraw || 0, motorLayer: true }
+    }
     if (c.type === 'diode') {
       /* 发光二极管：正向导通才亮（_Vd = 阳—阴电位差，反向截止时给个反向标记） */
       return { on: !!o._on, rev: (o._Vd || 0) < -0.1 }
@@ -1785,9 +1790,12 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor, emptyHint, autoSp
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => { e.stopPropagation(); removeComp(c.id) }}
                 >✕</div>
-                <div dangerouslySetInnerHTML={{ __html: t.render(c, dyn) }} />
+                <div dangerouslySetInnerHTML={{ __html: t.render(c, { ...dyn, dissect, motorCut }) }} />
                 {c.type === 'motor' && (
                   <MotorRotorLayer cid={`esmm${c.id}`} I={dyn.I} dir={dyn.dir} />
+                )}
+                {c.type === 'motorNB' && (
+                  <MotorNBSpinLayer I={dyn.I} />
                 )}
                 {(c.type === 'handGenerator' || c.type === 'handGeneratorDC') && (
                   <HandCrankLayer id={c.id} crankRef={crankRef} />

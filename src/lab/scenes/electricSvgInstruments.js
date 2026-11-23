@@ -10,6 +10,9 @@
 import { capPaint } from '../theme/termColors.js'
 
 export const FIG = '/physics-lab/assets/equipment/fig'
+/* NB 原厂电动机贴图（audit/nb_gen/motor_export.py 从 D:\NB物理实验 的加密图集里裁出来的） */
+export const MOTOR_FIG = '/physics-lab/assets/equipment/motor'
+export const motorURL = (file) => `${MOTOR_FIG}/${file}?v=20261123a`
 /* 实拍图版本号：同名图片被覆盖后浏览器会继续用旧缓存（元件库缩略图尤其明显），
    所有 fig 图片 URL 统一带这串版本参数，改图时把它 +1 即可强制刷新。 */
 export const FIG_V = '20261120f'
@@ -1334,6 +1337,56 @@ export function handGenSVG(bodyFile, hideCrank) {
     </svg>`
 }
 
+/* ── 电动机（NB electrical/ElectriMotorElectri 的原厂分层贴图）─────────────────────
+ * NB「电动机原理」（nobook.db → experiments id 252）那台机器，就是这张图集里的 `电机1.png`：
+ * 左红 N / 右蓝 S 两块弧形极靴、极间圆形磁场间隙、灰色小底座 + 两根细立柱（电刷/支架）+ 左黑右红两接线柱。
+ * 图集 58 帧已按 atlas 坐标裁出来（audit/nb_gen/motor_export.py）：
+ *   机身 mt_body.png 457×443；极性反像 mt_body_rev.png（N/S 对调，用于"对调磁极"演示）；
+ *   线圈整周 28 帧 mt_coil_sheet.png（每帧 191×324 横排）；换向器环 28 帧 mt_ring_sheet.png（每帧 81×85）。
+ * 叠放位置是拿 28 帧在机身上逐帧对出来的（不是估的）：
+ *   线圈 (124,37) 191×324 —— 线圈环中心正落在磁场间隙中心；
+ *   换向器 (180,288) 81×85 —— 正坐在两根立柱之间的电刷缝里，线圈两条引线的末端压进环口。
+ * 卡片按 0.5 缩到 229×222；线圈/换向器的转动交给 <MotorNBSpinLayer> 每帧换帧号，
+ * 卡片自己只在缩略图（dyn.motorLayer 不设）里静态画第 1 帧。 */
+export const MOTOR_NB = {
+  aw: 457, ah: 443, s: 0.5,
+  coil: { x: 124, y: 37, w: 191, h: 324, n: 28 },
+  ring: { x: 180, y: 288, w: 81, h: 85, n: 28 },
+  terms: { a: { x: 155, y: 406 }, b: { x: 296, y: 406 } },
+}
+
+/** 第 k 帧盖上去的 <image>：横排图集用 clip 裁出那一格（不用 JS 重画图） */
+export function motorFrameImg(sheet, box, k, cid, n) {
+  const i = ((Math.floor(k) % n) + n) % n
+  return `<g clip-path="url(#${cid})"><image href="${motorURL(sheet)}"
+      x="${box.x - i * box.w}" y="${box.y}" width="${box.w * n}" height="${box.h}"
+      preserveAspectRatio="none"/></g>`
+}
+
+/**
+ * 电动机整机（机身 + 可选线圈/换向器某一帧）
+ * @param {object} o
+ * @param {'mt_body.png'|'mt_body_rev.png'} o.body 机身贴图（对调磁极时用反像）
+ * @param {number|null} o.coilFrame 线圈帧号（null = 不画线圈）
+ * @param {number|null} o.ringFrame 换向器帧号（null = 不画）
+ * @param {string} o.cid clipPath id（同一页面多台机器不能重名）
+ * @param {number} [o.scale] 卡片缩放（缺省 0.5）
+ */
+export function motorNBSVG({ body = 'mt_body.png', coilFrame = 0, ringFrame = 0, cid = 'nbm', scale = MOTOR_NB.s }) {
+  const m = MOTOR_NB
+  const w = m.aw * scale, h = m.ah * scale
+  const clip = []
+  if (coilFrame != null) clip.push(`<clipPath id="${cid}c"><rect x="${m.coil.x}" y="${m.coil.y}" width="${m.coil.w}" height="${m.coil.h}"/></clipPath>`)
+  if (ringFrame != null) clip.push(`<clipPath id="${cid}r"><rect x="${m.ring.x}" y="${m.ring.y}" width="${m.ring.w}" height="${m.ring.h}"/></clipPath>`)
+  return `
+    <svg width="${w}" height="${h}" viewBox="0 0 ${m.aw} ${m.ah}" style="display:block">
+      ${clip.length ? `<defs>${clip.join('')}</defs>` : ''}
+      <image href="${motorURL(body)}" x="0" y="0" width="${m.aw}" height="${m.ah}" preserveAspectRatio="none"/>
+      ${coilFrame == null ? '' : motorFrameImg('mt_coil_sheet.png', m.coil, coilFrame, `${cid}c`, m.coil.n)}
+      ${ringFrame == null ? '' : motorFrameImg('mt_ring_sheet.png', m.ring, ringFrame, `${cid}r`, m.ring.n)}
+    </svg>`
+}
+
 export const TYPES = {
   /* ── 电池组（两节干电池串联 3V，平放电池槽实拍图；黑/红柱就是照片上的接线柱，不再另画帽子） ──
    * 图 battery_c.png 已按实体紧裁（原图 y 92~164）并 4 倍放大锐化，1024×288，按 150×42 等比贴。
@@ -2262,6 +2315,38 @@ export const TYPES = {
     crank: HG_CRANK,
     render(c, dyn = {}) {
       return handGenSVG('hg_body_dc.png', !!dyn.hideCrank)
+    },
+  },
+
+  /* ── 电动机（NB 252「电动机原理」的整机，见上方 MOTOR_NB 说明）──
+   * 卡片 229×222（0.5 版）；线圈/换向器的转动由 <MotorNBSpinLayer> 叠层每帧换帧号，
+   * 卡片在 dyn.motorLayer 时只画机身（否则静态第 1 帧会和运动层叠成双影）。 */
+  motorNB: {
+    label: '电动机', w: 229, h: 222, meter: true,
+    terminals: [
+      { id: 'a', label: '−', name: '黑柱（负）', x: 77.5, y: 203 },
+      { id: 'b', label: '+', name: '红柱（正）', x: 148, y: 203 },
+    ],
+    render(c, dyn = {}) {
+      const cid = `esnb${c.id}`
+      const still = !dyn.motorLayer
+      /* 「内部结构（透视）」：这台机器的内部本来就在明处，只加三条带引线的标注 */
+      const labels = dyn.dissect ? `
+        <g font-family="Microsoft YaHei, sans-serif" font-size="20" font-weight="700"
+           fill="#B45309" stroke="#FFFBEB" stroke-width="4" paint-order="stroke">
+          <path d="M318 96 H352" stroke="#B45309" stroke-width="3" fill="none"/>
+          <text x="358" y="103">线圈（转子）</text>
+          <path d="M262 330 H300" stroke="#B45309" stroke-width="3" fill="none"/>
+          <text x="306" y="337">换向器 · 电刷</text>
+          <path d="M176 420 H150" stroke="#B45309" stroke-width="3" fill="none"/>
+          <text x="30" y="427">接线柱</text>
+        </g>` : ''
+      return motorNBSVG({
+        body: dyn.swapMag ? 'mt_body_rev.png' : 'mt_body.png',
+        coilFrame: still ? 0 : null,
+        ringFrame: still ? 0 : null,
+        cid,
+      }).replace('</svg>', `${labels}</svg>`)
     },
   },
 
