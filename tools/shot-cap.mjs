@@ -83,6 +83,12 @@ await clickText('电容器充放电', { exact: true })
 await sleep(2400)
 
 if (MODE === 'c1') { await clickArea('switchBtn'); await sleep(1200) }
+if (MODE === 'c0') { await clickArea('switchBtn'); await sleep(120) }
+if (MODE === 'c0fast') {
+  const a = await areaRect('switchBtn')
+  await page.mouse.click(a.x + a.w / 2, a.y + a.h / 2)
+  await sleep(160)
+}
 if (MODE === 'c1full') { await clickArea('switchBtn'); await sleep(6500) }
 if (MODE === 'c2done') { await clickArea('step2'); await sleep(300); await clickArea('switchBtn'); await sleep(6800) }
 if (MODE === 'd2' || MODE === 'c2') {
@@ -101,15 +107,16 @@ if (MODE === 'step3' || MODE === 'g3') {
     await sleep(1600)
   }
 }
-if (MODE === 'diy' || MODE === 'diyrun' || MODE === 'diyopen') {
+if (MODE === 'diy' || MODE === 'diyrun' || MODE === 'diyopen' || MODE === 'diyfast') {
   await clickText('自己动手')
   await sleep(900)
   await clickArea('diyStandard')
   await sleep(700)
   if (MODE === 'diyrun') { await clickArea('diySwitch'); await sleep(1500) }
+  if (MODE === 'diyfast') { await clickArea('diySwitch'); await sleep(200) }
   if (MODE === 'diyopen') { await clickArea('diySwitch'); await sleep(300); await clickArea('diySwitch'); await sleep(300) }
 }
-await sleep(700)
+if (MODE !== 'c0fast') await sleep(700)
 await page.screenshot({ path: OUT })
 const dbg = await page.evaluate(() => {
   const c = document.querySelector('canvas')
