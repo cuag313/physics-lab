@@ -79,6 +79,9 @@ export const CFG = {
   GALV_FS: 0.15,                // 满偏电流（A）；3V + 50Ω 约 40% 偏转，刚好看着舒服
   // 奥斯特实验（电生磁）：板上那段直导线近似理想导线，磁场强弱 ∝ 电流
   OSTER_WIRE_R: 0.02,           // 直导线电阻（Ω）
+  // 导体棒 AB（自己动手台里的"切割磁感线"那根）：静止时是一小段导体，动起来才是电源
+  ROD_R: 0.2,                   // 棒的内阻（Ω，一段几十厘米的金属棒，近似一条粗导线）
+  ROD_K: 0.028,                 // ε = ROD_K × 横向速度(逻辑 px/s) × 缝内有效长度比 → 慢拖约 1/3 偏，快拖能打满
 }
 
 /** 电阻箱拨盘 → 阻值（dials: [×1k, ×100, ×10, ×1]，各位 0~9） */
@@ -130,6 +133,7 @@ export const TERM_IDS = {
   galvanometer: ['neg', 'pos'],      // 灵敏电流计（中央零点，两柱）：电磁感应实验专用
   handGenerator: ['a', 'b'],         // 手摇发电机：黑柱 a（负）/ 红柱 b（正）
   handGeneratorDC: ['a', 'b'],       // 手摇发电机（直流款，换向器整流，同样的两柱）
+  conductorRod: ['a', 'b'],          // 导体棒 AB：两端接线柱；在磁铁缝里拖 → 当感应电源（ε = k·v）
 }
 
 const keyOf = (cid, tid) => cid + ':' + tid
@@ -291,6 +295,19 @@ export function solveCircuit(comps, wires, opts) {
       const bb = netOf(c, 'b')
       const emf = Number(c.emf) || 0
       const rIn = CFG.HANDGEN_R
+      const g = 1 / rIn
+      A[a][a] += g; A[bb][bb] += g; A[a][bb] -= g; A[bb][a] -= g
+      b[a] -= emf / rIn
+      b[bb] += emf / rIn
+      els.push({ kind: 'V', a, b: bb, V: emf, r: rIn, comp: c, tA: 'a', tB: 'b' })
+    } else if (c.type === 'conductorRod') {
+      /* 导体棒 AB：静止时它就是一根 0.2 Ω 的导体（接在电路里相当于一段粗导线）；
+         在蹄形磁铁的缝里横向拖它，BuilderSVG 按 ε = ROD_K × v × 缝内有效长度写回 c.emf，
+         这里按"电源 + 内阻"处理 —— 切割磁感线才有电动势，停住就没有（ε=0 退化成导体）。 */
+      const a = netOf(c, 'a')
+      const bb = netOf(c, 'b')
+      const emf = Number(c.emf) || 0
+      const rIn = CFG.ROD_R
       const g = 1 / rIn
       A[a][a] += g; A[bb][bb] += g; A[a][bb] -= g; A[bb][a] -= g
       b[a] -= emf / rIn
@@ -580,6 +597,10 @@ export function solveCircuit(comps, wires, opts) {
     } else if (c.type === 'breaker') {
       // 双极各一条支路，读数取两路中较大的那个（合闸后两路一样）
       o._I = Math.max(o._I || 0, Math.abs(I))
+    } else if (c.type === 'conductorRod') {
+      // 棒两端的"端电压"= ε − I·r；没在动 / 没接线时都是 0，不算任何读数
+      o._I = I
+      o._emf = Number(c.emf) || 0
     } else if (c.type === 'rheostat') {
       // 滑变被拆成 R1(bl→杆) / R2(杆→br) 两个串联电阻，逐段写回；
       // 取两者较大值：滑块停在某端时另一段的电流≈0，若直接覆盖会把「线圈有电流」抹成 0

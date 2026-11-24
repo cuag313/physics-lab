@@ -742,6 +742,10 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor, emptyHint, autoSp
      把瞬时电动势 e(t) 折算进求解输入（不写回 comps，免得把拖动中的元件对象改脏） ── */
   const crankRef = useRef(new Map())
   const [crankTick, setCrankTick] = useState(0)
+  /* ── 导体棒：拖动时的横向速度 + 落在磁铁缝里的比例（松手清 0），
+     rodTick 只用来在"松手/停住"那一刻强制重解一次，让电动势真的回到 0 ── */
+  const rodRef = useRef(new Map())
+  const [rodTick, setRodTick] = useState(0)
   const crankOnRef = useRef(false)
   /* 工具栏上的「摇起来 / 停止」：开着时把这台机器的转速拉到 spinSpeed 并保持，
      学生不用一直绕鼠标就能看见灯泡亮（按 Start 前先接好线） */
@@ -761,12 +765,40 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor, emptyHint, autoSp
       : Em * Math.sin(th)
     return { spd, e }
   }
+  const hasGenOn = comps.some((c) => c.type === 'handGenerator' || c.type === 'handGeneratorDC')
   const liveComps = () => {
-    if (!comps.some((c) => c.type === 'handGenerator' || c.type === 'handGeneratorDC')) return comps
+    const hasRod = comps.some((c) => c.type === 'conductorRod')
+    if (!hasGenOn && !hasRod) return comps
     return comps.map((c) => {
+      if (c.type === 'conductorRod') {
+        /* 导体棒：ε = ROD_K × 横向速度 × 缝内有效长度比。
+           rodRef 里的 v 是"拖动中"的瞬时速度（松手 / 停下来就清 0），
+           inK 是棒有多少落在蹄形磁铁的两极之间 —— 不在磁场里，怎么拖都没有电动势。 */
+        const st = rodRef.current.get(c.id)
+        const k = st ? Math.max(0, Math.min(1, st.k || 0)) : 0
+        const age = st && st.t ? (performance.now() - st.t) / 1000 : 9
+        const fade = age > 0.1 ? Math.max(0, 1 - (age - 0.1) / 0.3) : 1
+        const emf = k > 0 ? (st.v || 0) * CFG.ROD_K * k * fade : 0
+        return { ...c, emf }
+      }
       const g = handGenOf(c)
       return g ? { ...c, emf: g.e } : c
     })
+  }
+  /* 导体棒落在哪只蹄形磁铁的缝里？返回 0~1 的"有效长度比"（棒的横向跨度有多少压进缝内）。
+     磁铁几何跟 electricSvgInstruments.js 里的 horseshoeMagnet 对齐：
+     x0=16 / xR=216 / yN=156 / yB=260，棒的中点 = (x+105, y+42)，棒横跨 x+20 … x+190。 */
+  const rodFieldK = (cx, cy, list) => {
+    const bx1 = cx + 20, bx2 = cx + 190, by = cy + 42
+    let k = 0
+    for (const m of list) {
+      if (m.type !== 'horseshoeMagnet') continue
+      const gy1 = m.y + 156, gy2 = m.y + 260
+      if (by < gy1 || by > gy2) continue
+      const ov = Math.min(bx2, m.x + 216) - Math.max(bx1, m.x + 16)
+      if (ov > 0) k = Math.max(k, Math.min(1, ov / 170))
+    }
+    return k
   }
   useEffect(() => {
     /* 33 ms ≈ 30 fps：快摇时线圈 12 Hz 交流，70 ms 采样会跟它"锁相"（指针看着只往一边摆），
@@ -790,7 +822,7 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor, emptyHint, autoSp
   }, [])
 
   /* ── 求解（comps/wires 变化即重算）── */
-  const solved = useMemo(() => solveCircuit(liveComps(), wires), [comps, wires, crankTick])
+  const solved = useMemo(() => solveCircuit(liveComps(), wires), [comps, wires, crankTick, rodTick])
   solvedRef.current = solved
 
   const nextId = () => uidRef.current++
@@ -1008,6 +1040,19 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor, emptyHint, autoSp
     const d = dragRef.current
     if (d && d.kind === 'move') {
       const p = canvasPoint(e)
+      /* 导体棒：这一下横向走了多快、有多少还在磁铁的缝里 → 电动势按它现算。
+         速度取"这次采样 + 上次平滑"，鼠标 8 ms 一个事件太抖，单看一次会跳。 */
+      const c0 = compsRef.current.find((x) => x.id === d.compId)
+      if (c0 && c0.type === 'conductorRod') {
+        const t = T(c0)
+        const nx = Math.max(-10, Math.min(CW - t.w + 10, p.x - d.grab.dx))
+        const now = performance.now()
+        const dt = Math.max(4, now - (d.lt || now)) / 1000
+        const vi = (nx - (d.lx ?? nx)) / dt
+        const v = Math.max(-900, Math.min(900, 0.65 * (d.v || 0) + 0.35 * vi))
+        d.lx = nx; d.lt = now; d.v = v
+        rodRef.current.set(c0.id, { v, k: rodFieldK(nx, c0.y, compsRef.current), t: now })
+      }
       setComps((cs) => cs.map((c) => {
         if (c.id !== d.compId) return c
         const t = T(c)
@@ -1098,6 +1143,12 @@ const BuilderSVG = forwardRef(function BuilderSVG({ wireColor, emptyHint, autoSp
     const d = dragRef.current
     dragRef.current = null
     if (d && d.kind === 'move') {
+      /* 导体棒松手：速度清零、电动势回到 0，指针该回零位（强制重解一次） */
+      const c0 = compsRef.current.find((x) => x.id === d.compId)
+      if (c0 && c0.type === 'conductorRod') {
+        rodRef.current.set(c0.id, { v: 0, k: 0, t: 0 })
+        setRodTick((n) => n + 1)
+      }
       if (!d.moved) {
         const c = compsRef.current.find((x) => x.id === d.compId)
         const now = performance.now()

@@ -3227,6 +3227,142 @@ export const TYPES = {
       ${termDotSVG(138, 112, false, '+')}
     </svg>` }
   },
+
+  /* ── 蹄形磁铁（**摆件**：terminals 为空，不进电路图，只提供"磁场"这个场景）──
+   * 与 Tab1 的 MAG 同口径缩小：L=200、臂厚 t=64、缝 GAP=104、进深 (68,−40)；
+   * 磁感线 3 排 × 5 条：横向错开 0 / 0.5 / 1 格（避免两排叠成双线），
+   * 落点 253 / 242.5 / 232（近低远高 = 纵深），箭头带倒钩、近大远小、近浓远淡。 */
+  horseshoeMagnet: {
+    label: '蹄形磁铁', w: 300, h: 340,
+    terminals: [],
+    render() {
+      const x0 = 16, L = 200, T = 64, GAP = 104, DX = 68, DY = -40
+      const yN = 156                 // 红臂（N）前立面下沿
+      const yS = yN + T + GAP        // 蓝臂（S）前立面下沿 = 324
+      const yB = yN + GAP            // 缝隙底（蓝臂顶面前缘）= 260
+      const xR = x0 + L              // 臂右端 = 216
+      const xRB = xR + DX            // 进深后的右端 = 284
+
+      /* 磁感线：5 列 × 3 排（列宽 30，占满两极之间约 60% 的宽度） */
+      const N = 5
+      const sp = 30
+      const xs = Array.from({ length: N }, (_, i) => x0 + 40 + sp * i) // 56…176
+      const ROWS = [
+        { k: 1, alpha: 0.32, lw: 1.7, sx: 1 },
+        { k: 0.5, alpha: 0.66, lw: 2.4, sx: 0.5 },
+        { k: 0, alpha: 1, lw: 3.2, sx: 0 },
+      ]
+      const land = (k) => 253 + (232 - 253) * k // 近 253 / 远 232
+      let lines = ''
+      let heads = ''
+      for (const row of ROWS) {
+        const ox = sp * row.sx
+        const ay = land(row.k)
+        for (const x of xs) {
+          const cx = x + ox
+          lines += `<line x1="${cx}" y1="${yN - 10}" x2="${cx}" y2="${ay}" stroke="rgba(78,82,90,${row.alpha})" stroke-width="${row.lw}"/>`
+          const s = 1 - 0.5 * row.k
+          const w = 5.4 * s, hh = 13.5 * s
+          heads += `<path d="M ${cx} ${ay + 1.4} L ${cx - w} ${ay - hh} L ${cx} ${ay - (hh - 3.2 * s)} L ${cx + w} ${ay - hh} Z"
+            fill="rgba(104,112,122,${row.alpha})" stroke="rgba(255,255,255,${0.34 * row.alpha})" stroke-width="0.8"/>`
+        }
+      }
+
+      /* 一块面（前立面）的 path 数据，省得手写重复 */
+      const face = (ya, yb) => `M ${x0} ${ya} L ${xR} ${ya} L ${xR} ${yb} L ${x0} ${yb} Z`
+      /* 顶面：后缘（进深）+ 左端一道 U 形弯头的肩（比 Tab1 收敛些，这个尺寸下鼓太大像浪） */
+      const topFace = (ya) => `M ${x0} ${ya - T} L ${xR} ${ya - T} L ${xRB} ${ya - T + DY} L ${x0 + DX} ${ya - T + DY}
+        Q ${x0 + DX - 20} ${ya - T + DY + 3} ${x0 + DX - 34} ${ya - T + DY - 3}
+        Q ${x0 + 8} ${ya - T - 14} ${x0} ${ya - T} Z`
+      const hump = (ya) => `M ${x0} ${ya - T} Q ${x0 + 8} ${ya - T - 14} ${x0 + DX - 34} ${ya - T + DY - 3}
+        Q ${x0 + DX - 20} ${ya - T + DY + 3} ${x0 + DX} ${ya - T + DY}`
+      const endFace = (ya) => `M ${xR} ${ya} L ${xR} ${ya - T} L ${xRB} ${ya - T + DY} L ${xRB} ${ya + DY} Z`
+
+      return `
+    <svg width="300" height="340" viewBox="0 0 300 340">
+      <defs>
+        <linearGradient id="hm-nf" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#D8605E"/><stop offset="0.55" stop-color="#CE504E"/><stop offset="1" stop-color="#B64644"/>
+        </linearGradient>
+        <linearGradient id="hm-sf" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#5B8ED8"/><stop offset="0.55" stop-color="#4F82CF"/><stop offset="1" stop-color="#4474BC"/>
+        </linearGradient>
+        <linearGradient id="hm-nc" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#AD3D3B"/><stop offset="1" stop-color="#93332F"/>
+        </linearGradient>
+        <linearGradient id="hm-sc" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#365D99"/><stop offset="1" stop-color="#2C4C7E"/>
+        </linearGradient>
+        <linearGradient id="hm-cav" x1="0" y1="0" x2="0.35" y2="1">
+          <stop offset="0" stop-color="#DAD3C2"/><stop offset="0.45" stop-color="#E9E4D6"/><stop offset="1" stop-color="#F7F3EA"/>
+        </linearGradient>
+      </defs>
+
+      <!-- 缝隙的"空腔"底色（最底层） -->
+      <path d="M ${x0} ${yN} L ${xR} ${yN} L ${xRB} ${yN + DY} L ${xRB} ${yB + DY} L ${xR} ${yB} L ${x0} ${yB} Z"
+        fill="url(#hm-cav)"/>
+
+      <!-- S 极（蓝臂）：最下层 -->
+      <path d="${topFace(yS)}" fill="#29508A"/>
+      <path d="${face(yS - T, yS)}" fill="url(#hm-sf)"/>
+      <path d="${endFace(yS)}" fill="url(#hm-sc)"/>
+      <path d="M ${x0} ${yS - T} L ${xR} ${yS - T}" stroke="rgba(255,255,255,0.5)" stroke-width="1.4"/>
+      <path d="${endFace(yS)}" fill="none" stroke="rgba(0,0,0,0.18)" stroke-width="1.1"/>
+      <path d="${hump(yS)}" fill="none" stroke="rgba(255,255,255,0.42)" stroke-width="1.4"/>
+
+      <!-- 磁感线 + 箭头（压在蓝极顶面上） -->
+      ${lines}
+      ${heads}
+
+      <!-- N 极（红臂）：最上层 -->
+      <path d="${topFace(yN)}" fill="#B94442"/>
+      <path d="${face(yN - T, yN)}" fill="url(#hm-nf)"/>
+      <path d="${endFace(yN)}" fill="url(#hm-nc)"/>
+      <path d="M ${x0} ${yN - T} L ${xR} ${yN - T}" stroke="rgba(255,255,255,0.45)" stroke-width="1.4"/>
+      <path d="${endFace(yN)}" fill="none" stroke="rgba(0,0,0,0.2)" stroke-width="1.1"/>
+      <path d="${hump(yN)}" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="1.4"/>
+      <text x="${xR + 30}" y="${yN - 34}" text-anchor="middle" font-size="22" font-style="italic"
+        font-weight="700" fill="#FFFFFF" fill-opacity="0.92">N</text>
+      <text x="${xR + 30}" y="${yS - 34}" text-anchor="middle" font-size="22" font-style="italic"
+        font-weight="700" fill="#FFFFFF" fill-opacity="0.92">S</text>
+    </svg>` }
+  },
+
+  /* ── 导体棒 AB：两端是可接线的柱（A / B），静止时就等于一根导体（0.2 Ω）；
+     把它放进蹄形磁铁的缝里左右拖，BuilderSVG 按 ε = k·v·有效长度 写回 c.emf，
+     它就成了电路里那只"感应电源" —— 接上灵敏电流计就能看见指针跟着摆 ── */
+  conductorRod: {
+    label: '导体棒', w: 210, h: 84,
+    terminals: [
+      { id: 'a', label: 'A', name: 'A 端接线柱', x: 20, y: 64 },
+      { id: 'b', label: 'B', name: 'B 端接线柱', x: 190, y: 20 },
+    ],
+    render() {
+      const ax = 20, ay = 64, bx = 190, by = 20
+      return `
+    <svg width="210" height="84" viewBox="0 0 210 84">
+      <defs>
+        <linearGradient id="cr-body" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#5C6874"/><stop offset="0.42" stop-color="#D8E2EA"/>
+          <stop offset="0.7" stop-color="#F4F8FB"/><stop offset="1" stop-color="#8FA0AE"/>
+        </linearGradient>
+      </defs>
+      <line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="#3A4652" stroke-width="12" stroke-linecap="round" stroke-opacity="0.25"/>
+      <line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="#39434E" stroke-width="11" stroke-linecap="round"/>
+      <line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="url(#cr-body)" stroke-width="7.6" stroke-linecap="round"/>
+      <line x1="${ax}" y1="${ay}" x2="${bx}" y2="${by}" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-opacity="0.7"/>
+      <!-- 两端接头：黑绝缘帽 + 一圈暖色 -->
+      <circle cx="${ax}" cy="${ay}" r="6.6" fill="#2B3642"/>
+      <circle cx="${ax}" cy="${ay}" r="2.4" fill="#E8B84B"/>
+      <circle cx="${bx}" cy="${by}" r="6.6" fill="#2B3642"/>
+      <circle cx="${bx}" cy="${by}" r="2.4" fill="#E8B84B"/>
+      <!-- A / B 标注 -->
+      <circle cx="${ax - 12}" cy="${ay + 10}" r="7" fill="#FFFFFF" stroke="#C9B18A" stroke-width="1"/>
+      <text x="${ax - 12}" y="${ay + 13.5}" text-anchor="middle" font-size="9" font-weight="700" fill="#8A6A3A">A</text>
+      <circle cx="${bx + 12}" cy="${by - 10}" r="7" fill="#FFFFFF" stroke="#C9B18A" stroke-width="1"/>
+      <text x="${bx + 12}" y="${by - 6.5}" text-anchor="middle" font-size="9" font-weight="700" fill="#8A6A3A">B</text>
+    </svg>` }
+  },
 }
 
 /* 手摇发电机配套的 6 V 小灯泡：画法 / 尺寸 / 接线柱与 3 V 小灯泡完全一样（直接沿用），

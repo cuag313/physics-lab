@@ -683,3 +683,43 @@ describe('家庭电路真器材（交流电源 · 空气开关 · 面板开关 �
     expect(near(out[3]._I, 220 / (CFG.BULB_R + CFG.MAINS_R), 0.02)).toBe(true)
   })
 })
+
+/* 2026-11-24：导体棒 AB（自己动手台的"切割磁感线"那根）
+   —— 接得上线、静止时就是一段导体、动起来才是电源（ε 由 BuilderSVG 按拖动速度写进 c.emf） */
+describe('导体棒 AB（conductorRod）', () => {
+  it('TERM_IDS 注册：两端 A / B 两个接线柱', () => {
+    expect(TERM_IDS.conductorRod).toEqual(['a', 'b'])
+  })
+
+  it('静止（emf = 0）串在电池回路里 = 一段 0.2 Ω 导体，几乎不分压', () => {
+    const out = loop(
+      [{ id: 1, type: 'battery' }, { id: 2, type: 'conductorRod' }, { id: 3, type: 'bulb' }],
+      [
+        { id: 1, a: '1:p', b: '2:a' }, { id: 2, a: '2:b', b: '3:a' }, { id: 3, a: '3:b', b: '1:n' },
+      ])
+    expect(out[2]._emf).toBe(0)
+    expect(out[2]._I).toBeCloseTo(3 / (CFG.BULB_R + CFG.ROD_R + CFG.VS.r), 4)
+    expect(Math.abs(out[2]._I)).toBeGreaterThan(0.5)
+  })
+
+  it('拖动时按「电源 + 内阻」出力：接灵敏电流计 I = ε/(R表+r棒)', () => {
+    const emf = 3
+    const out = loop(
+      [{ id: 1, type: 'conductorRod', emf }, { id: 2, type: 'galvanometer' }],
+      [{ id: 1, a: '1:b', b: '2:pos' }, { id: 2, a: '2:neg', b: '1:a' }])
+    expect(out[1]._emf).toBe(emf)
+    expect(Math.abs(out[2]._I)).toBeCloseTo(emf / (CFG.GALV_R + CFG.ROD_R), 6)
+    expect(Math.abs(out[2]._I)).toBeLessThan(CFG.GALV_FS * 1.001) // 3 V 不该打满
+  })
+
+  it('速度反向（ε 变号）→ 表针反偏：两次读数符号相反、大小相等', () => {
+    const mk = (emf) => loop(
+      [{ id: 1, type: 'conductorRod', emf }, { id: 2, type: 'galvanometer' }],
+      [{ id: 1, a: '1:b', b: '2:pos' }, { id: 2, a: '2:neg', b: '1:a' }])[2]._I
+    const right = mk(2.5)
+    const left = mk(-2.5)
+    expect(right).toBeGreaterThan(1e-4)
+    expect(left).toBeLessThan(-1e-4)
+    expect(right + left).toBeCloseTo(0, 9)
+  })
+})
