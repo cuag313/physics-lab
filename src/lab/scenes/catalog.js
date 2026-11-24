@@ -840,7 +840,7 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'electricFieldLine',
     name: '电场线与电场强度',
-    description: '模拟点电荷、平行板电容器的电场线分布，探究E=F/q',
+    description: '电场线按场强方向实时追踪：点电荷／电偶极子／平行板三种场源，拖动探针读任意点 E=kQ/r²、E=U/d 与受力 F=qE；自己动手自由布电荷看矢量叠加',
     category: 'electric',
     subCategory: '高中电磁学',
     difficulty: 2,
