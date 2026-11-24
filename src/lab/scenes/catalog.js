@@ -851,7 +851,7 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'electricPotential',
     name: '电势与电势差',
-    description: '等势面可视化，电场力做功与电势差关系 W=qU',
+    description: '点电荷 V=kQ/r 与同心等势面、偶极子等势线（处处垂直电场线）、A→B 电势差 W=qΔV 与路径无关；自己动手布电荷看电势标量叠加',
     category: 'electric',
     subCategory: '高中电磁学',
     difficulty: 3,
