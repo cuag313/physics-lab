@@ -60,6 +60,15 @@ const STEPS = [
   { key: 4, label: '④ 实验结论', sub: '由偏角反推静电力 F = mg tanθ，再验证 F = q·E ∝ Q/r²，理清"偏角只用来比较力的大小"' },
 ]
 
+// 自己动手（Tab2）要装配的器材
+const DIY_PARTS = [
+  { type: 'rig', no: '①', name: '底座支架', hint: '立杆 + 横杆，立在台面右侧' },
+  { type: 'A', no: '②', name: '带电球 A', hint: '大球，电荷分布在球表面' },
+  { type: 'B', no: '③', name: '点电荷 B', hint: '小球 + 绝缘细线，挂横杆上' },
+  { type: 'ruler', no: '④', name: '刻度尺', hint: '量两球球心距 r' },
+]
+const DIY_MAX_PTS = 6
+
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
 
 function coulombInfo(s) {
@@ -145,14 +154,16 @@ export default function CoulombLawScene() {
     dragSlider: null,
     toast: null,
     hover: null,
-    // Tab2 自己动手
-    components: [],
-    wires: [],
-    dragId: null,
-    dragOffX: 0, dragOffY: 0,
-    connecting: null,
-    nextId: 1,
-    wireColor: '#F44336',
+    // Tab2 自己动手：组装 → 测量取点 → 作图验证
+    diy: {
+      stage: 'assemble',                       // assemble | measure
+      placed: { rig: false, A: false, B: false, ruler: false },
+      hold: null,                              // 手上拿着的器材
+      dragType: null,
+      mx: 0, my: 0,
+      points: [],                              // { rCm, theta, F }
+      graph: false,
+    },
     _guideOpen: false,
   })
 
@@ -187,7 +198,7 @@ export default function CoulombLawScene() {
       canvasRef.current._clickAreas = []
       canvasRef.current._palAreas = []
       if (S.current.tab === 1) renderDemo(ctx, W, H)
-      else renderBuilder(ctx, W, H)
+      else renderDiy(ctx, W, H)
       canvasRef.current._dbg = {
         step: S.current.step,
         tab: S.current.tab,
@@ -195,6 +206,10 @@ export default function CoulombLawScene() {
         theta: coulombInfo(S.current).theta,
         records: S.current.records.length,
         compare: S.current.compare,
+        diyStage: S.current.diy.stage,
+        diyPlaced: Object.values(S.current.diy.placed).filter(Boolean).length,
+        diyPoints: S.current.diy.points.length,
+        graph: S.current.diy.graph,
         areas: (canvasRef.current._clickAreas || []).map((a) => ({ n: a.n || '', x: a.x, y: a.y, w: a.w, h: a.h })),
       }
     } catch (e) { console.error('render error:', e) }
@@ -296,7 +311,7 @@ export default function CoulombLawScene() {
   }
 
   // ─── 装置：立柱 + 横杆 + 悬挂点 + 两球 ───
-  function drawRig(ctx, G, s, info, gm) {
+  function drawRig(ctx, G, s, info, gm, opt = {}) {
     const { beamY, tableY, xA, AY, postX } = G
     const sc = G.sc || 1
 
@@ -395,9 +410,9 @@ export default function CoulombLawScene() {
     ctx.fillText('B', gm.ballX + gm.dir * (rB + 16 * sc), gm.ballY + 13 * sc)
     haloText(ctx, `${info.sameSign ? '+' : '−'}q`, gm.ballX, gm.ballY - rB - 14 * sc, info.sameSign ? C.pos : C.neg, 10 * sc)
 
-    // 点击 B 球切换电性（小球点电荷 → 热区放大到 14*sc）
+    // 点击 B 球切换电性（小球点电荷 → 热区放大到 14*sc）；自己动手时不允许切换（控制变量）
     const hitR = Math.max(rB, 14 * sc)
-    pushArea({
+    if (!opt.noToggle) pushArea({
       n: 'bBall',
       x: gm.ballX - hitR, y: gm.ballY - hitR, w: hitR * 2, h: hitR * 2,
       onClick: () => {
@@ -1100,129 +1115,585 @@ export default function CoulombLawScene() {
   }
 
   // ================================================================
-  //  Tab 2：自己动手（保留原有器材台）
+  //  Tab 2：自己动手 —— ① 组装装置 ② 测量取点 ③ 作图验证
   // ================================================================
-  function renderBuilder(ctx, W, H) {
-    const s = S.current
-    const palW = 150, palX = W - palW - 10
-
-    ctx.fillStyle = '#fff'; ctx.strokeStyle = '#e0e0e0'
-    ctx.beginPath(); ctx.roundRect(10, 10, palX - 25, H - 20, 8); ctx.fill(); ctx.stroke()
-
-    for (const wire of s.wires) {
-      const c1 = s.components.find(c => c.id === wire.from.compId)
-      const c2 = s.components.find(c => c.id === wire.to.compId)
-      if (!c1 || !c2) continue
-      const p1 = getTermPos(c1, wire.from.portIndex), p2 = getTermPos(c2, wire.to.portIndex)
-      ctx.strokeStyle = wire.color || s.wireColor; ctx.lineWidth = 2.5; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke(); ctx.lineCap = 'butt'
-    }
-    if (s.connecting) {
-      const c1 = s.components.find(c => c.id === s.connecting.compId)
-      if (c1) { const p1 = getTermPos(c1, s.connecting.portIndex); ctx.strokeStyle = '#FF9800'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(s.connecting.mx, s.connecting.my); ctx.stroke(); ctx.setLineDash([]) }
-    }
-    for (const comp of s.components) drawComp(ctx, comp)
-
-    const bx = 22, by = H - 130, bw = palX - 50
-    ctx.fillStyle = 'rgba(255,252,240,0.95)'; ctx.strokeStyle = '#ddd'
-    ctx.beginPath(); ctx.roundRect(bx, by, bw, s._guideOpen ? 118 : 36, 6); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#5D4037'; ctx.font = `bold 11px ${FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-    ctx.fillText('📋 操作说明', bx + 10, by + 18)
-    ctx.textAlign = 'right'; ctx.fillText(s._guideOpen ? '收起 ▲' : '展开 ▼', bx + bw - 10, by + 18)
-    pushArea({ x: bx - 5, y: by - 3, w: bw + 10, h: 42, onClick: () => { s._guideOpen = !s._guideOpen; forceUpdate(n => n + 1) } })
-    if (s._guideOpen) { ctx.textAlign = 'left'; ctx.font = `10px ${FONT}`; ['① 拖入电荷到画布', '② 调节电量和距离', '③ 观察力的大小和方向', '④ 右键删除电荷', '⑤ 同号相斥异号相吸'].forEach((l, i) => ctx.fillText(l, bx + 10, by + 40 + i * 15)) }
-    ctx.textBaseline = 'alphabetic'
-
-    drawPalette(ctx, palX, 10, palW, H - 20)
+  function renderDiy(ctx, W, H) {
+    if (S.current.diy.stage === 'assemble') renderDiyAssemble(ctx, W, H)
+    else renderDiyMeasure(ctx, W, H)
   }
 
-  function drawPalette(ctx, x, y, w, h) {
-    ctx.fillStyle = '#fafafa'; ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.roundRect(x, y, w, h, 8); ctx.fill(); ctx.stroke()
-    ctx.fillStyle = '#333'; ctx.font = `bold 12px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText('电学器材', x + w / 2, y + 10)
-    const items = [
-      { type: 'posCharge', name: '正电荷 +Q' },
-      { type: 'negCharge', name: '负电荷 -Q' },
-      { type: 'electrometer', name: '静电计（干扰）' },
-      { type: 'conductor', name: '导体球（干扰）' },
-      { type: 'insulator', name: '绝缘棒（干扰）' },
-      { type: 'ground', name: '接地线（干扰）' },
-    ]
-    const itemH = 30
-    for (let i = 0; i < items.length; i++) {
-      const iy = y + 32 + i * (itemH + 3)
-      if (iy + itemH > y + h - 75) break
-      ctx.fillStyle = '#fff'; ctx.strokeStyle = '#ccc'
-      ctx.beginPath(); ctx.roundRect(x + 6, iy, w - 12, itemH, 5); ctx.fill(); ctx.stroke()
-      drawPaletteIcon(ctx, x + 18, iy + itemH / 2, items[i].type)
-      ctx.fillStyle = '#333'; ctx.font = `10px ${FONT}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(items[i].name, x + 34, iy + itemH / 2)
-      canvasRef.current._palAreas.push({ x: x + 6, y: iy, w: w - 12, h: itemH, type: items[i].type })
+  function diyGeom(W, H) {
+    const palW = 174, palX = W - palW - 12
+    const org = { x: 14, y: 56 }
+    const aw = palX - 12 - org.x, ah = H - 18 - org.y
+    const sc = clamp(Math.min(aw / 980, ah / 640), 1, 1.55)
+    const area = { x0: 0, x1: aw / sc, y0: 0, y1: ah / sc }
+    const tableY = area.y1 - 52
+    const beamY = 56
+    const postX = area.x1 - 62
+    const xA = 126
+    const AY = tableY - 132
+    const slideX = xA + clamp((postX - xA) * 0.46, 130, 420)
+    const rulerY = Math.min(AY + 62, tableY - 30)
+    return { palW, palX, org, sc, area, tableY, beamY, postX, xA, AY, slideX, rulerY }
+  }
+  // 组装区坐标 → 画布坐标（右键判位用）
+  const diyToLocal = (A, x, y) => ({ x: (x - A.org.x) / A.sc, y: (y - A.org.y) / A.sc })
+
+  // ────────── ① 组装 ──────────
+  function renderDiyAssemble(ctx, W, H) {
+    const s = S.current, dy = s.diy
+    const A = diyGeom(W, H)
+
+    setFont(ctx, 13, 'bold'); ctx.fillStyle = C.ink
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('自己动手 · ① 组装装置', A.org.x + 4, 14)
+    setFont(ctx, 10); ctx.fillStyle = C.sub
+    ctx.fillText('点一下（或拖一下）右侧器材，它会吸附到虚线装配位；右键可取下重放。四件齐了才能开始测量。', A.org.x + 4, 33)
+
+    ctx.save()
+    ctx.translate(A.org.x, A.org.y)
+    ctx.scale(A.sc, A.sc)
+
+    const G = { stage: { x0: A.area.x0, x1: A.area.x1, y0: A.area.y0 }, tableY: A.tableY }
+    drawStageBack(ctx, G)
+    // 淡网格：让空舞台不至于太空
+    ctx.strokeStyle = 'rgba(140,165,175,0.16)'; ctx.lineWidth = 1
+    for (let gx = 30; gx < A.area.x1; gx += 40) {
+      ctx.beginPath(); ctx.moveTo(gx, 8); ctx.lineTo(gx, A.tableY); ctx.stroke()
     }
-    ctx.textBaseline = 'alphabetic'
+    for (let gy = 28; gy < A.tableY; gy += 40) {
+      ctx.beginPath(); ctx.moveTo(8, gy); ctx.lineTo(A.area.x1 - 8, gy); ctx.stroke()
+    }
+    drawBench(ctx, G)
+
+    drawDiyGhosts(ctx, A, dy)
+    if (dy.placed.rig) drawDiyStand(ctx, A)
+    if (dy.placed.A) drawDiySphereA(ctx, A)
+    if (dy.placed.B) drawDiyBallB(ctx, A)
+    if (dy.placed.ruler) drawDiyRuler(ctx, A)
+    ctx.restore()
+
+    drawDiyPalette(ctx, A, W, H)
+    if (dy.hold) { ctx.save(); ctx.globalAlpha = 0.8; drawDiyIcon(ctx, dy.mx, dy.my, dy.hold, false, true); ctx.restore() }
+    drawToast(ctx, W, H, s)
   }
 
-  function drawPaletteIcon(ctx, x, y, type) {
+  function drawDiyGhosts(ctx, A, dy) {
+    const part = (type, paint, fillPaint) => {
+      if (dy.placed[type]) return
+      const active = dy.hold === type
+      ctx.save()
+      if (fillPaint) {
+        fillPaint()
+        ctx.fillStyle = active ? 'rgba(18,166,155,0.10)' : 'rgba(148,168,176,0.07)'
+        ctx.fill()
+      }
+      ctx.setLineDash([5, 4])
+      ctx.strokeStyle = active ? 'rgba(18,166,155,0.92)' : 'rgba(126,150,160,0.55)'
+      ctx.lineWidth = active ? 2 : 1.1
+      paint()
+      ctx.restore()
+    }
+    part('rig', () => {
+      ctx.strokeRect(A.postX - 6, A.beamY - 10, 12, A.tableY - A.beamY + 12)
+      ctx.strokeRect(A.postX - 26, A.tableY - 12, 52, 12)
+      ctx.strokeRect(A.xA - 30, A.beamY - 5, A.postX - A.xA + 34, 10)
+    }, () => { ctx.beginPath(); ctx.rect(A.postX - 6, A.beamY - 10, 12, A.tableY - A.beamY + 12) })
+    part('A', () => {
+      ctx.beginPath(); ctx.arc(A.xA, A.AY, 32, 0, Math.PI * 2); ctx.stroke()
+      ctx.strokeRect(A.xA - 30, A.tableY - 12, 60, 12)
+      ctx.strokeRect(A.xA - 5, A.AY + 30, 10, A.tableY - 12 - (A.AY + 30))
+    }, () => { ctx.beginPath(); ctx.arc(A.xA, A.AY, 32, 0, Math.PI * 2) })
+    part('B', () => {
+      ctx.beginPath(); ctx.moveTo(A.slideX, A.beamY + 4); ctx.lineTo(A.slideX, A.AY - 12); ctx.stroke()
+      ctx.beginPath(); ctx.arc(A.slideX, A.AY, 11, 0, Math.PI * 2); ctx.stroke()
+    }, () => { ctx.beginPath(); ctx.arc(A.slideX, A.AY, 11, 0, Math.PI * 2) })
+    part('ruler', () => {
+      ctx.strokeRect(A.xA + 36, A.rulerY - 9, A.slideX - A.xA + 26, 20)
+    }, () => { ctx.beginPath(); ctx.rect(A.xA + 36, A.rulerY - 9, A.slideX - A.xA + 26, 20) })
+
+    const badge = (txt, x, y, name, side) => {
+      ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2)
+      ctx.fillStyle = 'rgba(255,255,255,0.95)'; ctx.fill()
+      ctx.strokeStyle = 'rgba(126,150,160,0.65)'; ctx.lineWidth = 1; ctx.stroke()
+      setFont(ctx, 9, 'bold'); ctx.fillStyle = C.sub
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText(txt, x, y + 0.5)
+      if (name) {
+        setFont(ctx, 8.5); ctx.fillStyle = 'rgba(93,112,121,0.75)'
+        ctx.textAlign = side === 'left' ? 'right' : 'left'
+        ctx.fillText(name, side === 'left' ? x - 13 : x + 13, y + 0.5)
+      }
+    }
+    if (!dy.placed.rig) badge('①', A.postX - 22, A.beamY + 30, '底座支架', 'left')
+    if (!dy.placed.A) badge('②', A.xA - 44, A.AY - 42, '带电球 A', 'right')
+    if (!dy.placed.B) badge('③', A.slideX + 22, A.AY - 26, '点电荷 B + 细线', 'right')
+    if (!dy.placed.ruler) badge('④', A.xA + 26, A.rulerY - 24, '刻度尺', 'right')
+  }
+
+  function drawDiyStand(ctx, A) {
+    const pw = 7
+    const pg = ctx.createLinearGradient(A.postX - pw, 0, A.postX + pw, 0)
+    pg.addColorStop(0, '#D5DEE3'); pg.addColorStop(0.45, '#B3C0C7'); pg.addColorStop(1, '#8E9CA4')
+    ctx.fillStyle = pg
+    ctx.fillRect(A.postX - pw, A.beamY - 8, pw * 2, A.tableY - A.beamY + 12)
+    ctx.fillStyle = '#97A5AD'
+    ctx.beginPath(); ctx.roundRect(A.postX - 26, A.tableY - 12, 52, 12, 3); ctx.fill()
+    ctx.fillStyle = '#B9C5CB'
+    ctx.beginPath(); ctx.roundRect(A.postX - 22, A.tableY - 16, 44, 6, 2); ctx.fill()
+
+    const x0 = A.xA - 34, bh = 10
+    const bg = ctx.createLinearGradient(0, A.beamY - bh / 2, 0, A.beamY + bh / 2)
+    bg.addColorStop(0, '#F0F4F6'); bg.addColorStop(1, '#C7D2D8')
+    ctx.fillStyle = bg
+    ctx.beginPath(); ctx.roundRect(x0, A.beamY - bh / 2, A.postX - x0 + 6, bh, 3); ctx.fill()
+    ctx.strokeStyle = '#B8C5CC'; ctx.lineWidth = 0.8; ctx.stroke()
+    ctx.strokeStyle = 'rgba(120,140,150,0.55)'; ctx.lineWidth = 1
+    for (let x = x0 + 6; x < A.postX - 4; x += 9) {
+      ctx.beginPath(); ctx.moveTo(x, A.beamY + 1); ctx.lineTo(x, A.beamY + 3.5); ctx.stroke()
+    }
+  }
+
+  function drawDiySphereA(ctx, A) {
+    const rA = 32
+    ctx.fillStyle = '#8A97A0'
+    ctx.beginPath(); ctx.roundRect(A.xA - 34, A.tableY - 12, 68, 12, 3); ctx.fill()
+    ctx.fillStyle = '#AEBAC1'
+    ctx.beginPath(); ctx.roundRect(A.xA - 30, A.tableY - 17, 60, 6, 2); ctx.fill()
+    const rodTop = A.AY + rA * 0.68
+    ctx.fillStyle = '#9FADB5'
+    ctx.beginPath(); ctx.roundRect(A.xA - 4.5, rodTop, 9, A.tableY - 17 - rodTop, 2); ctx.fill()
+    ctx.fillStyle = 'rgba(255,255,255,0.5)'
+    ctx.fillRect(A.xA - 3.8, rodTop, 2.4, A.tableY - 17 - rodTop)
+
+    const ag = ctx.createRadialGradient(A.xA - 9, A.AY - 11, 2, A.xA, A.AY, rA)
+    ag.addColorStop(0, '#FFFFFF'); ag.addColorStop(0.42, '#CBD6DC'); ag.addColorStop(1, '#77858D')
+    ctx.beginPath(); ctx.arc(A.xA, A.AY, rA, 0, Math.PI * 2)
+    ctx.fillStyle = ag; ctx.fill()
+    ctx.strokeStyle = 'rgba(222,69,63,0.5)'; ctx.lineWidth = 1.4; ctx.stroke()
+
+    ctx.globalAlpha = 0.8
+    setFont(ctx, 9, 'bold'); ctx.fillStyle = C.pos
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2 + 0.26
+      const rr = rA * (0.74 + (i % 2) * 0.14)
+      ctx.fillText('+', A.xA + Math.cos(a) * rr, A.AY + Math.sin(a) * rr)
+    }
+    ctx.globalAlpha = 1
+    setFont(ctx, 16, 'bold'); ctx.fillStyle = C.pos
+    ctx.fillText('+', A.xA, A.AY)
+    setFont(ctx, 11, 'bold'); ctx.fillStyle = C.ink
+    ctx.fillText('A', A.xA - rA - 13, A.AY - rA * 0.7)
+    haloText(ctx, '+Q', A.xA, A.AY - rA - 13, C.pos, 10)
+  }
+
+  function drawDiyBallB(ctx, A) {
+    const clipY = A.beamY - 13
+    ctx.fillStyle = '#FFFFFF'; ctx.strokeStyle = C.teal; ctx.lineWidth = 1.6
+    ctx.beginPath(); ctx.roundRect(A.slideX - 9, clipY, 18, 22, 4); ctx.fill(); ctx.stroke()
+    ctx.fillStyle = 'rgba(18,166,155,0.18)'
+    ctx.beginPath(); ctx.roundRect(A.slideX - 6, clipY + 3, 12, 7, 2); ctx.fill()
+
+    ctx.strokeStyle = '#8E8377'; ctx.lineWidth = 1.2
+    ctx.beginPath(); ctx.moveTo(A.slideX, A.beamY + 9); ctx.lineTo(A.slideX, A.AY - 7); ctx.stroke()
+
+    const rB = 7
+    const bg2 = ctx.createRadialGradient(A.slideX - 2, A.AY - 2.5, 1, A.slideX, A.AY, rB)
+    bg2.addColorStop(0, '#FFFFFF'); bg2.addColorStop(0.45, '#CBD5DA'); bg2.addColorStop(1, '#7C8A92')
+    ctx.beginPath(); ctx.arc(A.slideX, A.AY, rB, 0, Math.PI * 2)
+    ctx.fillStyle = bg2; ctx.fill()
+    ctx.strokeStyle = C.pos; ctx.lineWidth = 1.6; ctx.stroke()
+    setFont(ctx, 9, 'bold'); ctx.fillStyle = C.pos
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText('+', A.slideX, A.AY)
+    setFont(ctx, 11, 'bold'); ctx.fillStyle = C.ink
+    ctx.fillText('B', A.slideX + 22, A.AY + 13)
+    haloText(ctx, '+q', A.slideX, A.AY - rB - 14, C.pos, 10)
+  }
+
+  function drawDiyRuler(ctx, A) {
+    const x0 = A.xA + 36, x1 = A.slideX + 30, y = A.rulerY, h = 15
+    const g = ctx.createLinearGradient(0, y - h / 2, 0, y + h / 2)
+    g.addColorStop(0, '#FBF3E2'); g.addColorStop(1, '#E7D8BB')
+    ctx.fillStyle = g
+    ctx.beginPath(); ctx.roundRect(x0, y - h / 2, x1 - x0, h, 2); ctx.fill()
+    ctx.strokeStyle = '#D6C4A2'; ctx.lineWidth = 1; ctx.stroke()
+    ctx.strokeStyle = 'rgba(120,100,70,0.7)'; ctx.lineWidth = 1
+    const n = Math.floor((x1 - x0) / 10)
+    for (let i = 0; i <= n; i++) {
+      const x = x0 + i * 10, long = i % 5 === 0
+      ctx.beginPath(); ctx.moveTo(x, y - h / 2); ctx.lineTo(x, y - h / 2 + (long ? 8 : 4)); ctx.stroke()
+    }
+    setFont(ctx, 8); ctx.fillStyle = 'rgba(90,72,48,0.85)'
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    ctx.fillText('cm', x1 + 6, y)
+  }
+
+  function drawDiyIcon(ctx, x, y, type, ready, big) {
+    const k = big ? 1.5 : 1
     ctx.save(); ctx.translate(x, y)
-    if (type === 'posCharge') {
-      ctx.fillStyle = '#E53935'; ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill()
-      ctx.fillStyle = '#fff'; ctx.font = `bold 12px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('+', 0, 0)
-    } else if (type === 'negCharge') {
-      ctx.fillStyle = '#1565C0'; ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill()
-      ctx.fillStyle = '#fff'; ctx.font = `bold 12px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('−', 0, 0)
-    } else if (type === 'electrometer') {
-      ctx.fillStyle = '#E3F2FD'; ctx.strokeStyle = '#1565C0'; ctx.fillRect(-8, -6, 16, 12); ctx.strokeRect(-8, -6, 16, 12)
-    } else if (type === 'conductor') {
-      ctx.fillStyle = '#BDBDBD'; ctx.strokeStyle = '#757575'; ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-    } else if (type === 'insulator') {
-      ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-8, 0); ctx.lineTo(8, 0); ctx.stroke()
-    } else if (type === 'ground') {
-      ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(0, 4); ctx.stroke()
-      ctx.beginPath(); ctx.moveTo(-6, 4); ctx.lineTo(6, 4); ctx.stroke()
-      ctx.beginPath(); ctx.moveTo(-4, 7); ctx.lineTo(4, 7); ctx.stroke()
+    if (type === 'rig') {
+      ctx.strokeStyle = '#8E9CA4'; ctx.lineWidth = 2
+      ctx.beginPath(); ctx.moveTo(0, -10 * k); ctx.lineTo(0, 8 * k); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(-9 * k, 8 * k); ctx.lineTo(9 * k, 8 * k); ctx.stroke()
+      ctx.strokeStyle = '#C7D2D8'; ctx.lineWidth = 3
+      ctx.beginPath(); ctx.moveTo(-12 * k, -10 * k); ctx.lineTo(7 * k, -10 * k); ctx.stroke()
+    } else if (type === 'A') {
+      const r = 7 * k
+      ctx.fillStyle = '#CBD6DC'; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill()
+      ctx.strokeStyle = 'rgba(222,69,63,0.6)'; ctx.lineWidth = 1.2; ctx.stroke()
+      setFont(ctx, 7 * k, 'bold'); ctx.fillStyle = C.pos
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2
+        ctx.fillText('+', Math.cos(a) * r * 0.82, Math.sin(a) * r * 0.82)
+      }
+      ctx.fillText('+', 0, 0)
+    } else if (type === 'B') {
+      ctx.strokeStyle = '#8E8377'; ctx.lineWidth = 1
+      ctx.beginPath(); ctx.moveTo(0, -11 * k); ctx.lineTo(0, -3 * k); ctx.stroke()
+      ctx.fillStyle = '#CBD5DA'; ctx.beginPath(); ctx.arc(0, 2 * k, 4 * k, 0, Math.PI * 2); ctx.fill()
+      ctx.strokeStyle = C.pos; ctx.lineWidth = 1.3; ctx.stroke()
+      setFont(ctx, 6.5 * k, 'bold'); ctx.fillStyle = C.pos
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText('+', 0, 2 * k)
+    } else if (type === 'ruler') {
+      const g = ctx.createLinearGradient(0, -4 * k, 0, 4 * k)
+      g.addColorStop(0, '#FBF3E2'); g.addColorStop(1, '#E7D8BB')
+      ctx.fillStyle = g; ctx.fillRect(-11 * k, -4 * k, 22 * k, 8 * k)
+      ctx.strokeStyle = '#D6C4A2'; ctx.lineWidth = 1; ctx.strokeRect(-11 * k, -4 * k, 22 * k, 8 * k)
+      ctx.strokeStyle = 'rgba(120,100,70,0.7)'
+      for (let i = 0; i <= 4; i++) {
+        const xx = -9 * k + i * 4.4 * k
+        ctx.beginPath(); ctx.moveTo(xx, -4 * k); ctx.lineTo(xx, i % 2 === 0 ? 1 * k : -1 * k); ctx.stroke()
+      }
+    }
+    if (ready) {
+      ctx.beginPath(); ctx.arc(9 * k, 9 * k, 4, 0, Math.PI * 2)
+      ctx.fillStyle = C.teal; ctx.fill()
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.4
+      ctx.beginPath(); ctx.moveTo(7 * k, 9 * k); ctx.lineTo(8.6 * k, 10.8 * k); ctx.lineTo(11.4 * k, 6.8 * k); ctx.stroke()
     }
     ctx.restore()
   }
 
-  function getTermPos(comp) { return { x: comp.x, y: comp.y } }
+  function drawDiyPalette(ctx, A, W, H) {
+    const dy = S.current.diy
+    const x = A.palX, w = A.palW, y = 12, h = H - 24
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 10)
+    ctx.fillStyle = C.card; ctx.fill()
+    ctx.strokeStyle = C.line; ctx.lineWidth = 1; ctx.stroke()
 
-  function drawComp(ctx, comp) {
-    ctx.save(); ctx.translate(comp.x, comp.y)
-    if (comp.type === 'posCharge') {
-      const r = 15 + (comp.props?.Q || 5) * 2
-      ctx.fillStyle = '#E53935'; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill()
-      ctx.fillStyle = '#fff'; ctx.font = `bold 16px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('+', 0, 0)
-      ctx.fillStyle = '#333'; ctx.font = `10px ${FONT}`; ctx.textBaseline = 'top'
-      ctx.fillText(`+${comp.props?.Q || 5}μC`, 0, r + 8)
-    } else if (comp.type === 'negCharge') {
-      const r = 15 + (comp.props?.Q || 3) * 2
-      ctx.fillStyle = '#1565C0'; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill()
-      ctx.fillStyle = '#fff'; ctx.font = `bold 16px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('−', 0, 0)
-      ctx.fillStyle = '#333'; ctx.font = `10px ${FONT}`; ctx.textBaseline = 'top'
-      ctx.fillText(`-${comp.props?.Q || 3}μC`, 0, r + 8)
-    } else if (comp.type === 'electrometer') {
-      ctx.fillStyle = '#E3F2FD'; ctx.strokeStyle = '#1565C0'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.roundRect(-14, -10, 28, 20, 3); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#1565C0'; ctx.font = `bold 10px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('静电计', 0, 0)
-    } else if (comp.type === 'conductor') {
-      ctx.fillStyle = '#BDBDBD'; ctx.strokeStyle = '#757575'; ctx.lineWidth = 2
-      ctx.beginPath(); ctx.arc(0, 0, 14, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
-      ctx.fillStyle = '#333'; ctx.font = `9px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-      ctx.fillText('导体', 0, 0)
-    } else if (comp.type === 'insulator') {
-      ctx.strokeStyle = '#8D6E63'; ctx.lineWidth = 5; ctx.lineCap = 'round'
-      ctx.beginPath(); ctx.moveTo(-16, 0); ctx.lineTo(16, 0); ctx.stroke(); ctx.lineCap = 'butt'
-    } else if (comp.type === 'ground') {
-      ctx.strokeStyle = '#4CAF50'; ctx.lineWidth = 3
-      ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(0, 6); ctx.stroke()
-      ctx.beginPath(); ctx.moveTo(-8, 6); ctx.lineTo(8, 6); ctx.stroke()
-      ctx.beginPath(); ctx.moveTo(-6, 10); ctx.lineTo(6, 10); ctx.stroke()
-      ctx.beginPath(); ctx.moveTo(-4, 14); ctx.lineTo(4, 14); ctx.stroke()
+    const n = DIY_PARTS.filter((p) => dy.placed[p.type]).length
+    setFont(ctx, 11.5, 'bold'); ctx.fillStyle = C.ink
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('器材区', x + 12, y + 12)
+    ctx.textAlign = 'right'; ctx.fillStyle = n === 4 ? C.teal : C.sub
+    ctx.fillText(`${n}/${DIY_PARTS.length}`, x + w - 12, y + 12)
+
+    const cardH = 54
+    DIY_PARTS.forEach((p, i) => {
+      const cy = y + 34 + i * (cardH + 8)
+      const ready = dy.placed[p.type]
+      const hot = dy.hold === p.type
+      ctx.beginPath(); ctx.roundRect(x + 8, cy, w - 16, cardH, 8)
+      ctx.fillStyle = ready ? '#F2FBF9' : '#FFFFFF'; ctx.fill()
+      ctx.strokeStyle = ready ? 'rgba(18,166,155,0.5)' : hot ? C.teal : '#E1E8EB'
+      ctx.lineWidth = hot ? 2 : 1; ctx.stroke()
+
+      drawDiyIcon(ctx, x + 26, cy + 27, p.type, ready)
+      setFont(ctx, 8.5); ctx.fillStyle = ready ? C.tealDark : C.faint
+      ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+      ctx.fillText(`${p.no} ${ready ? '已装配' : '点一下装配'}`, x + 44, cy + 9)
+      setFont(ctx, 10, 'bold'); ctx.fillStyle = C.ink
+      ctx.fillText(p.name, x + 44, cy + 22)
+      setFont(ctx, 8.5); ctx.fillStyle = C.sub
+      fitFont(ctx, p.hint, w - 52, 8.5)
+      ctx.fillText(p.hint, x + 44, cy + 38)
+
+      pushArea({ n: `diyPart:${p.type}`, x: x + 8, y: cy, w: w - 16, h: cardH, holdType: p.type, cursor: 'pointer' })
+    })
+
+    const by = H - 88
+    if (n === 4) {
+      drawBtn(ctx, x + 10, by, w - 20, 30, '▶ 开始测量', 'primary', () => startDiyMeasure(), 'diyStart')
+      setFont(ctx, 8.5); ctx.fillStyle = C.faint
+      ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+      ctx.fillText('装置就位 —— 下一步自己取点', x + w / 2, by + 38)
+    } else {
+      const rest = DIY_PARTS.filter((p) => !dy.placed[p.type]).map((p) => p.no).join(' ')
+      ctx.beginPath(); ctx.roundRect(x + 8, by, w - 16, 44, 8)
+      ctx.fillStyle = '#F7FAFB'; ctx.fill()
+      ctx.strokeStyle = '#E3EBEF'; ctx.lineWidth = 1; ctx.stroke()
+      setFont(ctx, 9.5, 'bold'); ctx.fillStyle = C.sub
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText(`还差 ${4 - n} 件：${rest}`, x + w / 2, by + 15)
+      setFont(ctx, 8.5); ctx.fillStyle = C.faint
+      ctx.fillText('四件齐了才能开始测量', x + w / 2, by + 31)
     }
+  }
+
+  function diyInstall(type) {
+    const dy = S.current.diy
+    if (dy.placed[type]) { say('这件器材已经装好了'); return }
+    dy.placed[type] = true
+    const part = DIY_PARTS.find((p) => p.type === type)
+    const left = DIY_PARTS.filter((p) => !dy.placed[p.type])
+    say(left.length ? `${part ? part.name : '器材'} 已吸附到位 · 还差 ${left.length} 件` : '四件器材齐了 → 点「▶ 开始测量」')
+  }
+
+  function startDiyMeasure() {
+    const s = S.current
+    if (DIY_PARTS.some((p) => !s.diy.placed[p.type])) { say('先把四件器材装齐'); return }
+    s.diy.stage = 'measure'
+    s.diy.points = []
+    s.diy.graph = false
+    s.Q1 = 70; s.Q2 = 5; s.sB = 1; s.rCm = 20
+    say('开始测量：Q、q 固定，只改距离 r，逐组点「记录这一组」')
+  }
+
+  function diyRebuild() {
+    const s = S.current
+    s.diy = { stage: 'assemble', placed: { rig: false, A: false, B: false, ruler: false }, hold: null, dragType: null, mx: 0, my: 0, points: [], graph: false }
+    say('已回到组装阶段，可以重新搭一遍')
+  }
+
+  // ────────── ② 测量取点 ──────────
+  function renderDiyMeasure(ctx, W, H) {
+    const s = S.current
+    const info = coulombInfo(s)
+    const G = makeLayout(W, H)
+    const gm = rigGeom(G, s, info)
+
+    setFont(ctx, 13, 'bold'); ctx.fillStyle = C.ink
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('自己动手 · ② 测量取点', 26, 14)
+    setFont(ctx, 10); ctx.fillStyle = C.sub
+    const line = `拖动横杆上的悬挂点（或用面板滑块）改变 r，点「记录这一组」；至少 3 组才能作图 —— 拖得越近 θ 越大，但别忘 θ 只用来比较力的大小`
+    fitFont(ctx, line, W - 320, 10)
+    ctx.fillText(line, 26, 33)
+
+    drawStageBack(ctx, G)
+    drawBench(ctx, G)
+    drawRig(ctx, G, s, info, gm, { noToggle: true })
+    drawRuler(ctx, G, s, info, gm)
+    drawForces(ctx, G, s, info, gm)
+    drawDiyPanel(ctx, W, H, G, s, info)
+    if (s.diy.graph) drawDiyGraph(ctx, W, H, s)
+    drawToast(ctx, W, H, s)
+  }
+
+  function drawDiyPanel(ctx, W, H, G, s, info) {
+    const x = W - 282, w = 262, y = 76, h = Math.max(340, H - 76 - 112)
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 10)
+    ctx.fillStyle = C.card; ctx.fill()
+    ctx.strokeStyle = C.line; ctx.lineWidth = 1; ctx.stroke()
+
+    let ky = y + 14
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    setFont(ctx, 12, 'bold'); ctx.fillStyle = C.ink
+    ctx.fillText('测量与记录', x + 14, ky)
+    setFont(ctx, 9); ctx.fillStyle = C.sub
+    ctx.fillText('Q、q 固定为 +70 nC / +5 nC —— 只改距离 r（控制变量）', x + 14, ky + 18)
+
+    // 读数
+    ky += 40
+    setFont(ctx, 9.5); ctx.fillStyle = C.sub
+    ctx.fillText('投影放大 8× 读数', x + 14, ky)
+    const thTxt = fmtTheta(info.theta)
+    setFont(ctx, 26, 'bold'); ctx.fillStyle = '#8A5A12'
+    ctx.fillText(`${thTxt}°`, x + 14, ky + 14)
+    setFont(ctx, 9); ctx.fillStyle = C.ink
+    ctx.textAlign = 'right'
+    ctx.fillText(`F = ${sciText(info.F)} N`, x + w - 14, ky + 24)
+    ctx.textAlign = 'left'
+    setFont(ctx, 8.5); ctx.fillStyle = C.faint
+    ctx.fillText('面板数值是真的；画出来的偏角按 8× 放大', x + 14, ky + 44)
+
+    // r 滑块
+    ky += 66
+    setFont(ctx, 9.5, 'bold'); ctx.fillStyle = C.ink
+    ctx.fillText('球心距 r', x + 14, ky)
+    ctx.textAlign = 'right'; ctx.fillStyle = C.tealDark
+    ctx.fillText(`${s.rCm.toFixed(1)} cm`, x + w - 14, ky)
+    ctx.textAlign = 'left'
+    const ratio = (s.rCm - R_MIN) / (R_MAX - R_MIN)
+    drawSlider(ctx, {
+      x: x + 40, y: ky + 18, w: w - 68, ratio, accent: C.teal, name: 'diyR',
+      onChange: (rt) => { S.current.rCm = clamp(Math.round((R_MIN + rt * (R_MAX - R_MIN)) * 2) / 2, R_MIN, R_MAX) },
+    })
+
+    // 记录按钮
+    ky += 40
+    const full = s.diy.points.length >= DIY_MAX_PTS
+    if (full) drawBtn(ctx, x + 14, ky, w - 28, 28, `记录已满 ${DIY_MAX_PTS} 组`, 'ghost', () => say('已记满 6 组 —— 先作图或重装再来'), 'diyRec')
+    else drawBtn(ctx, x + 14, ky, w - 28, 28, '📌 记录这一组', 'primary', () => {
+      const st = S.current
+      const inf = coulombInfo(st)
+      st.diy.points.push({ rCm: st.rCm, theta: inf.theta, F: inf.F })
+      say(`已记录第 ${st.diy.points.length} 组：r = ${st.rCm.toFixed(1)} cm，θ = ${fmtTheta(inf.theta)}°`)
+    }, 'diyRec')
+
+    // 记录表
+    ky += 38
+    ctx.strokeStyle = '#EDF2F5'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(x + 12, ky); ctx.lineTo(x + w - 12, ky); ctx.stroke()
+    ky += 9
+    setFont(ctx, 9.5, 'bold'); ctx.fillStyle = C.ink
+    ctx.fillText(`我的测量记录 · ${s.diy.points.length}/${DIY_MAX_PTS}`, x + 14, ky)
+    ky += 16
+
+    const cols = [x + 28, x + 76, x + 138, x + 214]
+    ctx.fillStyle = C.tealSoft
+    ctx.beginPath(); ctx.roundRect(x + 12, ky - 2, w - 24, 15, 3); ctx.fill()
+    setFont(ctx, 8.5, 'bold'); ctx.fillStyle = C.tealDark
+    ctx.textAlign = 'center'
+    ;['#', 'r/cm', 'θ/°', 'F/10⁻⁵N'].forEach((t, i) => ctx.fillText(t, cols[i], ky + 6))
+    ky += 17
+    ctx.textAlign = 'left'
+
+    if (s.diy.points.length === 0) {
+      setFont(ctx, 9); ctx.fillStyle = C.faint
+      ctx.fillText('先改 r，再点「记录这一组」', x + 14, ky)
+      ky += 15
+    } else {
+      for (let i = 0; i < s.diy.points.length; i++) {
+        const p = s.diy.points[i]
+        if (i % 2 === 1) { ctx.fillStyle = '#F7FAFB'; ctx.beginPath(); ctx.roundRect(x + 12, ky - 2, w - 24, 14, 3); ctx.fill() }
+        setFont(ctx, 9); ctx.fillStyle = C.ink
+        ctx.textAlign = 'center'
+        ctx.fillText(String(i + 1), cols[0], ky + 5)
+        ctx.fillText(p.rCm.toFixed(1), cols[1], ky + 5)
+        ctx.fillText(fmtTheta(p.theta), cols[2], ky + 5)
+        ctx.fillText((p.F * 1e5).toFixed(2), cols[3], ky + 5)
+        ky += 14
+        ctx.textAlign = 'left'
+      }
+    }
+
+    // 作图
+    ky += 8
+    if (s.diy.points.length >= 3) {
+      drawBtn(ctx, x + 14, ky, w - 28, 28, '📈 作图验证 F ∝ 1/r²', 'primary', () => { S.current.diy.graph = true }, 'diyGraph')
+    } else {
+      drawBtn(ctx, x + 14, ky, w - 28, 28, `📈 作图验证（还需 ${3 - s.diy.points.length} 组）`, 'ghost', () => say('至少 3 组数据才能看出规律'), 'diyGraph')
+    }
+
+    // 底部：重装
+    drawBtn(ctx, x + 14, y + h - 40, w - 28, 26, '↺ 重装装置', 'plain', () => diyRebuild(), 'diyRebuild')
+  }
+
+  // ────────── ③ 作图验证 ──────────
+  function drawDiyGraph(ctx, W, H, s) {
+    ctx.fillStyle = 'rgba(16,30,38,0.45)'
+    ctx.fillRect(0, 0, W, H)
+
+    const cw = Math.min(740, W - 60), ch = Math.min(440, H - 60)
+    const x = (W - cw) / 2, y = (H - ch) / 2
+    ctx.beginPath(); ctx.roundRect(x, y, cw, ch, 12)
+    ctx.fillStyle = '#FBFDFD'; ctx.fill()
+    ctx.strokeStyle = '#D6E2E7'; ctx.lineWidth = 1; ctx.stroke()
+
+    setFont(ctx, 14, 'bold'); ctx.fillStyle = C.ink
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText('作图验证 · F 与 1/r²', x + 22, y + 16)
+    setFont(ctx, 10); ctx.fillStyle = C.sub
+    ctx.fillText('Q·q 固定（+70 nC × +5 nC）：若 F ∝ 1/r²，这些点应落在一条过原点的直线上', x + 22, y + 38)
+
+    const cbx = x + cw - 44, cby = y + 16
+    ctx.beginPath(); ctx.roundRect(cbx, cby, 28, 24, 6)
+    ctx.fillStyle = '#F1F5F7'; ctx.fill()
+    ctx.strokeStyle = '#DCE5E9'; ctx.lineWidth = 1; ctx.stroke()
+    setFont(ctx, 12, 'bold'); ctx.fillStyle = C.sub
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText('✕', cbx + 14, cby + 12)
+    pushArea({ x: cbx, y: cby, w: 28, h: 24, modal: true, onClick: () => { S.current.diy.graph = false } })
+
+    const pts = s.diy.points
+    const px0 = x + 82, px1 = x + cw - 40, py0 = y + 78, py1 = y + ch - 106
+    const xs = pts.map((p) => 1 / (p.rCm * p.rCm))
+    const ys = pts.map((p) => p.F)
+    const xMax = Math.max(...xs) * 1.15
+    const yMax = Math.max(...ys, 1e-9) * 1.2
+    const sx = (v) => px0 + (v / xMax) * (px1 - px0)
+    const sy = (v) => py1 - (v / yMax) * (py1 - py0)
+
+    // 坐标框 + 网格
+    ctx.strokeStyle = '#E3EBEF'; ctx.lineWidth = 1
+    ctx.strokeRect(px0, py0, px1 - px0, py1 - py0)
+    ctx.strokeStyle = '#EDF2F5'
+    for (let i = 1; i <= 4; i++) {
+      const gx = px0 + (i / 4) * (px1 - px0)
+      const gy = py1 - (i / 4) * (py1 - py0)
+      ctx.beginPath(); ctx.moveTo(gx, py0); ctx.lineTo(gx, py1); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(px0, gy); ctx.lineTo(px1, gy); ctx.stroke()
+    }
+
+    // 轴标签
+    setFont(ctx, 9); ctx.fillStyle = C.sub
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    for (let i = 0; i <= 4; i++) {
+      const v = (i / 4) * xMax
+      ctx.fillText((v * 1e3).toFixed(1), px0 + (i / 4) * (px1 - px0), py1 + 6)
+    }
+    setFont(ctx, 9.5, 'bold'); ctx.fillStyle = C.ink
+    ctx.fillText('1/r²（×10⁻³ cm⁻²）', (px0 + px1) / 2, py1 + 24)
+    ctx.textAlign = 'right'; ctx.textBaseline = 'middle'
+    for (let i = 0; i <= 4; i++) {
+      const v = (i / 4) * yMax
+      ctx.fillText((v * 1e4).toFixed(2), px0 - 8, py1 - (i / 4) * (py1 - py0))
+    }
+    ctx.save()
+    ctx.translate(px0 - 52, (py0 + py1) / 2)
+    ctx.rotate(-Math.PI / 2)
+    setFont(ctx, 9.5, 'bold'); ctx.fillStyle = C.ink
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText('F（×10⁻⁴ N）', 0, 0)
     ctx.restore()
+
+    // 过原点最小二乘
+    let sxy = 0, sxx = 0
+    for (let i = 0; i < xs.length; i++) { sxy += xs[i] * ys[i]; sxx += xs[i] * xs[i] }
+    const k = sxx ? sxy / sxx : 0
+    let ssres = 0, sstot = 0
+    const ym = ys.reduce((a, b) => a + b, 0) / ys.length
+    for (let i = 0; i < xs.length; i++) {
+      ssres += (ys[i] - k * xs[i]) ** 2
+      sstot += (ys[i] - ym) ** 2
+    }
+    const r2 = sstot > 0 ? 1 - ssres / sstot : 1
+    const kTheory = K_COUL * (70 * 1e-9) * (5 * 1e-9) * 1e4     // k·Q·q，换成 N·cm²
+
+    // 拟合线
+    ctx.save()
+    ctx.strokeStyle = 'rgba(18,166,155,0.85)'; ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(sx(0), sy(0)); ctx.lineTo(sx(xMax), sy(k * xMax)); ctx.stroke()
+    ctx.restore()
+
+    // 数据点
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    for (let i = 0; i < pts.length; i++) {
+      const cx = sx(xs[i]), cy = sy(ys[i])
+      ctx.beginPath(); ctx.arc(cx, cy, 4.2, 0, Math.PI * 2)
+      ctx.fillStyle = '#DE453F'; ctx.fill()
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2; ctx.stroke()
+      setFont(ctx, 8); ctx.fillStyle = C.sub
+      ctx.fillText(`r=${pts[i].rCm.toFixed(1)}`, cx, cy - 11)
+    }
+
+    // 结论
+    const cy0 = py1 + 40
+    setFont(ctx, 10, 'bold'); ctx.fillStyle = C.tealDark
+    ctx.textAlign = 'left'; ctx.textBaseline = 'top'
+    ctx.fillText(`拟合 F = ${sciText(k)} · (1/r²)，R² = ${r2.toFixed(3)}`, px0 - 20, cy0)
+    setFont(ctx, 9.5); ctx.fillStyle = C.sub
+    ctx.fillText(`与 kQq = ${sciText(kTheory)} N·cm² 相差 ${((Math.abs(k - kTheory) / kTheory) * 100).toFixed(1)}% —— 实测斜率就是 k·Q·q`, px0 - 20, cy0 + 15)
+    setFont(ctx, 9.5); ctx.fillStyle = '#8A5A12'
+    const concl = '各点几乎落在同一条过原点的直线上 → F ∝ 1/r²，即库仑定律 F = kQq/r²（Q·q 不变时）'
+    fitFont(ctx, concl, cw - 60, 9.5)
+    ctx.fillText(concl, px0 - 20, cy0 + 31)
   }
 
   // 交互
@@ -1248,21 +1719,21 @@ export default function CoulombLawScene() {
       }
       return
     }
-    // Tab2
-    for (const a of areas) { if (hit(a)) { if (a.onClick) a.onClick(); return } }
-    for (const a of canvasRef.current._palAreas || []) {
-      if (hit(a)) {
-        if (a.type) {
-          s.components.push({ id: s.nextId++, type: a.type, x, y, closed: true, props: { Q: a.type === 'posCharge' ? 5 : 3 } })
-          s.dragId = s.nextId - 1
-          forceUpdate(n => n + 1)
-          return
-        }
-      }
+    // Tab2 自己动手
+    const dy = s.diy
+    if (dy.stage === 'measure' && dy.graph) {
+      for (const a of areas) { if (a.modal && hit(a)) { a.onClick(); return } }
+      return
     }
-    for (const c of s.components) {
-      if (Math.abs(x - c.x) < 25 && Math.abs(y - c.y) < 25) { s.dragId = c.id; s.dragOffX = x - c.x; s.dragOffY = y - c.y; forceUpdate(n => n + 1); return }
+    for (const a of areas) {
+      if (a.modal) continue
+      if (!hit(a)) continue
+      if (a.holdType) { dy.hold = a.holdType; dy.dragType = a.holdType; dy.mx = x; dy.my = y; return }
+      if (a.drag === 'slider') { s.dragSlider = a; a.setX(x); return }
+      if (a.drag === 'beam') { s.dragBeam = true; a.setX(x); return }
+      if (a.onClick) { a.onClick(x, y); return }
     }
+    if (dy.hold) { dy.mx = x; dy.my = y }
   }
 
   function handleMouseMove(e) {
@@ -1274,28 +1745,58 @@ export default function CoulombLawScene() {
       }
       return
     }
-    if (s.dragId == null) return
-    const c = s.components.find(c => c.id === s.dragId)
-    if (c) { c.x = x - s.dragOffX; c.y = y - s.dragOffY; forceUpdate(n => n + 1) }
+    if (s.dragSlider) { s.dragSlider.setX(x); return }
+    if (s.dragBeam) {
+      for (const a of canvasRef.current._clickAreas || []) { if (a.drag === 'beam') { a.setX(x); return } }
+      return
+    }
+    if (s.diy.hold) { s.diy.mx = x; s.diy.my = y }
   }
 
-  function handleMouseUp() { S.current.dragSlider = null; S.current.dragBeam = false; S.current.dragId = null }
+  function handleMouseUp() {
+    const s = S.current
+    s.dragSlider = null; s.dragBeam = false
+    if (s.tab === 2 && s.diy.dragType) {
+      const type = s.diy.dragType
+      s.diy.dragType = null; s.diy.hold = null
+      if (s.diy.stage === 'assemble') diyInstall(type)
+    }
+  }
   function handleDoubleClick() {}
 
   function handleContextMenu(e) {
     e.preventDefault()
     const s = S.current
-    if (s.tab !== 2) return
+    if (s.tab !== 2 || s.diy.stage !== 'assemble') return
     const { x, y } = getPos(e)
-    const idx = s.components.findIndex(c => Math.abs(x - c.x) < 25 && Math.abs(y - c.y) < 25)
-    if (idx >= 0) { s.components.splice(idx, 1); forceUpdate(n => n + 1) }
+    const R = canvasRef.current._R
+    if (!R) return
+    const A = diyGeom(R.W, R.H)
+    const L = diyToLocal(A, x, y)
+    const anchors = {
+      rig: { x: A.postX, y: A.beamY + 30 },
+      A: { x: A.xA, y: A.AY },
+      B: { x: A.slideX, y: A.AY },
+      ruler: { x: (A.xA + 36 + A.slideX + 30) / 2, y: A.rulerY },
+    }
+    let best = null, bd = 1e9
+    for (const t of Object.keys(anchors)) {
+      if (!s.diy.placed[t]) continue
+      const d = Math.hypot(L.x - anchors[t].x, L.y - anchors[t].y)
+      if (d < bd) { bd = d; best = t }
+    }
+    if (best && bd < 96) {
+      s.diy.placed[best] = false
+      const part = DIY_PARTS.find((p) => p.type === best)
+      say(`已取下「${part ? part.name : best}」，可以重新放`)
+    }
   }
 
   return (
     <SceneShell
       title="库仑定律探究"
       tab={tab}
-      onTabChange={(t) => { S.current.tab = t; S.current.compare = false; setTab(t); forceUpdate(n => n + 1) }}
+      onTabChange={(t) => { S.current.tab = t; S.current.compare = false; S.current.diy.graph = false; setTab(t); forceUpdate(n => n + 1) }}
       tab1Label="📊 实验演示"
       tab2Label="🔧 自己动手"
     >

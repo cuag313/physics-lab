@@ -1,7 +1,8 @@
 /**
  * 截图工具：「库仑定律探究」（悬线偏角法）
  * 用法：node tools/shot-coulomb.mjs [宽] [高] [输出文件] [模式]
- *   模式：step1(默认) | step2 | step3 | step4 | compare | neg
+ *   模式：step1(默认) | step2 | step3 | step4 | compare | neg | real | close
+ *        diy1 | diy2 | diy3 | diy4 | diy5（自己动手：空装配 / 装 3 件 / 装齐 / 测量记录 / 作图弹窗）
  */
 import puppeteer from 'puppeteer-core'
 
@@ -88,10 +89,29 @@ if (MODE === 'compare') {
 if (MODE === 'real') { await clickArea('gainBtn'); await sleep(700) }
 if (MODE === 'close') { await setSlider('rSlider', 0.02); await sleep(700) }
 
+if (MODE.startsWith('diy')) {
+  await clickText('自己动手')
+  await sleep(900)
+  if (MODE !== 'diy1') {
+    for (const t of ['rig', 'A', 'B']) { await clickArea(`diyPart:${t}`); await sleep(320) }
+    if (MODE !== 'diy2') { await clickArea('diyPart:ruler'); await sleep(320) }
+  }
+  if (MODE === 'diy4' || MODE === 'diy5') {
+    await clickArea('diyStart'); await sleep(800)
+    for (const ratio of [0.05, 0.35, 0.8]) {
+      await setSlider('diyR', ratio)
+      await clickArea('diyRec')
+      await sleep(420)
+    }
+    await sleep(500)
+  }
+  if (MODE === 'diy5') { await clickArea('diyGraph'); await sleep(900) }
+}
+
 await page.screenshot({ path: OUT })
 const dbg = await page.evaluate(() => {
   const c = document.querySelector('canvas')
-  return c && c._dbg ? { step: c._dbg.step, rCm: c._dbg.rCm, theta: c._dbg.theta, records: c._dbg.records, compare: c._dbg.compare, areas: c._dbg.areas.map((a) => a.n).filter(Boolean) } : null
+  return c && c._dbg ? { step: c._dbg.step, rCm: c._dbg.rCm, theta: c._dbg.theta, records: c._dbg.records, compare: c._dbg.compare, diyStage: c._dbg.diyStage, diyPlaced: c._dbg.diyPlaced, diyPoints: c._dbg.diyPoints, graph: c._dbg.graph, areas: c._dbg.areas.map((a) => a.n).filter(Boolean) } : null
 })
 console.log('dbg:', JSON.stringify(dbg))
 console.log('saved:', OUT)
