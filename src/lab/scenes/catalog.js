@@ -829,12 +829,12 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'coulombLaw',
     name: '库仑定律探究',
-    description: '探究电荷间作用力与电荷量、距离的关系，验证 F=kQ₁Q₂/r²',
+    description: '悬线偏角法：轻质小球三点平衡 F=mg tanθ，控制变量探究力与电荷量、距离的关系，验证 F=kQ₁Q₂/r²',
     category: 'electric',
     subCategory: '高中电磁学',
     difficulty: 2,
     grade: '高二',
-    tags: ['库仑定律', '点电荷', '控制变量', '扭秤'],
+    tags: ['库仑定律', '点电荷', '控制变量', '悬线偏角法'],
     examLevel: '★★★',
   },
   {
