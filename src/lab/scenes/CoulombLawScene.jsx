@@ -6,24 +6,31 @@ import SceneShell from '../ui/SceneShell'
  * CoulombLawScene — 库仑定律探究（悬线偏角法）
  *
  * 器材与物理逻辑对齐「探究电荷间的相互作用力」3D 交互课件：
- *   A = 固定在底座上的带电球
- *   B = 细线悬挂的轻质导电小球（悬点可在横杆上平移 → 改距离 r）
+ *   A = 固定在底座上的较大带电球体（电荷分布在球表面）
+ *   B = 细线悬挂的轻质小球（点电荷，悬点可在横杆上平移 → 改距离 r）
  *   B 球三力平衡：重力 mg（竖直向下）、悬线拉力 T（沿细线）、静电力 F（水平）
  *   → tanθ = F / mg，即 F = mg tanθ —— 偏角 θ 是"把看不见的静电力放大"的读数
+ *   A 球在 B 处产生的场强 E = kQ/r²，点电荷受力 F = q·E = kQq/r²
+ *   真实量级下库仑力很小（10⁻⁴~10⁻⁵ N），所以 θ 只有零点几度到几度：
+ *   图示默认按 ANGLE_GAIN 放大偏角（面板数值仍是真实偏角），可切到真实比例
  *
  * 四步探究：
  *   ① 认识装置：点击 B 球切换正负电，同种相斥、异种相吸
- *   ② 探究距离：锁 Q₁Q₂，移动悬挂点改 r → r 越小 θ 越大
- *   ③ 探究电荷量：锁 r，改电荷量 → θ 随 Q₁Q₂ 同步变化
- *   ④ 实验结论：F = mg tanθ 与 F = kQ₁Q₂/r² 两式对上，θ 不能当成正比量
+ *   ② 探究距离：锁 Q、q，移动悬挂点改 r → r 越小 θ 越大
+ *   ③ 探究电荷量：锁 r，改电荷量 → θ 随 Q·q 同步变化
+ *   ④ 实验结论：F = mg tanθ 与 F = q·E 两式对上，θ 不能当成正比量
  */
 const K_COUL = 9e9
-const BALL_M = 1.5e-4          // 0.15 g 轻质导电小球
-const MG = BALL_M * 9.8        // ≈1.47×10⁻³ N
-const Q_MIN = 20, Q_MAX = 60, Q_STEP = 5
+const BALL_M = 5e-4            // 0.5 g 轻质导电小球（点电荷 B）
+const MG = BALL_M * 9.8        // ≈4.9×10⁻³ N
+const QA_MIN = 40, QA_MAX = 100, QA_STEP = 10   // A 球体带电 Q（nC，表面分布）
+const QB_MIN = 2, QB_MAX = 8, QB_STEP = 1       // 点电荷 q（nC）
 const R_MIN = 10, R_MAX = 36
 const MAX_REC = 4
-const THETA_DRAW = 60          // 画偏角的极限（超过只影响观感）
+const THETA_DRAW = 55          // 画偏角的极限（图示放大后超过就打折）
+const ANGLE_GAIN = 8           // 默认图示偏角放大倍数（真实偏角仅 0.1°~8°）
+
+const fmtTheta = (v) => (v >= 10 ? v.toFixed(1) : v.toFixed(2))
 
 const FONT = '"PingFang SC","Microsoft YaHei",system-ui,-apple-system,sans-serif'
 
@@ -47,20 +54,23 @@ const C = {
 }
 
 const STEPS = [
-  { key: 1, label: '① 认识装置', sub: 'A 是固定带电球，B 是细线悬挂的轻质导电小球 —— 点击 B 球可切换正负电：同种相斥、异种相吸' },
-  { key: 2, label: '② 探究距离', sub: '保持两球电荷量不变，沿横杆拖动悬挂点改变距离 r —— 距离越近，B 球偏角 θ 越大' },
-  { key: 3, label: '③ 探究电荷量', sub: '保持距离 r 不变，改变小球的电荷量 —— 静电力箭头与偏角 θ 随 Q₁Q₂ 同步变化' },
-  { key: 4, label: '④ 实验结论', sub: '由偏角反推静电力 F = mg tanθ，再验证 F ∝ Q₁Q₂、F ∝ 1/r²，理清"偏角只用来比较力的大小"' },
+  { key: 1, label: '① 认识装置', sub: 'A 是固定在底座上的带电球体（电荷分布在球表面），B 是细线悬挂的轻质小球（点电荷）—— 点击 B 可切换正负电：同种相斥、异种相吸' },
+  { key: 2, label: '② 探究距离', sub: '保持 Q、q 不变，沿横杆拖动悬挂点改变距离 r —— 库仑力本身很小，偏角只零点几度，距离越近 θ 越大（图上偏角已放大显示）' },
+  { key: 3, label: '③ 探究电荷量', sub: '保持距离 r 不变，改变电荷量 —— B 受力 F = q·E，静电力箭头与偏角 θ 随 Q·q 同步变化' },
+  { key: 4, label: '④ 实验结论', sub: '由偏角反推静电力 F = mg tanθ，再验证 F = q·E ∝ Q/r²，理清"偏角只用来比较力的大小"' },
 ]
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
 
 function coulombInfo(s) {
   const rM = s.rCm / 100
-  const F = (K_COUL * (s.Q1 * 1e-9) * (s.Q2 * 1e-9)) / (rM * rM)
+  const E = (K_COUL * s.Q1 * 1e-9) / (rM * rM)       // A 球在 B 处的场强
+  const F = E * s.Q2 * 1e-9                          // F = q·E
   const tan = F / MG
-  const theta = (Math.atan(tan) * 180) / Math.PI
-  return { rM, F, tan, theta, sameSign: s.sB > 0, mg: MG }
+  const theta = (Math.atan(tan) * 180) / Math.PI     // 真实偏角（很小）
+  const gain = s.gain === false ? 1 : (s.gain || ANGLE_GAIN)
+  const thetaDraw = (Math.atan(tan * gain) * 180) / Math.PI  // 图示偏角（放大显示）
+  return { rM, E, F, tan, theta, thetaDraw, gain, sameSign: s.sB > 0, mg: MG }
 }
 
 function makeLayout(W, H) {
@@ -71,7 +81,7 @@ function makeLayout(W, H) {
 
   // 装置整体（A 球 → 立柱）水平居中：横向铺满舞台的 ~84%，横杆只做到悬挂点可及的最右端
   const innerW = stage.x1 - stage.x0
-  const leftRoom = 130 * sc                // A 球左侧（F′ 箭头 + 标注）
+  const leftRoom = 170 * sc                // A 球左侧（F′ 箭头 + 标注）
   const rightRoom = 58 * sc                // 立柱右侧
   const pxPerCm = clamp((innerW * 0.84 - leftRoom - rightRoom) / R_MAX, 6, 26 * sc)
   const rigW = R_MAX * pxPerCm + leftRoom + rightRoom
@@ -81,13 +91,13 @@ function makeLayout(W, H) {
   // 细线长度按同一 cm→px 比例（约 22 cm），并保证立柱底座与竖杆有高度
   const L = clamp(pxPerCm * 22, 120 * sc, tableY - beamY - 170 * sc)
   const ballY0 = beamY + L
-  const AY = ballY0 + 12 * sc
+  const AY = ballY0        // A 球心与 B 球心同高，r 才是水平球心距
   return { stage, beamY, tableY, L, xA, ballY0, AY, pxPerCm, postX, sc }
 }
 
 function rigGeom(G, s, info) {
   const sc = G.sc || 1
-  const th = (Math.min(info.theta, THETA_DRAW) * Math.PI) / 180
+  const th = (Math.min(info.thetaDraw ?? info.theta, THETA_DRAW) * Math.PI) / 180
   const dir = info.sameSign ? 1 : -1
   const ballX = G.xA + s.rCm * G.pxPerCm
   const ballY = G.beamY + G.L * Math.cos(th)
@@ -125,10 +135,11 @@ export default function CoulombLawScene() {
   const S = useRef({
     tab: 1,
     step: 1,
-    Q1: 40,          // nC
-    Q2: 40,          // nC
+    Q1: 70,          // nC，A 球体带电量 Q
+    Q2: 5,           // nC，点电荷 q
     rCm: 20,         // cm，两球球心距
     sB: 1,           // B 球电性：+1 正 / -1 负（A 固定正电）
+    gain: ANGLE_GAIN, // 图示偏角放大倍数（false/1 = 真实比例）
     records: [],
     compare: false,
     dragSlider: null,
@@ -316,31 +327,39 @@ export default function CoulombLawScene() {
       ctx.beginPath(); ctx.moveTo(x, beamY + 1); ctx.lineTo(x, beamY + 3.5 * sc); ctx.stroke()
     }
 
-    // A 球底座与立杆
+    // A 球底座与立杆（大球体 → 宽底座、短立杆）
+    const rA = 30 * sc
     ctx.fillStyle = '#8A97A0'
-    ctx.beginPath(); ctx.roundRect(xA - 27 * sc, tableY - 11 * sc, 54 * sc, 11 * sc, 3); ctx.fill()
+    ctx.beginPath(); ctx.roundRect(xA - 34 * sc, tableY - 12 * sc, 68 * sc, 12 * sc, 3); ctx.fill()
     ctx.fillStyle = '#AEBAC1'
-    ctx.beginPath(); ctx.roundRect(xA - 24 * sc, tableY - 16 * sc, 48 * sc, 6 * sc, 2); ctx.fill()
-    const rA = 16 * sc
-    const rodTop = AY + 10 * sc
+    ctx.beginPath(); ctx.roundRect(xA - 30 * sc, tableY - 17 * sc, 60 * sc, 6 * sc, 2); ctx.fill()
+    const rodTop = AY + rA * 0.68
     ctx.fillStyle = '#9FADB5'
-    ctx.beginPath(); ctx.roundRect(xA - 3.5 * sc, rodTop, 7 * sc, tableY - 16 * sc - rodTop, 2); ctx.fill()
+    ctx.beginPath(); ctx.roundRect(xA - 4.5 * sc, rodTop, 9 * sc, tableY - 17 * sc - rodTop, 2); ctx.fill()
     ctx.fillStyle = 'rgba(255,255,255,0.5)'
-    ctx.fillRect(xA - 3 * sc, rodTop, 2 * sc, tableY - 16 * sc - rodTop)
+    ctx.fillRect(xA - 3.8 * sc, rodTop, 2.4 * sc, tableY - 17 * sc - rodTop)
 
-    // A 球
-    const ag = ctx.createRadialGradient(xA - 5 * sc, AY - 6 * sc, 1.5, xA, AY, rA)
-    ag.addColorStop(0, '#FFFFFF'); ag.addColorStop(0.45, '#C6D0D6'); ag.addColorStop(1, '#79878F')
+    // A 球：较大的带电球体，电荷分布在球表面（球面上一圈小 “+”）
+    const ag = ctx.createRadialGradient(xA - 9 * sc, AY - 11 * sc, 2, xA, AY, rA)
+    ag.addColorStop(0, '#FFFFFF'); ag.addColorStop(0.42, '#CBD6DC'); ag.addColorStop(1, '#77858D')
     ctx.beginPath(); ctx.arc(xA, AY, rA, 0, Math.PI * 2)
     ctx.fillStyle = ag; ctx.fill()
-    ctx.strokeStyle = C.pos; ctx.lineWidth = 1.6 * sc; ctx.stroke()
-    setFont(ctx, 12 * sc, 'bold'); ctx.fillStyle = C.pos
+    ctx.strokeStyle = 'rgba(222,69,63,0.5)'; ctx.lineWidth = 1.4 * sc; ctx.stroke()
+    setFont(ctx, 8.5 * sc, 'bold'); ctx.fillStyle = C.pos
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.globalAlpha = 0.8
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2 + 0.26
+      const rr = rA * (0.74 + (i % 2) * 0.14)
+      ctx.fillText('+', xA + Math.cos(a) * rr, AY + Math.sin(a) * rr)
+    }
+    ctx.globalAlpha = 1
+    setFont(ctx, 15 * sc, 'bold'); ctx.fillStyle = C.pos
     ctx.fillText('+', xA, AY)
     // A 标注
     setFont(ctx, 11 * sc, 'bold'); ctx.fillStyle = C.ink
-    ctx.fillText('A', xA - 22 * sc, AY - 26 * sc)
-    haloText(ctx, '+Q₁', xA, AY - rA - 12 * sc, C.pos, 10 * sc)
+    ctx.fillText('A', xA - rA - 13 * sc, AY - rA * 0.62)
+    haloText(ctx, '+Q', xA, AY - rA - 13 * sc, C.pos, 10 * sc)
 
     // 悬挂点（滑块）
     const clipY = beamY - 13 * sc
@@ -356,31 +375,31 @@ export default function CoulombLawScene() {
     ctx.lineTo(gm.slideX + 4 * sc, clipY + 27 * sc)
     ctx.closePath(); ctx.fill()
 
-    // 细线
+    // B 球：细线悬挂的轻质小球（点电荷，画得小）
+    const rB = 6 * sc
     ctx.strokeStyle = '#8E8377'; ctx.lineWidth = 1.2
-    ctx.beginPath(); ctx.moveTo(gm.slideX, gm.dropY); ctx.lineTo(gm.ballX, gm.ballY - 6); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(gm.slideX, gm.dropY); ctx.lineTo(gm.ballX, gm.ballY - rB); ctx.stroke()
 
-    // B 球
-    const rB = 13 * sc
-    const bg2 = ctx.createRadialGradient(gm.ballX - 4 * sc, gm.ballY - 5 * sc, 1.5, gm.ballX, gm.ballY, rB)
+    const bg2 = ctx.createRadialGradient(gm.ballX - 2 * sc, gm.ballY - 2.5 * sc, 1, gm.ballX, gm.ballY, rB)
     bg2.addColorStop(0, '#FFFFFF'); bg2.addColorStop(0.45, '#CBD5DA'); bg2.addColorStop(1, '#7C8A92')
     ctx.beginPath(); ctx.arc(gm.ballX, gm.ballY, rB, 0, Math.PI * 2)
     ctx.fillStyle = bg2; ctx.fill()
     ctx.strokeStyle = info.sameSign ? C.pos : C.neg; ctx.lineWidth = 1.6 * sc; ctx.stroke()
-    setFont(ctx, 11 * sc, 'bold'); ctx.fillStyle = info.sameSign ? C.pos : C.neg
+    setFont(ctx, 8 * sc, 'bold'); ctx.fillStyle = info.sameSign ? C.pos : C.neg
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     ctx.fillText(info.sameSign ? '+' : '−', gm.ballX, gm.ballY)
 
     setFont(ctx, 11 * sc, 'bold'); ctx.fillStyle = C.ink
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    // B 字母放在细线的另一侧上方，避免压住细线与 F 箭头
-    ctx.fillText('B', gm.ballX + gm.dir * (rB + 12 * sc), gm.ballY - rB - 10 * sc)
-    haloText(ctx, `${info.sameSign ? '+' : '−'}Q₂`, gm.ballX, gm.ballY - rB - 12 * sc, info.sameSign ? C.pos : C.neg, 10 * sc)
+    // B 字母放在细线的另一侧、球体右/左下，避开细线与 F 箭头
+    ctx.fillText('B', gm.ballX + gm.dir * (rB + 16 * sc), gm.ballY + 13 * sc)
+    haloText(ctx, `${info.sameSign ? '+' : '−'}q`, gm.ballX, gm.ballY - rB - 14 * sc, info.sameSign ? C.pos : C.neg, 10 * sc)
 
-    // 点击 B 球切换电性
+    // 点击 B 球切换电性（小球点电荷 → 热区放大到 14*sc）
+    const hitR = Math.max(rB, 14 * sc)
     pushArea({
       n: 'bBall',
-      x: gm.ballX - rB - 4, y: gm.ballY - rB - 4, w: rB * 2 + 8, h: rB * 2 + 8,
+      x: gm.ballX - hitR, y: gm.ballY - hitR, w: hitR * 2, h: hitR * 2,
       onClick: () => {
         S.current.sB = -S.current.sB
         say(`B 球已切换为${S.current.sB > 0 ? '正电' : '负电'} → ${S.current.sB > 0 ? '同种电荷相斥' : '异种电荷相吸'}`)
@@ -396,7 +415,7 @@ export default function CoulombLawScene() {
         let r = (mx - G.xA) / G.pxPerCm
         for (let i = 0; i < 6; i++) {
           const inf = coulombInfo({ ...st, rCm: r })
-          const th = (Math.min(inf.theta, THETA_DRAW) * Math.PI) / 180
+          const th = (Math.min(inf.thetaDraw, THETA_DRAW) * Math.PI) / 180
           const d = inf.sameSign ? 1 : -1
           r = (mx - G.xA - d * G.L * Math.sin(th)) / G.pxPerCm
         }
@@ -451,10 +470,11 @@ export default function CoulombLawScene() {
   function drawForces(ctx, G, s, info, gm) {
     const { dir, ballX, ballY, slideX } = gm
     const sc = G.sc || 1
-    const rB = 13 * sc, rA = 16 * sc
-    const Fpx = clamp((14 + info.tan * 40) * sc, 16 * sc, 118 * sc)
+    const rB = 6 * sc, rA = 30 * sc
     const mgPx = 44 * sc
     const thetaRad = gm.th
+    const tanDraw = Math.tan(thetaRad)
+    const Fpx = clamp(mgPx * tanDraw * 3.6, 14 * sc, 150 * sc)
 
     // 细线方向单位向量（从球指向悬挂点）
     const dx = slideX - ballX, dy = gm.dropY - ballY
@@ -463,7 +483,7 @@ export default function CoulombLawScene() {
 
     // 重力 mg（竖直向下，往左让开球体与电荷标签）
     arrow(ctx, ballX - 32 * sc, ballY + rB - 4 * sc, ballX - 32 * sc, ballY + rB - 4 * sc + mgPx, C.mg, 1.8, 'mg', '#233', 9)
-    // 悬线拉力 T（沿细线方向，不给文字标签，避免压住 −Q₂ 与偏角弧）
+    // 悬线拉力 T（沿细线方向，不给文字标签，避免压住 −q 与偏角弧）
     const tPx = clamp(mgPx / Math.max(0.55, Math.cos(thetaRad)), mgPx, 120 * sc)
     arrow(ctx, ballX + ux * (rB + 2), ballY + uy * (rB + 2),
       ballX + ux * (rB + 2) + ux * tPx, ballY + uy * (rB + 2) + uy * tPx, C.tension, 1.8, '')
@@ -498,8 +518,8 @@ export default function CoulombLawScene() {
     ctx.restore()
 
     // 标签贴着弧的外侧：小角时在左、偏角大时换到右，避免压住细线
-    const side = info.theta > 22 ? 1 : -1
-    const label = `θ = ${info.theta.toFixed(1)}°`
+    const side = (info.thetaDraw ?? info.theta) > 22 ? 1 : -1
+    const label = `θ = ${fmtTheta(info.theta)}°`
     setFont(ctx, 11, 'bold')
     const tw = ctx.measureText(label).width + 14
     const lx = px0 + side * (arcR + 10 + tw / 2)
@@ -556,8 +576,8 @@ export default function CoulombLawScene() {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
       ctx.fillText(String(n), x, y + 0.5)
     }
-    badge(1, G.xA + 26 * sc, G.AY - 20 * sc)
-    badge(2, gm.ballX + 27 * sc, gm.ballY + 32 * sc)
+    badge(1, G.xA + 44 * sc, G.AY - 32 * sc)
+    badge(2, gm.ballX + 30 * sc, gm.ballY + 34 * sc)
     badge(3, gm.slideX + 21 * sc, G.beamY - 16 * sc)
     badge(4, gm.ballX + 21 * sc, rulerY - 1)
   }
@@ -612,13 +632,16 @@ export default function CoulombLawScene() {
     ky += 10
     setFont(ctx, 10); ctx.fillStyle = C.sub
     ctx.fillText('实时偏角', x + 14, ky)
-    const thetaTxt = info.theta.toFixed(1)
+    const thetaTxt = fmtTheta(info.theta)
     setFont(ctx, 24, 'bold'); ctx.fillStyle = '#8A5A12'
     ctx.fillText(`${thetaTxt}°`, x + 66, ky - 6)
-    if (info.theta > THETA_DRAW) {
+    if ((info.thetaDraw ?? info.theta) > THETA_DRAW) {
       setFont(ctx, 9); ctx.fillStyle = '#C0392B'
       ctx.fillText('超出图示量程', x + 122, ky + 2)
     }
+    const gainTxt = info.gain > 1 ? `图示偏角放大 ${info.gain}×` : '图示按真实比例'
+    setFont(ctx, 8.5); ctx.fillStyle = C.faint
+    ctx.fillText(gainTxt, x + 14, ky + 18)
 
     ky += 40
     ctx.beginPath(); ctx.moveTo(x + 12, ky); ctx.lineTo(x + w - 12, ky); ctx.stroke()
@@ -629,9 +652,10 @@ export default function CoulombLawScene() {
 
     const rows = [
       ['球心距 r', `${s.rCm.toFixed(1)} cm`],
-      ['Q₁（A，固定正电）', `+${s.Q1} nC`],
-      ['Q₂（B，可切换）', `${info.sameSign ? '+' : '−'}${s.Q2} nC`],
-      ['F = kQ₁Q₂/r²', `${sciText(info.F)} N`],
+      ['A 球带电量 Q（球体）', `+${s.Q1} nC`],
+      ['B 点电荷电量 q', `${info.sameSign ? '+' : '−'}${s.Q2} nC`],
+      ['E = kQ/r²', `${sciText(info.E)} V/m`],
+      ['F = q·E', `${sciText(info.F)} N`],
       ['F = mg tanθ', `${sciText(MG * info.tan)} N`],
       ['T = mg/cosθ', `${sciText(MG / Math.max(0.55, Math.cos((info.theta * Math.PI) / 180)))} N`],
     ]
@@ -661,7 +685,7 @@ export default function CoulombLawScene() {
     ctx.beginPath(); ctx.roundRect(x + 12, ky - 2, w - 24, 15, 3); ctx.fill()
     setFont(ctx, 8.5, 'bold'); ctx.fillStyle = C.tealDark
     ctx.textAlign = 'center'
-    ;['#', 'r/cm', 'θ/°', 'F/10⁻⁴N', 'Q₁Q₂'].forEach((t, i) => ctx.fillText(t, cols[i], ky + 6))
+    ;['#', 'r/cm', 'θ/°', 'F/10⁻⁵N', 'Q·q'].forEach((t, i) => ctx.fillText(t, cols[i], ky + 6))
     ky += 17
 
     if (s.records.length === 0) {
@@ -677,8 +701,8 @@ export default function CoulombLawScene() {
         ctx.textAlign = 'center'
         ctx.fillText(String(i + 1), cols[0], ky + 5)
         ctx.fillText(rc.rCm.toFixed(1), cols[1], ky + 5)
-        ctx.fillText(rc.theta.toFixed(1), cols[2], ky + 5)
-        ctx.fillText((rc.F * 1e4).toFixed(2), cols[3], ky + 5)
+        ctx.fillText(fmtTheta(rc.theta), cols[2], ky + 5)
+        ctx.fillText((rc.F * 1e5).toFixed(2), cols[3], ky + 5)
         ctx.fillText(String(rc.Q1 * rc.Q2), cols[4], ky + 5)
         ky += 14
       }
@@ -691,11 +715,11 @@ export default function CoulombLawScene() {
         title: '认识装置',
         warm: false,
         lines: [
-          '① 固定带电球 A：底座固定，带正电，电量 Q₁ 可调',
-          '② 悬线轻质导电球 B：点击球体即可切换正负电',
-          '③ 悬挂点：沿横杆拖动 → 改变两球距离 r',
+          '① A：底座固定的较大带电球体，电荷分布在球表面',
+          '② B：细线悬挂的轻质小球（点电荷），点击可切换正负电',
+          '③ 悬挂点：沿横杆拖动 → 改变两球球心距 r',
           '④ 米尺（虚线）：量两球球心距 r，单位 cm',
-          '关键：B 球偏角 θ 才是静电力的"读数"',
+          '关键：库仑力很小，θ 只有零点几度 → 图示放大后仍是"力的读数"',
         ],
       },
       2: {
@@ -704,7 +728,7 @@ export default function CoulombLawScene() {
         lines: [
           '• 电荷量已锁定（控制变量）',
           '• 拖动横杆上的悬挂点，或拉底部「调节距离」',
-          '• r 越小 → θ 越大 → 静电力越大',
+          '• r 越小 → E = kQ/r² 越大 → θ 越大',
           '• 每组点「保存状态」，最多存 4 组',
         ],
       },
@@ -713,8 +737,8 @@ export default function CoulombLawScene() {
         warm: false,
         lines: [
           '• 距离 r 已锁定（控制变量）',
-          '• 拖动 Q₁ / Q₂ 滑块改变电荷量',
-          '• θ 与静电力箭头 F 随 Q₁Q₂ 同步变化',
+          '• 拖动 Q / q 滑块改变电荷量',
+          '• θ 与静电力箭头 F = q·E 随 Q·q 同步变化',
           '• 点击 B 球可切换正负电，看同斥异吸',
         ],
       },
@@ -723,8 +747,8 @@ export default function CoulombLawScene() {
         warm: true,
         lines: [
           '① B 球平衡：F = mg tanθ（θ 是力的放大镜）',
-          '② 锁 r → F ∝ Q₁Q₂；锁 Q → F ∝ 1/r²',
-          '③ 合起来即库仑定律 F = kQ₁Q₂/r²',
+          '② 点电荷受力 F = q·E，E = kQ/r²',
+          '③ 合起来即库仑定律 F = kQq/r²',
           '⚠ θ 只能比较力的大小，不能说 F ∝ θ',
         ],
       },
@@ -817,33 +841,33 @@ export default function CoulombLawScene() {
     if (lockQ) { setFont(ctx, 8); ctx.fillStyle = C.faint; ctx.fillText('已锁定', cx + 2, by + 34) }
     cx += 96
 
-    const qLabel = (v) => `Q₁ +${v}`
+    const qLabel = (v) => `Q +${v} nC`
     setFont(ctx, 9.5, 'bold'); ctx.fillStyle = C.pos
     ctx.fillText(qLabel(s.Q1), cx, by + 14)
     drawSlider(ctx, {
       x: cx, y: by + 30, w: s2,
-      ratio: (s.Q1 - Q_MIN) / (Q_MAX - Q_MIN),
+      ratio: (s.Q1 - QA_MIN) / (QA_MAX - QA_MIN),
       disabled: lockQ, accent: C.pos,
       name: 'q1Slider',
-      onChange: (r) => { S.current.Q1 = clamp(Q_MIN + Math.round((r * (Q_MAX - Q_MIN)) / Q_STEP) * Q_STEP, Q_MIN, Q_MAX) },
+      onChange: (r) => { S.current.Q1 = clamp(QA_MIN + Math.round((r * (QA_MAX - QA_MIN)) / QA_STEP) * QA_STEP, QA_MIN, QA_MAX) },
     })
     cx += s2 + 18
 
     setFont(ctx, 9.5, 'bold'); ctx.fillStyle = info.sameSign ? C.pos : C.neg
-    ctx.fillText(`Q₂ ${info.sameSign ? '+' : '−'}${s.Q2}`, cx, by + 14)
+    ctx.fillText(`q ${info.sameSign ? '+' : '−'}${s.Q2} nC`, cx, by + 14)
     drawSlider(ctx, {
       x: cx, y: by + 30, w: s3,
-      ratio: (s.Q2 - Q_MIN) / (Q_MAX - Q_MIN),
+      ratio: (s.Q2 - QB_MIN) / (QB_MAX - QB_MIN),
       disabled: lockQ, accent: info.sameSign ? C.pos : C.neg,
       name: 'q2Slider',
-      onChange: (r) => { S.current.Q2 = clamp(Q_MIN + Math.round((r * (Q_MAX - Q_MIN)) / Q_STEP) * Q_STEP, Q_MIN, Q_MAX) },
+      onChange: (r) => { S.current.Q2 = clamp(QB_MIN + Math.round((r * (QB_MAX - QB_MIN)) / QB_STEP) * QB_STEP, QB_MIN, QB_MAX) },
     })
 
     // 第二行按钮
     const btnY = by + 52, btnH = 24
     let bxx = bx + 16
 
-    drawBtn(ctx, bxx, btnY, 108, btnH, `B 球：${info.sameSign ? '+Q₂ 正电' : '−Q₂ 负电'}`, 'plain', () => {
+    drawBtn(ctx, bxx, btnY, 108, btnH, `B 球：${info.sameSign ? '+q 正电' : '−q 负电'}`, 'plain', () => {
       S.current.sB = -S.current.sB
       say(`B 球已切换为${S.current.sB > 0 ? '正电' : '负电'} → ${S.current.sB > 0 ? '同种电荷相斥' : '异种电荷相吸'}`)
     }, 'toggleB')
@@ -860,7 +884,7 @@ export default function CoulombLawScene() {
       }
       st.records.push({
         rCm: st.rCm, Q1: st.Q1, Q2: st.Q2, sB: st.sB,
-        theta: inf.theta, F: inf.F, tan: inf.tan,
+        theta: inf.theta, thetaDraw: inf.thetaDraw, F: inf.F, tan: inf.tan,
       })
     }, 'saveBtn')
     bxx += 100
@@ -870,17 +894,28 @@ export default function CoulombLawScene() {
     }, 'compareBtn')
     bxx += 104
 
+    drawBtn(ctx, bxx, btnY, 92, btnH, info.gain > 1 ? `🔍 图示 ${info.gain}×` : '🔍 真实比例', 'ghost', () => {
+      const st = S.current
+      st.gain = st.gain > 1 ? 1 : ANGLE_GAIN
+      say(st.gain > 1 ? `图示偏角放大 ${st.gain}×（数值仍为真实偏角）` : '图示改为真实比例：库仑力很小，细线几乎竖直')
+    }, 'gainBtn')
+    bxx += 100
+
     drawBtn(ctx, bxx, btnY, 74, btnH, '↺ 重置', 'ghost', () => {
       const st = S.current
-      st.Q1 = 40; st.Q2 = 40; st.rCm = 20; st.sB = 1; st.records = []
+      st.Q1 = 70; st.Q2 = 5; st.rCm = 20; st.sB = 1; st.records = []
       say('已恢复初始状态')
     }, 'resetBtn')
+    bxx += 82
 
-    // 右侧提示
-    setFont(ctx, 9); ctx.fillStyle = C.faint
-    ctx.textAlign = 'right'
-    fitFont(ctx, '拖动横杆上的悬挂点也可以直接改 r', bw - 300, 9)
-    ctx.fillText('拖动横杆上的悬挂点也可以直接改 r', bx + bw - 16, by + 66)
+    // 右侧提示（按剩余宽度自适应，窄屏放不下就不画）
+    const hintW = bx + bw - 16 - bxx
+    if (hintW > 110) {
+      setFont(ctx, 9); ctx.fillStyle = C.faint
+      ctx.textAlign = 'left'
+      fitFont(ctx, '拖动横杆上的悬挂点也可以直接改 r', hintW, 9)
+      ctx.fillText('拖动横杆上的悬挂点也可以直接改 r', bxx, by + 66)
+    }
   }
 
   function drawSlider(ctx, { x, y, w, ratio, onChange, disabled, accent, name }) {
@@ -977,9 +1012,9 @@ export default function CoulombLawScene() {
         const my = listY + listH - 46
         setFont(ctx, 9); ctx.fillStyle = C.sub; ctx.textAlign = 'left'
         ctx.fillText(`r = ${rc.rCm.toFixed(1)} cm`, px + 12, my)
-        ctx.fillText(`Q₁Q₂ = ${rc.Q1 * rc.Q2} nC²`, px + 12, my + 13)
+        ctx.fillText(`Q·q = ${rc.Q1 * rc.Q2} nC²`, px + 12, my + 13)
         setFont(ctx, 9, 'bold'); ctx.fillStyle = '#8A5A12'
-        ctx.fillText(`θ = ${rc.theta.toFixed(1)}°`, px + 12, my + 26)
+        ctx.fillText(`θ = ${fmtTheta(rc.theta)}°`, px + 12, my + 26)
         setFont(ctx, 9, 'bold'); ctx.fillStyle = C.tealDark
         ctx.textAlign = 'right'
         ctx.fillText(`F = ${sciText(rc.F)} N`, px + pw - 12, my + 26)
@@ -989,15 +1024,15 @@ export default function CoulombLawScene() {
 
     setFont(ctx, 9.5); ctx.fillStyle = C.sub
     ctx.textAlign = 'center'
-    fitFont(ctx, '同一比例尺下：θ 越大 → F = mg tanθ 越大；同一组合内只改一个变量，控制变量的过程清清楚楚', cw - 40, 9.5)
-    ctx.fillText('同一比例尺下：θ 越大 → F = mg tanθ 越大；同一组合内只改一个变量，控制变量的过程清清楚楚', x + cw / 2, y + ch - 22)
+    fitFont(ctx, '同一比例尺下（偏角同倍数放大）：θ 越大 → F = mg tanθ 越大；同一组合内只改一个变量，控制变量清清楚楚', cw - 40, 9.5)
+    ctx.fillText('同一比例尺下（偏角同倍数放大）：θ 越大 → F = mg tanθ 越大；同一组合内只改一个变量，控制变量清清楚楚', x + cw / 2, y + ch - 22)
     ctx.textAlign = 'left'
   }
 
   // 迷你状态图：同一比例尺
   function drawMiniState(ctx, box, rc) {
     const dir = rc.sB > 0 ? 1 : -1
-    const th = (Math.min(rc.theta, THETA_DRAW) * Math.PI) / 180
+    const th = (Math.min(rc.thetaDraw ?? rc.theta, THETA_DRAW) * Math.PI) / 180
     const pxPerCm = (box.w - 56) / R_MAX          // 同一比例尺
     const usable = Math.max(90, box.h - 56)
     const L = Math.max(60, usable * 0.80)
@@ -1027,17 +1062,17 @@ export default function CoulombLawScene() {
     ctx.beginPath(); ctx.arc(sx, sy, 3, 0, Math.PI * 2); ctx.fill()
     // A 球
     ctx.fillStyle = '#ADBAC2'
-    ctx.beginPath(); ctx.arc(ax, ay, 8, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath(); ctx.arc(ax, ay, 9, 0, Math.PI * 2); ctx.fill()
     ctx.strokeStyle = C.pos; ctx.lineWidth = 1.3; ctx.stroke()
-    // B 球
+    // B 球（点电荷，小）
     ctx.fillStyle = '#ADBAC2'
-    ctx.beginPath(); ctx.arc(bx, by, 6.5, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath(); ctx.arc(bx, by, 4.5, 0, Math.PI * 2); ctx.fill()
     ctx.strokeStyle = dir > 0 ? C.pos : C.neg; ctx.lineWidth = 1.3; ctx.stroke()
     // 力箭头（等大反向）
     ctx.strokeStyle = C.teal; ctx.lineWidth = 1.8
-    const fl = clamp(7 + rc.tan * 16, 8, 34) * dir
-    ctx.beginPath(); ctx.moveTo(bx + dir * 6, by); ctx.lineTo(bx + dir * 6 + fl, by); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(ax - dir * 7, ay); ctx.lineTo(ax - dir * 7 - fl, ay); ctx.stroke()
+    const fl = clamp(7 + Math.tan(th) * 18, 8, 34) * dir
+    ctx.beginPath(); ctx.moveTo(bx + dir * 5, by); ctx.lineTo(bx + dir * 5 + fl, by); ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(ax - dir * 10, ay); ctx.lineTo(ax - dir * 10 - fl, ay); ctx.stroke()
     // 距离标注
     ctx.save(); ctx.setLineDash([3, 3]); ctx.strokeStyle = '#B5C4CB'; ctx.lineWidth = 0.9
     ctx.beginPath(); ctx.moveTo(ax, by + 14); ctx.lineTo(bx, by + 14); ctx.stroke(); ctx.restore()

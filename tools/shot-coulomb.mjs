@@ -85,6 +85,8 @@ if (MODE === 'compare') {
   await clickArea('compareBtn')
   await sleep(900)
 }
+if (MODE === 'real') { await clickArea('gainBtn'); await sleep(700) }
+if (MODE === 'close') { await setSlider('rSlider', 0.02); await sleep(700) }
 
 await page.screenshot({ path: OUT })
 const dbg = await page.evaluate(() => {
