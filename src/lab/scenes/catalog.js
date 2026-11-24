@@ -862,7 +862,7 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'capacitorCharge',
     name: '电容器充放电',
-    description: '观察充电/放电电流变化，理解电容C=Q/U，RC时间常数',
+    description: '双掷开关切换充电/放电：极板电荷积累、I 与 U_C 指数曲线、τ=RC 与 5τ 稳态；自己动手接线搭 RC 回路自动求解',
     category: 'electric',
     subCategory: '高中电磁学',
     difficulty: 2,
