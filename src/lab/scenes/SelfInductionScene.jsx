@@ -185,6 +185,20 @@ export default function SelfInductionScene() {
         diyCompList: S.current.diy.comps.map((c) => ({ type: c.type, x: Math.round(c.x), y: Math.round(c.y), closed: !!c.closed, h: c.h, r: c.r, u: c.u })),
         info: { closed: S.current.closed, U: S.current.U, L: S.current.L, R: S.current.R, f: S.current.f },
         cardScroll: +(S.current.cardScroll || 0).toFixed(1), cardMax: +((cardRect.current && cardRect.current.maxScroll) || 0).toFixed(1),
+        diyGrip: (() => {
+          // 探针用：闸刀黑柄在「闭合 / 断开」两个姿态下的屏幕中心（画布坐标）
+          const v = canvasRef.current._diyView
+          if (!v) return null
+          const bx = figBox('switch')
+          const at = (c, cl) => {
+            const g = swGripBox(cl)
+            const lx = bx.x0 + ((g.x0 + g.x1) / 2) * bx.scale
+            const ly = bx.y0 + ((g.y0 + g.y1) / 2) * bx.scale
+            return { x: Math.round(v.ox + (c.x + lx * v.k) * v.sc), y: Math.round(v.oy + (c.y + ly * v.k) * v.sc) }
+          }
+          return S.current.diy.comps.filter((c) => c.type === 'switch')
+            .map((c) => ({ id: c.id, closed: at(c, true), open: at(c, false) }))
+        })(),
         areas: canvasRef.current._clickAreas.map((a) => ({ n: a.n || '', x: Math.round(a.x), y: Math.round(a.y), w: Math.round(a.w), h: Math.round(a.h) })),
       }
     } catch (e) { console.error('render error:', e) }
@@ -1617,7 +1631,9 @@ export default function SelfInductionScene() {
     }
     dy.evt = null
     if (comp.closed) {
-      say('开关闭合：电流从 0 按 e^(−t/τ) 升到 I₀')
+      say(r.ok && r.mode === 'shunt'
+        ? '合闸：灯泡立刻正常亮；L 里的电流按 τ=L/r_L 慢慢爬到 I_L（通直流后 L 才相当于导线）'
+        : '开关闭合：电流从 0 按 e^(−t/τ) 升到 I₀')
     } else if (r.ok && r.mode === 'shunt') {
       say('开关断开：L 的电流经灯泡续流，灯泡闪亮一下')
     } else if (r.ok) {
@@ -2781,13 +2797,11 @@ export default function SelfInductionScene() {
           Math.hypot(Pt.x - termPos(gripHit, 1).x, Pt.y - termPos(gripHit, 1).y),
         )
         if (dPost > 9 * DIYK / 1.7) {
-          const now = performance.now()
           dy.sel = gripHit.id
-          // 连点两下：第二下不再反转（习惯性双击不该把刚扳的刀又扳回去）
-          if (!(dy.lastTap && dy.lastTap.id === gripHit.id && now - dy.lastTap.t < 180)) {
-            toggleSwitchComp(gripHit)
-          }
-          dy.lastTap = { id: gripHit.id, t: now, x: Pt.x, y: Pt.y }
+          // 每一次按柄都真的扳一下：断开后立刻再合闸也要马上响应，
+          // 不能把 180 ms 内的第二下吞掉（那样画面会停在旧的开合状态里继续算）
+          toggleSwitchComp(gripHit)
+          dy.lastTap = null
           return
         }
       }
