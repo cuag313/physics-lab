@@ -1443,7 +1443,9 @@ export default function SelfInductionScene() {
     ctx.fillText(open
       ? '开关断开：串联回路无续流路径，电流瞬间归零'
       : (dy.t >= 5 * tau - 0.002 ? `已到稳态 I₀ = ${res.I0.toFixed(2)} A（L 相当于导线）` : `t = ${fmtT(tms)}　（${(dy.t / tau).toFixed(1)}τ）`), x + 10, y + 46)
-    ctx.fillText(tms >= 1 ? `自感电动势 ε = ${(res.U * Math.exp(-dy.t / tau)).toFixed(2)} V` : '自感电动势 ε ≈ U（阻碍电流增大）', x + 10, y + 60)
+    ctx.fillText(open
+      ? '开关断开：串联回路无续流路径，电流瞬间归零'
+      : `自感电动势 ε = ${(res.U * Math.exp(-dy.t / tau)).toFixed(2)} V（阻碍电流增大）`, x + 10, y + 60)
     ctx.textAlign = 'right'
     ctx.fillStyle = lv > 0.3 ? '#C4801A' : '#A9793B'
     ctx.fillText(`灯丝亮度 ${Math.round(lv * 100)}%`, x + w - 10, y + 60)
