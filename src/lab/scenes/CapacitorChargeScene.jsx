@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
 import { figURL } from './electricSvgInstruments'
+import { SYM_INK, symHalf, symBattery, symBulb, symCapacitor, symSwitchSPDT } from '../render/symbols'
 
 /**
  * CapacitorChargeScene — 电容器充放电
@@ -233,9 +234,9 @@ export default function CapacitorChargeScene() {
 
   // ── 电路 ──
   function circuitGeom(a) {
-    const k = clamp(Math.min(a.w / 940, a.h / 240), 0.85, 1.5)
-    const x1 = a.x + a.w * 0.25, x2 = a.x + a.w * 0.86
-    const yTop = a.y + a.h * 0.15, yBot = a.y + a.h * 0.96
+    const k = clamp(Math.min(a.w / 860, a.h / 250), 0.85, 1.5)
+    const x1 = a.x + a.w * 0.30, x2 = a.x + a.w * 0.74
+    const yTop = a.y + a.h * 0.13, yBot = a.y + a.h * 0.97
     const yc = yTop + (yBot - yTop) * 0.62
     const rW = 84 * k, rc = (x1 + x2) / 2
     return { x1, x2, yTop, yBot, yc, r0: rc - rW / 2, r1: rc + rW / 2, rMid: rc, k, lw: 2.4 * k }
@@ -247,6 +248,7 @@ export default function CapacitorChargeScene() {
     const on = s.closed
     const isCharge = s.mode === 'charge'
     const wireCol = on ? '#1E7F8E' : '#B4C4CB'
+    const ink = on ? SYM_INK : '#8FA0A8'          // 断开时符号一并变灰
     const lw = g.lw
 
     const seg = (x0, y0, x1, y1, col = wireCol, w = lw) => {
@@ -254,53 +256,111 @@ export default function CapacitorChargeScene() {
       ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); ctx.lineCap = 'butt'
     }
 
-    // 顶部导线 —— 小灯泡（灯座两端接进回路）
-    seg(g.x1, g.yTop, g.r0, g.yTop)
-    seg(g.r1, g.yTop, g.x2, g.yTop)
+    /* ── 元件几何：先量后画（导线按符号占位断开留缺口）── */
+    const hBulb = symHalf('bulb', k)                  // ⊗ 半径（沿顶边占的半宽）
+    const hCap = symHalf('capacitor', k, 1, 'v')      // 电容两片极板间距的一半（竖直）
+    const hBat = symHalf('battery', k, 2, 'v')        // 两节电池组半高（竖直）
+    const swHalf = 34 * k, swLift = 22 * k            // 单刀双掷：公共端→掷点跨距 / 掷点半跨距
+    const ySw = g.yTop + 60 * k
+    const comPt = { x: g.x1, y: ySw - swHalf }        // 公共端（接顶边下引的导线）
+    const thR = { x: g.x1 + swLift, y: ySw + swHalf } // ① 充电掷点（右）
+    const thL = { x: g.x1 - swLift, y: ySw + swHalf } // ② 放电掷点（左）
+    const by = Math.min(g.yBot - 40 * k, thR.y + 58 * k)  // 电池中心（充电支路上）
+
     // 灯泡亮度 ∝ 功率 P=I²R（教学上按 (I/I₀)^1.15 映射，抵消视觉非线性）
     const i0 = Math.max(s.U / s.Rk, 0.001)
     const bright = on ? Math.pow(clamp(Math.abs(info.iShow) / i0, 0, 1), 1.15) : 0
-    drawBulb(ctx, g.r0, g.r1, g.yTop, k, bright)
-    // 右侧 —— 电容
-    seg(g.x2, g.yTop, g.x2, g.yc - 10 * k)
-    seg(g.x2, g.yc + 10 * k, g.x2, g.yBot)
-    drawCapacitor(ctx, g.x2, g.yc, s, info, k)
-    // 左侧：单刀双掷闸刀（底座在下、刀向上摆向两根立柱的柱帽）
-    const yPiv = g.yTop + 56 * k
-    const pivot = { x: g.x1, y: yPiv }
-    seg(g.x1, g.yTop, g.x1, yPiv - 1 * k)
-    const sw = drawSwitch(ctx, pivot, s, isCharge, k * 1.14)
-    const cR = sw.rightFoot, cL = sw.leftFoot
-    // 充电支路（含电池）——刀离开该掷点时整条支路断开
-    const by = g.yBot - 38 * k
-    const chCol = on && isCharge ? wireCol : '#CBD8DD'
-    seg(cR.x, cR.y, cR.x, by - 27 * k, chCol)
-    drawBattery(ctx, cR.x, by, k)
-    seg(cR.x, by + 27 * k, cR.x, g.yBot, chCol)
-    // 放电支路：从放电掷点竖直到底沿，再沿底边回到电容
-    const disCol = on && !isCharge ? wireCol : '#CBD8DD'
-    seg(cL.x, cL.y, cL.x, g.yBot, disCol)
-    seg(cL.x, g.yBot, cR.x, g.yBot, disCol)
-    // 底边：电容下极板 → 放电掷点
-    seg(g.x2, g.yBot, cL.x, g.yBot)
-    setFont(ctx, Math.round(8 * k), 'bold'); ctx.fillStyle = on && !isCharge ? C.neg : '#9CB0B8'
-    ctx.textAlign = 'right'; ctx.textBaseline = 'middle'
-    ctx.fillText('放电支路（拨此位时电源断开）', cL.x - 10, g.yBot - 12)
 
-    // 电流方向与流动（到达稳态 I≈0 时不再画箭头）
+    /* ── 导线：横平竖直，符号处留缺口 ── */
+    seg(g.x1, g.yTop, g.rMid - hBulb, g.yTop)               // 顶边左段 → 灯泡
+    seg(g.rMid + hBulb, g.yTop, g.x2, g.yTop)               // 顶边右段
+    seg(g.x1, g.yTop, g.x1, comPt.y)                        // 左边：顶角 → 开关公共端
+    seg(g.x2, g.yTop, g.x2, g.yc - hCap)                    // 右边：顶角 → 电容上极板
+    seg(g.x2, g.yc + hCap, g.x2, g.yBot)                    // 右边：下极板 → 底角
+    seg(g.x2, g.yBot, thR.x, g.yBot)                        // 底边（放电支路在 thL 处搭接）
+    const chCol = on && isCharge ? wireCol : '#CBD8DD'      // 充电支路：刀不在该位时整条灰掉
+    seg(thR.x, thR.y, thR.x, by - hBat, chCol)
+    seg(thR.x, by + hBat, thR.x, g.yBot, chCol)
+    const disCol = on && !isCharge ? wireCol : '#CBD8DD'    // 放电支路
+    seg(thL.x, thL.y, thL.x, g.yBot, disCol)
+
+    /* ── 电流流动（到稳态 I≈0 时不再画箭头）── */
     if (on && !info.done && Math.abs(info.i) > 0.004) {
-      drawCurrentFlow(ctx, g, s, info, isCharge ? cR.x : cL.x)
+      drawCurrentFlow(ctx, g, s, info, { th: isCharge ? thR : thL, com: comPt, hBulb, hCap, hBat, by })
     }
+
+    /* ── 小灯泡：⊗ 符号；通流时符号外发光晕（靠亮度看充放电是演示需求，符号本身仍是标准画法）── */
+    if (bright > 0.02) {
+      const gr0 = (18 + 22 * bright) * k
+      const gl = ctx.createRadialGradient(g.rMid, g.yTop, 2, g.rMid, g.yTop, gr0)
+      gl.addColorStop(0, `rgba(255,232,130,${0.46 * bright + 0.06})`)
+      gl.addColorStop(0.45, `rgba(255,214,120,${0.22 * bright})`)
+      gl.addColorStop(1, 'rgba(255,205,110,0)')
+      ctx.beginPath(); ctx.arc(g.rMid, g.yTop, gr0, 0, Math.PI * 2)
+      ctx.fillStyle = gl; ctx.fill()
+    }
+    symBulb(ctx, g.rMid, g.yTop, {
+      scale: k,
+      ink: bright > 0.12 ? '#B26A00' : ink,
+      r: 13,
+      fill: bright > 0.03 ? `rgba(255,226,132,${0.14 + 0.62 * bright})` : null,
+    })
+
+    /* ── 电容器：两片平行极板的标准符号（板间淡着色 + 板外侧电荷符号表示带电程度）── */
+    const frac = clamp(info.uc / Math.max(s.U, 0.001), 0, 1)
+    if (frac > 0.03) {
+      const fg = ctx.createLinearGradient(0, g.yc - hCap, 0, g.yc + hCap)
+      fg.addColorStop(0, `rgba(222,69,63,${0.10 * frac})`)
+      fg.addColorStop(1, `rgba(44,111,175,${0.10 * frac})`)
+      ctx.fillStyle = fg
+      ctx.fillRect(g.x2 - 15 * k, g.yc - hCap, 30 * k, hCap * 2)
+    }
+    symCapacitor(ctx, g.x2, g.yc, { scale: k, ink, axis: 'v' })
+    const nQ = Math.max(0, Math.round(frac * 4))
+    setFont(ctx, Math.round(8 * k), 'bold')
+    for (let i = 0; i < nQ; i++) {
+      const dx = (i % 2 ? -1 : 1) * (6.5 + Math.floor(i / 2) * 8) * k
+      ctx.fillStyle = C.pos; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
+      ctx.fillText('+', g.x2 + dx, g.yc - hCap - 1.5 * k)
+      ctx.fillStyle = C.neg; ctx.textBaseline = 'top'
+      ctx.fillText('−', g.x2 + dx, g.yc + hCap + 1.5 * k)
+    }
+
+    /* ── 电源：标准电池组符号（长线=正、短线=负），竖放，长线朝上 → 正极在上（给 C 上极板充正电）── */
+    const batInk = on && isCharge ? SYM_INK : '#A9B7BE'
+    ctx.save()
+    ctx.translate(thR.x, by)
+    ctx.rotate(-Math.PI / 2)
+    symBattery(ctx, 0, 0, { n: 2, scale: k, ink: batInk, showPolarity: false })
+    ctx.restore()
+    setFont(ctx, Math.round(10 * k), 'bold'); ctx.fillStyle = batInk
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    ctx.fillText('+', thR.x + 10 * k, by - 12 * k)
+    ctx.fillText('−', thR.x + 10 * k, by + 13 * k)
+
+    /* ── 开关：单刀双掷标准符号（公共端朝上、两掷点在下方；刀压向 ① 充电 / ② 放电）── */
+    symSwitchSPDT(ctx, g.x1, ySw, { pos: isCharge ? 0 : 1, closed: on, scale: k, ink, axis: 'v' })
+
+    /* ── 掷点标注 ── */
+    setFont(ctx, Math.round(9 * k), 'bold')
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    ctx.fillStyle = isCharge && on ? C.tealDark : C.faint
+    ctx.fillText('① 充电', thR.x + 9 * k, thR.y + 10 * k)
+    ctx.textAlign = 'right'
+    ctx.fillStyle = !isCharge && on ? C.neg : C.faint
+    ctx.fillText('② 放电', thL.x - 9 * k, thL.y + 10 * k)
+    ctx.textBaseline = 'alphabetic'
 
     // 标注
     setFont(ctx, Math.round(9.5 * k), 'bold'); ctx.fillStyle = C.sub
     ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    fitFont(ctx, `小灯泡 · 灯丝 ${s.Rk} kΩ`, (g.r1 - g.r0) + 60 * k, 9.5 * k, 'bold')
-    ctx.fillText(`小灯泡 · 灯丝 ${s.Rk} kΩ`, g.rMid, g.yTop + 15 * k)
+    fitFont(ctx, `小灯泡 · 灯丝 ${s.Rk} kΩ`, 190 * k, 9.5 * k, 'bold')
+    ctx.fillText(`小灯泡 · 灯丝 ${s.Rk} kΩ`, g.rMid, g.yTop + hBulb + 6 * k)
     ctx.textAlign = 'left'
-    ctx.fillText(`C = ${s.Cmu} μF`, g.x2 + 34 * k, g.yc - 32 * k)
-    ctx.fillText(`Q = ${info.q.toFixed(0)} μC`, g.x2 + 34 * k, g.yc + 20 * k)
-    ctx.fillText(`U₀ = ${s.U} V`, cR.x + 26 * k, by - 6 * k)
+    ctx.fillText(`C = ${s.Cmu} μF`, g.x2 + 22 * k, g.yc - 30 * k)
+    ctx.fillText(`Q = ${info.q.toFixed(0)} μC`, g.x2 + 22 * k, g.yc + 18 * k)
+    ctx.fillText(`电源 ${s.U} V`, thR.x + 22 * k, by)
+    ctx.textBaseline = 'alphabetic'
     // 状态条
     const tagY = a.y + 2
     const tag = !on
@@ -321,324 +381,14 @@ export default function CapacitorChargeScene() {
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle'
     ctx.fillText(isCharge ? '刀在充电位：电源—灯丝—C 串联闭合' : '刀在放电位：C 经灯丝放电，电源支路断开', a.x + a.w - 8, tagY + 11)
     ctx.textBaseline = 'alphabetic'
-  }
 
-  // 小灯泡本体（实物造型：灯座 + 螺口 + 玻璃泡 + 灯丝）。bright 0..1 控制发光
-  function drawBulbShape(ctx, cx, y, k = 1, bright = 0, half = 20) {
-    const b = clamp(bright, 0, 1)
-    const r = clamp(half * 0.86, 9 * k, 21 * k)
-    const cy = y - 10 * k - r
-    // 光晕
-    if (b > 0.02) {
-      const gr = ctx.createRadialGradient(cx, cy, 1.5 * k, cx, cy, r * 3.5)
-      gr.addColorStop(0, `rgba(255,240,190,${0.5 * b + 0.08})`)
-      gr.addColorStop(0.34, `rgba(255,214,136,${0.3 * b})`)
-      gr.addColorStop(0.72, `rgba(255,204,120,${0.1 * b})`)
-      gr.addColorStop(1, 'rgba(255,198,110,0)')
-      ctx.beginPath(); ctx.arc(cx, cy, r * 3.5, 0, Math.PI * 2)
-      ctx.fillStyle = gr; ctx.fill()
-    }
-    // 灯座（白色陶瓷/胶木座，两端带接线螺丝）
-    const baseH = 12 * k
-    ctx.beginPath(); ctx.roundRect(cx - half, y - baseH / 2, half * 2, baseH, 3.5 * k)
-    const bgd = ctx.createLinearGradient(0, y - baseH / 2, 0, y + baseH / 2)
-    bgd.addColorStop(0, '#FFFFFF'); bgd.addColorStop(0.62, '#EDF3F2'); bgd.addColorStop(1, '#D2DFDC')
-    ctx.fillStyle = bgd; ctx.fill()
-    ctx.strokeStyle = '#BFD0CB'; ctx.lineWidth = 1.1 * k; ctx.stroke()
-    ctx.fillStyle = '#AFBEBC'
-    for (const sx of [-half + 4.5 * k, half - 4.5 * k]) {
-      ctx.beginPath(); ctx.arc(cx + sx, y, 2.1 * k, 0, Math.PI * 2); ctx.fill()
-    }
-    // 螺口（金属螺纹，3 道）
-    const neckTop = y - 8 * k
-    const mg = ctx.createLinearGradient(cx - 8 * k, 0, cx + 8 * k, 0)
-    mg.addColorStop(0, '#8C969B'); mg.addColorStop(0.38, '#DCE3E6'); mg.addColorStop(1, '#7C878C')
-    ctx.fillStyle = mg
-    ctx.beginPath()
-    ctx.moveTo(cx - 8.4 * k, neckTop); ctx.lineTo(cx + 8.4 * k, neckTop)
-    ctx.lineTo(cx + 6.6 * k, y - 5.6 * k); ctx.lineTo(cx - 6.6 * k, y - 5.6 * k)
-    ctx.closePath(); ctx.fill()
-    ctx.strokeStyle = 'rgba(70,80,86,0.5)'; ctx.lineWidth = 0.7 * k
-    for (let i = 0; i < 3; i++) {
-      const yy = neckTop + (i + 0.65) * 1.9 * k
-      ctx.beginPath(); ctx.moveTo(cx - 8 * k, yy); ctx.lineTo(cx + 8 * k, yy); ctx.stroke()
-    }
-    // 玻璃泡
-    const glass = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.34, 1 * k, cx, cy, r + 2 * k)
-    if (b > 0.03) {
-      glass.addColorStop(0, `rgba(255,247,219,${0.55 + 0.4 * b})`)
-      glass.addColorStop(0.62, `rgba(255,226,146,${0.26 + 0.5 * b})`)
-      glass.addColorStop(1, `rgba(255,210,112,${0.10 + 0.42 * b})`)
-    } else {
-      glass.addColorStop(0, 'rgba(245,251,253,0.97)')
-      glass.addColorStop(0.72, 'rgba(228,240,246,0.92)')
-      glass.addColorStop(1, 'rgba(205,222,232,0.94)')
-    }
-    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2)
-    ctx.fillStyle = glass; ctx.fill()
-    ctx.strokeStyle = b > 0.3 ? 'rgba(228,164,48,0.85)' : '#B4C9D4'
-    ctx.lineWidth = 1.15 * k; ctx.stroke()
-    // 灯丝：两根引丝 + 中部 M 形灯丝，随亮度由灰变亮黄
-    const fA = cx - r * 0.24, fB = cx + r * 0.24
-    const top = cy - r * 0.22, bot = cy + r * 0.3
-    ctx.lineCap = 'round'
-    ctx.strokeStyle = b > 0.5 ? '#FFF7DC' : b > 0.1 ? '#EBC77F' : '#A3B0B6'
-    ctx.lineWidth = 1.1 * k
-    ctx.beginPath()
-    ctx.moveTo(fA, y - 6.5 * k); ctx.lineTo(fA, bot)
-    ctx.moveTo(fB, y - 6.5 * k); ctx.lineTo(fB, bot)
-    ctx.moveTo(fA, bot)
-    for (let i = 0; i < 4; i++) {
-      const fx = fA + ((i + 1) * (fB - fA)) / 5
-      ctx.lineTo(fx, i % 2 ? bot : top)
-    }
-    ctx.lineTo(fB, bot)
-    ctx.stroke()
-    if (b > 0.12) {
-      ctx.strokeStyle = `rgba(255,252,226,${0.5 * b})`
-      ctx.lineWidth = 3 * k
-      ctx.beginPath()
-      ctx.moveTo(fA, bot)
-      for (let i = 0; i < 4; i++) {
-        const fx = fA + ((i + 1) * (fB - fA)) / 5
-        ctx.lineTo(fx, i % 2 ? bot : top)
-      }
-      ctx.lineTo(fB, bot)
-      ctx.stroke()
-    }
-    ctx.lineCap = 'butt'
-  }
-
-  function drawBulb(ctx, x0, x1, y, k, bright) {
-    const cx = (x0 + x1) / 2
-    const half = Math.min(26 * k, Math.max(17 * k, (x1 - x0) / 2 - 6 * k))
-    ctx.strokeStyle = '#7E949C'; ctx.lineWidth = 1.8 * k
-    ctx.beginPath()
-    ctx.moveTo(x0, y); ctx.lineTo(cx - half, y)
-    ctx.moveTo(cx + half, y); ctx.lineTo(x1, y)
-    ctx.stroke()
-    drawBulbShape(ctx, cx, y, k, bright, half)
-  }
-
-  function drawCapacitor(ctx, x, y, s, info, k = 1) {
-    const uc = info.uc, U = s.U
-    const frac = clamp(uc / Math.max(U, 0.001), 0, 1)
-    const half = 26 * k, gap = 10 * k
-    // 极板间的电场着色（上正下负，与极板同色）
-    if (frac > 0.02) {
-      const gdt = ctx.createLinearGradient(0, y - gap, 0, y + gap)
-      gdt.addColorStop(0, `rgba(222,69,63,${0.06 + frac * 0.14})`)
-      gdt.addColorStop(1, `rgba(44,111,175,${0.06 + frac * 0.14})`)
-      ctx.fillStyle = gdt; ctx.fillRect(x - half, y - gap, half * 2, gap * 2)
-    }
-    // 两块极板（水平）：上板接电源正 → 带正电
-    ctx.strokeStyle = C.pos; ctx.lineWidth = 3.4 * k; ctx.lineCap = 'butt'
-    ctx.beginPath(); ctx.moveTo(x - half, y - gap); ctx.lineTo(x + half, y - gap); ctx.stroke()
-    ctx.strokeStyle = C.neg
-    ctx.beginPath(); ctx.moveTo(x - half, y + gap); ctx.lineTo(x + half, y + gap); ctx.stroke()
-    // 极板电荷符号（贴在极板内侧）
-    const n = Math.max(0, Math.round(frac * 5))
-    setFont(ctx, Math.round(7.5 * k), 'bold')
-    for (let i = 0; i < n; i++) {
-      const px = x - 20 * k + i * 10 * k
-      ctx.fillStyle = C.pos; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'
-      ctx.fillText('+', px, y - 1)
-      ctx.fillStyle = C.neg; ctx.textBaseline = 'top'
-      ctx.fillText('−', px, y + 1)
-    }
-    ctx.textBaseline = 'alphabetic'
-  }
-
-  function drawBattery(ctx, x, y, k = 1) {
-    // 干电池（真实器材造型）：外壳 + 顶端凸起，与电容器极板明显区分
-    const w = 34 * k, h = 52 * k
-    const gdt = ctx.createLinearGradient(x - w / 2, 0, x + w / 2, 0)
-    gdt.addColorStop(0, '#2E7D5B'); gdt.addColorStop(0.35, '#59B58E'); gdt.addColorStop(1, '#2A7354')
-    ctx.beginPath(); ctx.roundRect(x - w / 2, y - h / 2, w, h, 5 * k)
-    ctx.fillStyle = gdt; ctx.fill()
-    ctx.strokeStyle = '#215E45'; ctx.lineWidth = 1.2 * k; ctx.stroke()
-    ctx.beginPath(); ctx.roundRect(x - 6 * k, y - h / 2 - 6 * k, 12 * k, 7 * k, 3 * k)
-    ctx.fillStyle = '#C6D2CD'; ctx.fill(); ctx.strokeStyle = '#9FAFA8'; ctx.lineWidth = 1; ctx.stroke()
-    setFont(ctx, Math.round(8.5 * k), 'bold'); ctx.fillStyle = 'rgba(255,255,255,0.95)'
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText('12V', x, y + 2)
-    setFont(ctx, Math.round(10 * k), 'bold'); ctx.fillStyle = '#FFFFFF'
-    ctx.fillText('+', x, y - 16 * k)
-    ctx.fillStyle = '#D8EDE5'
-    ctx.fillText('−', x, y + 17 * k)
-    ctx.textBaseline = 'alphabetic'
-  }
-
-  // 单刀双掷闸刀开关（沿用项目既有器材造型）：
-  //   胶木底板（顶面 + 前立面，四角螺丝）+ 左右两根接线柱（柱帽朝上）+ 中央轴座 + 钢质刀杆（末端黑色绝缘柄）
-  //   合闸时刀身以 45° 压到掷点柱帽上；柱帽最后画，压住刀身下缘 → 刀"搭"在帽上
-  function drawSwitch(ctx, pivot, s, isCharge, k = 1) {
-    const postX = 36 * k
-    const capY = pivot.y - 36 * k           // 45° 摆角：横向 36k、竖向 36k
-    const capR = 6.6 * k
-    const baseTop = pivot.y - 2 * k         // 轴座坐在底板上
-    const baseFront = baseTop + 9 * k       // 顶面 → 前立面分界
-    const baseBot = baseTop + 19 * k
-    const halfTop = postX + 22 * k
-    const halfBot = halfTop + 4 * k
-    const footY = baseBot
-    const leftFoot = { x: pivot.x - postX, y: footY }
-    const rightFoot = { x: pivot.x + postX, y: footY }
-    const dir = isCharge ? 1 : -1
-
-    // ── 底板：顶面（浅灰、可见小透视）+ 前立面（深一档）──
-    ctx.beginPath()
-    ctx.moveTo(pivot.x - halfTop, baseTop)
-    ctx.lineTo(pivot.x + halfTop, baseTop)
-    ctx.lineTo(pivot.x + halfBot, baseBot)
-    ctx.lineTo(pivot.x - halfBot, baseBot)
-    ctx.closePath()
-    const pdt = ctx.createLinearGradient(0, baseFront, 0, baseBot)
-    pdt.addColorStop(0, '#C3CCD1'); pdt.addColorStop(0.5, '#AFBAC0'); pdt.addColorStop(1, '#9AA7AE')
-    ctx.fillStyle = pdt; ctx.fill()
-    // 顶面
-    ctx.beginPath()
-    ctx.moveTo(pivot.x - halfTop, baseTop)
-    ctx.lineTo(pivot.x + halfTop, baseTop)
-    ctx.lineTo(pivot.x + halfTop + 1.6 * k, baseFront)
-    ctx.lineTo(pivot.x - halfTop - 1.6 * k, baseFront)
-    ctx.closePath()
-    const ptp = ctx.createLinearGradient(0, baseTop, 0, baseFront)
-    ptp.addColorStop(0, '#FAFCFD'); ptp.addColorStop(0.55, '#E6EBEE'); ptp.addColorStop(1, '#D3DBDF')
-    ctx.fillStyle = ptp; ctx.fill()
-    ctx.strokeStyle = '#9BAAB1'; ctx.lineWidth = 1 * k
-    ctx.beginPath()
-    ctx.moveTo(pivot.x - halfTop, baseTop)
-    ctx.lineTo(pivot.x + halfTop, baseTop)
-    ctx.lineTo(pivot.x + halfTop + 1.6 * k, baseFront)
-    ctx.lineTo(pivot.x - halfTop - 1.6 * k, baseFront)
-    ctx.closePath(); ctx.stroke()
-    // 顶面高光
-    ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 0.9 * k
-    ctx.beginPath(); ctx.moveTo(pivot.x - halfTop + 1 * k, baseTop + 0.8 * k); ctx.lineTo(pivot.x + halfTop - 1 * k, baseTop + 0.8 * k); ctx.stroke()
-    // 四角螺丝（顶面）
-    for (const sx of [-(halfTop - 7.5 * k), halfTop - 7.5 * k]) {
-      ctx.beginPath(); ctx.arc(pivot.x + sx, baseTop + 3.6 * k, 2.2 * k, 0, Math.PI * 2)
-      ctx.fillStyle = '#8E9CA3'; ctx.fill()
-      ctx.strokeStyle = '#7C8A91'; ctx.lineWidth = 0.6 * k
-      ctx.beginPath(); ctx.moveTo(pivot.x + sx - 1.2 * k, baseTop + 3.6 * k); ctx.lineTo(pivot.x + sx + 1.2 * k, baseTop + 3.6 * k); ctx.stroke()
-    }
-
-    // ── 中央轴座（刀刃的轴，坐在底板顶面上）──
-    ctx.fillStyle = '#8C9AA2'
-    ctx.beginPath(); ctx.roundRect(pivot.x - 7.4 * k, pivot.y - 3 * k, 14.8 * k, 11 * k, 2.2 * k); ctx.fill()
-    ctx.strokeStyle = '#6E7C84'; ctx.lineWidth = 1 * k; ctx.stroke()
-    const axg = ctx.createRadialGradient(pivot.x - 1.8 * k, pivot.y - 1.6 * k, 0.8 * k, pivot.x, pivot.y, 6.2 * k)
-    axg.addColorStop(0, '#FFFFFF'); axg.addColorStop(0.5, '#CFD9DD'); axg.addColorStop(1, '#7C8A91')
-    ctx.beginPath(); ctx.arc(pivot.x, pivot.y, 5.8 * k, 0, Math.PI * 2)
-    ctx.fillStyle = axg; ctx.fill()
-    ctx.strokeStyle = '#67757D'; ctx.lineWidth = 1 * k; ctx.stroke()
-    ctx.beginPath(); ctx.arc(pivot.x, pivot.y, 1.9 * k, 0, Math.PI * 2)
-    ctx.fillStyle = '#57666E'; ctx.fill()
-
-    // ── 两根接线柱（立在底板顶面上，柱帽在最上方）──
-    const posts = [
-      { x: pivot.x - postX, active: !isCharge },
-      { x: pivot.x + postX, active: isCharge },
-    ]
-    for (const pt of posts) {
-      const p = pt.x
-      // 柱脚垫片（把柱子"钉"在顶面上，略宽于柱身，露出边沿）
-      ctx.beginPath(); ctx.roundRect(p - 6.4 * k, baseTop + 0.8 * k, 12.8 * k, 4.4 * k, 1.6 * k)
-      ctx.fillStyle = pt.active ? '#0F8C83' : '#B4C1C7'; ctx.fill()
-      ctx.strokeStyle = pt.active ? '#0A6E68' : '#9AABB2'; ctx.lineWidth = 0.8 * k; ctx.stroke()
-      // 柱身
-      const pst = ctx.createLinearGradient(p - 3.6 * k, 0, p + 3.6 * k, 0)
-      pst.addColorStop(0, pt.active ? '#066C64' : '#7F8F97')
-      pst.addColorStop(0.4, pt.active ? '#38C3B6' : '#DCE4E8')
-      pst.addColorStop(1, pt.active ? '#04564F' : '#8E9EA6')
-      ctx.fillStyle = pst
-      ctx.fillRect(p - 3.6 * k, capY + capR * 0.3, 7.2 * k, baseTop + 1.4 * k - (capY + capR * 0.3))
-    }
-
-    // ── 两个静触点夹片（单刀双掷：中轴左右各一，刀落在缝里）──
-    const clipOff = postX - 12 * k
-    const clipTopY = pivot.y - 26 * k
-    for (const sg of [-1, 1]) {
-      const cx = pivot.x + sg * clipOff
-      const on = (sg > 0) === isCharge
-      const ch = baseTop - clipTopY
-      const cg2 = ctx.createLinearGradient(cx - 4.4 * k, 0, cx + 4.4 * k, 0)
-      cg2.addColorStop(0, '#7A8A93'); cg2.addColorStop(0.42, '#EFF4F6')
-      cg2.addColorStop(0.68, '#C2CED4'); cg2.addColorStop(1, '#74848D')
-      ctx.beginPath(); ctx.roundRect(cx - 4.4 * k, clipTopY, 8.8 * k, ch, 2.6 * k)
-      ctx.fillStyle = cg2; ctx.fill()
-      ctx.strokeStyle = '#68787F'; ctx.lineWidth = 0.8 * k; ctx.stroke()
-      // 顶弧高光 + 中间夹缝
-      ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 0.7 * k
-      ctx.beginPath(); ctx.arc(cx, clipTopY + 2.6 * k, 3.5 * k, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke()
-      ctx.beginPath(); ctx.roundRect(cx - 1.5 * k, clipTopY + 2.4 * k, 3 * k, ch - 2.4 * k, 1 * k)
-      ctx.fillStyle = on ? 'rgba(3,58,55,0.8)' : 'rgba(56,72,80,0.5)'; ctx.fill()
-    }
-
-    // ── 刀杆（钢色柱面，刀尖插进夹缝，末端黑色绝缘柄）──
-    const target = { x: pivot.x + dir * (clipOff + 4 * k), y: clipTopY + 10 * k }
-    const baseAng = Math.atan2(target.y - pivot.y, target.x - pivot.x)
-    const ang = s.closed ? baseAng : baseAng + (dir > 0 ? -30 : 30) * Math.PI / 180
-    const L = Math.hypot(clipOff + 4 * k, pivot.y - (clipTopY + 10 * k))
-    ctx.save()
-    ctx.translate(pivot.x, pivot.y)
-    ctx.rotate(ang)
-    const bg2 = ctx.createLinearGradient(0, -3 * k, 0, 3 * k)
-    bg2.addColorStop(0, '#F4F7F8'); bg2.addColorStop(0.42, '#C6CFD4'); bg2.addColorStop(1, '#828E95')
-    ctx.strokeStyle = bg2; ctx.lineWidth = 5.4 * k; ctx.lineCap = 'butt'
-    ctx.beginPath(); ctx.moveTo(4 * k, 0); ctx.lineTo(L + 1 * k, 0); ctx.stroke()
-    // 刀尖铜触点（插进夹缝）
-    ctx.fillStyle = s.closed ? '#CFE4E1' : '#C3CED3'
-    ctx.beginPath(); ctx.roundRect(L - 6.4 * k, -3.0 * k, 5.2 * k, 6 * k, 1.2 * k); ctx.fill()
-    // 黑色绝缘柄（刀尾，长度收到不压柱帽）
-    const hdt = ctx.createLinearGradient(0, -5.2 * k, 0, 5.2 * k)
-    hdt.addColorStop(0, '#4C5157'); hdt.addColorStop(0.42, '#232426'); hdt.addColorStop(1, '#15171A')
-    ctx.beginPath(); ctx.roundRect(0.26 * L, -4.8 * k, 0.36 * L, 9.6 * k, 3.6 * k)
-    ctx.fillStyle = hdt; ctx.fill()
-    ctx.strokeStyle = '#0F1012'; ctx.lineWidth = 0.9 * k; ctx.stroke()
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 0.8 * k
-    ctx.beginPath(); ctx.moveTo(0.32 * L, -2.9 * k); ctx.lineTo(0.56 * L, -2.9 * k); ctx.stroke()
-    ctx.restore()
-
-    // ── 柱帽最后画：压住刀身下缘 → 刀"搭"在帽上 ──
-    for (const pt of posts) {
-      const p = pt.x
-      const cg = ctx.createRadialGradient(p - capR * 0.3, capY - capR * 0.36, capR * 0.14, p, capY, capR)
-      cg.addColorStop(0, pt.active ? '#A7F3E7' : '#FBFDFD')
-      cg.addColorStop(0.46, pt.active ? '#17A99D' : '#CFD9DD')
-      cg.addColorStop(1, pt.active ? '#08726B' : '#93A6AE')
-      ctx.beginPath(); ctx.arc(p, capY, capR, 0, Math.PI * 2)
-      ctx.fillStyle = cg; ctx.fill()
-      ctx.strokeStyle = pt.active ? '#0A6F68' : '#87999F'; ctx.lineWidth = 1 * k; ctx.stroke()
-      ctx.beginPath(); ctx.arc(p, capY, capR * 0.42, 0, Math.PI * 2)
-      ctx.fillStyle = pt.active ? '#065C57' : '#9CADB5'; ctx.fill()
-      ctx.strokeStyle = pt.active ? 'rgba(4,72,68,0.32)' : 'rgba(110,124,132,0.32)'; ctx.lineWidth = 0.7 * k
-      for (let i = -1.5; i <= 1.5; i++) {
-        const hx = p + i * 3 * k
-        const hh = Math.sqrt(Math.max(0, capR * capR - (i * 3 * k) ** 2)) - 2.2 * k
-        if (hh <= 0) continue
-        ctx.beginPath(); ctx.moveTo(hx, capY - hh); ctx.lineTo(hx, capY + hh); ctx.stroke()
-      }
-    }
-
-    // ── 掷点标签（放在柱外侧，避开柱身与刀）──
-    setFont(ctx, Math.round(8.5 * k), 'bold'); ctx.textBaseline = 'middle'
-    ctx.fillStyle = isCharge ? C.tealDark : C.faint
-    ctx.textAlign = 'left'
-    ctx.fillText('① 充电', pivot.x + postX + 9 * k, capY + 2 * k)
-    ctx.fillStyle = !isCharge ? C.neg : C.faint
-    ctx.textAlign = 'right'
-    ctx.fillText('② 放电', pivot.x - postX - 9 * k, capY + 2 * k)
-    ctx.textAlign = 'center'
-    // 点击区
+    // 开关整块可点（合闸/换掷）
     pushArea({
       n: 'switch',
-      x: pivot.x - 60 * k, y: capY - 14 * k, w: 120 * k, h: (footY - capY) + 18 * k,
+      x: g.x1 - swLift - 16 * k, y: ySw - swHalf - 10 * k,
+      w: (swLift + 16 * k) * 2, h: swHalf * 2 + 20 * k,
       onClick: () => toggleSwitch(),
     })
-    ctx.textBaseline = 'alphabetic'
-    return { leftFoot, rightFoot }
   }
 
   function toggleSwitch() {
@@ -650,37 +400,48 @@ export default function CapacitorChargeScene() {
       : '开关断开')
   }
 
-  // 电流流动（沿回路的小箭头）
-  function drawCurrentFlow(ctx, g, s, info, lx = g.x1) {
+  // 电流流动（沿导线的红色小箭头；按"干净线段"分组，箭头不压在元件符号上）
+  function drawCurrentFlow(ctx, g, s, info, m) {
     const isCharge = s.mode === 'charge'
-    // 顶边分两段绕开灯泡本体（箭头不压在灯丝上）
-    const pts = [
-      [g.r1, g.yTop], [g.x2, g.yTop], [g.x2, g.yBot], [lx, g.yBot], [lx, g.yTop], [g.r0, g.yTop],
-    ]
-    // 周长与分段
-    let total = 0
-    const segs = []
-    for (let i = 0; i < pts.length - 1; i++) {
-      const a = pts[i], b = pts[i + 1]
-      const len = Math.hypot(b[0] - a[0], b[1] - a[1])
-      segs.push({ a, b, len, start: total })
-      total += len
+    const k = g.k
+    // 充电时的电流路径（顺时针）：C 下极板 → 底边 → 充电支路（电池 − 进）→ 电池 + → 掷点 → 公共端 → 左边 → 顶边 → 灯泡 → 右边 → C 上极板
+    const runs = [
+      [[g.x2, g.yc + m.hCap + 2 * k], [g.x2, g.yBot], [m.th.x, g.yBot], [m.th.x, m.by + m.hBat]],
+      [[m.th.x, m.by - m.hBat], [m.th.x, m.th.y + 3 * k]],
+      [[g.x1, m.com.y - 3 * k], [g.x1, g.yTop], [g.rMid - m.hBulb - 3 * k, g.yTop]],
+      [[g.rMid + m.hBulb + 3 * k, g.yTop], [g.x2, g.yTop], [g.x2, g.yc - m.hCap - 2 * k]],
+    ].map((r) => (isCharge ? r : r.slice().reverse()))
+    const groups = runs.map((r) => {
+      let total = 0
+      const segs = []
+      for (let i = 0; i < r.length - 1; i++) {
+        const a = r[i], b = r[i + 1]
+        const len = Math.hypot(b[0] - a[0], b[1] - a[1])
+        segs.push({ a, b, len, start: total })
+        total += len
+      }
+      return { segs, total }
+    })
+    const grand = groups.reduce((acc, gp) => acc + gp.total, 0) || 1
+    const speed = 0.42 + 0.9 * clamp(Math.abs(info.i) / Math.max(info.I0, 0.001), 0, 1)
+    const phase = ((performance.now() / 1000) * speed) % 1
+    const col = isCharge ? C.pos : C.neg
+    let base = 0
+    for (const gp of groups) {
+      const cnt = Math.max(1, Math.round(gp.total / 68))
+      const off = base / grand
+      for (let j = 0; j < cnt; j++) {
+        const u = (phase + off + j / cnt) % 1
+        const dist = u * gp.total
+        let sg = gp.segs[0]
+        for (const sgi of gp.segs) if (dist >= sgi.start && dist <= sgi.start + sgi.len) { sg = sgi; break }
+        const f = (dist - sg.start) / sg.len
+        arrowHead(ctx, sg.a[0] + (sg.b[0] - sg.a[0]) * f, sg.a[1] + (sg.b[1] - sg.a[1]) * f,
+          sg.b[0] - sg.a[0], sg.b[1] - sg.a[1], col, 5.5 * k)
+      }
+      base += gp.total
     }
-    const phase = ((performance.now() / 1000) * (0.55 + Math.abs(info.i) / Math.max(info.I0, 0.001) * 1.2)) % 1
-    const cnt = 4
-    for (let j = 0; j < cnt; j++) {
-      let u = (phase + j / cnt) % 1
-      if (!isCharge) u = 1 - u
-      const dist = u * total
-      let sg = segs[0]
-      for (const sgi of segs) if (dist >= sgi.start && dist <= sgi.start + sgi.len) { sg = sgi; break }
-      const f = (dist - sg.start) / sg.len
-      const x = sg.a[0] + (sg.b[0] - sg.a[0]) * f
-      const y = sg.a[1] + (sg.b[1] - sg.a[1]) * f
-      const col = isCharge ? C.pos : C.neg
-      arrowHead(ctx, x, y, sg.b[0] - sg.a[0], sg.b[1] - sg.a[1], col, 5.5 * (g.k || 1))
-    }
-    setFont(ctx, Math.round(9 * (g.k || 1)), 'bold'); ctx.fillStyle = isCharge ? C.pos : C.neg
+    setFont(ctx, Math.round(9 * k), 'bold'); ctx.fillStyle = col
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
     ctx.fillText(`I = ${Math.abs(info.i).toFixed(2)} mA ${isCharge ? '（顺时针）' : '（逆时针）'}`, g.x1 + 8, g.yBot + 14)
     ctx.textBaseline = 'alphabetic'

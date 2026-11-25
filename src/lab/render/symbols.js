@@ -16,6 +16,8 @@ export const SYM_INK = INK
 const SIZE = {
   battery: { longH: 19, shortH: 9, pairGap: 7, cellGap: 13 },
   switch: { half: 16, lift: 13 },
+  switch2: { half: 34, lift: 22 },   // 单刀双掷：公共端到掷点跨距 half / 两掷点半跨距 lift
+  capacitor: { plate: 30, gap: 8 },
   resistor: { w: 42, h: 13 },
   rheostat: { w: 58, h: 13 },
   meter: { r: 14 },
@@ -23,15 +25,18 @@ const SIZE = {
 
 /**
  * 符号在导线上占用的半宽（调用方据此断开导线）
- * @param {'battery'|'switch'|'resistor'|'rheostat'|'meter'} kind
+ * @param {'battery'|'switch'|'switch2'|'capacitor'|'resistor'|'rheostat'|'meter'|'bulb'} kind
+ * @param {'h'|'v'} axis 符号沿哪条导线放（水平 / 垂直）；半宽始终指"沿导线方向"的占用
  */
-export function symHalf(kind, scale = 1, cells = 2) {
+export function symHalf(kind, scale = 1, cells = 2, axis = 'h') {
   switch (kind) {
     case 'battery': {
       const b = SIZE.battery
       return (cells * b.pairGap + (cells - 1) * b.cellGap) * scale / 2
     }
     case 'switch': return (SIZE.switch.half + 3) * scale
+    case 'switch2': return SIZE.switch2.half * scale
+    case 'capacitor': return SIZE.capacitor.gap * scale / 2
     case 'resistor': return SIZE.resistor.w * scale / 2
     case 'rheostat': return (SIZE.rheostat.w / 2 + 3) * scale
     case 'bulb': return SIZE.meter.r * scale
@@ -142,6 +147,69 @@ export function symSwitch(ctx, x, y, o = {}) {
   return { half: half + 3 * k }
 }
 
+/**
+ * 开关（单刀双掷 / 换向开关）
+ * 公共端在左（一个圆点），右边上下两个掷点；闸刀摆向选中的掷点，pos=0 上掷、pos=1 下掷；
+ * closed=false 时刀从中位偏出、离开掷点。axis='v' 时公共端朝上、两掷点在下方（竖着放在竖直导线上）。
+ * 返回三个端点的绝对坐标 { com, a, b } 供调用方接线。
+ */
+export function symSwitchSPDT(ctx, x, y, o = {}) {
+  const { pos = 1, closed = true, scale = 1, ink = INK, axis = 'h' } = o
+  const k = scale
+  const s = SIZE.switch2
+  const half = s.half * k, lift = s.lift * k
+  const A = { x: half, y: -lift }
+  const B = { x: half, y: lift }
+  const sel = pos === 0 ? A : B
+  const full = Math.hypot(sel.x + half, sel.y)
+  const ang0 = Math.atan2(sel.y, sel.x + half)
+  // 断开：刀收在中位（两掷点之间、竖直向下），明显没搭上任何一个掷点
+  const ang = closed ? ang0 : 0
+  const len = closed ? full : full * 0.62
+  ctx.save()
+  ctx.translate(x, y)
+  if (axis === 'v') ctx.rotate(Math.PI / 2)
+  ctx.strokeStyle = ink
+  ctx.fillStyle = ink
+  ctx.lineCap = 'round'
+  ctx.lineWidth = 2.3 * k
+  // 闸刀（从公共端转轴伸出）
+  ctx.beginPath()
+  ctx.moveTo(-half, 0)
+  ctx.lineTo(-half + Math.cos(ang) * len, Math.sin(ang) * len)
+  ctx.stroke()
+  // 三个接线点
+  const dotR = 2.2 * k
+  for (const p of [{ x: -half, y: 0 }, A, B]) {
+    ctx.beginPath(); ctx.arc(p.x, p.y, dotR, 0, Math.PI * 2); ctx.fill()
+  }
+  ctx.restore()
+  const toAbs = (p) => (axis === 'v' ? { x: x - p.y, y: y + p.x } : { x: x + p.x, y: y + p.y })
+  return { half: half * k, com: toAbs({ x: -half, y: 0 }), a: toAbs(A), b: toAbs(B) }
+}
+
+/**
+ * 电容器：两片平行等长极板（教科书画法），极板垂直于导线。
+ * axis='h' 时极板竖立、导线左右接入；axis='v' 时极板水平、导线上下接入。
+ */
+export function symCapacitor(ctx, x, y, o = {}) {
+  const { scale = 1, ink = INK, axis = 'h' } = o
+  const k = scale
+  const c = SIZE.capacitor
+  const P = c.plate * k, G = c.gap * k
+  ctx.save()
+  ctx.translate(x, y)
+  if (axis === 'v') ctx.rotate(Math.PI / 2)
+  ctx.strokeStyle = ink
+  ctx.lineWidth = 2.4 * k
+  ctx.lineCap = 'butt'
+  for (const px of [-G / 2, G / 2]) {
+    ctx.beginPath(); ctx.moveTo(px, -P / 2); ctx.lineTo(px, P / 2); ctx.stroke()
+  }
+  ctx.restore()
+  return { half: G / 2 }
+}
+
 /** 定值电阻：空心矩形（人教版画法，不用锯齿） */
 export function symResistor(ctx, x, y, o = {}) {
   const { scale = 1, ink = INK } = o
@@ -198,14 +266,14 @@ export function symRheostat(ctx, x, y, o = {}) {
   return { half: W / 2 + 3 * k, W, H, ax, topY, tipY, y }
 }
 
-/** 小灯泡：圆圈 + 叉丝（人教版灯泡符号 ⊗） */
+/** 小灯泡：圆圈 + 叉丝（人教版灯泡符号 ⊗）。fill 可给圆内叠一层暖色（表示正在发光） */
 export function symBulb(ctx, x, y, o = {}) {
-  const { scale = 1, ink = INK, r = 13 } = o
+  const { scale = 1, ink = INK, r = 13, fill = null } = o
   const k = scale
   const R = r * k
   ctx.save()
   ctx.strokeStyle = ink
-  ctx.fillStyle = '#fff'
+  ctx.fillStyle = fill || '#fff'
   ctx.lineWidth = 1.7 * k
   ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill(); ctx.stroke()
   // 叉丝：两条对角线（在圆内）
