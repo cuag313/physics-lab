@@ -871,6 +871,17 @@ export const EXPERIMENT_CATALOG = [
     examLevel: '★★',
   },
   {
+    key: 'selfInduction',
+    name: '自感与互感',
+    description: '四步演示：通电自感、断电自感（并联灯泡续流）、τ=L/R、通直流阻交流（X_L=2πfL）；自己动手接线搭 RL 回路自动求解',
+    category: 'electric',
+    subCategory: '高中电磁学',
+    difficulty: 2,
+    grade: '高二',
+    tags: ['自感', '互感', '自感系数', '楞次定律', '通直流阻交流', '感抗'],
+    examLevel: '★★',
+  },
+  {
     key: 'electricFieldDeflection',
     name: '带电粒子在电场中的偏转',
     description: '带电粒子垂直进入匀强电场做类平抛运动，示波管原理，速度选择器',
@@ -998,17 +1009,6 @@ export const EXPERIMENT_CATALOG = [
     grade: '高二',
     tags: ['法拉第', '感应电动势', '磁通量', 'ε=NΔΦ/Δt'],
     examLevel: '★★★',
-  },
-  {
-    key: 'selfInduction',
-    name: '自感与互感',
-    description: '观察自感现象（通电/断电自感），理解自感系数L',
-    category: 'electric',
-    subCategory: '高中电磁学',
-    difficulty: 2,
-    grade: '高二',
-    tags: ['自感', '互感', '自感系数', '楞次定律'],
-    examLevel: '★★',
   },
 
   // ==================== 高中·交变电流（选择性必修二 第 13 章） ====================

@@ -18,6 +18,7 @@ const SIZE = {
   switch: { half: 16, lift: 13 },
   switch2: { half: 26, lift: 34 },   // 单刀双掷：公共端到掷点跨距 half / 两掷点半跨距 lift
   capacitor: { plate: 30, gap: 8 },
+  inductor: { r: 6.2, loops: 4 },
   resistor: { w: 42, h: 13 },
   rheostat: { w: 58, h: 13 },
   meter: { r: 14 },
@@ -37,6 +38,7 @@ export function symHalf(kind, scale = 1, cells = 2, axis = 'h') {
     case 'switch': return (SIZE.switch.half + 3) * scale
     case 'switch2': return SIZE.switch2.half * scale
     case 'capacitor': return SIZE.capacitor.gap * scale / 2
+    case 'inductor': return SIZE.inductor.loops * SIZE.inductor.r * scale
     case 'resistor': return SIZE.resistor.w * scale / 2
     case 'rheostat': return (SIZE.rheostat.w / 2 + 3) * scale
     case 'bulb': return SIZE.meter.r * scale
@@ -208,6 +210,36 @@ export function symCapacitor(ctx, x, y, o = {}) {
   }
   ctx.restore()
   return { half: G / 2 }
+}
+
+/**
+ * 电感（线圈）：连续 n 个半圆（人教版「线圈」画法），半圆骑在导线上。
+ * axis='h' 时沿水平导线、半圆朝上鼓；axis='v' 时沿竖直导线、半圆朝右鼓。
+ * 铁芯版本 core=true 时在线圈上方加一条与导线平行的小横线（表示有铁芯）。
+ */
+export function symInductor(ctx, x, y, o = {}) {
+  const { scale = 1, ink = INK, loops = SIZE.inductor.loops, axis = 'h', core = false } = o
+  const k = scale
+  const r = SIZE.inductor.r * k
+  const W = loops * 2 * r
+  ctx.save()
+  ctx.translate(x, y)
+  if (axis === 'v') ctx.rotate(Math.PI / 2)
+  ctx.strokeStyle = ink
+  ctx.fillStyle = ink
+  ctx.lineWidth = 1.9 * k
+  ctx.lineCap = 'butt'
+  for (let i = 0; i < loops; i++) {
+    const cx = -W / 2 + r + i * 2 * r
+    ctx.beginPath(); ctx.arc(cx, 0, r, Math.PI, 0); ctx.stroke()
+  }
+  if (core) {
+    // 铁芯：与导线平行的一条短线（画在线圈内侧，贴住半圆根部）
+    ctx.lineWidth = 2.4 * k
+    ctx.beginPath(); ctx.moveTo(-W / 2 + 1.5 * k, -1.2 * k); ctx.lineTo(W / 2 - 1.5 * k, -1.2 * k); ctx.stroke()
+  }
+  ctx.restore()
+  return { half: W / 2 }
 }
 
 /** 定值电阻：空心矩形（人教版画法，不用锯齿） */
