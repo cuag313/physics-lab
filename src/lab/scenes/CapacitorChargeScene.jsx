@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
-import { figURL } from './electricSvgInstruments'
+import { figURL, TYPES } from './electricSvgInstruments'
 import { SYM_INK, symHalf, symBattery, symBulb, symCapacitor, symSwitchSPDT } from '../render/symbols'
 
 /**
@@ -260,7 +260,7 @@ export default function CapacitorChargeScene() {
     const hBulb = symHalf('bulb', k)                  // ⊗ 半径（沿顶边占的半宽）
     const hCap = symHalf('capacitor', k, 1, 'v')      // 电容两片极板间距的一半（竖直）
     const hBat = symHalf('battery', k, 2, 'v')        // 两节电池组半高（竖直）
-    const swHalf = 34 * k, swLift = 22 * k            // 单刀双掷：公共端→掷点跨距 / 掷点半跨距
+    const swHalf = 26 * k, swLift = 34 * k            // 单刀双掷：公共端→掷点跨距 / 掷点半跨距
     const ySw = g.yTop + 60 * k
     const comPt = { x: g.x1, y: ySw - swHalf }        // 公共端（接顶边下引的导线）
     const thR = { x: g.x1 + swLift, y: ySw + swHalf } // ① 充电掷点（右）
@@ -277,12 +277,13 @@ export default function CapacitorChargeScene() {
     seg(g.x1, g.yTop, g.x1, comPt.y)                        // 左边：顶角 → 开关公共端
     seg(g.x2, g.yTop, g.x2, g.yc - hCap)                    // 右边：顶角 → 电容上极板
     seg(g.x2, g.yc + hCap, g.x2, g.yBot)                    // 右边：下极板 → 底角
-    seg(g.x2, g.yBot, thR.x, g.yBot)                        // 底边（放电支路在 thL 处搭接）
+    seg(g.x2, g.yBot, thR.x, g.yBot)                        // 底边（到充电支路落点）
     const chCol = on && isCharge ? wireCol : '#CBD8DD'      // 充电支路：刀不在该位时整条灰掉
     seg(thR.x, thR.y, thR.x, by - hBat, chCol)
     seg(thR.x, by + hBat, thR.x, g.yBot, chCol)
     const disCol = on && !isCharge ? wireCol : '#CBD8DD'    // 放电支路
     seg(thL.x, thL.y, thL.x, g.yBot, disCol)
+    seg(thR.x, g.yBot, thL.x, g.yBot, disCol)               // 底边左段：把放电支路的落点接上（不留断口）
 
     /* ── 电流流动（到稳态 I≈0 时不再画箭头）── */
     if (on && !info.done && Math.abs(info.i) > 0.004) {
@@ -685,23 +686,26 @@ export default function CapacitorChargeScene() {
       '• 灯丝电阻随温度变化，本场景按恒定 R 处理',
       '• U_C 按 1−e^(−t/τ) 上升，1τ 到 63.2%，5τ 到 99.3%',
       '• 稳态 I≈0、灯泡熄灭，电容隔直流但电路仍闭合',
+      '• 电容「隔直通交」：直流只在合闸瞬间有充电电流',
     ] : s.step === 2 ? [
       '• 拨到放电位后电源被断开，C 相当于电源',
       '• 电流方向与充电时相反（看箭头）',
       '• 灯泡同样先亮后暗，U_C 按 e^(−t/τ) 下降到 0',
       '• 时间常数仍是 τ = RC（R 即灯丝电阻）',
       '• 能量从电场放出：E = ½CU²',
+      '• 放电也是「隔直」的：放完电 I≈0，不再有电流',
     ] : [
       '• τ = RC，单位：Ω·F = s',
       '• 本场景口径：τ(ms) = R(kΩ)×C(μF)',
       '• τ 只由 R、C 决定，与 U₀ 无关',
       '• C 越大储能越多，充满越慢、灯泡亮得越久',
       '• 灯丝电阻 R 越大，电流越小、灯泡越暗、τ 越大',
+      '• 把 C 换成交流：充放交替，I 才持续不为 0',
     ]
     setFont(ctx, 9); ctx.fillStyle = C.sub
     bullets.forEach((t, i) => {
       fitFont(ctx, t, w - 52, 9)
-      ctx.fillText(t, x + 24, cardY + 32 + i * 27)
+      ctx.fillText(t, x + 24, cardY + 30 + i * 24)
     })
     ctx.textBaseline = 'alphabetic'
   }
@@ -829,7 +833,7 @@ export default function CapacitorChargeScene() {
   const TERM = {
     battery: Math.round(FIG_W.battery / 2 * (87 / 175) * 10) / 10,     // 28.6
     resistor: Math.round(FIG_W.resistor / 2 * (175 / 256) * 10) / 10,  // 37.6
-    switch: Math.round(FIG_W.switch / 2 * (168 / 226) * 10) / 10,      // 34.2
+    switch: Math.round(FIG_W.switch / 2 * ((151 - 26) / 176) * 10) / 10,  // 32.7（单向闸刀 SVG 176×110，柱心 26/151）
     capacitor: 26,
     // 干电池组实拍图 1024×288：黑柱 (105,157)、红柱 (924,157)
     cell: Math.round(FIG_W.cell / 2 * ((924 - 105) / 1024) * 10) / 10,       // 48.0
@@ -1004,14 +1008,35 @@ export default function CapacitorChargeScene() {
   const DIY_FIG = {
     battery: { file: 'accumulator_c.png', w: 175, h: 180, a: [45, 14], b: [132, 14] },
     resistor: { file: 'bulb_c.png', w: 256, h: 121, a: [38, 74], b: [213, 74] },
-    switch: { file: 'switch_c.png', w: 226, h: 158, a: [32, 124], b: [200, 124] },
+    // 开关：不再用「底板照片 + 手画闸刀」，直接用项目既有器材 SVG（`electricSvgInstruments` 的 TYPES.switch，
+    // 单向闸刀：胶木底座 + 黑/红柱帽 + 铰链 + 右触口卡槽 + 钢刀黑柄），与其它电学场景的器材完全一致。
+    // 柱心 (26,82)/(151,82)，画布 176×110。
+    switch: { svg: true, w: 176, h: 110, a: [26, 82], b: [151, 82] },
     // 干电池组（两节 AA 电池盒）：黑柱 105,157 / 红柱 924,157
     cell: { file: 'battery_c.png', w: 1024, h: 288, a: [105, 157], b: [924, 157] },
     // 滑动变阻器：左下 24,150 / 右下 395,150（两柱同高，与两端口模型对齐）
     rheostat: { file: 'rheostat_c2.png', w: 448, h: 186, a: [24, 150], b: [395, 150] },
   }
   const DIY_SPRITE = new Map()
-  function diySprite(type) {
+  // 单向闸刀 SVG 有「合/断」两态，各自栅格化一份（data URL → Image，纯矢量、不带外部图片）
+  const SW_SPRITE = { open: null, closed: null }
+  function switchSprite(closed) {
+    const key = closed ? 'closed' : 'open'
+    let e = SW_SPRITE[key]
+    if (!e) {
+      const img = new Image()
+      e = { img, ready: false }
+      img.onload = () => { e.ready = true }
+      const svg = TYPES.switch.render({ id: closed ? 'capSwC' : 'capSwO', closed })
+      // 独立成 data URL 时必须补 xmlns，否则浏览器不当作 SVG 图形（只显示 XML 树）
+      const withNs = svg.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ')
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(withNs)
+      SW_SPRITE[key] = e
+    }
+    return e.ready ? { img: e.img, def: DIY_FIG.switch } : null
+  }
+  function diySprite(type, closed = false) {
+    if (type === 'switch') return switchSprite(closed)
     const def = DIY_FIG[type]
     if (!def) return null
     let e = DIY_SPRITE.get(type)
@@ -1074,7 +1099,7 @@ export default function CapacitorChargeScene() {
       return
     }
 
-    const sp = diySprite(comp.type)
+    const sp = diySprite(comp.type, comp.closed)
     // 小灯泡：先在实物图下面铺一层暖光（透过玻璃泡）
     const glass = comp.type === 'resistor' ? figPt('resistor', 128, 40) : null
     if (glass && live > 0.02) {
@@ -1123,67 +1148,6 @@ export default function CapacitorChargeScene() {
       ctx.restore()
     }
 
-    if (comp.type === 'switch') {
-      // 轴座 + 静触点夹片 + 刀（底座的柱帽由实拍图提供）
-      const axX = -bx.term * 0.44, clipX = bx.term * 0.60
-      const plateY = -2.2 * bx.scale / 0.874  // 与底座顶面齐平（按底板比例折算）
-      // 静触点夹片（U 形，两片薄板 + 顶弧）
-      const clipTop = plateY - 8.2, clipBot = plateY
-      const cg = ctx.createLinearGradient(clipX - 4.6, 0, clipX + 4.6, 0)
-      cg.addColorStop(0, '#7E9099'); cg.addColorStop(0.4, '#E7EEF1'); cg.addColorStop(0.62, '#B9C6CC'); cg.addColorStop(1, '#7A8C95')
-      ctx.beginPath()
-      ctx.moveTo(clipX - 4.2, clipBot)
-      ctx.lineTo(clipX - 4.2, clipTop + 2.4)
-      ctx.quadraticCurveTo(clipX - 4.2, clipTop, clipX - 1.8, clipTop)
-      ctx.lineTo(clipX + 1.8, clipTop)
-      ctx.quadraticCurveTo(clipX + 4.2, clipTop, clipX + 4.2, clipTop + 2.4)
-      ctx.lineTo(clipX + 4.2, clipBot)
-      ctx.lineTo(clipX + 2.0, clipBot)
-      ctx.lineTo(clipX + 2.0, clipTop + 2.6)
-      ctx.lineTo(clipX - 2.0, clipTop + 2.6)
-      ctx.lineTo(clipX - 2.0, clipBot)
-      ctx.closePath()
-      ctx.fillStyle = cg; ctx.fill()
-      ctx.strokeStyle = '#798B94'; ctx.lineWidth = 0.6; ctx.stroke()
-      // 轴座（银色竖板 + 白色轴环 + 深色轴孔）
-      ctx.beginPath(); ctx.roundRect(axX - 4.7, clipTop - 0.4, 9.4, -clipTop + 1.2, 3.2)
-      const ag = ctx.createLinearGradient(axX - 4.7, 0, axX + 4.7, 0)
-      ag.addColorStop(0, '#7E9099'); ag.addColorStop(0.34, '#D7E2E7'); ag.addColorStop(0.7, '#B4C2C9'); ag.addColorStop(1, '#778992')
-      ctx.fillStyle = ag; ctx.fill()
-      ctx.strokeStyle = '#6E828B'; ctx.lineWidth = 0.6; ctx.stroke()
-      const ringY = clipTop + 4.2
-      ctx.beginPath(); ctx.arc(axX, ringY, 3.1, 0, Math.PI * 2)
-      const rg = ctx.createRadialGradient(axX - 1, ringY - 1.2, 0.6, axX, ringY, 3.1)
-      rg.addColorStop(0, '#FFFFFF'); rg.addColorStop(0.72, '#D3DEE3'); rg.addColorStop(1, '#96A7AF')
-      ctx.fillStyle = rg; ctx.fill()
-      ctx.strokeStyle = '#6B7F88'; ctx.lineWidth = 0.8; ctx.stroke()
-      ctx.beginPath(); ctx.arc(axX, ringY, 1.25, 0, Math.PI * 2)
-      ctx.fillStyle = '#4E5D65'; ctx.fill()
-      // 刀：合闸压向夹片，断开抬起 30°
-      const L = clipX - 3.0 - axX
-      const ang = comp.closed ? 0 : -40 * Math.PI / 180
-      const tipX = axX + Math.cos(ang) * L, tipY = ringY + Math.sin(ang) * L
-      const bx0 = axX + 2 * Math.cos(ang), by0 = ringY + 2 * Math.sin(ang)
-      ctx.save()
-      ctx.translate(bx0, by0); ctx.rotate(ang)
-      ctx.beginPath(); ctx.roundRect(0, -2.3, L - 2, 4.6, 1.4)
-      const kg = ctx.createLinearGradient(0, -2.3, 0, 2.3)
-      kg.addColorStop(0, '#EDF2F4'); kg.addColorStop(0.3, '#C6D2D8'); kg.addColorStop(0.72, '#98A8B0'); kg.addColorStop(1, '#6F7E86')
-      ctx.fillStyle = kg; ctx.fill()
-      ctx.strokeStyle = '#67767E'; ctx.lineWidth = 0.55; ctx.stroke()
-      ctx.strokeStyle = 'rgba(255,255,255,0.65)'; ctx.lineWidth = 0.6
-      ctx.beginPath(); ctx.moveTo(1.6, -1.5); ctx.lineTo(L - 3.4, -1.5); ctx.stroke()
-      // 黑色绝缘柄（刀梢一段，断开时与参考图一致）
-      ctx.beginPath(); ctx.roundRect(0.56 * L, -5.0, 0.38 * L, 10.0, 2.8)
-      const hg = ctx.createLinearGradient(0, -5.0, 0, 5.0)
-      hg.addColorStop(0, '#5A5F65'); hg.addColorStop(0.42, '#2A2D31'); hg.addColorStop(1, '#121416')
-      ctx.fillStyle = hg; ctx.fill()
-      ctx.strokeStyle = '#0D0F11'; ctx.lineWidth = 0.7; ctx.stroke()
-      ctx.strokeStyle = 'rgba(255,255,255,0.24)'; ctx.lineWidth = 0.55
-      ctx.beginPath(); ctx.moveTo(0.62 * L, -2.9); ctx.lineTo(0.90 * L, -2.9); ctx.stroke()
-      ctx.restore()
-      ctx.lineCap = 'butt'
-    }
 
     // 滑动变阻器：实拍图只有滑杆与线圈，滑片用「黑色手轮 + 银色导杆」补出来
     if (comp.type === 'rheostat') {
@@ -1450,8 +1414,8 @@ export default function CapacitorChargeScene() {
       ctx.restore()
       return
     }
-    // 器材区图标直接用同一套实拍图（等比缩进小框）
-    const sp = diySprite(type), bx = figBox(type)
+    // 器材区图标直接用同一套器材图（等比缩进小框）；单向闸刀取合闸态，一眼认得出是闸刀
+    const sp = diySprite(type, true), bx = figBox(type)
     if (!sp || !bx) {
       ctx.strokeStyle = '#9FB3BB'; ctx.lineWidth = 1.4
       ctx.beginPath(); ctx.roundRect(-11, -8, 22, 16, 3); ctx.stroke()

@@ -16,7 +16,7 @@ export const SYM_INK = INK
 const SIZE = {
   battery: { longH: 19, shortH: 9, pairGap: 7, cellGap: 13 },
   switch: { half: 16, lift: 13 },
-  switch2: { half: 34, lift: 22 },   // 单刀双掷：公共端到掷点跨距 half / 两掷点半跨距 lift
+  switch2: { half: 26, lift: 34 },   // 单刀双掷：公共端到掷点跨距 half / 两掷点半跨距 lift
   capacitor: { plate: 30, gap: 8 },
   resistor: { w: 42, h: 13 },
   rheostat: { w: 58, h: 13 },
@@ -163,9 +163,9 @@ export function symSwitchSPDT(ctx, x, y, o = {}) {
   const sel = pos === 0 ? A : B
   const full = Math.hypot(sel.x + half, sel.y)
   const ang0 = Math.atan2(sel.y, sel.x + half)
-  // 断开：刀收在中位（两掷点之间、竖直向下），明显没搭上任何一个掷点
-  const ang = closed ? ang0 : 0
-  const len = closed ? full : full * 0.62
+  // 断开：刀停在两掷点之间（角度不变、长度收短），明显没搭上任何一个掷点
+  const ang = ang0
+  const len = closed ? full : full * 0.58
   ctx.save()
   ctx.translate(x, y)
   if (axis === 'v') ctx.rotate(Math.PI / 2)
