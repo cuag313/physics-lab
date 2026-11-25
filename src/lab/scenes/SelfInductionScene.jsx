@@ -199,6 +199,24 @@ export default function SelfInductionScene() {
           return S.current.diy.comps.filter((c) => c.type === 'switch')
             .map((c) => ({ id: c.id, closed: at(c, true), open: at(c, false) }))
         })(),
+        diyWirePts: (() => {
+          // 探针用：每条导线贝塞尔中点（画布坐标），用来右键删线
+          const v = canvasRef.current._diyView
+          if (!v) return null
+          return S.current.diy.wires.map((w) => {
+            const c1 = S.current.diy.comps.find((c) => c.id === w.from.compId)
+            const c2 = S.current.diy.comps.find((c) => c.id === w.to.compId)
+            if (!c1 || !c2) return null
+            const p1 = termPos(c1, w.from.port), p2 = termPos(c2, w.to.port)
+            const ext = 42
+            const q1 = { x: p1.x + (w.from.port === 0 ? -ext : ext), y: p1.y }
+            const q2 = { x: p2.x + (w.to.port === 0 ? -ext : ext), y: p2.y }
+            const u = 0.5, iu = 0.5
+            const bx = 0.125 * p1.x + 0.375 * q1.x + 0.375 * q2.x + 0.125 * p2.x
+            const by = 0.125 * p1.y + 0.375 * q1.y + 0.375 * q2.y + 0.125 * p2.y
+            return { id: w.id, x: Math.round(v.ox + bx * v.sc), y: Math.round(v.oy + by * v.sc) }
+          })
+        })(),
         areas: canvasRef.current._clickAreas.map((a) => ({ n: a.n || '', x: Math.round(a.x), y: Math.round(a.y), w: Math.round(a.w), h: Math.round(a.h) })),
       }
     } catch (e) { console.error('render error:', e) }
@@ -1686,8 +1704,8 @@ export default function SelfInductionScene() {
     ctx.textAlign = 'left'; ctx.textBaseline = 'top'
     ctx.fillText('自己动手 · 搭一个通电／断电自感电路', A.org.x + 4, 14)
     setFont(ctx, 10); ctx.fillStyle = C.sub
-    fitFont(ctx, '点右侧器材再点画布落位；点两个接线柱连线（点器材本体即吸附到最近的柱）；点闸刀黑柄通断；右键删除。「一键标准电路」= 串联通电自感，「一键并联续流」= L ∥ 灯泡，「一键互感回路」= 变压器原、副线圈各接一边', A.area.x1 * A.sc - 8, 10)
-    ctx.fillText('点右侧器材再点画布落位；点两个接线柱连线（点器材本体即吸附到最近的柱）；点闸刀黑柄通断；右键删除。「一键标准电路」= 串联通电自感，「一键并联续流」= L ∥ 灯泡，「一键互感回路」= 变压器原、副线圈各接一边', A.org.x + 4, 33)
+    fitFont(ctx, '点右侧器材再点画布落位；点两个接线柱连线（点器材本体即吸附到最近的柱）；点闸刀黑柄通断；右键点导线/器材即删除。「一键标准电路」= 串联通电自感，「一键并联续流」= L ∥ 灯泡，「一键互感回路」= 变压器原、副线圈各接一边', A.area.x1 * A.sc - 8, 10)
+    ctx.fillText('点右侧器材再点画布落位；点两个接线柱连线（点器材本体即吸附到最近的柱）；点闸刀黑柄通断；右键点导线/器材即删除。「一键标准电路」= 串联通电自感，「一键并联续流」= L ∥ 灯泡，「一键互感回路」= 变压器原、副线圈各接一边', A.org.x + 4, 33)
 
     ctx.save(); ctx.translate(A.org.x, A.org.y); ctx.scale(A.sc, A.sc)
     ctx.beginPath(); ctx.roundRect(0, 0, A.area.x1, A.area.y1, 10)
@@ -2941,17 +2959,52 @@ export default function SelfInductionScene() {
     if (!R2) return
     const A = diyGeom(R2.W, R2.H)
     const Pt = { x: (x - A.org.x) / A.sc, y: (y - A.org.y) / A.sc }
+
+    // 先判导线：点在导线的贝塞尔曲线上就近删除（否则接错的线删不掉）
+    const distToWire = (w) => {
+      const c1 = s.diy.comps.find((c) => c.id === w.from.compId)
+      const c2 = s.diy.comps.find((c) => c.id === w.to.compId)
+      if (!c1 || !c2) return Infinity
+      const p1 = termPos(c1, w.from.port), p2 = termPos(c2, w.to.port)
+      const ext = 42                                   // 与 circuitKit.strokeBezierWire 同一套控制点
+      const q1 = { x: p1.x + (w.from.port === 0 ? -ext : ext), y: p1.y }
+      const q2 = { x: p2.x + (w.to.port === 0 ? -ext : ext), y: p2.y }
+      let best = Infinity
+      for (let k = 0; k <= 24; k++) {
+        const u = k / 24, iu = 1 - u
+        const bx = iu * iu * iu * p1.x + 3 * iu * iu * u * q1.x + 3 * iu * u * u * q2.x + u * u * u * p2.x
+        const by = iu * iu * iu * p1.y + 3 * iu * iu * u * q1.y + 3 * iu * u * u * q2.y + u * u * u * p2.y
+        const d = Math.hypot(Pt.x - bx, Pt.y - by)
+        if (d < best) best = d
+      }
+      return best
+    }
+    let wireHit = -1
+    let wireBest = 11                                  // 世界像素容差（差不多是线宽的 3 倍）
+    s.diy.wires.forEach((w, i) => {
+      const d = distToWire(w)
+      if (d < wireBest) { wireBest = d; wireHit = i }
+    })
     const idx = s.diy.comps.findIndex((c) => {
       const e2 = compExtent(c.type)
       return Pt.x > c.x + e2.x0 - 6 && Pt.x < c.x + e2.x1 + 6 && Pt.y > c.y + e2.y0 - 6 && Pt.y < c.y + e2.y1 + 6
     })
+    // 正好压在线上 → 删线；只是「在线附近、又在器材身上」→ 删器材（免得右键器材时误删它旁边的线）
+    const onLine = wireHit >= 0 && wireBest <= 4
+    if (wireHit >= 0 && (onLine || idx < 0)) {
+      s.diy.wires.splice(wireHit, 1)
+      s.diy.t = 0
+      say('导线已删除（右键点线就删，点器材删器材）')
+      return
+    }
+
     if (idx >= 0) {
       const id = s.diy.comps[idx].id
       s.diy.comps.splice(idx, 1)
       s.diy.wires = s.diy.wires.filter((w) => w.from.compId !== id && w.to.compId !== id)
       if (s.diy.sel === id) s.diy.sel = null
       s.diy.t = 0
-      say('器材已删除')
+      say('器材已删除（连在它上面的导线一起删掉了）')
     }
   }
 
