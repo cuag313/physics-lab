@@ -33,7 +33,7 @@ const STEPS = [
   { key: 2, label: '② 断电自感', sub: 'L 与小灯泡并联：断开开关后电源退出，L 维持原来的电流经灯泡回路继续流动，灯泡闪亮一下再熄灭' },
   { key: 3, label: '③ 时间常数 τ=L/R', sub: 'τ(s)=L(H)/R(Ω)：L 越大、R 越小，τ 越大、电流变化越慢；把不同 τ 的曲线叠在一起对比' },
   { key: 4, label: '④ 通直流·阻交流', sub: '同一线圈：直流（f=0）时感抗 X_L=0，稳定后 L 相当于导线；交流时 X_L=2πfL，频率越高阻碍越大、灯泡越暗' },
-  { key: 5, label: '⑤ 互感', sub: '原、副线圈共用铁芯：原线圈电流变化 → 磁通变化 → 副线圈得 ε₂=M·dI₁/dt；只有「变」的瞬间灯泡才闪，稳态无电动势' },
+  { key: 5, label: '⑤ 互感', sub: '原、副线圈共用铁芯：原线圈电流变化 → 磁通变化 → 副线圈得 ε₂=M·dI₁/dt；互感靠「变化的电流」——交流持续有效，直流只有通断的瞬间才有 ε₂' },
 ]
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
@@ -84,18 +84,21 @@ function makeLayout(W, H) {
 export default function SelfInductionScene() {
   const canvasRef = useRef(null)
   const animRef = useRef(null)
+  const cardRect = useRef(null)      // 右侧「要点/应用」卡片最后一次绘制的矩形与可滚距离
 
   const S = useRef({
     tab: 1, step: 1,
     closed: false, t: 0,                       // t 单位 s
     U: 12, L: 1.5, R: 5, f: 2,
     r1: 1, n: 2, kc: 0.9, evt: null,           // ⑤ 互感：原线圈内阻 r₁ / 匝数比 n=N₂/N₁ / 耦合系数 k / 本次事件
+    cardScroll: 0,                             // 右侧「要点/应用」卡片：装不下时滚轮滚动
     ghosts: [], toast: null,
     // 自己动手：接线 → 识别回路 → 跑 RL 通电自感
     nextId: 1,
     diy: {
       comps: [], wires: [], sel: null, t: 0, connecting: null, drag: null,
       hold: null, mx: 0, my: 0, wireColor: '#F44336', lastTap: null, hot: false,
+      evt: null,                               // 互感回路：'on' | 'off' | null（本次通断事件）
     },
   })
 
@@ -136,7 +139,10 @@ export default function SelfInductionScene() {
         S.current.diyDbg = { ok: res.ok, mode: res.mode || '', tau: res.tau, reason: res.reason || '', sw: res.switchComp ? res.switchComp.closed : 'none' }
         if (res.ok) {
           const swOpen = res.switchComp && !res.switchComp.closed
-          if (res.mode === 'shunt') {
+          if (res.mode === 'mutual') {
+            // 互感：只有「本次事件」之后才有 ε₂，按 τ₁ 衰减（合闸、断闸各算一次）
+            if (s.diy.evt && s.diy.t < 5 * res.tau) s.diy.t = Math.min(s.diy.t + dt, 5 * res.tau)
+          } else if (res.mode === 'shunt') {
             if (!swOpen) { s.diy.hot = true; if (s.diy.t > 0) s.diy.t = 0 }   // 闭合：稳态，不动
             else if (s.diy.hot && s.diy.t < 5 * res.tau) s.diy.t = Math.min(s.diy.t + dt, 5 * res.tau)
           } else if (!swOpen) {
@@ -150,7 +156,13 @@ export default function SelfInductionScene() {
     }
     animRef.current = requestAnimationFrame(loop)
     window.addEventListener('resize', R2.resize.bind(R2))
-    return () => { if (animRef.current) cancelAnimationFrame(animRef.current) }
+    // 滚轮要能 preventDefault（页面别跟着滚），必须用非 passive 的原生监听
+    const cv = canvasRef.current
+    if (cv) cv.addEventListener('wheel', handleWheel, { passive: false })
+    return () => {
+      if (animRef.current) cancelAnimationFrame(animRef.current)
+      if (cv) cv.removeEventListener('wheel', handleWheel)
+    }
   }, [])
 
   function pushArea(a) { canvasRef.current._clickAreas.push(a) }
@@ -172,6 +184,7 @@ export default function SelfInductionScene() {
         diyComps: S.current.diy.comps.length, diyWires: S.current.diy.wires.length,
         diyCompList: S.current.diy.comps.map((c) => ({ type: c.type, x: Math.round(c.x), y: Math.round(c.y), closed: !!c.closed, h: c.h, r: c.r, u: c.u })),
         info: { closed: S.current.closed, U: S.current.U, L: S.current.L, R: S.current.R, f: S.current.f },
+        cardScroll: +(S.current.cardScroll || 0).toFixed(1), cardMax: +((cardRect.current && cardRect.current.maxScroll) || 0).toFixed(1),
         areas: canvasRef.current._clickAreas.map((a) => ({ n: a.n || '', x: Math.round(a.x), y: Math.round(a.y), w: Math.round(a.w), h: Math.round(a.h) })),
       }
     } catch (e) { console.error('render error:', e) }
@@ -524,11 +537,46 @@ export default function SelfInductionScene() {
 
   // 互感：左 原回路（电源 + 开关 + 原线圈 L₁）｜右 副回路（副线圈 L₂ + 小灯泡）
   // 两线圈竖放在中间、共用铁芯（标准变压器画法：两组线圈 + 铁芯线 + 同名端圆点）
+  // 变压器符号（铁氧体磁心画法，照用户给的参照图）：
+  //   两个绕组各 3 个半圆，向两侧"向外"鼓；中间一条竖线＝铁芯；
+  //   上下各一条水平引线，端头正好落在 halfW 处（= 两回路竖线的位置）。
+  //   halfW：引线端头到中心的距离；hH：半高（上下引线之间的距离是 2hH）。
+  function drawXfSymbol(ctx, cx, cy, halfW, hH, k, ink) {
+    const r = (2 * hH) / 6                       // 3 匝 → 每匝半圆半径
+    const bx = Math.max(12 * k, halfW * 0.42)    // 绕组竖直中线的偏移
+    const coreH = hH + 8 * k
+    ctx.strokeStyle = ink; ctx.lineCap = 'butt'; ctx.lineJoin = 'miter'
+    ctx.lineWidth = 3.6 * k
+    ctx.beginPath(); ctx.moveTo(cx, cy - coreH); ctx.lineTo(cx, cy + coreH); ctx.stroke()
+
+    ctx.lineWidth = 2.8 * k
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round'
+    const winding = (dir) => {
+      ctx.save(); ctx.translate(cx, cy)
+      if (dir < 0) ctx.scale(-1, 1)              // 左侧镜像
+      ctx.strokeStyle = ink
+      ctx.beginPath()
+      ctx.moveTo(halfW, -hH)                     // 上引线：从回路竖线拐进来
+      ctx.lineTo(bx, -hH)
+      // 3 匝：每匝都是一段"向外鼓"的半圆（用三次贝塞尔画，方向不会随镜像搞反）
+      const c = (4 * r) / 3
+      for (let i = 0; i < 3; i++) {
+        const y0 = -hH + i * 2 * r
+        ctx.bezierCurveTo(bx + c, y0, bx + c, y0 + 2 * r, bx, y0 + 2 * r)
+      }
+      ctx.moveTo(bx, hH)
+      ctx.lineTo(halfW, hH)                      // 下引线
+      ctx.stroke()
+      ctx.restore()
+    }
+    winding(1); winding(-1)
+  }
+
   function drawCircuitMutual(ctx, a, s, info) {
     const k = circuitK(a)
     const lw = 2.4 * k
-    const xP1 = a.x + a.w * 0.05, xP2 = a.x + a.w * 0.42
-    const xS1 = a.x + a.w * 0.50, xS2 = a.x + a.w * 0.93
+    const xP1 = a.x + a.w * 0.05, xP2 = a.x + a.w * 0.40
+    const xS1 = a.x + a.w * 0.52, xS2 = a.x + a.w * 0.93
     const yTop = a.y + a.h * 0.20, yBot = a.y + a.h * 0.86, yMid = (yTop + yBot) / 2
     const bx = xP1 + (xP2 - xP1) * 0.24
     const sx = xP1 + (xP2 - xP1) * 0.66
@@ -540,16 +588,16 @@ export default function SelfInductionScene() {
 
     const hBat = symHalf('battery', k, 2, 'h')
     const hSw = symHalf('switch', k)
-    const kC = k * 1.35                  // 线圈画得比导线上的其它符号大一号，便于看清「匝」
-    const hInd = symHalf('inductor', kC)
+    const hT = 36 * k                     // 变压器符号的半高（上下水平引线到中心线）
     const hBulb = symHalf('bulb', k)
+    const halfW = (xS1 - xP2) / 2         // 两侧引线正好落在两个回路的竖线上
 
     // 原回路
     wireSeg(ctx, xP1, yTop, bx - hBat, yTop, priCol, lw)
     wireSeg(ctx, bx + hBat, yTop, sx - hSw, yTop, priCol, lw)
     wireSeg(ctx, sx + hSw, yTop, xP2, yTop, priCol, lw)
-    wireSeg(ctx, xP2, yTop, xP2, yMid - hInd, priCol, lw)
-    wireSeg(ctx, xP2, yMid + hInd, xP2, yBot, priCol, lw)
+    wireSeg(ctx, xP2, yTop, xP2, yMid - hT, priCol, lw)
+    wireSeg(ctx, xP2, yMid + hT, xP2, yBot, priCol, lw)
     wireSeg(ctx, xP2, yBot, xP1, yBot, priCol, lw)
     wireSeg(ctx, xP1, yBot, xP1, yTop, priCol, lw)
     // 副回路
@@ -557,35 +605,23 @@ export default function SelfInductionScene() {
     wireSeg(ctx, xS2, yTop, xS2, yMid - hBulb, secCol, lw)
     wireSeg(ctx, xS2, yMid + hBulb, xS2, yBot, secCol, lw)
     wireSeg(ctx, xS2, yBot, xS1, yBot, secCol, lw)
-    wireSeg(ctx, xS1, yBot, xS1, yMid + hInd, secCol, lw)
-    wireSeg(ctx, xS1, yMid - hInd, xS1, yTop, secCol, lw)
+    wireSeg(ctx, xS1, yBot, xS1, yMid + hT, secCol, lw)
+    wireSeg(ctx, xS1, yMid - hT, xS1, yTop, secCol, lw)
 
     symBattery(ctx, bx, yTop, { n: 2, scale: k, ink })
     symSwitch(ctx, sx, yTop, { closed: on, scale: k, ink })
-    // 竖放线圈：符号默认向 +x 鼓出，原线圈（在左）镜像一下，让两线圈都朝铁芯
-    const indV = (x, dir) => {
-      if (dir > 0) { symInductor(ctx, x, yMid, { scale: kC, ink, axis: 'v', core: true }); return }
-      ctx.save(); ctx.translate(x, 0); ctx.scale(-1, 1)
-      symInductor(ctx, 0, yMid, { scale: kC, ink, axis: 'v', core: true })
-      ctx.restore()
-    }
-    indV(xP2, -1)
-    indV(xS1, 1)
 
-    // 共用铁芯：两线圈之间的两道竖线（标准变压器画法）
+    // 标准变压器符号（照用户给的「铁氧体磁心变压器」符号画）：
+    //   两侧各 3 个向外鼓的半圆绕组（共用一条中线，图上呈 W 形），中间一条竖铁芯线，
+    //   上下两条水平引线一直伸到两个回路的竖线 —— 这正是课本/图册里互感的画法
     const xc = (xP2 + xS1) / 2
-    for (const dx of [-4.2, 4.2]) {
-      ctx.beginPath()
-      ctx.moveTo(xc + dx * k, yMid - hInd - 8 * k)
-      ctx.lineTo(xc + dx * k, yMid + hInd + 8 * k)
-      ctx.strokeStyle = '#8FA0A8'; ctx.lineWidth = 2.4 * k; ctx.stroke()
-    }
+    drawXfSymbol(ctx, xc, yMid, halfW, hT, k, ink)
 
-    // 同名端：两线圈上端各一个小圆点
-    for (const [px, sgn] of [[xP2, 1], [xS1, -1]]) {
-      ctx.beginPath(); ctx.arc(px + sgn * 9 * k, yMid - hInd - 5 * k, 2.6 * k, 0, Math.PI * 2)
-      ctx.fillStyle = C.pos; ctx.fill()
-    }
+    // 同名端：两绕组上端各一个小圆点（都取上方那根引线的端头）
+    ctx.beginPath(); ctx.arc(xP2 + 11 * k, yMid - hT, 2.6 * k, 0, Math.PI * 2)
+    ctx.fillStyle = C.pos; ctx.fill()
+    ctx.beginPath(); ctx.arc(xS1 - 11 * k, yMid - hT, 2.6 * k, 0, Math.PI * 2)
+    ctx.fillStyle = C.pos; ctx.fill()
 
     // 小灯泡（副回路）+ 亮度光晕
     const bright = info.bright
@@ -607,13 +643,13 @@ export default function SelfInductionScene() {
     if (iRatio > 0.03) {
       const col = `rgba(30,127,142,${0.25 + 0.6 * iRatio})`
       arrowHead(ctx, bx + hBat + 18 * k, yTop, 1, 0, col, 6 * k)
-      arrowHead(ctx, xP2, yMid - hInd - 18 * k, 0, 1, col, 6 * k)
+      arrowHead(ctx, xP2, yMid - hT - 16 * k, 0, 1, col, 6 * k)
       arrowHead(ctx, xP1 + (xP2 - xP1) * 0.5, yBot, -1, 0, col, 6 * k)
     }
     if (hot) {
       const col = `rgba(222,69,63,${0.35 + 0.5 * clamp(info.emf / Math.max(info.emfPeak, 1e-3), 0, 1)})`
-      arrowHead(ctx, xS1, yMid + hInd + 18 * k, 0, -1, col, 6 * k)
-      arrowHead(ctx, xS2, yMid - hInd - 18 * k, 0, 1, col, 6 * k)
+      arrowHead(ctx, xS1, yMid + hT + 16 * k, 0, -1, col, 6 * k)
+      arrowHead(ctx, xS2, yMid - hBulb - 20 * k, 0, 1, col, 6 * k)
     }
 
     // 标注
@@ -621,13 +657,13 @@ export default function SelfInductionScene() {
     ctx.textAlign = 'left'; ctx.textBaseline = 'top'
     ctx.fillText(`电源 ${s.U} V`, bx + 24 * k, yTop + 20 * k)
     ctx.textAlign = 'right'
-    ctx.fillText(`原线圈 L₁ = ${s.L.toFixed(2)} H（N₁ 匝）`, xP2 - 14 * k, yMid - hInd - 24 * k)
+    ctx.fillText(`原线圈 L₁ = ${s.L.toFixed(2)} H（N₁ 匝）`, xP2 - 8 * k, yMid - hT - 22 * k)
     ctx.textAlign = 'left'
-    ctx.fillText(`副线圈 L₂（N₂:N₁ = ${(s.n ?? 2)}:1）`, xS1 + 14 * k, yMid - hInd - 24 * k)
+    ctx.fillText(`副线圈 L₂（N₂:N₁ = ${(s.n ?? 2)}:1）`, xS1 + 8 * k, yMid - hT - 22 * k)
     ctx.textAlign = 'right'
     ctx.fillText(`小灯泡 R = ${s.R} Ω`, xS2 - 14 * k, yMid - hBulb - 22 * k)
     ctx.textAlign = 'center'; ctx.fillStyle = C.ink
-    ctx.fillText('铁 芯', xc, yMid + hInd + 16 * k)
+    ctx.fillText('铁 芯', xc, yMid + hT + 16 * k)
     ctx.textBaseline = 'alphabetic'
 
     // 状态条
@@ -1088,14 +1124,30 @@ export default function SelfInductionScene() {
     fitFont(ctx, headline, w - 28, 9.5, 'bold')
     ctx.fillText(headline, x + 14, ky)
 
-    const cardY = Math.min(ky + 26, y + h - 196)
-    ctx.beginPath(); ctx.roundRect(x + 12, cardY, w - 24, 178, 8)
+    // ── 要点 / 应用卡片：字号偏大，文字装不下时可滚轮上下滚 ──
+    // 卡片高度跟着面板剩余空间走，矮屏幕也不会压住上面的数据表
+    const cardH = Math.max(150, Math.min(196, y + h - 8 - (ky + 24)))
+    const cardY = Math.min(ky + 24, y + h - cardH - 8)
+    const cardX = x + 12, cardW = w - 24
+    ctx.beginPath(); ctx.roundRect(cardX, cardY, cardW, cardH, 8)
     ctx.fillStyle = '#F6FBF9'; ctx.fill()
     ctx.strokeStyle = '#DCEBE7'; ctx.lineWidth = 1; ctx.stroke()
-    setFont(ctx, 10, 'bold'); ctx.fillStyle = C.tealDark
-    const cardTitle = s.step === 1 ? '通电自感的三个特征' : s.step === 2 ? '断电自感的三个特征' : s.step === 3 ? 'τ 的物理意义' : s.step === 5 ? '互感的三个特征' : '电感：通直流、阻交流'
-    ctx.fillText(cardTitle, x + 24, cardY + 12)
-    const bullets = s.step === 1 ? [
+    setFont(ctx, 11.5, 'bold'); ctx.fillStyle = C.tealDark
+    const cardTitle = s.step === 1 ? '通电自感的三个特征' : s.step === 2 ? '断电自感的三个特征' : s.step === 3 ? 'τ 的物理意义' : s.step === 5 ? '互感的应用（很广）' : '电感：通直流、阻交流'
+    ctx.fillText(cardTitle, cardX + 12, cardY + 10)
+
+    // h = 小标题行（粗体、大一号）；t = 正文行；sp = 该行后额外留白
+    const items = s.step === 5 ? [
+      { h: '互感靠「变化的电流」', col: '#B4553B', sp: 2 },
+      { t: '交流里持续有效（变压器就靠它）', sp: 2 },
+      { t: '直流只有通断瞬间才有 ε₂ —— 交流才持续', sp: 9 },
+      { h: '① 手机无线充电', sp: 2 },
+      { t: '充电板线圈 ↔ 手机背面线圈，隔空送电', sp: 9 },
+      { h: '② 变压器（输配电）', sp: 2 },
+      { t: '铁芯把磁通「关」在芯里，k≈1', sp: 9 },
+      { h: '③ 点火线圈 · 无线耳机 · 电动牙刷', sp: 2 },
+      { t: '断闸 ε₂ 上万伏 → 点燃火花塞', sp: 2 },
+    ] : (s.step === 1 ? [
       '• 合闸瞬间 I=0，电流不能突变，灯泡先暗',
       '• ε=−L·dI/dt 与电流方向相反，阻碍电流增大',
       '• 电流按 e^(−t/τ) 上升，1τ 到 63.2%，5τ 到 99.3%',
@@ -1116,13 +1168,6 @@ export default function SelfInductionScene() {
       '• R 越大 τ 越小，但稳态电流 U/R 也越小',
       '• 把 C 换成 L 就是 RL 回路：电容 τ=RC、电感 τ=L/R',
       '• 5τ 后按稳态处理（误差 < 0.7%）',
-    ] : s.step === 5 ? [
-      '• 互感：一个线圈的电流变化，在另一个线圈里激起电动势',
-      '• ε₂ = M·dI₁/dt，M 叫互感系数，单位也是 H',
-      '• 共用铁芯才能把磁通"关"在芯里，k≈1、互感强',
-      '• 只有磁通在变的瞬间才有 ε₂：稳态 dI₁/dt=0 → ε₂=0',
-      '• 合闸与断闸都会闪，断闸的 ε₂ 方向相反（Lenz）',
-      '• 变压器、无线充电、点火线圈都是互感的应用',
     ] : [
       '• 直流：f=0 → X_L=2πfL=0，稳定后 L 就是导线',
       '• 交流：X_L=ωL 随频率成正比增大，阻碍电流',
@@ -1130,12 +1175,57 @@ export default function SelfInductionScene() {
       '• 电流滞后电压 φ=arctan(ωL/R)，L 越大滞后越多',
       '• 交流有效值 I=U/√(R²+X_L²)，与频率成反比',
       '• 电容「隔直通交」，电感「通直阻交」——一对反着来',
-    ]
-    setFont(ctx, 9); ctx.fillStyle = C.sub
-    bullets.forEach((t, i) => {
-      fitFont(ctx, t, w - 52, 9)
-      ctx.fillText(t, x + 24, cardY + 30 + i * 24)
-    })
+    ]).map((t) => ({ t, sp: 4 }))
+
+    const viewTop = cardY + 34, viewH = cardH - 42
+    const lineH = (it) => (it.h ? 22 : 19)
+    const total = items.reduce((a, it) => a + lineH(it) + (it.sp || 0), 0) + 12
+    const maxScroll = Math.max(0, total - viewH)
+    if (maxScroll <= 1) S.current.cardScroll = 0
+    S.current.cardScroll = clamp(S.current.cardScroll || 0, 0, maxScroll)
+    cardRect.current = { x: cardX, y: cardY, w: cardW, h: cardH, maxScroll }
+
+    ctx.save()
+    ctx.beginPath(); ctx.rect(cardX + 6, viewTop, cardW - 18, viewH); ctx.clip()
+    let cy2 = viewTop - S.current.cardScroll
+    ctx.textBaseline = 'top'
+    for (const it of items) {
+      if (it.h) {
+        setFont(ctx, 11.5, 'bold'); ctx.fillStyle = it.col || C.tealDark
+        fitFont(ctx, it.h, cardW - 30, 11.5, 'bold')
+        ctx.fillText(it.h, cardX + 12, cy2 + 3)
+      } else {
+        setFont(ctx, 10.2); ctx.fillStyle = C.sub
+        fitFont(ctx, it.t, cardW - 30, 10.2)
+        ctx.fillText(it.t, cardX + 12, cy2 + 2)
+      }
+      cy2 += lineH(it) + (it.sp || 0)
+    }
+    ctx.restore()
+    if (maxScroll > 1) {
+      // 底部淡出：滚下去的内容不会像被「切断」一样生硬
+      const fadeH = 15
+      ctx.save()
+      ctx.beginPath(); ctx.roundRect(cardX, cardY, cardW, cardH, 8); ctx.clip()
+      const g = ctx.createLinearGradient(0, viewTop + viewH - fadeH, 0, viewTop + viewH)
+      g.addColorStop(0, 'rgba(246,251,249,0)'); g.addColorStop(1, 'rgba(246,251,249,1)')
+      if (S.current.cardScroll < maxScroll - 2) {
+        ctx.fillStyle = g; ctx.fillRect(cardX, viewTop + viewH - fadeH, cardW, fadeH)
+      }
+      if (S.current.cardScroll > 1) {
+        const gt = ctx.createLinearGradient(0, viewTop, 0, viewTop + 13)
+        gt.addColorStop(0, 'rgba(246,251,249,1)'); gt.addColorStop(1, 'rgba(246,251,249,0)')
+        ctx.fillStyle = gt; ctx.fillRect(cardX, viewTop, cardW, 13)
+      }
+      ctx.restore()
+      const bob = cardX + cardW - 7
+      ctx.beginPath(); ctx.roundRect(bob, viewTop, 3.4, viewH, 2)
+      ctx.fillStyle = 'rgba(147,165,173,0.22)'; ctx.fill()
+      const th = Math.max(16, (viewH / total) * viewH)
+      const ty = viewTop + (S.current.cardScroll / maxScroll) * (viewH - th)
+      ctx.beginPath(); ctx.roundRect(bob, ty, 3.4, th, 2)
+      ctx.fillStyle = 'rgba(18,166,155,0.6)'; ctx.fill()
+    }
     ctx.textBaseline = 'alphabetic'
   }
 
@@ -1300,7 +1390,11 @@ export default function SelfInductionScene() {
     bulb: 37.6,      // 小灯泡 bulb_c.png 256×121：左 (38,74)、右 (213,74)
     switch: 32.7,    // 单向闸刀 SVG 176×110：柱心 26 / 151
     coil: 54,        // 演示线圈（矢量，本地坐标）：两柱 ±54
+    transformer: 44, // 可拆变压器（矢量，本地坐标）：左一对柱 −44/−20，右一对柱 +20/+44
   }
+  // 四柱器材：变压器左右各一组（0、1 = 原线圈；2、3 = 副线圈），其余器材都是两个柱
+  const PORT_X = { transformer: [-44, -20, 20, 44] }
+  const portNum = (type) => (PORT_X[type] ? PORT_X[type].length : 2)
   let DIYK = 1.5   // 器材绘制放大倍数（随画布尺寸自适应，接线柱距离同步放大）
 
   // 单向闸刀的开合热点 = 刀末端的**黑色绝缘柄**（与 electricSvgInstruments 的 bladeSVG 同源：
@@ -1341,6 +1435,8 @@ export default function SelfInductionScene() {
   }
 
   function termPos(comp, i) {
+    const px = PORT_X[comp.type]
+    if (px) return { x: comp.x + px[i] * DIYK, y: comp.y }
     const d = (TERM[comp.type] || 26) * DIYK
     return { x: comp.x + (i === 0 ? -d : d), y: comp.y }
   }
@@ -1354,6 +1450,7 @@ export default function SelfInductionScene() {
     if (!dup) dy.wires.push({ id: dy.wires.length + 1, from: { compId: a.compId, port: a.port }, to: { compId: b.compId, port: b.port }, color: dy.wireColor })
     dy.t = 0
     dy.hot = false
+    dy.evt = null
   }
 
   // 回路识别（与电容器场景同一套口径 + 并联续流）：
@@ -1376,14 +1473,20 @@ export default function SelfInductionScene() {
     if (!src) return { ok: false, reason: '先放一个电源（蓄电池 12 V）' }
 
     const edgesOf = new Map()
-    for (const c of dy.comps) {
-      if (c.id === src.id) continue          // 电源自身不做穿行边，免得 0→1 直接短路
-      const a = find(`${c.id}:0`), b = find(`${c.id}:1`)
-      if (a === b) continue                   // 两端被导线短接：无电流，跳过
+    const addEdge = (c, p0, p1, wind) => {
+      const a = find(`${c.id}:${p0}`), b = find(`${c.id}:${p1}`)
+      if (a === b) return                   // 两端被导线短接：无电流，跳过
       if (!edgesOf.has(a)) edgesOf.set(a, [])
       if (!edgesOf.has(b)) edgesOf.set(b, [])
-      edgesOf.get(a).push({ comp: c, to: b })
-      edgesOf.get(b).push({ comp: c, to: a })
+      edgesOf.get(a).push({ comp: c, to: b, wind })
+      edgesOf.get(b).push({ comp: c, to: a, wind })
+    }
+    for (const c of dy.comps) {
+      if (c.id === src.id) continue          // 电源自身不做穿行边，免得 0→1 直接短路
+      if (c.type === 'transformer') {        // 变压器：两组绕组彼此不通，各算一条边
+        addEdge(c, 0, 1, 'p')
+        addEdge(c, 2, 3, 's')
+      } else addEdge(c, 0, 1, null)
     }
 
     const start = find(`${src.id}:0`), goal = find(`${src.id}:1`)
@@ -1395,7 +1498,7 @@ export default function SelfInductionScene() {
       if (cur === goal) { reached = true; break }
       for (const e of edgesOf.get(cur) || []) {
         if (prev.has(e.to)) continue
-        prev.set(e.to, { from: cur, comp: e.comp, to: e.to })
+        prev.set(e.to, { from: cur, comp: e.comp, to: e.to, wind: e.wind })
         q.push(e.to)
       }
     }
@@ -1407,13 +1510,58 @@ export default function SelfInductionScene() {
     while (node !== start) {
       const p = prev.get(node)
       if (!p) break
-      pathComps.unshift(p.comp)
+      pathComps.unshift({ comp: p.comp, wind: p.wind })
       node = p.from
     }
 
-    const coils = pathComps.filter((c) => c.type === 'coil')
-    const bulbs = pathComps.filter((c) => c.type === 'bulb')
-    const switchComp = pathComps.find((c) => c.type === 'switch') || null
+    const tfEdge = pathComps.find((e) => e.wind === 'p')
+    if (tfEdge) {
+      // ── 互感回路：原回路（电源+开关+变压器原线圈）+ 副回路（副线圈+小灯泡）──
+      const tf = tfEdge.comp
+      const n = tf.n ?? 2, kc = tf.kc ?? 0.9, Ls = tf.h ?? 1.5, r1 = 1
+      const U = (src.u ?? 12)
+      const switchComp = pathComps.find((e) => e.comp.type === 'switch')?.comp || null
+      // 开关断开也照常识别成互感回路：没通电只是 ε₂=0，重搭时不用退回「回路还没搭好」
+      // 副线圈回路：从 tf 的 2 号柱走到 3 号柱（不许穿原线圈那条边）
+      const sStart = find(`${tf.id}:2`), sGoal = find(`${tf.id}:3`)
+      if (sStart === sGoal) return { ok: false, reason: '副线圈的两个柱子被导线短接了' }
+      const sprev = new Map([[sStart, null]])
+      const sq = [sStart]
+      let sReached = false
+      while (sq.length) {
+        const cur = sq.shift()
+        if (cur === sGoal) { sReached = true; break }
+        for (const e of edgesOf.get(cur) || []) {
+          if (e.comp === tf) continue          // 不能从变压器自己身上穿过去
+          if (sprev.has(e.to)) continue
+          sprev.set(e.to, { from: cur, comp: e.comp, to: e.to })
+          sq.push(e.to)
+        }
+      }
+      if (!sReached) return { ok: false, reason: '副线圈回路还没闭合：把副线圈的两个柱子接到小灯泡两端' }
+      const secComps = []
+      let sn = sGoal
+      while (sn !== sStart) {
+        const p = sprev.get(sn)
+        if (!p) break
+        secComps.unshift(p.comp)
+        sn = p.from
+      }
+      const bulb = secComps.find((c) => c.type === 'bulb')
+      if (!bulb) return { ok: false, reason: `副线圈回路里还没有小灯泡（路径 ${secComps.map((c) => c.type).join('/') || '空'}）` }
+      const Rk = bulb.r || 5
+      return {
+        ok: true, mode: 'mutual', U, Ls, r1, n, kc, Rk,
+        M: kc * n * Ls, ePeak: kc * n * U, tau: Ls / r1,
+        I2Normal: U / Rk, I2Peak: (kc * n * U) / Rk,
+        switchComp, tf, bulb,
+      }
+    }
+
+    const compsOnPath = pathComps.map((e) => e.comp)
+    const coils = compsOnPath.filter((c) => c.type === 'coil')
+    const bulbs = compsOnPath.filter((c) => c.type === 'bulb')
+    const switchComp = compsOnPath.find((c) => c.type === 'switch') || null
     const openSwitch = !!(switchComp && !switchComp.closed)
     const U = (src.u ?? 12)
 
@@ -1447,10 +1595,43 @@ export default function SelfInductionScene() {
     }
   }
 
+  // 扳一下闸刀（黑柄或面板按钮都走这里）：串联/并联/互感三种口径的提示与状态复位
+  function toggleSwitchComp(comp) {
+    const dy = S.current.diy
+    comp.closed = !comp.closed
+    dy.t = 0
+    const r = analyseLoop(dy)
+    if (r.ok && r.mode === 'mutual') {
+      dy.evt = comp.closed ? 'on' : 'off'
+      say(comp.closed
+        ? '合闸：原线圈电流上升 → 磁通变化 → 副线圈的灯泡闪一下'
+        : '断闸：磁通减小 → 副线圈反向再闪一下')
+      return
+    }
+    dy.evt = null
+    if (comp.closed) {
+      say('开关闭合：电流从 0 按 e^(−t/τ) 升到 I₀')
+    } else if (r.ok && r.mode === 'shunt') {
+      say('开关断开：L 的电流经灯泡续流，灯泡闪亮一下')
+    } else if (r.ok) {
+      say('开关断开：L 想维持电流却无路可走，实景会打火')
+    } else {
+      say('开关断开')
+    }
+  }
+
   // 当前时刻的电流/亮度（串联与并联续流两种走法各自算）
   function diyNow(res, dy) {
-    if (!res.ok) return { iL: 0, iBulb: 0, bright: 0, open: false, flashing: false }
+    if (!res.ok) return { iL: 0, iBulb: 0, bright: 0, open: false, flashing: false, emf: 0 }
     const open = !!res.switchComp && !res.switchComp.closed
+    if (res.mode === 'mutual') {
+      // 互感：ε₂ = M·dI₁/dt = k·n·U·e^(−t/τ₁)，副线圈里 i₂ = ε₂/R灯
+      if (!dy.evt) return { iL: 0, iBulb: 0, bright: 0, open, flashing: false, emf: 0 }
+      const e = res.ePeak * Math.exp(-dy.t / Math.max(res.tau, 1e-6))
+      const i2 = e / res.Rk
+      const ratio = i2 / Math.max(res.I2Normal, 1e-6)
+      return { iL: 0, iBulb: i2, bright: clamp(ratio, 0, 2.2) / 1.6, open, flashing: ratio > 1.02, emf: e }
+    }
     if (res.mode === 'shunt') {
       if (!open) return { iL: res.I0, iBulb: res.Ib0, bright: 1, open: false, flashing: false }
       const i = res.I0 * Math.exp(-dy.t / Math.max(res.tau, 1e-6))
@@ -1469,7 +1650,10 @@ export default function SelfInductionScene() {
     const now = diyNow(res, dy)
     if (res.ok) {
       const open = res.switchComp && !res.switchComp.closed
-      if (res.mode === 'shunt') {
+      if (res.mode === 'mutual') {
+        if (!dy.evt) dy.t = 0
+        else if (dy.t >= 5 * res.tau) dy.t = 5 * res.tau
+      } else if (res.mode === 'shunt') {
         if (!open && dy.t > 0) dy.t = 0          // 并联：闭合时直接停在稳态
         else if (open && dy.t >= 5 * res.tau) dy.t = 5 * res.tau
       } else if (!open && dy.t >= 5 * res.tau) dy.t = 5 * res.tau
@@ -1479,8 +1663,8 @@ export default function SelfInductionScene() {
     ctx.textAlign = 'left'; ctx.textBaseline = 'top'
     ctx.fillText('自己动手 · 搭一个通电／断电自感电路', A.org.x + 4, 14)
     setFont(ctx, 10); ctx.fillStyle = C.sub
-    fitFont(ctx, '点右侧器材再点画布落位；点两个接线柱连线（点器材本体即吸附到最近的柱）；点闸刀黑柄通断；右键删除。「一键标准电路」= 串联通电自感，「一键并联续流」= L 与灯泡并联、断开时灯泡闪亮', A.area.x1 * A.sc - 8, 10)
-    ctx.fillText('点右侧器材再点画布落位；点两个接线柱连线（点器材本体即吸附到最近的柱）；点闸刀黑柄通断；右键删除。「一键标准电路」= 串联通电自感，「一键并联续流」= L 与灯泡并联、断开时灯泡闪亮', A.org.x + 4, 33)
+    fitFont(ctx, '点右侧器材再点画布落位；点两个接线柱连线（点器材本体即吸附到最近的柱）；点闸刀黑柄通断；右键删除。「一键标准电路」= 串联通电自感，「一键并联续流」= L ∥ 灯泡，「一键互感回路」= 变压器原、副线圈各接一边', A.area.x1 * A.sc - 8, 10)
+    ctx.fillText('点右侧器材再点画布落位；点两个接线柱连线（点器材本体即吸附到最近的柱）；点闸刀黑柄通断；右键删除。「一键标准电路」= 串联通电自感，「一键并联续流」= L ∥ 灯泡，「一键互感回路」= 变压器原、副线圈各接一边', A.org.x + 4, 33)
 
     ctx.save(); ctx.translate(A.org.x, A.org.y); ctx.scale(A.sc, A.sc)
     ctx.beginPath(); ctx.roundRect(0, 0, A.area.x1, A.area.y1, 10)
@@ -1511,7 +1695,7 @@ export default function SelfInductionScene() {
     // 接线模式下把所有接线柱标成热点（画在器材之上，否则被实拍图盖住）：点任意两个就接上
     if (dy.connecting) {
       for (const c of dy.comps) {
-        for (let i = 0; i < 2; i++) {
+        for (let i = 0; i < portNum(c.type); i++) {
           const t = termPos(c, i)
           ctx.beginPath(); ctx.arc(t.x, t.y, 6.2, 0, Math.PI * 2)
           ctx.strokeStyle = 'rgba(226,163,60,0.95)'; ctx.lineWidth = 1.8; ctx.stroke()
@@ -1585,6 +1769,7 @@ export default function SelfInductionScene() {
   }
   // 图片 → 本体坐标（柱帽落点对齐 ±TERM）
   function figBox(type) {
+    if (type === 'transformer') return { scale: 1, term: TERM.transformer, x0: -80, y0: -56, w: 160, h: 136 }
     const def = DIY_FIG[type]
     if (!def) return { scale: 1, term: TERM[type] || 26, x0: -66, y0: -48, w: 132, h: 62 }
     const term = TERM[type] || 26
@@ -1598,6 +1783,9 @@ export default function SelfInductionScene() {
   function compExtent(type) {
     const bx = figBox(type)
     const T = (TERM[type] || 26) * DIYK
+    if (type === 'transformer') {
+      return { x0: -80 * DIYK, x1: 80 * DIYK, y0: -56 * DIYK, y1: 82 * DIYK }
+    }
     if (!bx || !DIY_FIG[type]) {
       return { x0: -70 * DIYK, x1: 70 * DIYK, y0: -50 * DIYK, y1: 26 * DIYK }
     }
@@ -1688,19 +1876,140 @@ export default function SelfInductionScene() {
     ctx.fillText(`L = ${(comp.h ?? 1.5).toFixed(2)} H`, 0, 17)
   }
 
+  // 自己动手页的「可拆变压器」1:1 实物造型（照 J24048 教学可拆变压器画）：
+  //   黑塑料底座 + 左绿右红两块线圈托板 + 两筒铜绕组 + 顶上银标牌与 4 个接线柱 +
+  //   后面黑色的 U 形铁芯压紧架（两根立柱、一根横梁、两个蝶形螺母）。
+  //   世界坐标原点 = 四个接线柱所在的那条水平线，机身整体在原点下方，压紧架在原点上方。
+  function drawXfInst(ctx, comp) {
+    const n = comp.n ?? 2
+    // 底座
+    ctx.beginPath()
+    ctx.moveTo(-70, 48); ctx.lineTo(70, 48); ctx.lineTo(64, 64); ctx.lineTo(-64, 64)
+    ctx.closePath()
+    const bg = ctx.createLinearGradient(0, 48, 0, 64)
+    bg.addColorStop(0, '#3C444A'); bg.addColorStop(0.3, '#272D31'); bg.addColorStop(1, '#131719')
+    ctx.fillStyle = bg; ctx.fill()
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 0.8; ctx.stroke()
+    for (const sx of [-42, 0, 42]) {
+      ctx.beginPath(); ctx.arc(sx, 56, 2.1, 0, Math.PI * 2)
+      ctx.fillStyle = '#BCC4C9'; ctx.fill()
+      ctx.beginPath(); ctx.moveTo(sx - 1.3, 56); ctx.lineTo(sx + 1.3, 56)
+      ctx.strokeStyle = '#798389'; ctx.lineWidth = 0.9; ctx.stroke()
+    }
+
+    // 后面黑色的铁芯压紧架（先画，让线圈与接线柱压在上面）
+    const dark = (x, y, w, h, r, c0 = '#394146', c1 = '#1A1F22') => {
+      ctx.beginPath(); ctx.roundRect(x, y, w, h, r)
+      const g = ctx.createLinearGradient(0, y, 0, y + h)
+      g.addColorStop(0, c0); g.addColorStop(1, c1)
+      ctx.fillStyle = g; ctx.fill()
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 0.7; ctx.stroke()
+    }
+    dark(-76, -28, 18, 36, 2.5)                 // 左立柱
+    dark(58, -28, 18, 36, 2.5)                  // 右立柱
+    dark(-64, -24, 128, 13, 2)                  // 横梁
+    ctx.beginPath(); ctx.arc(0, -17.5, 2.6, 0, Math.PI * 2)
+    ctx.fillStyle = '#6E777C'; ctx.fill()       // 横梁中间的紧固螺丝
+    for (const sx of [-67, 67]) {
+      ctx.beginPath(); ctx.roundRect(sx - 1.5, -46, 3, 19, 1)
+      ctx.fillStyle = '#BAC3C8'; ctx.fill()      // 螺杆
+      dark(sx - 9.5, -52, 19, 7, 2.2, '#4A5257', '#20262A')  // 蝶形螺母
+      for (const i of [-1, 1]) {
+        ctx.beginPath(); ctx.moveTo(sx + i * 4, -51); ctx.lineTo(sx + i * 4, -45.5)
+        ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = 1; ctx.stroke()
+      }
+    }
+
+    // 线圈托板（左绿右红）
+    const plate = (x0, x1, c0, c1) => {
+      ctx.beginPath(); ctx.roundRect(x0, 44, x1 - x0, 8, 2)
+      const g = ctx.createLinearGradient(0, 44, 0, 52)
+      g.addColorStop(0, c0); g.addColorStop(1, c1)
+      ctx.fillStyle = g; ctx.fill()
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 0.8; ctx.stroke()
+    }
+    plate(-60, -4, '#43A96B', '#1F6E3D')
+    plate(4, 60, '#DA5A4C', '#8C2A21')
+
+    // 铜绕组（原线圈 N₁=6 匝，副线圈 6·n 匝 —— 匝数比一眼看得出）
+    const winding = (x0, x1, turns) => {
+      const g = ctx.createLinearGradient(x0, 0, x1, 0)
+      g.addColorStop(0, '#5A2A07'); g.addColorStop(0.1, '#A05C1C'); g.addColorStop(0.32, '#E3A76C')
+      g.addColorStop(0.55, '#C87E34'); g.addColorStop(0.84, '#8F4C17'); g.addColorStop(1, '#552705')
+      ctx.beginPath(); ctx.roundRect(x0, 12, x1 - x0, 33, 4)
+      ctx.fillStyle = g; ctx.fill()
+      const top = 14, gap = 29 / turns
+      for (let i = 0; i < turns; i++) {
+        const y = top + i * gap
+        ctx.beginPath(); ctx.roundRect(x0 + 1.6, y, x1 - x0 - 3.2, Math.max(1.5, gap * 0.6), 1)
+        ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fill()
+        ctx.beginPath(); ctx.moveTo(x0 + 1.6, y + gap * 0.82); ctx.lineTo(x1 - 1.6, y + gap * 0.82)
+        ctx.strokeStyle = 'rgba(58,26,5,0.42)'; ctx.lineWidth = 0.9; ctx.stroke()
+      }
+      for (const y of [9.6, 43.4]) {            // 两端的浅灰塑料挡板
+        ctx.beginPath(); ctx.roundRect(x0 - 1, y, x1 - x0 + 2, 4.6, 1.5)
+        const pg = ctx.createLinearGradient(0, y, 0, y + 4.6)
+        pg.addColorStop(0, '#F2F5F6'); pg.addColorStop(1, '#C3CBCF')
+        ctx.fillStyle = pg; ctx.fill()
+        ctx.strokeStyle = '#A9B1B5'; ctx.lineWidth = 0.7; ctx.stroke()
+      }
+    }
+    winding(-54, -10, 6)
+    winding(10, 54, Math.min(14, Math.max(4, Math.round(6 * n))))
+
+    // 顶部银色标牌
+    for (const [x0, x1] of [[-55, -9], [9, 55]]) {
+      ctx.beginPath(); ctx.roundRect(x0, 3.2, x1 - x0, 7.4, 2)
+      const g = ctx.createLinearGradient(0, 3.2, 0, 10.6)
+      g.addColorStop(0, '#FAFCFD'); g.addColorStop(0.5, '#D7DFE3'); g.addColorStop(1, '#AAB4B9')
+      ctx.fillStyle = g; ctx.fill()
+      ctx.strokeStyle = '#8D979D'; ctx.lineWidth = 0.8; ctx.stroke()
+    }
+
+    // 4 个接线柱（左黑右红，与其它器材同款柱帽）
+    const post = (x, red) => {
+      ctx.beginPath(); ctx.roundRect(x - 1.6, -2.4, 3.2, 6, 1)
+      ctx.fillStyle = '#CBD4D8'; ctx.fill()
+      const g = ctx.createLinearGradient(x - 5, -10, x + 5, 0)
+      if (red) { g.addColorStop(0, '#F4725F'); g.addColorStop(0.45, '#D8331F'); g.addColorStop(1, '#8E1B12') }
+      else { g.addColorStop(0, '#6C757B'); g.addColorStop(0.42, '#33393D'); g.addColorStop(1, '#141819') }
+      ctx.beginPath(); ctx.roundRect(x - 4.6, -10.4, 9.2, 9, 2.2)
+      ctx.fillStyle = g; ctx.fill()
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 0.7; ctx.stroke()
+      ctx.beginPath(); ctx.ellipse(x, -10.4, 4.6, 1.8, 0, 0, Math.PI * 2)
+      ctx.fillStyle = red ? '#FF9184' : '#8A939A'; ctx.fill()
+    }
+    post(-44, false); post(-20, true)
+    post(20, false); post(44, true)
+
+    // 器材标注
+    setFont(ctx, 9, 'bold'); ctx.fillStyle = C.ink
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText(`变压器 L₁=${(comp.h ?? 1.5).toFixed(2)} H　N₂:N₁=${n}:1`, 0, 70)
+    ctx.textBaseline = 'alphabetic'
+    ctx.textAlign = 'left'
+  }
+
   function drawDiyComp(ctx, comp, selected, live = 0) {
     const bx = figBox(comp.type)
     ctx.save(); ctx.translate(comp.x, comp.y); ctx.scale(DIYK, DIYK)
     if (selected) {
       const b = comp.type === 'coil'
         ? { x: -70, y: -48, w: 140, h: 74 }
-        : { x: bx.x0 - 4, y: bx.y0 - 4, w: bx.w + 8, h: bx.h + 14 }
+        : comp.type === 'transformer'
+          ? { x: -80, y: -56, w: 160, h: 132 }
+          : { x: bx.x0 - 4, y: bx.y0 - 4, w: bx.w + 8, h: bx.h + 14 }
       ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 9)
       ctx.strokeStyle = C.gold; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([])
     }
 
     if (comp.type === 'coil') {
       drawCoil(ctx, comp)
+      ctx.restore()
+      return
+    }
+    if (comp.type === 'transformer') {
+      drawXfInst(ctx, comp)
       ctx.restore()
       return
     }
@@ -1777,7 +2086,7 @@ export default function SelfInductionScene() {
   }
 
   function drawDiyStatus(ctx, A, res, dy, now) {
-    const w = 244, h = 104
+    const w = 244, h = res.ok && res.mode === 'mutual' ? 118 : 104
     const x = A.area.x1 - w - 12, y = A.area.y1 - h - 12
     ctx.beginPath(); ctx.roundRect(x, y, w, h, 8)
     ctx.fillStyle = 'rgba(246,251,249,0.97)'; ctx.fill()
@@ -1798,10 +2107,61 @@ export default function SelfInductionScene() {
     const tms = dy.t
     const open = now.open
     const shunt = res.mode === 'shunt'
+    const mutual = res.mode === 'mutual'
     setFont(ctx, 9, 'bold'); ctx.fillStyle = C.tealDark
-    ctx.fillText(shunt
-      ? `并联续流：U=${res.U}V  L=${res.Ls.toFixed(2)}H  R灯=${res.Rk}Ω`
-      : `回路已识别：U=${res.U}V  R=${res.Rk}Ω  L=${res.Ls.toFixed(2)}H`, x + 10, y + 8)
+    ctx.fillText(mutual
+      ? `互感：U=${res.U}V  L₁=${res.Ls.toFixed(2)}H  N₂:N₁=${res.n}:1`
+      : shunt
+        ? `并联续流：U=${res.U}V  L=${res.Ls.toFixed(2)}H  R灯=${res.Rk}Ω`
+        : `回路已识别：U=${res.U}V  R=${res.Rk}Ω  L=${res.Ls.toFixed(2)}H`, x + 10, y + 8)
+    if (mutual) {
+      ctx.textAlign = 'right'; setFont(ctx, 8.5, 'bold'); ctx.fillStyle = now.bright > 0.2 ? '#C4801A' : '#A9793B'
+      ctx.fillText(`灯泡 ${Math.round(clamp(now.bright, 0, 1.4) * 100)}%`, x + w - 10, y + 8)
+      ctx.textAlign = 'left'
+    }
+
+    if (mutual) {
+      // 互感：只有通断那一瞬副线圈才有 ε₂，灯泡闪一下后熄灭
+      setFont(ctx, 13, 'bold'); ctx.fillStyle = now.flashing ? C.pos : (now.emf > 0.3 ? '#C4801A' : C.faint)
+      ctx.fillText(now.emf > 0.05 ? `${now.emf.toFixed(2)} V` : '0.00 V', x + 10, y + 22)
+      setFont(ctx, 9); ctx.fillStyle = C.sub
+      ctx.fillText('ε₂', x + 84, y + 28)
+      ctx.fillText(`τ₁ = ${fmtT(tau)}`, x + 160, y + 28)
+      setFont(ctx, 8.5); ctx.fillStyle = dy.evt ? '#B4553B' : C.sub
+      const l1 = dy.evt
+        ? (dy.evt === 'on' ? `合闸：ε₂ 峰值 ${res.ePeak.toFixed(1)} V，灯泡先闪亮` : `断闸：ε₂ 反向，峰值仍 ${res.ePeak.toFixed(1)} V`)
+        : (open ? '开关断开：点闸刀黑柄（或面板按钮）合闸，灯泡会闪一下' : '原线圈通电后电流稳定，磁通不变 → 没有 ε₂')
+      fitFont(ctx, l1, w - 20, 8.5)
+      ctx.fillText(l1, x + 10, y + 41)
+      setFont(ctx, 8.5); ctx.fillStyle = C.sub
+      fitFont(ctx, '互感靠「变化的电流」：直流只有通断瞬间，交流才持续', w - 20, 8.5)
+      ctx.fillText('互感靠「变化的电流」：直流只有通断瞬间，交流才持续', x + 10, y + 61)
+      ctx.textAlign = 'left'
+      // 迷你 ε₂–t（金色＝ε₂ 衰减，虚线＝峰值参考）
+      const gx = x + 10, gy = y + 85, gw = w - 20, gh = 20
+      ctx.strokeStyle = '#DCE8EC'; ctx.lineWidth = 1
+      ctx.beginPath(); ctx.moveTo(gx, gy + gh); ctx.lineTo(gx + gw, gy + gh); ctx.stroke()
+      ctx.setLineDash([4, 3]); ctx.strokeStyle = 'rgba(226,163,60,0.75)'
+      ctx.beginPath(); ctx.moveTo(gx, gy + gh - (res.ePeak / (res.ePeak * 1.1)) * gh); ctx.lineTo(gx + gw, gy + gh - (res.ePeak / (res.ePeak * 1.1)) * gh); ctx.stroke()
+      ctx.setLineDash([])
+      ctx.strokeStyle = C.gold; ctx.lineWidth = 1.8
+      ctx.beginPath()
+      const xMax = 5 * tau
+      for (let k = 0; k <= 40; k++) {
+        const sec = (xMax * k) / 40
+        const px = gx + (gw * k) / 40
+        const py = gy + gh - (res.ePeak * Math.exp(-sec / tau) / (res.ePeak * 1.1)) * gh
+        if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py)
+      }
+      ctx.stroke()
+      if (dy.evt && dy.t > 0) {
+        const px = gx + (gw * Math.min(dy.t / xMax, 1))
+        const py = gy + gh - (now.emf / (res.ePeak * 1.1)) * gh
+        ctx.beginPath(); ctx.arc(px, py, 3.2, 0, Math.PI * 2); ctx.fillStyle = C.gold; ctx.fill()
+      }
+      ctx.textBaseline = 'alphabetic'
+      return
+    }
 
     if (shunt) {
       // 并联：断开后看灯泡里的续流
@@ -1909,10 +2269,11 @@ export default function SelfInductionScene() {
       { type: 'battery', name: '电源', sub: '蓄电池 12 V，可调' },
       { type: 'switch', name: '开关', sub: '单向闸刀，点黑柄通断' },
       { type: 'coil', name: '线圈 L', sub: '电感 1.5 H，可调' },
+      { type: 'transformer', name: '变压器', sub: '可拆铁芯，N₂:N₁ 可调' },
       { type: 'bulb', name: '小灯泡', sub: '灯丝 5 Ω' },
     ]
     items.forEach((it, i) => {
-      const cy = y + 34 + i * 47
+      const cy = y + 34 + i * 44
       const hot = dy.hold === it.type
       ctx.beginPath(); ctx.roundRect(x + 8, cy, w - 16, 42, 8)
       ctx.fillStyle = '#FFFFFF'; ctx.fill()
@@ -1926,7 +2287,7 @@ export default function SelfInductionScene() {
       pushArea({ n: `diyPart:${it.type}`, x: x + 8, y: cy, w: w - 16, h: 42, holdType: it.type, cursor: 'pointer' })
     })
 
-    let ky = y + 34 + items.length * 47 + 2
+    let ky = y + 34 + items.length * 44 + 2
     setFont(ctx, 9.5, 'bold'); ctx.fillStyle = C.sub
     ctx.fillText('快捷', x + 12, ky)
     ky += 16
@@ -1934,9 +2295,11 @@ export default function SelfInductionScene() {
     ky += 32
     drawBtn(ctx, x + 8, ky, w - 16, 26, '一键并联续流', 'plain', () => buildShunt(A), 'diyShunt')
     ky += 32
+    drawBtn(ctx, x + 8, ky, w - 16, 26, '一键互感回路', 'plain', () => buildMutual(A), 'diyMutual')
+    ky += 32
     drawBtn(ctx, x + 8, ky, w - 16, 26, '清空场地', 'ghost', () => {
       const st = S.current
-      st.diy.comps = []; st.diy.wires = []; st.diy.sel = null; st.diy.t = 0; st.diy.hot = false
+      st.diy.comps = []; st.diy.wires = []; st.diy.sel = null; st.diy.t = 0; st.diy.hot = false; st.diy.evt = null
       say('场地已清空')
     }, 'diyClear')
     ky += 34
@@ -1974,12 +2337,14 @@ export default function SelfInductionScene() {
           ? { label: '灯丝电阻 R', val: sel.r || 5, unit: 'Ω', min: 2, max: 20, step: 1, set: (v) => { sel.r = v } }
           : sel.type === 'coil'
             ? { label: '电感 L', val: sel.h ?? 1.5, unit: 'H', min: 0.2, max: 3, step: 0.1, set: (v) => { sel.h = Math.round(v * 100) / 100 } }
-            : null
+            : sel.type === 'transformer'
+              ? { label: '匝数比 N₂:N₁', val: sel.n ?? 2, unit: ':1', min: 1, max: 3, step: 1, set: (v) => { sel.n = Math.round(v) } }
+              : null
       if (cfg) {
         setFont(ctx, 9); ctx.fillStyle = C.sub
         ctx.fillText(cfg.label, x + 12, ky)
         ctx.textAlign = 'right'; ctx.fillStyle = C.tealDark
-        ctx.fillText(`${cfg.step < 1 ? cfg.val.toFixed(1) : Math.round(cfg.val)} ${cfg.unit}`, x + w - 12, ky)
+        ctx.fillText(`${cfg.step < 1 ? cfg.val.toFixed(1) : Math.round(cfg.val)}${cfg.unit === ':1' ? ' : 1' : ' ' + cfg.unit}`, x + w - 12, ky)
         ctx.textAlign = 'left'
         ky += 12
         drawSlider(ctx, {
@@ -1994,14 +2359,7 @@ export default function SelfInductionScene() {
       }
       if (sel.type === 'switch') {
         drawBtn(ctx, x + 8, ky, w - 16, 26, sel.closed ? '断开开关' : '闭合开关', 'plain', () => {
-          sel.closed = !sel.closed
-          S.current.diy.t = 0
-          if (!sel.closed) {
-            const r = analyseLoop(S.current.diy)
-            say(r.ok && r.mode === 'shunt'
-              ? '断开：L 的电流经灯泡续流，灯泡闪亮一下'
-              : '断开：串联回路没有续流路径，电流瞬间归零')
-          }
+          toggleSwitchComp(sel)
         }, 'diySwitch')
         ky += 32
       }
@@ -2009,6 +2367,12 @@ export default function SelfInductionScene() {
         setFont(ctx, 8); ctx.fillStyle = C.faint
         fitFont(ctx, 'τ = L/R：L 越大，电流升得越慢', w - 24, 8)
         ctx.fillText('τ = L/R：L 越大，电流升得越慢', x + 12, ky)
+        ky += 14
+      }
+      if (sel.type === 'transformer') {
+        setFont(ctx, 8); ctx.fillStyle = C.faint
+        fitFont(ctx, '原线圈接电源侧、副线圈接灯泡侧；只有通断瞬间灯泡才闪', w - 24, 8)
+        ctx.fillText('原线圈接电源侧、副线圈接灯泡侧；只有通断瞬间灯泡才闪', x + 12, ky)
         ky += 14
       }
     } else {
@@ -2019,8 +2383,8 @@ export default function SelfInductionScene() {
     }
 
     // 提示（贴着参数区下沿，避免与滑条挤在一起）
-    const tipY = Math.max(ky + 10, y + h - 120)
-    ctx.beginPath(); ctx.roundRect(x + 8, tipY, w - 16, 116, 8)
+    const tipY = Math.max(ky + 10, y + h - 130)
+    ctx.beginPath(); ctx.roundRect(x + 8, tipY, w - 16, 126, 8)
     ctx.fillStyle = '#F6FBF9'; ctx.fill()
     ctx.strokeStyle = '#DCEBE7'; ctx.lineWidth = 1; ctx.stroke()
     setFont(ctx, 9.5, 'bold'); ctx.fillStyle = C.tealDark
@@ -2032,16 +2396,38 @@ export default function SelfInductionScene() {
       '③ 点闸刀黑柄 → 通断',
       '④ 右键器材 → 删除',
       '⑤ 串联跑 i–t，并联看灯泡闪亮',
+      '⑥ 变压器：原线圈 0/1、副线圈 2/3',
     ]
     setFont(ctx, 8.5); ctx.fillStyle = C.sub
     tips.forEach((t, i) => {
       fitFont(ctx, t, w - 40, 8.5)
-      ctx.fillText(t, x + 18, tipY + 28 + i * 17)
+      ctx.fillText(t, x + 18, tipY + 26 + i * 15)
     })
   }
 
   function drawGlyph(ctx, x, y, type) {
     ctx.save(); ctx.translate(x, y)
+    if (type === 'transformer') {
+      // 器材区图标：黑色底座 + 两筒铜绕组 + 中间铁芯 + 顶部压紧架
+      ctx.beginPath(); ctx.roundRect(-16, 6, 32, 4.5, 1.2)
+      const g0 = ctx.createLinearGradient(0, 6, 0, 10.5)
+      g0.addColorStop(0, '#454D52'); g0.addColorStop(1, '#1B2023')
+      ctx.fillStyle = g0; ctx.fill()
+      for (const [x0, x1] of [[-14, -3], [3, 14]]) {
+        const g = ctx.createLinearGradient(x0, 0, x1, 0)
+        g.addColorStop(0, '#6B3410'); g.addColorStop(0.35, '#DA9B60'); g.addColorStop(1, '#7A3F0F')
+        ctx.beginPath(); ctx.roundRect(x0, -5, x1 - x0, 11, 2)
+        ctx.fillStyle = g; ctx.fill()
+      }
+      ctx.beginPath(); ctx.roundRect(-2.6, -7, 5.2, 14, 1.4)
+      ctx.fillStyle = '#78838A'; ctx.fill()
+      ctx.beginPath(); ctx.roundRect(-13, -8.4, 26, 2.8, 1)
+      ctx.fillStyle = '#2E3539'; ctx.fill()
+      ctx.beginPath(); ctx.roundRect(-11.5, -6, 3, 2.4, 0.8); ctx.fillStyle = '#33393D'; ctx.fill()
+      ctx.beginPath(); ctx.roundRect(8.5, -6, 3, 2.4, 0.8); ctx.fillStyle = '#D8331F'; ctx.fill()
+      ctx.restore()
+      return
+    }
     if (type === 'coil') {
       // 器材区图标：小线圈（浅灰底板 + 铜色四匝 + 黑/红小柱）
       ctx.beginPath(); ctx.roundRect(-16, 5, 32, 5, 1.2)
@@ -2123,6 +2509,33 @@ export default function SelfInductionScene() {
     say('已搭好并联续流回路：开关只切电源支路，断开后 L 的电流经灯泡续流，灯泡闪一下')
   }
 
+  function buildMutual(A) {
+    const dy = S.current.diy
+    // 互感：变压器原线圈（左 0/1）与电源+开关成环；副线圈（右 2/3）只带一个小灯泡
+    const mk = (type, x, y, extra) => ({ id: S.current.nextId++, type, x, y, closed: false, ...extra })
+    const DB = TERM.battery * DIYK, DS = TERM.switch * DIYK, DL = TERM.bulb * DIYK
+    const midX = A.area.x1 * 0.50
+    const yT = A.area.y1 * 0.26
+    const tf = mk('transformer', midX, yT, { h: 1.5, n: 2, kc: 0.9 })
+    const sw = mk('switch', midX - 260, yT, {})
+    const bat = mk('battery', midX - 260, A.area.y1 * 0.72, { u: 12 })
+    const bl = mk('bulb', midX + 210 * DIYK, yT + 46 * DIYK, { r: 5 })
+    dy.comps = [bat, sw, tf, bl]
+    const wc = dy.wireColor
+    dy.wires = [
+      { id: 1, from: { compId: sw.id, port: 0 }, to: { compId: bat.id, port: 0 }, color: wc },
+      { id: 2, from: { compId: sw.id, port: 1 }, to: { compId: tf.id, port: 0 }, color: wc },
+      { id: 3, from: { compId: tf.id, port: 1 }, to: { compId: bat.id, port: 1 }, color: wc },
+      { id: 4, from: { compId: tf.id, port: 2 }, to: { compId: bl.id, port: 0 }, color: wc },
+      { id: 5, from: { compId: tf.id, port: 3 }, to: { compId: bl.id, port: 1 }, color: wc },
+    ]
+    dy.sel = sw.id
+    dy.t = 0
+    dy.evt = null
+    dy.hot = false
+    say('已搭好互感回路：变压器原线圈接电源+开关、副线圈接灯泡，点闸刀通断看灯泡闪')
+  }
+
   // ═════════════════════════════════════════════
   //  交互（Tab1 演示 / Tab2 接线，同一套命中判定）
   // ═════════════════════════════════════════════
@@ -2148,13 +2561,13 @@ export default function SelfInductionScene() {
       const t = dy.hold
       const c = {
         id: s.nextId++, type: t, x: Pt.x, y: Pt.y, closed: false,
-        u: 12, r: 5, h: 1.5,
+        u: 12, r: 5, h: 1.5, n: 2, kc: 0.9,
       }
       dy.comps.push(c)
       dy.sel = c.id
       dy.hold = null
       dy.t = 0
-      const NAMES = { battery: '电源', switch: '开关', coil: '线圈 L', bulb: '小灯泡' }
+      const NAMES = { battery: '电源', switch: '开关', coil: '线圈 L', bulb: '小灯泡', transformer: '变压器' }
       say(`已放入${NAMES[t] || '器材'}`)
       return
     }
@@ -2176,16 +2589,7 @@ export default function SelfInductionScene() {
           dy.sel = gripHit.id
           // 连点两下：第二下不再反转（习惯性双击不该把刚扳的刀又扳回去）
           if (!(dy.lastTap && dy.lastTap.id === gripHit.id && now - dy.lastTap.t < 180)) {
-            gripHit.closed = !gripHit.closed
-            dy.t = 0
-            if (gripHit.closed) {
-              say('开关闭合：电流从 0 按 e^(−t/τ) 升到 I₀')
-            } else {
-              const res = analyseLoop(dy)
-              if (res.ok && res.mode === 'shunt') say('开关断开：L 的电流经灯泡续流，灯泡闪亮一下')
-              else if (res.ok) say('开关断开：L 想维持电流却无路可走，实景会打火')
-              else say('开关断开')
-            }
+            toggleSwitchComp(gripHit)
           }
           dy.lastTap = { id: gripHit.id, t: now, x: Pt.x, y: Pt.y }
           return
@@ -2196,7 +2600,7 @@ export default function SelfInductionScene() {
     const TR = 22 * DIYK / 1.7
     let best = null
     for (const c of dy.comps) {
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < portNum(c.type); i++) {
         const t = termPos(c, i)
         const d = Math.hypot(Pt.x - t.x, Pt.y - t.y)
         if (d < TR && (!best || d < best.d)) best = { compId: c.id, port: i, d }
@@ -2224,7 +2628,7 @@ export default function SelfInductionScene() {
     if (picked) {
       // 已点了一根柱、正在连线时，点器材本身（不用非点准柱头）就接到它最近的那根柱
       if (dy.connecting) {
-        const near = [0, 1]
+        const near = Array.from({ length: portNum(picked.type) }, (_, i) => i)
           .map((i) => ({ i, d: Math.hypot(Pt.x - termPos(picked, i).x, Pt.y - termPos(picked, i).y) }))
           .sort((a, b) => a.d - b.d)[0].i
         if (!(dy.connecting.compId === picked.id && dy.connecting.port === near)) {
@@ -2276,6 +2680,18 @@ export default function SelfInductionScene() {
   function handleMouseUp() {
     S.current.dragSlider = null
     S.current.diy.drag = null
+  }
+
+  // 右侧卡片文字装不下时：滚轮在卡片上滚动查看（不改变任何物理量）
+  function handleWheel(e) {
+    const s = S.current
+    if (s.tab !== 1 || !cardRect.current) return
+    const r = cardRect.current
+    if (r.maxScroll <= 1) return
+    const { x, y } = getPos(e)
+    if (x < r.x || x > r.x + r.w || y < r.y || y > r.y + r.h) return
+    s.cardScroll = clamp((s.cardScroll || 0) + e.deltaY * 0.6, 0, r.maxScroll)
+    e.preventDefault()
   }
 
   function handleContextMenu(e) {

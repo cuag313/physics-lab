@@ -107,6 +107,26 @@ if (MODE === 'diyshuntopen' || MODE === 'all') {
   await clickArea('diySwitch'); await sleep(250)       // 断开 → 续流闪亮（搭好时已闭合）
   await shot(`_selfind-diyshuntopen-${W}x${H}.png`)
 }
+// 互感：变压器原线圈接电源+开关，副线圈接灯泡
+if (MODE === 'dimutual' || MODE === 'all') {
+  await clickArea('diyClear'); await sleep(200)
+  await clickArea('diyMutual'); await sleep(700)
+  await shot(`_selfind-dimutual-${W}x${H}.png`)
+}
+if (MODE === 'dimutualon' || MODE === 'all') {
+  if (MODE === 'dimutualon') {
+    await clickArea('diyClear'); await clickArea('diyMutual'); await sleep(700)
+  }
+  console.log('build dbg', JSON.stringify(await dbg()))
+  await clickArea('diySwitch'); await sleep(700)        // 合闸 → ε₂ 峰值，灯泡闪亮
+  await shot(`_selfind-dimutualon-${W}x${H}.png`)
+}
+if (MODE === 'dimutualoff') {
+  await clickArea('diyClear'); await clickArea('diyMutual'); await sleep(600)
+  await clickArea('diySwitch'); await sleep(1800)       // 先合闸等它衰减
+  await clickArea('diySwitch'); await sleep(400)        // 再断闸 → 反向闪一下
+  await shot(`_selfind-dimutualoff-${W}x${H}.png`)
+}
 // 断开一次（看断电提示与亮度归零）
 if (MODE === 'diyopen') {
   await clickArea('diySwitch'); await sleep(600)

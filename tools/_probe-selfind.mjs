@@ -57,7 +57,7 @@ async function clickArea(name) {
 }
 const dbg = () => page.evaluate(() => {
   const c = document.querySelector('canvas')
-  return c && c._dbg ? { step: c._dbg.step, t: c._dbg.t, info: c._dbg.info, areas: c._dbg.areas.map((a) => a.n) } : null
+  return c && c._dbg ? { step: c._dbg.step, t: c._dbg.t, info: c._dbg.info, cardScroll: c._dbg.cardScroll, cardMax: c._dbg.cardMax, areas: c._dbg.areas.map((a) => a.n) } : null
 })
 async function shot(name) {
   await page.screenshot({ path: name })
@@ -115,6 +115,15 @@ if (MODE === 's5off' || MODE === 'all') {
   await clickArea('switchBtn'); await sleep(2000)   // 合闸到稳态
   await clickArea('switchBtn'); await sleep(120)    // 断闸瞬间
   await shot(`_selfind-s5off-${W}x${H}.png`)
+}
+if (MODE === 's5scroll' || MODE === 'all') {
+  await clickArea('step5'); await sleep(200)
+  // 鼠标移到右侧应用卡片上，滚轮向下滚：验证大字号装不下时能滚动查看
+  const cx = Math.round(W * 0.82), cy = Math.round(H * 0.70)
+  await page.mouse.move(cx, cy)
+  for (let i = 0; i < 6; i++) { await page.mouse.wheel({ deltaY: 60 }); await sleep(120) }
+  await sleep(400)
+  await shot(`_selfind-s5scroll-${W}x${H}.png`)
 }
 await browser.close()
 console.log('done')
