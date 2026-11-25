@@ -1776,7 +1776,7 @@ export default function SelfInductionScene() {
   }
   // 图片 → 本体坐标（柱帽落点对齐 ±TERM）
   function figBox(type) {
-    if (type === 'transformer') return { scale: 1, term: TERM.transformer, x0: -80, y0: -56, w: 160, h: 136 }
+    if (type === 'transformer') return { scale: 1, term: TERM.transformer, x0: -80, y0: -56, w: 160, h: 152 }
     if (type === 'mutualcoil') return { scale: 1, term: TERM.mutualcoil, x0: -88, y0: -12, w: 176, h: 92 }
     const def = DIY_FIG[type]
     if (!def) return { scale: 1, term: TERM[type] || 26, x0: -66, y0: -48, w: 132, h: 62 }
@@ -1792,7 +1792,7 @@ export default function SelfInductionScene() {
     const bx = figBox(type)
     const T = (TERM[type] || 26) * DIYK
     if (type === 'transformer') {
-      return { x0: -80 * DIYK, x1: 80 * DIYK, y0: -56 * DIYK, y1: 82 * DIYK }
+      return { x0: -80 * DIYK, x1: 80 * DIYK, y0: -56 * DIYK, y1: 98 * DIYK }
     }
     if (type === 'mutualcoil') {
       return { x0: -90 * DIYK, x1: 90 * DIYK, y0: -14 * DIYK, y1: 80 * DIYK }
@@ -1887,12 +1887,31 @@ export default function SelfInductionScene() {
     ctx.fillText(`L = ${(comp.h ?? 1.5).toFixed(2)} H`, 0, 17)
   }
 
-  // 自己动手页的「可拆变压器」1:1 实物造型（照 J24048 教学可拆变压器画）：
-  //   黑塑料底座 + 左绿右红两块线圈托板 + 两筒铜绕组 + 顶上银标牌与 4 个接线柱 +
-  //   后面黑色的 U 形铁芯压紧架（两根立柱、一根横梁、两个蝶形螺母）。
-  //   世界坐标原点 = 四个接线柱所在的那条水平线，机身整体在原点下方，压紧架在原点上方。
+  // 自己动手页的「可拆变压器」1:1 实物造型：
+  //   黑塑料底座 + 左绿右红两块线圈托板 + 两筒铜绕组 + 顶上银托板与 4 个接线柱 +
+  //   一根从**下方**插入、连通两线圈的硅钢片铁芯（两腿穿进线圈筒、底部一条横轭）。
+  //   世界坐标原点 = 四个接线柱所在的那条水平线，机身整体在原点下方。
   function drawXfInst(ctx, comp) {
     const n = comp.n ?? 2
+
+    // 硅钢片铁芯（先画，让线圈和底座压在它前面 —— 看起来就是"从下方插进线圈筒里"）：
+    // 两条腿从底部横轭往上穿进左右线圈，顶端露出一点；底部一条横轭把两腿连成一条闭合磁路。
+    const steel = (x, y, wid, hei, seamX) => {
+      const g = ctx.createLinearGradient(x, 0, x + wid, 0)
+      g.addColorStop(0, '#F0F4F6'); g.addColorStop(0.22, '#D2DADF'); g.addColorStop(0.55, '#AEB8BE')
+      g.addColorStop(0.85, '#8E989E'); g.addColorStop(1, '#707A80')
+      ctx.beginPath(); ctx.roundRect(x, y, wid, hei, 1.2)
+      ctx.fillStyle = g; ctx.fill()
+      ctx.strokeStyle = 'rgba(84,96,103,0.85)'; ctx.lineWidth = 0.8; ctx.stroke()
+      for (const s of seamX) {                    // 叠片缝
+        ctx.beginPath(); ctx.moveTo(s, y + 0.8); ctx.lineTo(s, y + hei - 0.8)
+        ctx.strokeStyle = 'rgba(120,132,139,0.45)'; ctx.lineWidth = 0.6; ctx.stroke()
+      }
+    }
+    steel(-38.5, -2, 13, 72, [-34, -29])          // 左腿（穿左线圈）
+    steel(25.5, -2, 13, 72, [30, 35])             // 右腿（穿右线圈）
+    steel(-52, 61, 104, 11, [-44, -36, -8, 8, 36, 44])   // 底部横轭：把两条腿连成一体
+
     // 底座
     ctx.beginPath()
     ctx.moveTo(-70, 48); ctx.lineTo(70, 48); ctx.lineTo(64, 64); ctx.lineTo(-64, 64)
@@ -1908,28 +1927,10 @@ export default function SelfInductionScene() {
       ctx.strokeStyle = '#798389'; ctx.lineWidth = 0.9; ctx.stroke()
     }
 
-    // 后面黑色的铁芯压紧架（先画，让线圈与接线柱压在上面）
-    const dark = (x, y, w, h, r, c0 = '#394146', c1 = '#1A1F22') => {
-      ctx.beginPath(); ctx.roundRect(x, y, w, h, r)
-      const g = ctx.createLinearGradient(0, y, 0, y + h)
-      g.addColorStop(0, c0); g.addColorStop(1, c1)
-      ctx.fillStyle = g; ctx.fill()
-      ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 0.7; ctx.stroke()
-    }
-    dark(-76, -28, 18, 36, 2.5)                 // 左立柱
-    dark(58, -28, 18, 36, 2.5)                  // 右立柱
-    dark(-64, -24, 128, 13, 2)                  // 横梁
-    ctx.beginPath(); ctx.arc(0, -17.5, 2.6, 0, Math.PI * 2)
-    ctx.fillStyle = '#6E777C'; ctx.fill()       // 横梁中间的紧固螺丝
-    for (const sx of [-67, 67]) {
-      ctx.beginPath(); ctx.roundRect(sx - 1.5, -46, 3, 19, 1)
-      ctx.fillStyle = '#BAC3C8'; ctx.fill()      // 螺杆
-      dark(sx - 9.5, -52, 19, 7, 2.2, '#4A5257', '#20262A')  // 蝶形螺母
-      for (const i of [-1, 1]) {
-        ctx.beginPath(); ctx.moveTo(sx + i * 4, -51); ctx.lineTo(sx + i * 4, -45.5)
-        ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = 1; ctx.stroke()
-      }
-    }
+    // 铁芯下半段：从线圈底下伸出来穿过底座，在底座下沿接上横轭
+    steel(-38.5, 45, 13, 27, [-34, -29])
+    steel(25.5, 45, 13, 27, [30, 35])
+    steel(-46, 62, 92, 9, [-40, -32, -8, 8, 32, 40])
 
     // 线圈托板（左绿右红）
     const plate = (x0, x1, c0, c1) => {
@@ -1996,7 +1997,9 @@ export default function SelfInductionScene() {
     // 器材标注
     setFont(ctx, 9, 'bold'); ctx.fillStyle = C.ink
     ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText(`变压器 L₁=${(comp.h ?? 1.5).toFixed(2)} H　N₂:N₁=${n}:1`, 0, 70)
+    ctx.fillText(`变压器 L₁=${(comp.h ?? 1.5).toFixed(2)} H　N₂:N₁=${n}:1`, 0, 78)
+    setFont(ctx, 7.5); ctx.fillStyle = C.faint
+    ctx.fillText('硅钢片铁芯从下方插入，把两个线圈连成一条磁路', 0, 89)
     ctx.textBaseline = 'alphabetic'
     ctx.textAlign = 'left'
   }
@@ -2095,7 +2098,7 @@ export default function SelfInductionScene() {
       const b = comp.type === 'coil'
         ? { x: -70, y: -48, w: 140, h: 74 }
         : comp.type === 'transformer'
-          ? { x: -80, y: -56, w: 160, h: 132 }
+          ? { x: -80, y: -56, w: 160, h: 152 }
           : { x: bx.x0 - 4, y: bx.y0 - 4, w: bx.w + 8, h: bx.h + 14 }
       ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 9)
       ctx.strokeStyle = C.gold; ctx.lineWidth = 2; ctx.setLineDash([5, 4]); ctx.stroke(); ctx.setLineDash([])
@@ -2544,23 +2547,29 @@ export default function SelfInductionScene() {
   function drawGlyph(ctx, x, y, type) {
     ctx.save(); ctx.translate(x, y)
     if (type === 'transformer') {
-      // 器材区图标：黑色底座 + 两筒铜绕组 + 中间铁芯 + 顶部压紧架
-      ctx.beginPath(); ctx.roundRect(-16, 6, 32, 4.5, 1.2)
-      const g0 = ctx.createLinearGradient(0, 6, 0, 10.5)
-      g0.addColorStop(0, '#454D52'); g0.addColorStop(1, '#1B2023')
-      ctx.fillStyle = g0; ctx.fill()
+      // 器材区图标：两只铜绕组 + 从下方插入的连通硅钢片铁芯（无顶部压紧架）
       for (const [x0, x1] of [[-14, -3], [3, 14]]) {
         const g = ctx.createLinearGradient(x0, 0, x1, 0)
         g.addColorStop(0, '#6B3410'); g.addColorStop(0.35, '#DA9B60'); g.addColorStop(1, '#7A3F0F')
         ctx.beginPath(); ctx.roundRect(x0, -5, x1 - x0, 11, 2)
         ctx.fillStyle = g; ctx.fill()
+        ctx.beginPath(); ctx.roundRect(x0 - 0.8, -6.4, x1 - x0 + 1.6, 2, 0.7)
+        ctx.fillStyle = '#DFE6EA'; ctx.fill()
       }
-      ctx.beginPath(); ctx.roundRect(-2.6, -7, 5.2, 14, 1.4)
-      ctx.fillStyle = '#78838A'; ctx.fill()
-      ctx.beginPath(); ctx.roundRect(-13, -8.4, 26, 2.8, 1)
-      ctx.fillStyle = '#2E3539'; ctx.fill()
-      ctx.beginPath(); ctx.roundRect(-11.5, -6, 3, 2.4, 0.8); ctx.fillStyle = '#33393D'; ctx.fill()
-      ctx.beginPath(); ctx.roundRect(8.5, -6, 3, 2.4, 0.8); ctx.fillStyle = '#D8331F'; ctx.fill()
+      for (const cx of [-8.5, 8.5]) {          // 两条铁芯腿
+        const g = ctx.createLinearGradient(cx - 1.6, 0, cx + 1.6, 0)
+        g.addColorStop(0, '#E6ECEF'); g.addColorStop(0.6, '#AFB9BF'); g.addColorStop(1, '#828C92')
+        ctx.beginPath(); ctx.roundRect(cx - 1.6, -7.4, 3.2, 10.4, 0.8)
+        ctx.fillStyle = g; ctx.fill()
+      }
+      ctx.beginPath(); ctx.roundRect(-11.5, 3.6, 23, 2.8, 0.9)   // 底部横轭
+      const gy = ctx.createLinearGradient(0, 3.6, 0, 6.4)
+      gy.addColorStop(0, '#DFE6EA'); gy.addColorStop(1, '#8E989E')
+      ctx.fillStyle = gy; ctx.fill()
+      for (const [sx, red] of [[-13, false], [-4, true], [4, false], [13, true]]) {
+        ctx.beginPath(); ctx.roundRect(sx - 1.4, -9.4, 2.8, 2.6, 0.8)
+        ctx.fillStyle = red ? '#D8331F' : '#33393D'; ctx.fill()
+      }
       ctx.restore()
       return
     }
