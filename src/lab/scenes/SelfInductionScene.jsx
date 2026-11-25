@@ -1254,7 +1254,7 @@ export default function SelfInductionScene() {
     const bx = figBox(type)
     const T = (TERM[type] || 26) * DIYK
     if (!bx || !DIY_FIG[type]) {
-      return { x0: -66 * DIYK, x1: 66 * DIYK, y0: -48 * DIYK, y1: 20 * DIYK }
+      return { x0: -70 * DIYK, x1: 70 * DIYK, y0: -50 * DIYK, y1: 26 * DIYK }
     }
     // 命中框一律换算成世界坐标：器材是按 DIYK 放大后画出来的（figBox 是放大前的本地尺寸），
     // 少了这一步，可见开关的刀身（比端口线高出 70 多像素）就点不中、双击也不通断。
@@ -1264,61 +1264,83 @@ export default function SelfInductionScene() {
     }
   }
 
-  // 演示线圈：胶木底座 + 米白骨架 + 铜线密绕 14 匝 + 黑/红接线柱（矢量，与实拍器材同色系）
+  // 演示线圈（照实物参考图 线圈_25.png 画）：浅灰底板 + 空气芯密绕铜螺线管 +
+  // 两端铜引线下落 + 左黑右红接线柱（矢量，无照片）
   function drawCoil(ctx, comp) {
     const T = TERM.coil
-    // 胶木底座
-    const bg = ctx.createLinearGradient(0, -8, 0, 14)
-    bg.addColorStop(0, '#4C433C'); bg.addColorStop(0.42, '#2B2421'); bg.addColorStop(1, '#13100E')
-    ctx.beginPath(); ctx.roundRect(-66, -8, 132, 22, 5)
+    const N = 22, x0 = -46, x1 = 46, cy = -33, ry = 15, rx = 4.0
+    // 底板投影
+    ctx.beginPath(); ctx.ellipse(0, 15.4, 60, 2.2, 0, 0, Math.PI * 2)
+    ctx.fillStyle = 'rgba(120,132,140,0.12)'; ctx.fill()
+    // 底板（浅灰塑料/铝板，上亮下暗）
+    const bg = ctx.createLinearGradient(0, 4.5, 0, 14)
+    bg.addColorStop(0, '#F4F7F8'); bg.addColorStop(0.2, '#DEE3E5'); bg.addColorStop(0.62, '#C4CACD'); bg.addColorStop(1, '#AEB5B9')
+    ctx.beginPath(); ctx.roundRect(-68, 4.5, 136, 9.5, 1.6)
     ctx.fillStyle = bg; ctx.fill()
-    ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1; ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(-61, -6.5); ctx.lineTo(61, -6.5)
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1; ctx.stroke()
+    ctx.strokeStyle = '#949CA1'; ctx.lineWidth = 0.8; ctx.stroke()
+    // 板面高光条 + 下沿暗边
+    ctx.beginPath(); ctx.moveTo(-65.5, 5.8); ctx.lineTo(65.5, 5.8)
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.lineWidth = 1.1; ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(-65.5, 13.1); ctx.lineTo(65.5, 13.1)
+    ctx.strokeStyle = 'rgba(90,100,106,0.3)'; ctx.lineWidth = 0.9; ctx.stroke()
 
-    // 骨架（米白管），管口两道挡圈
-    const cyl = ctx.createLinearGradient(0, -42, 0, -10)
-    cyl.addColorStop(0, '#FFFEFB'); cyl.addColorStop(0.45, '#EDF1F3'); cyl.addColorStop(1, '#C2CFD6')
-    ctx.beginPath(); ctx.roundRect(-46, -42, 92, 32, 4)
-    ctx.fillStyle = cyl; ctx.fill()
-    ctx.strokeStyle = '#B3C1C8'; ctx.lineWidth = 1; ctx.stroke()
+    // 线圈在底板上的投影
+    ctx.beginPath(); ctx.ellipse(0, 6.4, 47, 2.6, 0, 0, Math.PI * 2)
+    ctx.fillStyle = 'rgba(120,132,140,0.16)'; ctx.fill()
 
-    // 铜线密绕：每匝一个竖椭圆，横向 14 匝
-    for (let i = 0; i < 14; i++) {
-      const cx = -39 + i * 6
-      const cg = ctx.createLinearGradient(cx - 5.4, 0, cx + 5.4, 0)
-      cg.addColorStop(0, '#7C3F11'); cg.addColorStop(0.3, '#E7A052'); cg.addColorStop(0.55, '#C97A2C'); cg.addColorStop(1, '#71380E')
-      ctx.beginPath(); ctx.ellipse(cx, -26, 5.2, 15.4, 0, 0, Math.PI * 2)
-      ctx.strokeStyle = cg; ctx.lineWidth = 2.8; ctx.stroke()
+    // 两端铜引线：线圈端头 → 柱顶
+    const lead = (sx) => {
+      const lg = ctx.createLinearGradient(sx * 50 - 2.6, 0, sx * 50 + 2.6, 0)
+      lg.addColorStop(0, '#8A4A12'); lg.addColorStop(0.35, '#DEA05A'); lg.addColorStop(0.6, '#C1732C'); lg.addColorStop(1, '#7B3F0E')
+      ctx.beginPath()
+      ctx.moveTo(sx * 44, cy)
+      ctx.quadraticCurveTo(sx * 50.6, cy + 6, sx * 50.6, cy + 20)
+      ctx.lineTo(sx * 50.6, 0)
+      ctx.strokeStyle = lg; ctx.lineWidth = 3.4; ctx.lineCap = 'round'; ctx.stroke()
+      ctx.lineCap = 'butt'
     }
-    // 两端挡圈（压在绕线两端）
-    for (const sx of [-1, 1]) {
-      ctx.beginPath(); ctx.roundRect(sx < 0 ? -50 : 42, -44, 8, 36, 3)
-      ctx.fillStyle = '#D9E3E8'; ctx.fill()
-      ctx.strokeStyle = '#A9B8C0'; ctx.lineWidth = 1; ctx.stroke()
-    }
-    // 引出线：骨架两端 → 接线柱
-    ctx.strokeStyle = '#8E9BA2'; ctx.lineWidth = 1.7
-    ctx.beginPath(); ctx.moveTo(-48, -14); ctx.lineTo(-T + 2, -6); ctx.lineTo(-T, -4); ctx.stroke()
-    ctx.beginPath(); ctx.moveTo(48, -14); ctx.lineTo(T - 2, -6); ctx.lineTo(T, -4); ctx.stroke()
+    lead(-1); lead(1)
 
-    // 接线柱（左黑右红，与其它器材同款柱帽）
+    // 空气芯密绕：一匝一个竖椭圆，匝间留缝，能看见背后的白底
+    for (let i = 0; i < N; i++) {
+      const cx = x0 + (i * (x1 - x0)) / (N - 1)
+      const cg = ctx.createLinearGradient(cx - rx, 0, cx + rx, 0)
+      cg.addColorStop(0, '#7C3F11'); cg.addColorStop(0.16, '#CF8C43'); cg.addColorStop(0.4, '#F3BE7C')
+      cg.addColorStop(0.62, '#C87A31'); cg.addColorStop(0.86, '#8E4B16'); cg.addColorStop(1, '#6B370C')
+      ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
+      ctx.strokeStyle = cg; ctx.lineWidth = 2.5; ctx.stroke()
+      // 每匝右下的暗边（增强"铜线圆柱"的立体感）
+      ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, Math.PI * 0.15, Math.PI * 0.85)
+      ctx.strokeStyle = 'rgba(80,42,10,0.32)'; ctx.lineWidth = 0.8; ctx.stroke()
+    }
+
+    // 接线柱：银底圈 + 黑/红柱帽（与其它器材同款柱帽）
     const post = (x, red) => {
-      const g = ctx.createLinearGradient(x - 5.5, 0, x + 5.5, 0)
-      if (red) { g.addColorStop(0, '#7C1A16'); g.addColorStop(0.4, '#E24B39'); g.addColorStop(1, '#8B1D18') }
-      else { g.addColorStop(0, '#171A1C'); g.addColorStop(0.42, '#4E555A'); g.addColorStop(1, '#15181A') }
-      ctx.beginPath(); ctx.roundRect(x - 5.6, -7, 11.2, 15, 2.6)
+      // 银色底圈
+      const sg = ctx.createLinearGradient(x - 5.6, 0, x + 5.6, 0)
+      sg.addColorStop(0, '#6E7A80'); sg.addColorStop(0.4, '#D7DEE2'); sg.addColorStop(1, '#63707A')
+      ctx.beginPath(); ctx.roundRect(x - 5.6, -1.6, 11.2, 5.2, 1.6)
+      ctx.fillStyle = sg; ctx.fill()
+      ctx.strokeStyle = 'rgba(60,70,76,0.6)'; ctx.lineWidth = 0.7; ctx.stroke()
+      // 柱帽
+      const g = ctx.createLinearGradient(x - 5, -10, x + 5, 0)
+      if (red) { g.addColorStop(0, '#F4725F'); g.addColorStop(0.45, '#D8331F'); g.addColorStop(1, '#8E1B12') }
+      else { g.addColorStop(0, '#6C757B'); g.addColorStop(0.42, '#33393D'); g.addColorStop(1, '#141819') }
+      ctx.beginPath(); ctx.roundRect(x - 4.9, -9.6, 9.8, 8.6, 2.2)
       ctx.fillStyle = g; ctx.fill()
-      ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1; ctx.stroke()
-      ctx.beginPath(); ctx.ellipse(x, -7, 5.6, 2.2, 0, 0, Math.PI * 2)
-      ctx.fillStyle = red ? '#F47464' : '#6C757A'; ctx.fill()
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 0.7; ctx.stroke()
+      // 帽顶椭圆 + 一道环形高光
+      ctx.beginPath(); ctx.ellipse(x, -9.6, 4.9, 1.9, 0, 0, Math.PI * 2)
+      ctx.fillStyle = red ? '#FF9184' : '#8A939A'; ctx.fill()
+      ctx.beginPath(); ctx.ellipse(x, -4.6, 4.9, 1.5, 0, 0, Math.PI)
+      ctx.strokeStyle = 'rgba(255,255,255,0.28)'; ctx.lineWidth = 0.8; ctx.stroke()
     }
     post(-T, false); post(T, true)
 
     // 参数标签
     setFont(ctx, 9, 'bold'); ctx.fillStyle = C.ink
     ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText(`L = ${(comp.h ?? 1.5).toFixed(2)} H`, 0, 18)
+    ctx.fillText(`L = ${(comp.h ?? 1.5).toFixed(2)} H`, 0, 17)
   }
 
   function drawDiyComp(ctx, comp, selected, live = 0) {
@@ -1611,13 +1633,19 @@ export default function SelfInductionScene() {
   function drawGlyph(ctx, x, y, type) {
     ctx.save(); ctx.translate(x, y)
     if (type === 'coil') {
-      // 器材区图标：小线圈（铜色三匝 + 底座）
-      ctx.strokeStyle = '#C9762B'; ctx.lineWidth = 2
-      for (let i = 0; i < 4; i++) {
-        ctx.beginPath(); ctx.ellipse(-9 + i * 6, -2, 3.4, 8, 0, 0, Math.PI * 2); ctx.stroke()
+      // 器材区图标：小线圈（浅灰底板 + 铜色四匝 + 黑/红小柱）
+      ctx.beginPath(); ctx.roundRect(-16, 5, 32, 5, 1.2)
+      const g = ctx.createLinearGradient(0, 5, 0, 10)
+      g.addColorStop(0, '#EDF1F3'); g.addColorStop(1, '#B7BFC3')
+      ctx.fillStyle = g; ctx.fill()
+      ctx.strokeStyle = '#9AA3A8'; ctx.lineWidth = 0.7; ctx.stroke()
+      for (let i = 0; i < 5; i++) {
+        const cx = -9 + i * 4.5
+        ctx.beginPath(); ctx.ellipse(cx, -4, 2.4, 7.4, 0, 0, Math.PI * 2)
+        ctx.strokeStyle = '#C9762B'; ctx.lineWidth = 2; ctx.stroke()
       }
-      ctx.fillStyle = '#2B2421'
-      ctx.beginPath(); ctx.roundRect(-15, 8, 30, 4, 1.5); ctx.fill()
+      ctx.beginPath(); ctx.roundRect(-13.5, -2.5, 3.6, 3.4, 1); ctx.fillStyle = '#2B3033'; ctx.fill()
+      ctx.beginPath(); ctx.roundRect(9.9, -2.5, 3.6, 3.4, 1); ctx.fillStyle = '#D8331F'; ctx.fill()
       ctx.restore()
       return
     }
