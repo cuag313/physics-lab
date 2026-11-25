@@ -148,6 +148,7 @@ export default function CapacitorChargeScene() {
         info: { U: S.current.U, Cmu: S.current.Cmu, Rk: S.current.Rk, mode: S.current.mode, closed: S.current.closed },
         areas: canvasRef.current._clickAreas.map((a) => ({ n: a.n || '', x: Math.round(a.x), y: Math.round(a.y), w: Math.round(a.w), h: Math.round(a.h) })),
         diy: { K: +DIYK.toFixed(2), comps: S.current.diy.comps.map((c) => c.type + '@' + Math.round(c.x) + ',' + Math.round(c.y)), wires: S.current.diy.wires.length, closed: S.current.diy.comps.map((c) => !!c.closed) },
+        view: canvasRef.current._diyView || null,
       }
     } catch (e) { console.error('render error:', e) }
   }
@@ -914,6 +915,7 @@ export default function CapacitorChargeScene() {
   function renderDiy(ctx, W, H) {
     const s = S.current, dy = s.diy
     const A = diyGeom(W, H)
+    canvasRef.current._diyView = { ox: A.org.x, oy: A.org.y, sc: A.sc, k: DIYK }
     const res = analyseLoop(dy)
     if (res.ok) {
       const tau = res.tau
@@ -924,7 +926,7 @@ export default function CapacitorChargeScene() {
     ctx.textAlign = 'left'; ctx.textBaseline = 'top'
     ctx.fillText('自己动手 · 搭一个 RC 充放电电路', A.org.x + 4, 14)
     setFont(ctx, 10); ctx.fillStyle = C.sub
-    ctx.fillText('点右侧器材再点画布落位；点两个接线柱连线；双击开关通断；右键删除。程序自动识别回路并跑真实 RC 曲线', A.org.x + 4, 33)
+    ctx.fillText('点右侧器材再点画布落位；点两个接线柱连线（点器材本体即吸附到最近的柱）；双击开关通断；右键删除。程序自动识别回路并跑真实 RC 曲线', A.org.x + 4, 33)
 
     ctx.save(); ctx.translate(A.org.x, A.org.y); ctx.scale(A.sc, A.sc)
     ctx.beginPath(); ctx.roundRect(0, 0, A.area.x1, A.area.y1, 10)
@@ -1063,8 +1065,14 @@ export default function CapacitorChargeScene() {
   }
   function compExtent(type) {
     const bx = figBox(type)
-    if (!bx) return { x0: -34, x1: 34, y0: -26, y1: 28 }
-    return { x0: Math.min(bx.x0, -bx.term), x1: Math.max(bx.x0 + bx.w, bx.term), y0: bx.y0, y1: bx.y0 + bx.h }
+    const T = (TERM[type] || 26) * DIYK
+    // 命中框一律换算成世界坐标：器材是按 DIYK 放大后画出来的（figBox 是放大前的本地尺寸），
+    // 少了这一步，可见开关的刀身（比端口线高出 70 多像素）就点不中、双击也不通断。
+    if (!bx) return { x0: -T, x1: T, y0: -22 * DIYK, y1: 24 * DIYK }
+    return {
+      x0: Math.min(bx.x0 * DIYK, -T), x1: Math.max((bx.x0 + bx.w) * DIYK, T),
+      y0: bx.y0 * DIYK, y1: (bx.y0 + bx.h) * DIYK,
+    }
   }
 
   function drawDiyComp(ctx, comp, selected, live = 0) {
@@ -1497,23 +1505,29 @@ export default function CapacitorChargeScene() {
       say(`已放入${NAMES[t] || '器材'}`)
       return
     }
-    // 点接线柱 → 连线
-    for (const c of [...dy.comps].reverse()) {
+    // 点接线柱 → 连线（取最近的一根；柱子本身只有几个像素，容错给到 22 世界像素）
+    const TR = 22 * DIYK / 1.7
+    let best = null
+    for (const c of dy.comps) {
       for (let i = 0; i < 2; i++) {
         const t = termPos(c, i)
-        if (Math.hypot(Pt.x - t.x, Pt.y - t.y) < 16 * DIYK / 1.5) {
-          if (dy.connecting) {
-            if (!(dy.connecting.compId === c.id && dy.connecting.port === i)) {
-              dy.wires.push({ id: dy.wires.length + 1, from: { compId: dy.connecting.compId, port: dy.connecting.port }, to: { compId: c.id, port: i } })
-              dy.t = 0
-            }
-            dy.connecting = null
-          } else {
-            dy.connecting = { compId: c.id, port: i }
-          }
-          return
-        }
+        const d = Math.hypot(Pt.x - t.x, Pt.y - t.y)
+        if (d < TR && (!best || d < best.d)) best = { compId: c.id, port: i, d }
       }
+    }
+    if (best) {
+      if (dy.connecting) {
+        if (!(dy.connecting.compId === best.compId && dy.connecting.port === best.port)) {
+          dy.wires.push({ id: dy.wires.length + 1, from: { compId: dy.connecting.compId, port: dy.connecting.port }, to: { compId: best.compId, port: best.port } })
+          dy.t = 0
+        }
+        dy.connecting = null
+      } else {
+        dy.connecting = { compId: best.compId, port: best.port }
+      }
+      dy.sel = best.compId
+      dy.lastTap = null
+      return
     }
     const pk = DIYK / 1.5
     const picked = [...dy.comps].reverse().find((c) => {
@@ -1522,6 +1536,35 @@ export default function CapacitorChargeScene() {
       return Pt.x > c.x + e.x0 - pad && Pt.x < c.x + e.x1 + pad && Pt.y > c.y + e.y0 - pad && Pt.y < c.y + e.y1 + pad
     })
     if (picked) {
+      // 已点了一根柱、正在连线时，点器材本身（不用非点准柱头）就接到它最近的那根柱 —— 与「点两个接线头就接上」一致
+      if (dy.connecting) {
+        const near = [0, 1]
+          .map((i) => ({ i, d: Math.hypot(Pt.x - termPos(picked, i).x, Pt.y - termPos(picked, i).y) }))
+          .sort((a, b) => a.d - b.d)[0].i
+        if (!(dy.connecting.compId === picked.id && dy.connecting.port === near)) {
+          dy.wires.push({ id: dy.wires.length + 1, from: { compId: dy.connecting.compId, port: dy.connecting.port }, to: { compId: picked.id, port: near } })
+          dy.t = 0
+        }
+        dy.connecting = null
+        dy.sel = picked.id
+        dy.lastTap = null
+        return
+      }
+      // 连点两下 = 双击（开关通断）。自己记「上一拍」而不靠浏览器的 dblclick：
+      // 第一拍会顺手进入拖动态，鼠标有一两像素抖动、或者组件被拖动几像素，浏览器就不再补发 dblclick 了。
+      const now = performance.now()
+      const last = dy.lastTap
+      if (last && last.id === picked.id && now - last.t < 450 && Math.hypot(Pt.x - last.x, Pt.y - last.y) < 18) {
+        dy.lastTap = null
+        dy.sel = picked.id
+        if (picked.type === 'switch') {
+          picked.closed = !picked.closed
+          dy.t = 0
+          say(picked.closed ? '开关闭合' : '开关断开')
+        }
+        return
+      }
+      dy.lastTap = { id: picked.id, t: now, x: Pt.x, y: Pt.y }
       dy.sel = picked.id
       dy.drag = 'comp'
       s.dragOff = { x: Pt.x - picked.x, y: Pt.y - picked.y }
@@ -1529,6 +1572,7 @@ export default function CapacitorChargeScene() {
     }
     dy.sel = null
     dy.connecting = null
+    dy.lastTap = null
   }
 
   function handleMouseMove(e) {
@@ -1548,6 +1592,8 @@ export default function CapacitorChargeScene() {
     if (dy.drag === 'comp') {
       const c = dy.comps.find((cc) => cc.id === dy.sel)
       if (c) {
+        // 真的在拖器材，就别再把它当「双击的第一拍」（按一次拖走再按一次不该通断开关）
+        if (dy.lastTap && Math.hypot(Pt.x - dy.lastTap.x, Pt.y - dy.lastTap.y) > 18) dy.lastTap = null
         const e = compExtent(c.type)
         c.x = clamp(Pt.x - (s.dragOff?.x || 0), 12 - e.x0, A.area.x1 - 12 - e.x1)
         c.y = clamp(Pt.y - (s.dragOff?.y || 0), 8 - e.y0, A.area.y1 - 8 - e.y1)
@@ -1561,21 +1607,6 @@ export default function CapacitorChargeScene() {
     const s = S.current
     s.dragSlider = null
     s.diy.drag = null
-  }
-
-  function handleDoubleClick(e) {
-    const s = S.current
-    if (s.tab !== 2) return
-    const { x, y } = getPos(e)
-    const R = canvasRef.current._R
-    const A = diyGeom(R.W, R.H)
-    const Pt = { x: (x - A.org.x) / A.sc, y: (y - A.org.y) / A.sc }
-    const c = s.diy.comps.find((cc) => {
-      if (cc.type !== 'switch') return false
-      const e = compExtent(cc.type)
-      return Pt.x > cc.x + e.x0 - 6 && Pt.x < cc.x + e.x1 + 6 && Pt.y > cc.y + e.y0 - 6 && Pt.y < cc.y + e.y1 + 6
-    })
-    if (c) { c.closed = !c.closed; s.diy.t = 0; say(c.closed ? '开关闭合' : '开关断开') }
   }
 
   function handleContextMenu(e) {
@@ -1608,7 +1639,7 @@ export default function CapacitorChargeScene() {
       tab1Label="📊 实验演示"
       tab2Label="🔧 自己动手"
     >
-      <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onDoubleClick={handleDoubleClick} onContextMenu={handleContextMenu} />
+      <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block', touchAction: 'none' }} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onContextMenu={handleContextMenu} />
     </SceneShell>
   )
 }
