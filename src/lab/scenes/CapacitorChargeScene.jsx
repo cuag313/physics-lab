@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { eventToCanvas } from '../utils/pointerPos'
 import SceneShell from '../ui/SceneShell'
+import { strokeBezierWire, strokeWirePreview } from '../ui/circuitKit'
 import { figURL, TYPES } from './electricSvgInstruments'
 import { SYM_INK, symHalf, symBattery, symBulb, symCapacitor, symSwitchSPDT } from '../render/symbols'
 
@@ -93,6 +94,7 @@ export default function CapacitorChargeScene() {
     diy: {
       comps: [], wires: [], sel: null, hold: null, mx: 0, my: 0,
       drag: null, off: { x: 0, y: 0 }, connecting: null, t: 0, ready: false,
+      wireColor: '#F44336',   // 导线颜色：与项目其它电学「自己动手」同口径，默认红色
     },
     nextId: 1,
   })
@@ -846,6 +848,16 @@ export default function CapacitorChargeScene() {
     const d = (TERM[comp.type] || 26) * DIYK
     return { x: comp.x + (i === 0 ? -d : d), y: comp.y }
   }
+  // 接线：两根柱之间加一条线（同一条不许重复接），颜色取当前选的导线颜色
+  function addWire(a, b) {
+    const dy = S.current.diy
+    const dup = dy.wires.some((w) => (
+      (w.from.compId === a.compId && w.from.port === a.port && w.to.compId === b.compId && w.to.port === b.port)
+      || (w.to.compId === a.compId && w.to.port === a.port && w.from.compId === b.compId && w.from.port === b.port)
+    ))
+    if (!dup) dy.wires.push({ id: dy.wires.length + 1, from: { compId: a.compId, port: a.port }, to: { compId: b.compId, port: b.port }, color: dy.wireColor })
+    dy.t = 0
+  }
 
   // 滑动变阻器接入电阻（Ω）：总阻 × 滑片位置（两端口简化模型，串在回路里）
   const rheostatOhm = (c) => clamp((c.rt ?? 50), 0, 10000) * clamp((c.sp ?? 0.5), 0, 1)
@@ -936,20 +948,29 @@ export default function CapacitorChargeScene() {
       for (let y = 14; y < A.area.y1; y += 26) { ctx.beginPath(); ctx.arc(x, y, 0.9, 0, Math.PI * 2); ctx.fill() }
     }
 
-    // 导线（软弯）
+    // 导线（三次贝塞尔，从接线柱水平出线 —— 与项目其它电学「自己动手」同一套走线）
     for (const w of dy.wires) {
       const c1 = dy.comps.find((c) => c.id === w.from.compId)
       const c2 = dy.comps.find((c) => c.id === w.to.compId)
       if (!c1 || !c2) continue
       const p1 = termPos(c1, w.from.port), p2 = termPos(c2, w.to.port)
-      drawWireCurve(ctx, p1, p2, '#1E7F8E')
+      strokeBezierWire(ctx, p1, p2, w.color || dy.wireColor, null, null, w.from.port, w.to.port)
     }
     if (dy.connecting) {
       const c1 = dy.comps.find((c) => c.id === dy.connecting.compId)
       if (c1) {
+        // 接线模式下把所有接线柱标成热点：点任意两个就接上
+        for (const c of dy.comps) {
+          for (let i = 0; i < 2; i++) {
+            const t = termPos(c, i)
+            ctx.beginPath(); ctx.arc(t.x, t.y, 5.6, 0, Math.PI * 2)
+            ctx.strokeStyle = 'rgba(226,163,60,0.9)'; ctx.lineWidth = 1.5; ctx.stroke()
+          }
+        }
         const p1 = termPos(c1, dy.connecting.port)
-        ctx.save(); ctx.setLineDash([5, 4]); ctx.strokeStyle = 'rgba(226,163,60,0.9)'; ctx.lineWidth = 2
-        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(dy.mx, dy.my); ctx.stroke(); ctx.restore()
+        ctx.beginPath(); ctx.arc(p1.x, p1.y, 3.2, 0, Math.PI * 2)
+        ctx.fillStyle = 'rgba(226,163,60,0.95)'; ctx.fill()
+        strokeWirePreview(ctx, p1, { x: dy.mx, y: dy.my }, '#FF9800', dy.connecting.port)
       }
     }
     // 灯泡亮度：回路跑起来后按 e^(−t/τ) 衰减，并按电源电压高低再压一档
@@ -971,38 +992,6 @@ export default function CapacitorChargeScene() {
     if (dy.hold) { drawDiyIcon(ctx, dy.mx || 0, dy.my || 0, dy.hold, 1.3) }
     drawToast(ctx, W, s)
     pushArea({ n: 'diyStage', x: A.org.x, y: A.org.y, w: A.area.x1 * A.sc, h: A.area.y1 * A.sc })
-  }
-
-  function drawWireCurve(ctx, p1, p2, col, dashed = false) {
-    const dx = p2.x - p1.x, dy = p2.y - p1.y
-    ctx.strokeStyle = col; ctx.lineWidth = 2.2
-    ctx.lineCap = 'round'; ctx.lineJoin = 'round'
-    if (dashed) ctx.setLineDash([5, 4])
-    const adx = Math.abs(dx), ady = Math.abs(dy)
-    if (adx > 26 && ady > 26) {
-      // 横平竖直的“搭线”走法：先横后竖，拐角做小圆角
-      const mx = p1.x + dx * 0.5, r = Math.min(7, adx / 2, ady / 2)
-      const sy = Math.sign(dy)
-      ctx.beginPath()
-      ctx.moveTo(p1.x, p1.y)
-      ctx.lineTo(mx - r, p1.y)
-      ctx.quadraticCurveTo(mx, p1.y, mx, p1.y + sy * r)
-      ctx.lineTo(mx, p2.y - sy * r)
-      ctx.quadraticCurveTo(mx, p2.y, mx + r, p2.y)
-      ctx.lineTo(p2.x, p2.y)
-      ctx.stroke()
-    } else if (adx > 26 || ady > 26) {
-      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke()
-    } else {
-      // 短线才做“软导线”下垂，长线一律拉直
-      const nlen = Math.hypot(dx, dy) || 1
-      const sag = Math.min(9, nlen * 0.2)
-      const nx = -dy / nlen, ny = dx / nlen
-      ctx.beginPath(); ctx.moveTo(p1.x, p1.y)
-      ctx.quadraticCurveTo((p1.x + p2.x) / 2 + nx * sag, (p1.y + p2.y) / 2 + ny * sag, p2.x, p2.y)
-      ctx.stroke()
-    }
-    ctx.setLineDash([]); ctx.lineCap = 'butt'; ctx.lineJoin = 'miter'
   }
 
   // ── 器材实拍图：与项目既有电学器材同一套（蓄电池 / 小灯泡 / 闸刀底座）──
@@ -1315,12 +1304,30 @@ export default function CapacitorChargeScene() {
     }, 'diyClear')
     ky += 34
 
+    // 导线颜色：与项目其它电学「自己动手」同口径（点色块 → 之后新接的线用这个颜色）
+    ctx.textAlign = 'left'
+    setFont(ctx, 9.5, 'bold'); ctx.fillStyle = C.sub
+    ctx.fillText('导线颜色', x + 12, ky)
+    ky += 16
+    const WC = ['#F44336', '#FFC107', '#4CAF50', '#1E88E5']
+    const chipW = Math.floor((w - 24 - 18) / 4), chipH = 18
+    WC.forEach((hex, i) => {
+      const cx = x + 12 + i * (chipW + 6)
+      ctx.beginPath(); ctx.roundRect(cx, ky, chipW, chipH, 4)
+      ctx.fillStyle = hex; ctx.fill()
+      ctx.strokeStyle = dy.wireColor === hex ? C.ink : 'rgba(0,0,0,0.14)'
+      ctx.lineWidth = dy.wireColor === hex ? 2 : 1; ctx.stroke()
+      pushArea({ n: `diyWireColor${i}`, x: cx, y: ky, w: chipW, h: chipH, cursor: 'pointer', onClick: () => { dy.wireColor = hex } })
+    })
+    ky += chipH + 12
+
     // 选中器材参数
     const sel = dy.comps.find((c) => c.id === dy.sel)
     ctx.strokeStyle = '#EDF2F5'; ctx.lineWidth = 1
     ctx.beginPath(); ctx.moveTo(x + 10, ky); ctx.lineTo(x + w - 10, ky); ctx.stroke()
     ky += 10
     if (sel) {
+      ctx.textAlign = 'left'
       setFont(ctx, 9.5, 'bold'); ctx.fillStyle = C.ink
       fitFont(ctx, '选中器材参数', w - 24, 9.5)
       ctx.fillText('选中器材参数', x + 12, ky)
@@ -1450,11 +1457,12 @@ export default function CapacitorChargeScene() {
     const cap = mk('capacitor', XR - DC, yB, { c: 100 })
     dy.comps = [bat, sw, rs, cap]
     // 沿矩形四边连线：左边（开关0—电源0）· 上边（开关1—电阻0）· 右边（电阻1—电容1）· 下边（电容0—电源1）
+    const wc = dy.wireColor
     dy.wires = [
-      { id: 1, from: { compId: sw.id, port: 0 }, to: { compId: bat.id, port: 0 } },
-      { id: 2, from: { compId: sw.id, port: 1 }, to: { compId: rs.id, port: 0 } },
-      { id: 3, from: { compId: rs.id, port: 1 }, to: { compId: cap.id, port: 1 } },
-      { id: 4, from: { compId: cap.id, port: 0 }, to: { compId: bat.id, port: 1 } },
+      { id: 1, from: { compId: sw.id, port: 0 }, to: { compId: bat.id, port: 0 }, color: wc },
+      { id: 2, from: { compId: sw.id, port: 1 }, to: { compId: rs.id, port: 0 }, color: wc },
+      { id: 3, from: { compId: rs.id, port: 1 }, to: { compId: cap.id, port: 1 }, color: wc },
+      { id: 4, from: { compId: cap.id, port: 0 }, to: { compId: bat.id, port: 1 }, color: wc },
     ]
     dy.sel = sw.id
     dy.t = 0
@@ -1518,8 +1526,7 @@ export default function CapacitorChargeScene() {
     if (best) {
       if (dy.connecting) {
         if (!(dy.connecting.compId === best.compId && dy.connecting.port === best.port)) {
-          dy.wires.push({ id: dy.wires.length + 1, from: { compId: dy.connecting.compId, port: dy.connecting.port }, to: { compId: best.compId, port: best.port } })
-          dy.t = 0
+          addWire(dy.connecting, best)
         }
         dy.connecting = null
       } else {
@@ -1542,8 +1549,7 @@ export default function CapacitorChargeScene() {
           .map((i) => ({ i, d: Math.hypot(Pt.x - termPos(picked, i).x, Pt.y - termPos(picked, i).y) }))
           .sort((a, b) => a.d - b.d)[0].i
         if (!(dy.connecting.compId === picked.id && dy.connecting.port === near)) {
-          dy.wires.push({ id: dy.wires.length + 1, from: { compId: dy.connecting.compId, port: dy.connecting.port }, to: { compId: picked.id, port: near } })
-          dy.t = 0
+          addWire(dy.connecting, { compId: picked.id, port: near })
         }
         dy.connecting = null
         dy.sel = picked.id
