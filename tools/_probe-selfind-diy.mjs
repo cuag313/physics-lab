@@ -127,6 +127,40 @@ if (MODE === 'dimutualoff') {
   await clickArea('diySwitch'); await sleep(400)        // 再断闸 → 反向闪一下
   await shot(`_selfind-dimutualoff-${W}x${H}.png`)
 }
+// 简易互感线圈：左线圈接电源+开关，右线圈接灯泡，可插/抽铁芯
+if (MODE === 'dimutualcoil') {
+  await clickArea('diyClear'); await sleep(200)
+  await clickArea('diyMutualCoil'); await sleep(700)
+  await shot(`_selfind-dimutualcoil-${W}x${H}.png`)
+}
+if (MODE === 'dimutualcoilon') {
+  await clickArea('diyClear'); await sleep(200)
+  await clickArea('diyMutualCoil'); await sleep(600)
+  await clickArea('diySwitch'); await sleep(700)        // 合闸 → ε₂ 峰值，灯泡闪亮
+  await shot(`_selfind-dimutualcoilon-${W}x${H}.png`)
+}
+async function compScreen(type) {
+  return page.evaluate((t) => {
+    const c = document.querySelector('canvas')
+    const d = c && c._dbg
+    const v = c && c._diyView
+    if (!d || !v) return null
+    const list = d.diyCompList || []
+    const it = list.find((x) => x.type === t)
+    if (!it) return null
+    const r = c.getBoundingClientRect()
+    return { x: r.x + v.ox + it.x * v.sc, y: r.y + v.oy + it.y * v.sc }
+  }, type)
+}
+if (MODE === 'dimutualcoilbare') {     // 抽出铁芯 → k 变小
+  await clickArea('diyClear'); await sleep(200)
+  await clickArea('diyMutualCoil'); await sleep(600)
+  const m = await compScreen('mutualcoil')
+  if (m) { await page.mouse.click(m.x, m.y + 40); await sleep(400) }   // 点线圈筒选中器材
+  await clickArea('diyCore'); await sleep(400)
+  await clickArea('diySwitch'); await sleep(700)
+  await shot(`_selfind-dimutualcoilbare-${W}x${H}.png`)
+}
 // 断开一次（看断电提示与亮度归零）
 if (MODE === 'diyopen') {
   await clickArea('diySwitch'); await sleep(600)

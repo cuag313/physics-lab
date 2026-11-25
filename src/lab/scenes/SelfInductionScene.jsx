@@ -558,11 +558,11 @@ export default function SelfInductionScene() {
       ctx.beginPath()
       ctx.moveTo(halfW, -hH)                     // 上引线：从回路竖线拐进来
       ctx.lineTo(bx, -hH)
-      // 3 匝：每匝都是一段"向外鼓"的半圆（用三次贝塞尔画，方向不会随镜像搞反）
+      // 3 匝：每匝都是朝铁芯一侧鼓的半圆（用三次贝塞尔画，方向不会随镜像搞反）
       const c = (4 * r) / 3
       for (let i = 0; i < 3; i++) {
         const y0 = -hH + i * 2 * r
-        ctx.bezierCurveTo(bx + c, y0, bx + c, y0 + 2 * r, bx, y0 + 2 * r)
+        ctx.bezierCurveTo(bx - c, y0, bx - c, y0 + 2 * r, bx, y0 + 2 * r)
       }
       ctx.moveTo(bx, hH)
       ctx.lineTo(halfW, hH)                      // 下引线
@@ -1145,7 +1145,7 @@ export default function SelfInductionScene() {
       { t: '充电板线圈 ↔ 手机背面线圈，隔空送电', sp: 9 },
       { h: '② 变压器（输配电）', sp: 2 },
       { t: '铁芯把磁通「关」在芯里，k≈1', sp: 9 },
-      { h: '③ 点火线圈 · 无线耳机 · 电动牙刷', sp: 2 },
+      { h: '③ 点火线圈（本质就是变压器）', sp: 2 },
       { t: '断闸 ε₂ 上万伏 → 点燃火花塞', sp: 2 },
     ] : (s.step === 1 ? [
       '• 合闸瞬间 I=0，电流不能突变，灯泡先暗',
@@ -1391,9 +1391,10 @@ export default function SelfInductionScene() {
     switch: 32.7,    // 单向闸刀 SVG 176×110：柱心 26 / 151
     coil: 54,        // 演示线圈（矢量，本地坐标）：两柱 ±54
     transformer: 44, // 可拆变压器（矢量，本地坐标）：左一对柱 −44/−20，右一对柱 +20/+44
+    mutualcoil: 34,  // 简易互感线圈（两只线圈筒）：柱 −58/−34 与 +34/+58
   }
-  // 四柱器材：变压器左右各一组（0、1 = 原线圈；2、3 = 副线圈），其余器材都是两个柱
-  const PORT_X = { transformer: [-44, -20, 20, 44] }
+  // 四柱器材：左右各一组（0、1 = 原线圈；2、3 = 副线圈），其余器材都是两个柱
+  const PORT_X = { transformer: [-44, -20, 20, 44], mutualcoil: [-58, -34, 34, 58] }
   const portNum = (type) => (PORT_X[type] ? PORT_X[type].length : 2)
   let DIYK = 1.5   // 器材绘制放大倍数（随画布尺寸自适应，接线柱距离同步放大）
 
@@ -1483,7 +1484,7 @@ export default function SelfInductionScene() {
     }
     for (const c of dy.comps) {
       if (c.id === src.id) continue          // 电源自身不做穿行边，免得 0→1 直接短路
-      if (c.type === 'transformer') {        // 变压器：两组绕组彼此不通，各算一条边
+      if (c.type === 'transformer' || c.type === 'mutualcoil') { // 双绕组：两组彼此不通，各算一条边
         addEdge(c, 0, 1, 'p')
         addEdge(c, 2, 3, 's')
       } else addEdge(c, 0, 1, null)
@@ -1516,9 +1517,14 @@ export default function SelfInductionScene() {
 
     const tfEdge = pathComps.find((e) => e.wind === 'p')
     if (tfEdge) {
-      // ── 互感回路：原回路（电源+开关+变压器原线圈）+ 副回路（副线圈+小灯泡）──
+      // ── 互感回路：原回路（电源+开关+第一个线圈）+ 副回路（第二个线圈+小灯泡）──
       const tf = tfEdge.comp
-      const n = tf.n ?? 2, kc = tf.kc ?? 0.9, Ls = tf.h ?? 1.5, r1 = 1
+      const isCoil = tf.type === 'mutualcoil'
+      // 可拆变压器：N₂:N₁ 可调、k≈0.9；简易互感线圈：1:1，插铁芯 k≈0.9、空气芯 k≈0.28
+      const n = isCoil ? 1 : (tf.n ?? 2)
+      const kc = isCoil ? (tf.core ? 0.9 : 0.28) : (tf.kc ?? 0.9)
+      const Ls = tf.h ?? (isCoil ? 1.0 : 1.5)
+      const r1 = 1
       const U = (src.u ?? 12)
       const switchComp = pathComps.find((e) => e.comp.type === 'switch')?.comp || null
       // 开关断开也照常识别成互感回路：没通电只是 ε₂=0，重搭时不用退回「回路还没搭好」
@@ -1552,9 +1558,10 @@ export default function SelfInductionScene() {
       const Rk = bulb.r || 5
       return {
         ok: true, mode: 'mutual', U, Ls, r1, n, kc, Rk,
+        isCoil, core: !!tf.core, tf,
         M: kc * n * Ls, ePeak: kc * n * U, tau: Ls / r1,
         I2Normal: U / Rk, I2Peak: (kc * n * U) / Rk,
-        switchComp, tf, bulb,
+        switchComp, bulb,
       }
     }
 
@@ -1770,6 +1777,7 @@ export default function SelfInductionScene() {
   // 图片 → 本体坐标（柱帽落点对齐 ±TERM）
   function figBox(type) {
     if (type === 'transformer') return { scale: 1, term: TERM.transformer, x0: -80, y0: -56, w: 160, h: 136 }
+    if (type === 'mutualcoil') return { scale: 1, term: TERM.mutualcoil, x0: -88, y0: -12, w: 176, h: 92 }
     const def = DIY_FIG[type]
     if (!def) return { scale: 1, term: TERM[type] || 26, x0: -66, y0: -48, w: 132, h: 62 }
     const term = TERM[type] || 26
@@ -1785,6 +1793,9 @@ export default function SelfInductionScene() {
     const T = (TERM[type] || 26) * DIYK
     if (type === 'transformer') {
       return { x0: -80 * DIYK, x1: 80 * DIYK, y0: -56 * DIYK, y1: 82 * DIYK }
+    }
+    if (type === 'mutualcoil') {
+      return { x0: -90 * DIYK, x1: 90 * DIYK, y0: -14 * DIYK, y1: 80 * DIYK }
     }
     if (!bx || !DIY_FIG[type]) {
       return { x0: -70 * DIYK, x1: 70 * DIYK, y0: -50 * DIYK, y1: 26 * DIYK }
@@ -1990,6 +2001,93 @@ export default function SelfInductionScene() {
     ctx.textAlign = 'left'
   }
 
+  // 自己动手页的「简易互感线圈」1:1 实物造型（照实验室那种两只线圈筒画）：
+  //   两只立着的铜线圈筒（红色绕线 + 顶银盘 + 浅蓝底座）×2，顶上共 4 个接线柱（左黑右红），
+  //   中间可插一根连通的硅钢片铁芯（插入后两线圈磁通耦合变强，k 从 0.28 升到 0.9）。
+  function drawMutualCoilInst(ctx, comp) {
+    const core = comp.core !== false
+    const post = (x, red) => {
+      ctx.beginPath(); ctx.roundRect(x - 1.6, -2.4, 3.2, 6, 1)
+      ctx.fillStyle = '#CBD4D8'; ctx.fill()
+      const g = ctx.createLinearGradient(x - 5, -10, x + 5, 0)
+      if (red) { g.addColorStop(0, '#F4725F'); g.addColorStop(0.45, '#D8331F'); g.addColorStop(1, '#8E1B12') }
+      else { g.addColorStop(0, '#6C757B'); g.addColorStop(0.42, '#33393D'); g.addColorStop(1, '#141819') }
+      ctx.beginPath(); ctx.roundRect(x - 4.6, -10.4, 9.2, 9, 2.2)
+      ctx.fillStyle = g; ctx.fill()
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 0.7; ctx.stroke()
+      ctx.beginPath(); ctx.ellipse(x, -10.4, 4.6, 1.8, 0, 0, Math.PI * 2)
+      ctx.fillStyle = red ? '#FF9184' : '#8A939A'; ctx.fill()
+    }
+
+    // 投影
+    ctx.beginPath(); ctx.ellipse(0, 67, 78, 4.5, 0, 0, Math.PI * 2)
+    ctx.fillStyle = 'rgba(34,49,58,0.12)'; ctx.fill()
+
+    // 连通的硅钢片铁芯（插上才有；先画，让两只线圈筒压在上面，看着像穿过去）
+    if (core) {
+      const g = ctx.createLinearGradient(0, 27, 0, 38)
+      g.addColorStop(0, '#E7ECEF'); g.addColorStop(0.35, '#C6CFD4'); g.addColorStop(0.7, '#9FA9AF'); g.addColorStop(1, '#7C868C')
+      ctx.beginPath(); ctx.roundRect(-86, 27, 172, 11, 1.5)
+      ctx.fillStyle = g; ctx.fill()
+      ctx.strokeStyle = 'rgba(90,102,109,0.85)'; ctx.lineWidth = 0.8; ctx.stroke()
+      for (const sx of [-86, -44, -16, 16, 44, 86]) {   // 硅钢片的叠片缝
+        ctx.beginPath(); ctx.moveTo(sx, 27); ctx.lineTo(sx, 38)
+        ctx.strokeStyle = 'rgba(120,132,139,0.5)'; ctx.lineWidth = 0.6; ctx.stroke()
+      }
+    } else {
+      ctx.setLineDash([5, 4])
+      ctx.beginPath(); ctx.roundRect(-86, 27, 172, 11, 1.5)
+      ctx.strokeStyle = 'rgba(150,163,171,0.65)'; ctx.lineWidth = 1; ctx.stroke()
+      ctx.setLineDash([])
+    }
+
+    // 线圈筒（左 / 右）
+    const tube = (x0, x1) => {
+      // 浅蓝底座
+      ctx.beginPath(); ctx.roundRect(x0 - 6, 56, x1 - x0 + 12, 9, 3)
+      const bg = ctx.createLinearGradient(0, 56, 0, 65)
+      bg.addColorStop(0, '#DDEAF7'); bg.addColorStop(1, '#AFC7DF')
+      ctx.fillStyle = bg; ctx.fill()
+      ctx.strokeStyle = '#8FA8C0'; ctx.lineWidth = 0.8; ctx.stroke()
+      // 铜筒
+      const g = ctx.createLinearGradient(x0, 0, x1, 0)
+      g.addColorStop(0, '#7A3D0C'); g.addColorStop(0.16, '#B97132'); g.addColorStop(0.4, '#E8B27A')
+      g.addColorStop(0.62, '#C77E38'); g.addColorStop(0.86, '#95501A'); g.addColorStop(1, '#69330A')
+      ctx.beginPath(); ctx.roundRect(x0, 7, x1 - x0, 51, 2.5)
+      ctx.fillStyle = g; ctx.fill()
+      ctx.strokeStyle = 'rgba(70,36,8,0.5)'; ctx.lineWidth = 0.8; ctx.stroke()
+      // 红色绕线（一段段斜着绕上去，略带弧度）
+      const turns = 6
+      for (let i = 0; i < turns; i++) {
+        const y = 11 + i * 8.4
+        ctx.beginPath()
+        ctx.moveTo(x0 + 1.5, y)
+        ctx.bezierCurveTo(x0 + (x1 - x0) * 0.42, y + 3.2, x0 + (x1 - x0) * 0.62, y + 4.6, x1 - 1.5, y + 6.4)
+        ctx.strokeStyle = 'rgba(90,20,14,0.35)'; ctx.lineWidth = 3; ctx.stroke()
+        ctx.strokeStyle = '#D0402E'; ctx.lineWidth = 1.9; ctx.stroke()
+      }
+      // 顶银盘
+      ctx.beginPath(); ctx.roundRect(x0 - 4, 1, x1 - x0 + 8, 7, 3)
+      const pg = ctx.createLinearGradient(0, 1, 0, 8)
+      pg.addColorStop(0, '#FAFCFD'); pg.addColorStop(0.5, '#D9E1E5'); pg.addColorStop(1, '#B3BDC2')
+      ctx.fillStyle = pg; ctx.fill()
+      ctx.strokeStyle = '#8D979D'; ctx.lineWidth = 0.8; ctx.stroke()
+    }
+    tube(-66, -26)
+    tube(26, 66)
+
+    // 4 个接线柱：左筒 黑/红，右筒 黑/红
+    post(-58, false); post(-34, true)
+    post(34, false); post(58, true)
+
+    // 器材标注
+    setFont(ctx, 9, 'bold'); ctx.fillStyle = C.ink
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    ctx.fillText(`互感线圈 1:1　L₁=${(comp.h ?? 1.0).toFixed(2)} H　${core ? '铁芯 k≈0.9' : '无铁芯 k≈0.28'}`, 0, 72)
+    ctx.textBaseline = 'alphabetic'
+    ctx.textAlign = 'left'
+  }
+
   function drawDiyComp(ctx, comp, selected, live = 0) {
     const bx = figBox(comp.type)
     ctx.save(); ctx.translate(comp.x, comp.y); ctx.scale(DIYK, DIYK)
@@ -2010,6 +2108,11 @@ export default function SelfInductionScene() {
     }
     if (comp.type === 'transformer') {
       drawXfInst(ctx, comp)
+      ctx.restore()
+      return
+    }
+    if (comp.type === 'mutualcoil') {
+      drawMutualCoilInst(ctx, comp)
       ctx.restore()
       return
     }
@@ -2110,7 +2213,9 @@ export default function SelfInductionScene() {
     const mutual = res.mode === 'mutual'
     setFont(ctx, 9, 'bold'); ctx.fillStyle = C.tealDark
     ctx.fillText(mutual
-      ? `互感：U=${res.U}V  L₁=${res.Ls.toFixed(2)}H  N₂:N₁=${res.n}:1`
+      ? (res.isCoil
+        ? `互感线圈 1:1  U=${res.U}V  L₁=${res.Ls.toFixed(2)}H  k=${res.kc}`
+        : `互感：U=${res.U}V  L₁=${res.Ls.toFixed(2)}H  N₂:N₁=${res.n}:1`)
       : shunt
         ? `并联续流：U=${res.U}V  L=${res.Ls.toFixed(2)}H  R灯=${res.Rk}Ω`
         : `回路已识别：U=${res.U}V  R=${res.Rk}Ω  L=${res.Ls.toFixed(2)}H`, x + 10, y + 8)
@@ -2270,24 +2375,26 @@ export default function SelfInductionScene() {
       { type: 'switch', name: '开关', sub: '单向闸刀，点黑柄通断' },
       { type: 'coil', name: '线圈 L', sub: '电感 1.5 H，可调' },
       { type: 'transformer', name: '变压器', sub: '可拆铁芯，N₂:N₁ 可调' },
+      { type: 'mutualcoil', name: '互感线圈', sub: '两线圈 + 可插铁芯' },
       { type: 'bulb', name: '小灯泡', sub: '灯丝 5 Ω' },
     ]
+    const rowH = 42
     items.forEach((it, i) => {
-      const cy = y + 34 + i * 44
+      const cy = y + 34 + i * rowH
       const hot = dy.hold === it.type
-      ctx.beginPath(); ctx.roundRect(x + 8, cy, w - 16, 42, 8)
+      ctx.beginPath(); ctx.roundRect(x + 8, cy, w - 16, rowH - 2, 8)
       ctx.fillStyle = '#FFFFFF'; ctx.fill()
       ctx.strokeStyle = hot ? C.teal : '#E1E8EB'; ctx.lineWidth = hot ? 2 : 1; ctx.stroke()
-      drawGlyph(ctx, x + 30, cy + 21, it.type)
+      drawGlyph(ctx, x + 30, cy + rowH / 2, it.type)
       setFont(ctx, 9.5, 'bold'); ctx.fillStyle = C.ink
       ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(it.name, x + 54, cy + 14)
+      ctx.fillText(it.name, x + 54, cy + 13)
       setFont(ctx, 7.8); ctx.fillStyle = C.faint
-      ctx.fillText(it.sub, x + 54, cy + 28)
-      pushArea({ n: `diyPart:${it.type}`, x: x + 8, y: cy, w: w - 16, h: 42, holdType: it.type, cursor: 'pointer' })
+      ctx.fillText(it.sub, x + 54, cy + 27)
+      pushArea({ n: `diyPart:${it.type}`, x: x + 8, y: cy, w: w - 16, h: rowH - 2, holdType: it.type, cursor: 'pointer' })
     })
 
-    let ky = y + 34 + items.length * 44 + 2
+    let ky = y + 34 + items.length * rowH + 2
     setFont(ctx, 9.5, 'bold'); ctx.fillStyle = C.sub
     ctx.fillText('快捷', x + 12, ky)
     ky += 16
@@ -2296,6 +2403,8 @@ export default function SelfInductionScene() {
     drawBtn(ctx, x + 8, ky, w - 16, 26, '一键并联续流', 'plain', () => buildShunt(A), 'diyShunt')
     ky += 32
     drawBtn(ctx, x + 8, ky, w - 16, 26, '一键互感回路', 'plain', () => buildMutual(A), 'diyMutual')
+    ky += 32
+    drawBtn(ctx, x + 8, ky, w - 16, 26, '一键简易互感', 'plain', () => buildMutualCoil(A), 'diyMutualCoil')
     ky += 32
     drawBtn(ctx, x + 8, ky, w - 16, 26, '清空场地', 'ghost', () => {
       const st = S.current
@@ -2339,7 +2448,9 @@ export default function SelfInductionScene() {
             ? { label: '电感 L', val: sel.h ?? 1.5, unit: 'H', min: 0.2, max: 3, step: 0.1, set: (v) => { sel.h = Math.round(v * 100) / 100 } }
             : sel.type === 'transformer'
               ? { label: '匝数比 N₂:N₁', val: sel.n ?? 2, unit: ':1', min: 1, max: 3, step: 1, set: (v) => { sel.n = Math.round(v) } }
-              : null
+              : sel.type === 'mutualcoil'
+                ? { label: '电感 L₁', val: sel.h ?? 1.0, unit: 'H', min: 0.3, max: 2, step: 0.1, set: (v) => { sel.h = Math.round(v * 10) / 10 } }
+                : null
       if (cfg) {
         setFont(ctx, 9); ctx.fillStyle = C.sub
         ctx.fillText(cfg.label, x + 12, ky)
@@ -2364,16 +2475,36 @@ export default function SelfInductionScene() {
         ky += 32
       }
       if (sel.type === 'coil') {
-        setFont(ctx, 8); ctx.fillStyle = C.faint
-        fitFont(ctx, 'τ = L/R：L 越大，电流升得越慢', w - 24, 8)
-        ctx.fillText('τ = L/R：L 越大，电流升得越慢', x + 12, ky)
-        ky += 14
+        if (ky + 14 < y + h - 8) {
+          setFont(ctx, 8); ctx.fillStyle = C.faint
+          fitFont(ctx, 'τ = L/R：L 越大，电流升得越慢', w - 24, 8)
+          ctx.fillText('τ = L/R：L 越大，电流升得越慢', x + 12, ky)
+          ky += 14
+        }
       }
       if (sel.type === 'transformer') {
-        setFont(ctx, 8); ctx.fillStyle = C.faint
-        fitFont(ctx, '原线圈接电源侧、副线圈接灯泡侧；只有通断瞬间灯泡才闪', w - 24, 8)
-        ctx.fillText('原线圈接电源侧、副线圈接灯泡侧；只有通断瞬间灯泡才闪', x + 12, ky)
-        ky += 14
+        if (ky + 14 < y + h - 8) {
+          setFont(ctx, 8); ctx.fillStyle = C.faint
+          fitFont(ctx, '原线圈接电源侧、副线圈接灯泡侧；只有通断瞬间灯泡才闪', w - 24, 8)
+          ctx.fillText('原线圈接电源侧、副线圈接灯泡侧；只有通断瞬间灯泡才闪', x + 12, ky)
+          ky += 14
+        }
+      }
+      if (sel.type === 'mutualcoil') {
+        drawBtn(ctx, x + 8, ky, w - 16, 26, sel.core !== false ? '抽出铁芯（k 变小）' : '插入铁芯（k 变大）', 'plain', () => {
+          const dy2 = S.current.diy
+          sel.core = sel.core === false
+          dy2.t = 0
+          dy2.evt = null
+          say(sel.core ? '插入铁芯：两线圈磁通「连通」，互感变强（k≈0.9）' : '抽出铁芯：只剩空气耦合，互感变弱（k≈0.28）')
+        }, 'diyCore')
+        ky += 30
+        if (ky + 12 < y + h - 8) {
+          setFont(ctx, 8); ctx.fillStyle = C.faint
+          fitFont(ctx, '左筒 0/1 = 原线圈，右筒 2/3 = 副线圈', w - 24, 8)
+          ctx.fillText('左筒 0/1 = 原线圈，右筒 2/3 = 副线圈', x + 12, ky)
+          ky += 14
+        }
       }
     } else {
       setFont(ctx, 9); ctx.fillStyle = C.faint
@@ -2382,27 +2513,32 @@ export default function SelfInductionScene() {
       ky += 18
     }
 
-    // 提示（贴着参数区下沿，避免与滑条挤在一起）
+    // 提示（贴着参数区下沿；矮屏幕放不下就自动少列几条，实在没地方就不画，绝不溢出面板）
     const tipY = Math.max(ky + 10, y + h - 130)
-    ctx.beginPath(); ctx.roundRect(x + 8, tipY, w - 16, 126, 8)
-    ctx.fillStyle = '#F6FBF9'; ctx.fill()
-    ctx.strokeStyle = '#DCEBE7'; ctx.lineWidth = 1; ctx.stroke()
-    setFont(ctx, 9.5, 'bold'); ctx.fillStyle = C.tealDark
-    ctx.textAlign = 'left'
-    ctx.fillText('这样做', x + 18, tipY + 9)
-    const tips = [
-      '① 点器材 → 再点画布落位',
-      '② 点两个接线柱 → 连一根线',
-      '③ 点闸刀黑柄 → 通断',
-      '④ 右键器材 → 删除',
-      '⑤ 串联跑 i–t，并联看灯泡闪亮',
-      '⑥ 变压器：原线圈 0/1、副线圈 2/3',
-    ]
-    setFont(ctx, 8.5); ctx.fillStyle = C.sub
-    tips.forEach((t, i) => {
-      fitFont(ctx, t, w - 40, 8.5)
-      ctx.fillText(t, x + 18, tipY + 26 + i * 15)
-    })
+    const avail = y + h - 8 - tipY
+    if (avail >= 70) {
+      const tipH = clamp(avail, 70, 126)
+      ctx.beginPath(); ctx.roundRect(x + 8, tipY, w - 16, tipH, 8)
+      ctx.fillStyle = '#F6FBF9'; ctx.fill()
+      ctx.strokeStyle = '#DCEBE7'; ctx.lineWidth = 1; ctx.stroke()
+      setFont(ctx, 9.5, 'bold'); ctx.fillStyle = C.tealDark
+      ctx.textAlign = 'left'
+      ctx.fillText('这样做', x + 18, tipY + 9)
+      const tips = [
+        '① 点器材 → 再点画布落位',
+        '② 点两个接线柱 → 连一根线',
+        '③ 点闸刀黑柄 → 通断',
+        '④ 右键器材 → 删除',
+        '⑤ 串联跑 i–t，并联看灯泡闪亮',
+        '⑥ 双绕组（变压器 / 互感线圈）：左 0/1、右 2/3',
+      ]
+      setFont(ctx, 8.5); ctx.fillStyle = C.sub
+      tips.forEach((t, i) => {
+        if (26 + i * 15 > tipH - 6) return
+        fitFont(ctx, t, w - 40, 8.5)
+        ctx.fillText(t, x + 18, tipY + 26 + i * 15)
+      })
+    }
   }
 
   function drawGlyph(ctx, x, y, type) {
@@ -2425,6 +2561,29 @@ export default function SelfInductionScene() {
       ctx.fillStyle = '#2E3539'; ctx.fill()
       ctx.beginPath(); ctx.roundRect(-11.5, -6, 3, 2.4, 0.8); ctx.fillStyle = '#33393D'; ctx.fill()
       ctx.beginPath(); ctx.roundRect(8.5, -6, 3, 2.4, 0.8); ctx.fillStyle = '#D8331F'; ctx.fill()
+      ctx.restore()
+      return
+    }
+    if (type === 'mutualcoil') {
+      // 器材区图标：两只立着的线圈筒 + 中间穿一根铁芯
+      ctx.beginPath(); ctx.roundRect(-14, 2, 28, 2.6, 0.8)
+      ctx.fillStyle = '#C1CBD1'; ctx.fill()
+      for (const x0 of [-12, 2]) {
+        const g = ctx.createLinearGradient(x0, 0, x0 + 10, 0)
+        g.addColorStop(0, '#8B4A12'); g.addColorStop(0.4, '#E0A66B'); g.addColorStop(1, '#7A3F0F')
+        ctx.beginPath(); ctx.roundRect(x0, -6, 10, 9, 1.2)
+        ctx.fillStyle = g; ctx.fill()
+        ctx.beginPath(); ctx.roundRect(x0 - 1, -7.6, 12, 2.2, 0.8)
+        ctx.fillStyle = '#DFE6EA'; ctx.fill()
+        ctx.beginPath(); ctx.roundRect(x0 - 1, 2.6, 12, 2.2, 0.8)
+        ctx.fillStyle = '#BBD0E4'; ctx.fill()
+      }
+      ctx.beginPath(); ctx.roundRect(-15, -4.4, 30, 2.2, 0.8)
+      ctx.fillStyle = '#AEB9BF'; ctx.fill()
+      for (const [sx, red] of [[-11, false], [-3, true], [3, false], [11, true]]) {
+        ctx.beginPath(); ctx.roundRect(sx, -9.4, 2.6, 2.2, 0.7)
+        ctx.fillStyle = red ? '#D8331F' : '#33393D'; ctx.fill()
+      }
       ctx.restore()
       return
     }
@@ -2536,6 +2695,33 @@ export default function SelfInductionScene() {
     say('已搭好互感回路：变压器原线圈接电源+开关、副线圈接灯泡，点闸刀通断看灯泡闪')
   }
 
+  // 简易互感：两只线圈筒（左 0/1 原线圈接电源+开关，右 2/3 副线圈接灯泡），可插铁芯
+  function buildMutualCoil(A) {
+    const dy = S.current.diy
+    const mk = (type, x, y, extra) => ({ id: S.current.nextId++, type, x, y, closed: false, ...extra })
+    const DB = TERM.battery * DIYK, DS = TERM.switch * DIYK, DL = TERM.bulb * DIYK
+    const midX = A.area.x1 * 0.50
+    const yT = A.area.y1 * 0.24
+    const mc = mk('mutualcoil', midX, yT, { h: 1.0, core: true })
+    const sw = mk('switch', midX - 260, yT, {})
+    const bat = mk('battery', midX - 260, A.area.y1 * 0.74, { u: 12 })
+    const bl = mk('bulb', midX + 205 * DIYK, yT + 52 * DIYK, { r: 5 })
+    dy.comps = [bat, sw, mc, bl]
+    const wc = dy.wireColor
+    dy.wires = [
+      { id: 1, from: { compId: sw.id, port: 0 }, to: { compId: bat.id, port: 0 }, color: wc },
+      { id: 2, from: { compId: sw.id, port: 1 }, to: { compId: mc.id, port: 0 }, color: wc },
+      { id: 3, from: { compId: mc.id, port: 1 }, to: { compId: bat.id, port: 1 }, color: wc },
+      { id: 4, from: { compId: mc.id, port: 2 }, to: { compId: bl.id, port: 0 }, color: wc },
+      { id: 5, from: { compId: mc.id, port: 3 }, to: { compId: bl.id, port: 1 }, color: wc },
+    ]
+    dy.sel = sw.id
+    dy.t = 0
+    dy.evt = null
+    dy.hot = false
+    say('已搭好简易互感：左线圈接电源+开关、右线圈接灯泡，插/抽铁芯看灯泡闪得多亮')
+  }
+
   // ═════════════════════════════════════════════
   //  交互（Tab1 演示 / Tab2 接线，同一套命中判定）
   // ═════════════════════════════════════════════
@@ -2561,13 +2747,14 @@ export default function SelfInductionScene() {
       const t = dy.hold
       const c = {
         id: s.nextId++, type: t, x: Pt.x, y: Pt.y, closed: false,
-        u: 12, r: 5, h: 1.5, n: 2, kc: 0.9,
+        u: 12, r: 5, h: t === 'mutualcoil' ? 1.0 : 1.5, n: 2, kc: 0.9, core: true,
       }
       dy.comps.push(c)
       dy.sel = c.id
       dy.hold = null
       dy.t = 0
-      const NAMES = { battery: '电源', switch: '开关', coil: '线圈 L', bulb: '小灯泡', transformer: '变压器' }
+      dy.evt = null
+      const NAMES = { battery: '电源', switch: '开关', coil: '线圈 L', bulb: '小灯泡', transformer: '变压器', mutualcoil: '互感线圈' }
       say(`已放入${NAMES[t] || '器材'}`)
       return
     }
