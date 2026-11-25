@@ -101,5 +101,20 @@ if (MODE === 's4' || MODE === 'all') {
   await clickArea('preset50'); await sleep(500)
   await shot(`_selfind-s4hi-${W}x${H}.png`)
 }
+if (MODE === 's5' || MODE === 'all') {
+  await clickArea('step5'); await sleep(200)
+  await shot(`_selfind-s5-${W}x${H}.png`)
+}
+if (MODE === 's5on' || MODE === 'all') {
+  await clickArea('step5'); await sleep(200)
+  await clickArea('switchBtn'); await sleep(120)
+  await shot(`_selfind-s5on-${W}x${H}.png`)
+}
+if (MODE === 's5off' || MODE === 'all') {
+  await clickArea('step5'); await sleep(200)
+  await clickArea('switchBtn'); await sleep(2000)   // 合闸到稳态
+  await clickArea('switchBtn'); await sleep(120)    // 断闸瞬间
+  await shot(`_selfind-s5off-${W}x${H}.png`)
+}
 await browser.close()
 console.log('done')

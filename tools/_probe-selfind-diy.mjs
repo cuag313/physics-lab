@@ -94,6 +94,19 @@ if (MODE === 'diycolor' || MODE === 'all') {
   await clickArea('diyStandard'); await sleep(700)
   await shot(`_selfind-diycolor-${W}x${H}.png`)
 }
+// 并联续流：L ∥ 灯泡，开关只切电源支路
+if (MODE === 'diyshunt' || MODE === 'all') {
+  await clickArea('diyClear'); await sleep(200)
+  await clickArea('diyShunt'); await sleep(700)
+  await shot(`_selfind-diyshunt-${W}x${H}.png`)
+}
+if (MODE === 'diyshuntopen' || MODE === 'all') {
+  if (MODE === 'diyshuntopen') {
+    await clickArea('diyClear'); await clickArea('diyShunt'); await sleep(700)
+  }
+  await clickArea('diySwitch'); await sleep(250)       // 断开 → 续流闪亮（搭好时已闭合）
+  await shot(`_selfind-diyshuntopen-${W}x${H}.png`)
+}
 // 断开一次（看断电提示与亮度归零）
 if (MODE === 'diyopen') {
   await clickArea('diySwitch'); await sleep(600)

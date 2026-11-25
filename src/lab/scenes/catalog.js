@@ -873,12 +873,12 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'selfInduction',
     name: '自感与互感',
-    description: '四步演示：通电自感、断电自感（并联灯泡续流）、τ=L/R、通直流阻交流（X_L=2πfL）；自己动手接线搭 RL 回路自动求解',
+    description: '五步演示：通电自感、断电自感（并联灯泡续流）、τ=L/R、通直流阻交流（X_L=2πfL）、互感（共铁芯双线圈，ε₂=M·dI₁/dt）；自己动手接线搭 RL 回路（串联通电自感／L 并联灯泡续流）自动求解',
     category: 'electric',
     subCategory: '高中电磁学',
     difficulty: 2,
     grade: '高二',
-    tags: ['自感', '互感', '自感系数', '楞次定律', '通直流阻交流', '感抗'],
+    tags: ['自感', '互感', '自感系数', '互感系数', '铁芯耦合', '楞次定律', '通直流阻交流', '感抗', '续流'],
     examLevel: '★★',
   },
   {
