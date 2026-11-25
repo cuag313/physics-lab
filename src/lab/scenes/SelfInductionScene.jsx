@@ -1793,7 +1793,7 @@ export default function SelfInductionScene() {
   // 图片 → 本体坐标（柱帽落点对齐 ±TERM）
   function figBox(type) {
     if (type === 'transformer') return { scale: 1, term: TERM.transformer, x0: -80, y0: -56, w: 160, h: 152 }
-    if (type === 'mutualcoil') return { scale: 1, term: TERM.mutualcoil, x0: -88, y0: -12, w: 176, h: 92 }
+    if (type === 'mutualcoil') return { scale: 1, term: TERM.mutualcoil, x0: -88, y0: -12, w: 176, h: 116 }
     const def = DIY_FIG[type]
     if (!def) return { scale: 1, term: TERM[type] || 26, x0: -66, y0: -48, w: 132, h: 62 }
     const term = TERM[type] || 26
@@ -1811,7 +1811,7 @@ export default function SelfInductionScene() {
       return { x0: -80 * DIYK, x1: 80 * DIYK, y0: -56 * DIYK, y1: 98 * DIYK }
     }
     if (type === 'mutualcoil') {
-      return { x0: -90 * DIYK, x1: 90 * DIYK, y0: -14 * DIYK, y1: 80 * DIYK }
+      return { x0: -90 * DIYK, x1: 90 * DIYK, y0: -14 * DIYK, y1: 104 * DIYK }
     }
     if (!bx || !DIY_FIG[type]) {
       return { x0: -70 * DIYK, x1: 70 * DIYK, y0: -50 * DIYK, y1: 26 * DIYK }
@@ -2022,7 +2022,8 @@ export default function SelfInductionScene() {
 
   // 自己动手页的「简易互感线圈」1:1 实物造型（照实验室那种两只线圈筒画）：
   //   两只立着的铜线圈筒（红色绕线 + 顶银盘 + 浅蓝底座）×2，顶上共 4 个接线柱（左黑右红），
-  //   中间可插一根连通的硅钢片铁芯（插入后两线圈磁通耦合变强，k 从 0.28 升到 0.9）。
+  //   可插一根 **U 形** 连通的硅钢片铁芯：两条腿插进左、右线圈筒的中心，底下一条横轭把它们连成 U
+  //   （插入后两线圈磁通耦合变强，k 从 0.28 升到 0.9）。
   function drawMutualCoilInst(ctx, comp) {
     const core = comp.core !== false
     const post = (x, red) => {
@@ -2042,29 +2043,39 @@ export default function SelfInductionScene() {
     ctx.beginPath(); ctx.ellipse(0, 67, 78, 4.5, 0, 0, Math.PI * 2)
     ctx.fillStyle = 'rgba(34,49,58,0.12)'; ctx.fill()
 
-    // 连通的硅钢片铁芯（插上才有；先画，让两只线圈筒压在上面，看着像穿过去）
-    if (core) {
-      const g = ctx.createLinearGradient(0, 27, 0, 38)
-      g.addColorStop(0, '#E7ECEF'); g.addColorStop(0.35, '#C6CFD4'); g.addColorStop(0.7, '#9FA9AF'); g.addColorStop(1, '#7C868C')
-      ctx.beginPath(); ctx.roundRect(-86, 27, 172, 11, 1.5)
+    // 连通的 U 形硅钢片铁芯（插上才有）：两条腿分别插进左、右线圈筒的**中心**，
+    // 底下一条横轭把两条腿连成 U。上段先画（让线圈筒压在腿上，看着像穿在筒里），下段横轭稍后再补。
+    const steel = (x, y, wid, hei, seamX) => {
+      const g = ctx.createLinearGradient(x, 0, x + wid, 0)
+      g.addColorStop(0, '#F0F4F6'); g.addColorStop(0.22, '#D2DADF'); g.addColorStop(0.55, '#AEB8BE')
+      g.addColorStop(0.85, '#8E989E'); g.addColorStop(1, '#707A80')
+      ctx.beginPath(); ctx.roundRect(x, y, wid, hei, 1.4)
       ctx.fillStyle = g; ctx.fill()
-      ctx.strokeStyle = 'rgba(90,102,109,0.85)'; ctx.lineWidth = 0.8; ctx.stroke()
-      for (const sx of [-86, -44, -16, 16, 44, 86]) {   // 硅钢片的叠片缝
-        ctx.beginPath(); ctx.moveTo(sx, 27); ctx.lineTo(sx, 38)
-        ctx.strokeStyle = 'rgba(120,132,139,0.5)'; ctx.lineWidth = 0.6; ctx.stroke()
+      ctx.strokeStyle = 'rgba(84,96,103,0.85)'; ctx.lineWidth = 0.8; ctx.stroke()
+      for (const s of seamX) {
+        ctx.beginPath(); ctx.moveTo(s, y + 0.8); ctx.lineTo(s, y + hei - 0.8)
+        ctx.strokeStyle = 'rgba(120,132,139,0.45)'; ctx.lineWidth = 0.6; ctx.stroke()
       }
+    }
+    const LEG = [[-53, -39, [-49, -43]], [39, 53, [43, 49]]]   // 左腿 / 右腿（筒心 x=-46 / 46）
+    if (core) {
+      for (const [x0, x1, seam] of LEG) steel(x0, -3, x1 - x0, 80, seam)   // 腿：从筒顶一直往下
     } else {
-      ctx.setLineDash([5, 4])
-      ctx.beginPath(); ctx.roundRect(-86, 27, 172, 11, 1.5)
-      ctx.strokeStyle = 'rgba(150,163,171,0.65)'; ctx.lineWidth = 1; ctx.stroke()
-      ctx.setLineDash([])
+      for (const [x0, x1] of LEG) {                                      // 抽掉铁芯：位置画虚线框
+        ctx.setLineDash([5, 4])
+        ctx.beginPath(); ctx.roundRect(x0, -3, x1 - x0, 80, 1.5)
+        ctx.strokeStyle = 'rgba(150,163,171,0.7)'; ctx.lineWidth = 1; ctx.stroke()
+        ctx.beginPath(); ctx.roundRect(-55, 67, 110, 10, 1.5)
+        ctx.strokeStyle = 'rgba(150,163,171,0.7)'; ctx.stroke()
+        ctx.setLineDash([])
+      }
     }
 
     // 线圈筒（左 / 右）
     const tube = (x0, x1) => {
-      // 浅蓝底座
-      ctx.beginPath(); ctx.roundRect(x0 - 6, 56, x1 - x0 + 12, 9, 3)
-      const bg = ctx.createLinearGradient(0, 56, 0, 65)
+      // 浅蓝底座（矮一点，好让铁芯腿从底下露出来）
+      ctx.beginPath(); ctx.roundRect(x0 - 6, 56, x1 - x0 + 12, 6, 2.5)
+      const bg = ctx.createLinearGradient(0, 56, 0, 62)
       bg.addColorStop(0, '#DDEAF7'); bg.addColorStop(1, '#AFC7DF')
       ctx.fillStyle = bg; ctx.fill()
       ctx.strokeStyle = '#8FA8C0'; ctx.lineWidth = 0.8; ctx.stroke()
@@ -2095,6 +2106,13 @@ export default function SelfInductionScene() {
     tube(-66, -26)
     tube(26, 66)
 
+    // 铁芯下段：两条腿从矮底座底下露出来，由底部一条横轭连成 U（这就是「连通到两个线圈中心」）
+    if (core) {
+      steel(-53, 58, 14, 23, [-49, -43])
+      steel(39, 58, 14, 23, [43, 49])
+      steel(-55, 71, 110, 10, [-46, -26, -8, 8, 26, 46])
+    }
+
     // 4 个接线柱：左筒 黑/红，右筒 黑/红
     post(-58, false); post(-34, true)
     post(34, false); post(58, true)
@@ -2102,7 +2120,7 @@ export default function SelfInductionScene() {
     // 器材标注
     setFont(ctx, 9, 'bold'); ctx.fillStyle = C.ink
     ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-    ctx.fillText(`互感线圈 1:1　L₁=${(comp.h ?? 1.0).toFixed(2)} H　${core ? '铁芯 k≈0.9' : '无铁芯 k≈0.28'}`, 0, 72)
+    ctx.fillText(`互感线圈 1:1　L₁=${(comp.h ?? 1.0).toFixed(2)} H　${core ? 'U 形铁芯 k≈0.9' : '无铁芯 k≈0.28'}`, 0, 86)
     ctx.textBaseline = 'alphabetic'
     ctx.textAlign = 'left'
   }
@@ -2590,9 +2608,13 @@ export default function SelfInductionScene() {
       return
     }
     if (type === 'mutualcoil') {
-      // 器材区图标：两只立着的线圈筒 + 中间穿一根铁芯
-      ctx.beginPath(); ctx.roundRect(-14, 2, 28, 2.6, 0.8)
-      ctx.fillStyle = '#C1CBD1'; ctx.fill()
+      // 器材区图标：两只立着的线圈筒 + U 形铁芯（两腿插进筒心、底下横轭连通）
+      for (const cx of [-8, 8]) {                 // 两条腿（先画，让线圈筒压在上面）
+        ctx.beginPath(); ctx.roundRect(cx - 1.6, -7.4, 3.2, 15, 0.8)
+        const gg = ctx.createLinearGradient(cx - 1.6, 0, cx + 1.6, 0)
+        gg.addColorStop(0, '#E6ECEF'); gg.addColorStop(0.6, '#AFB9BF'); gg.addColorStop(1, '#828C92')
+        ctx.fillStyle = gg; ctx.fill()
+      }
       for (const x0 of [-12, 2]) {
         const g = ctx.createLinearGradient(x0, 0, x0 + 10, 0)
         g.addColorStop(0, '#8B4A12'); g.addColorStop(0.4, '#E0A66B'); g.addColorStop(1, '#7A3F0F')
@@ -2603,8 +2625,14 @@ export default function SelfInductionScene() {
         ctx.beginPath(); ctx.roundRect(x0 - 1, 2.6, 12, 2.2, 0.8)
         ctx.fillStyle = '#BBD0E4'; ctx.fill()
       }
-      ctx.beginPath(); ctx.roundRect(-15, -4.4, 30, 2.2, 0.8)
-      ctx.fillStyle = '#AEB9BF'; ctx.fill()
+      for (const cx of [-8, 8]) {                 // 腿从底座下面露出来
+        ctx.beginPath(); ctx.roundRect(cx - 1.6, 4.4, 3.2, 4.4, 0.6)
+        ctx.fillStyle = '#B9C3C9'; ctx.fill()
+      }
+      ctx.beginPath(); ctx.roundRect(-11, 6.6, 22, 2.4, 0.7)     // 底部横轭 → U
+      const gy2 = ctx.createLinearGradient(0, 6.6, 0, 9)
+      gy2.addColorStop(0, '#DFE6EA'); gy2.addColorStop(1, '#8E989E')
+      ctx.fillStyle = gy2; ctx.fill()
       for (const [sx, red] of [[-11, false], [-3, true], [3, false], [11, true]]) {
         ctx.beginPath(); ctx.roundRect(sx, -9.4, 2.6, 2.2, 0.7)
         ctx.fillStyle = red ? '#D8331F' : '#33393D'; ctx.fill()
