@@ -98,6 +98,7 @@ export default function SelfInductionScene() {
     diy: {
       comps: [], wires: [], sel: null, t: 0, connecting: null, drag: null,
       hold: null, mx: 0, my: 0, wireColor: '#F44336', lastTap: null, hot: false,
+      wireSel: null,                           // 左键点中的导线 id（选中后可按 Delete 删，或点面板按钮删）
       evt: null,                               // 互感回路：'on' | 'off' | null（本次通断事件）
     },
   })
@@ -165,6 +166,19 @@ export default function SelfInductionScene() {
     }
   }, [])
 
+  // Delete / Backspace：删掉左键选中的那根导线（只在「自己动手」页生效）
+  useEffect(() => {
+    const onKey = (e) => {
+      if (S.current.tab !== 2) return
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return
+      if (!S.current.diy.wireSel) return
+      e.preventDefault()
+      delSelectedWire()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
   function pushArea(a) { canvasRef.current._clickAreas.push(a) }
   function say(text) { S.current.toast = { text, until: Date.now() + 2200 } }
 
@@ -182,6 +196,8 @@ export default function SelfInductionScene() {
         diyT: +S.current.diy.t.toFixed(3),
         diyDbg: S.current.diyDbg || null,
         diyComps: S.current.diy.comps.length, diyWires: S.current.diy.wires.length,
+        diyWireSel: S.current.diy.wireSel ?? null,
+        diyWireIds: S.current.diy.wires.map((w) => w.id),
         diyCompList: S.current.diy.comps.map((c) => ({ type: c.type, x: Math.round(c.x), y: Math.round(c.y), closed: !!c.closed, h: c.h, r: c.r, u: c.u })),
         info: { closed: S.current.closed, U: S.current.U, L: S.current.L, R: S.current.R, f: S.current.f },
         cardScroll: +(S.current.cardScroll || 0).toFixed(1), cardMax: +((cardRect.current && cardRect.current.maxScroll) || 0).toFixed(1),
@@ -1480,10 +1496,72 @@ export default function SelfInductionScene() {
       (w.from.compId === a.compId && w.from.port === a.port && w.to.compId === b.compId && w.to.port === b.port)
       || (w.to.compId === a.compId && w.to.port === a.port && w.from.compId === b.compId && w.from.port === b.port)
     ))
-    if (!dup) dy.wires.push({ id: dy.wires.length + 1, from: { compId: a.compId, port: a.port }, to: { compId: b.compId, port: b.port }, color: dy.wireColor })
+    // id 必须全局唯一：删过线之后 wires.length+1 会跟老 id 撞车（选中/删除都会认错线）
+    const id = dy.wires.reduce((m, w) => Math.max(m, w.id || 0), 0) + 1
+    if (!dup) dy.wires.push({ id, from: { compId: a.compId, port: a.port }, to: { compId: b.compId, port: b.port }, color: dy.wireColor })
     dy.t = 0
     dy.hot = false
     dy.evt = null
+  }
+
+  // 导线曲线的控制点与采样点：与 circuitKit.strokeBezierWire 完全同一套（ext = 42，从接线柱水平出线）
+  function wireCurvePts(w, comps) {
+    const c1 = comps.find((c) => c.id === w.from.compId)
+    const c2 = comps.find((c) => c.id === w.to.compId)
+    if (!c1 || !c2) return null
+    const p1 = termPos(c1, w.from.port), p2 = termPos(c2, w.to.port)
+    const ext = 42
+    const q1 = { x: p1.x + (w.from.port === 0 ? -ext : ext), y: p1.y }
+    const q2 = { x: p2.x + (w.to.port === 0 ? -ext : ext), y: p2.y }
+    const pts = []
+    for (let k = 0; k <= 32; k++) {
+      const u = k / 32, iu = 1 - u
+      pts.push({
+        x: iu * iu * iu * p1.x + 3 * iu * iu * u * q1.x + 3 * iu * u * u * q2.x + u * u * u * p2.x,
+        y: iu * iu * iu * p1.y + 3 * iu * iu * u * q1.y + 3 * iu * u * u * q2.y + u * u * u * p2.y,
+      })
+    }
+    return { p1, p2, q1, q2, pts }
+  }
+
+  // 点到某条导线的最近距离（世界坐标）；找不到器材返回 Infinity
+  function wireDist(w, comps, Pt) {
+    const cv = wireCurvePts(w, comps)
+    if (!cv) return Infinity
+    let best = Infinity
+    for (const p of cv.pts) {
+      const d = Math.hypot(Pt.x - p.x, Pt.y - p.y)
+      if (d < best) best = d
+    }
+    return best
+  }
+
+  // 点中哪条导线：返回 { id, i, d }（容差 tol 世界像素）
+  function wireAt(dy, Pt, tol = 10) {
+    let hit = null
+    dy.wires.forEach((w, i) => {
+      const d = wireDist(w, dy.comps, Pt)
+      if (d <= tol && (!hit || d < hit.d)) hit = { id: w.id, i, d }
+    })
+    return hit
+  }
+
+  function delWire(id, why) {
+    const dy = S.current.diy
+    const i = dy.wires.findIndex((w) => w.id === id)
+    if (i < 0) return false
+    dy.wires.splice(i, 1)
+    dy.wireSel = null
+    dy.t = 0
+    say(why || '导线已删除')
+    return true
+  }
+
+  // Delete / Backspace 删掉当前选中的导线
+  function delSelectedWire() {
+    const dy = S.current.diy
+    if (!dy.wireSel) return false
+    return delWire(dy.wireSel, '导线已删除（左键选中后按 Delete，或右键直接点线）')
   }
 
   // 回路识别（与电容器场景同一套口径 + 并联续流）：
@@ -1704,8 +1782,8 @@ export default function SelfInductionScene() {
     ctx.textAlign = 'left'; ctx.textBaseline = 'top'
     ctx.fillText('自己动手 · 搭一个通电／断电自感电路', A.org.x + 4, 14)
     setFont(ctx, 10); ctx.fillStyle = C.sub
-    fitFont(ctx, '点右侧器材再点画布落位；点两个接线柱连线（点器材本体即吸附到最近的柱）；点闸刀黑柄通断；右键点导线/器材即删除。「一键标准电路」= 串联通电自感，「一键并联续流」= L ∥ 灯泡，「一键互感回路」= 变压器原、副线圈各接一边', A.area.x1 * A.sc - 8, 10)
-    ctx.fillText('点右侧器材再点画布落位；点两个接线柱连线（点器材本体即吸附到最近的柱）；点闸刀黑柄通断；右键点导线/器材即删除。「一键标准电路」= 串联通电自感，「一键并联续流」= L ∥ 灯泡，「一键互感回路」= 变压器原、副线圈各接一边', A.org.x + 4, 33)
+    fitFont(ctx, '点右侧器材再点画布落位；点两个接线柱连线（点器材本体即吸附到最近的柱）；点闸刀黑柄通断；左键点导线可选中（Delete 删除），右键点导线/器材即删除。「一键标准电路」= 串联通电自感，「一键并联续流」= L ∥ 灯泡，「一键互感回路」= 变压器原、副线圈各接一边', A.area.x1 * A.sc - 8, 10)
+    ctx.fillText('点右侧器材再点画布落位；点两个接线柱连线（点器材本体即吸附到最近的柱）；点闸刀黑柄通断；左键点导线可选中（Delete 删除），右键点导线/器材即删除。「一键标准电路」= 串联通电自感，「一键并联续流」= L ∥ 灯泡，「一键互感回路」= 变压器原、副线圈各接一边', A.org.x + 4, 33)
 
     ctx.save(); ctx.translate(A.org.x, A.org.y); ctx.scale(A.sc, A.sc)
     ctx.beginPath(); ctx.roundRect(0, 0, A.area.x1, A.area.y1, 10)
@@ -1716,11 +1794,29 @@ export default function SelfInductionScene() {
     }
 
     // 导线（三次贝塞尔，从接线柱水平出线 —— 与项目其它电学「自己动手」同一套走线）
+    // 左键点中的那条：先垫一圈淡蓝高亮，再照原色画线，让人一眼看出「选中了哪根」
     for (const w of dy.wires) {
       const c1 = dy.comps.find((c) => c.id === w.from.compId)
       const c2 = dy.comps.find((c) => c.id === w.to.compId)
       if (!c1 || !c2) continue
       const p1 = termPos(c1, w.from.port), p2 = termPos(c2, w.to.port)
+      if (dy.wireSel === w.id) {
+        const cv = wireCurvePts(w, dy.comps)
+        if (cv) {
+          ctx.beginPath(); ctx.moveTo(cv.p1.x, cv.p1.y)
+          ctx.bezierCurveTo(cv.q1.x, cv.q1.y, cv.q2.x, cv.q2.y, cv.p2.x, cv.p2.y)
+          ctx.strokeStyle = 'rgba(30,136,229,0.30)'; ctx.lineWidth = 7.5; ctx.stroke()
+          ctx.setLineDash([4, 3]); ctx.lineDashOffset = 0
+          ctx.beginPath(); ctx.moveTo(cv.p1.x, cv.p1.y)
+          ctx.bezierCurveTo(cv.q1.x, cv.q1.y, cv.q2.x, cv.q2.y, cv.p2.x, cv.p2.y)
+          ctx.strokeStyle = 'rgba(21,101,192,0.95)'; ctx.lineWidth = 1.4; ctx.stroke()
+          ctx.setLineDash([])
+          for (const p of [cv.p1, cv.p2]) {
+            ctx.beginPath(); ctx.arc(p.x, p.y, 3.4, 0, Math.PI * 2)
+            ctx.fillStyle = 'rgba(21,101,192,0.95)'; ctx.fill()
+          }
+        }
+      }
       strokeBezierWire(ctx, p1, p2, w.color || dy.wireColor, null, null, w.from.port, w.to.port)
     }
     if (dy.connecting) {
@@ -2463,7 +2559,7 @@ export default function SelfInductionScene() {
     ky += 32
     drawBtn(ctx, x + 8, ky, w - 16, 26, '清空场地', 'ghost', () => {
       const st = S.current
-      st.diy.comps = []; st.diy.wires = []; st.diy.sel = null; st.diy.t = 0; st.diy.hot = false; st.diy.evt = null
+      st.diy.comps = []; st.diy.wires = []; st.diy.sel = null; st.diy.wireSel = null; st.diy.t = 0; st.diy.hot = false; st.diy.evt = null
       say('场地已清空')
     }, 'diyClear')
     ky += 34
@@ -2484,6 +2580,12 @@ export default function SelfInductionScene() {
       pushArea({ n: `diyWireColor${i}`, x: cx, y: ky, w: chipW, h: chipH, cursor: 'pointer', onClick: () => { dy.wireColor = hex } })
     })
     ky += chipH + 12
+
+    // 选中导线：给一个明确的删除入口（不用记快捷键，也不用右键）
+    if (dy.wireSel && dy.wires.some((w) => w.id === dy.wireSel)) {
+      drawBtn(ctx, x + 8, ky, w - 16, 26, '删除选中导线', 'plain', () => delSelectedWire(), 'diyDelWire')
+      ky += 32
+    }
 
     // 选中器材参数
     const sel = dy.comps.find((c) => c.id === dy.sel)
@@ -2583,7 +2685,7 @@ export default function SelfInductionScene() {
         '① 点器材 → 再点画布落位',
         '② 点两个接线柱 → 连一根线',
         '③ 点闸刀黑柄 → 通断',
-        '④ 右键器材 → 删除',
+        '④ 左键点线→选中（Delete 删）／右键直接删',
         '⑤ 串联跑 i–t，并联看灯泡闪亮',
         '⑥ 双绕组（变压器 / 互感线圈）：左 0/1、右 2/3',
       ]
@@ -2710,6 +2812,7 @@ export default function SelfInductionScene() {
       { id: 4, from: { compId: bl.id, port: 0 }, to: { compId: bat.id, port: 1 }, color: wc },
     ]
     dy.sel = sw.id
+    dy.wireSel = null
     dy.t = 0
     say('已搭好标准回路：电源—开关—线圈 L—小灯泡，点闸刀黑柄即可合闸')
   }
@@ -2735,6 +2838,7 @@ export default function SelfInductionScene() {
       { id: 5, from: { compId: bat.id, port: 1 }, to: { compId: bl.id, port: 1 }, color: wc },
     ]
     dy.sel = sw.id
+    dy.wireSel = null
     dy.t = 0
     say('已搭好并联续流回路：开关只切电源支路，断开后 L 的电流经灯泡续流，灯泡闪一下')
   }
@@ -2760,6 +2864,7 @@ export default function SelfInductionScene() {
       { id: 5, from: { compId: tf.id, port: 3 }, to: { compId: bl.id, port: 1 }, color: wc },
     ]
     dy.sel = sw.id
+    dy.wireSel = null
     dy.t = 0
     dy.evt = null
     dy.hot = false
@@ -2787,6 +2892,7 @@ export default function SelfInductionScene() {
       { id: 5, from: { compId: mc.id, port: 3 }, to: { compId: bl.id, port: 1 }, color: wc },
     ]
     dy.sel = sw.id
+    dy.wireSel = null
     dy.t = 0
     dy.evt = null
     dy.hot = false
@@ -2897,11 +3003,23 @@ export default function SelfInductionScene() {
       }
       dy.lastTap = null
       dy.sel = picked.id
+      dy.wireSel = null
       dy.drag = 'comp'
       s.dragOff = { x: Pt.x - picked.x, y: Pt.y - picked.y }
       return
     }
+    // 空白处点到导线 → 选中它（高亮）；选中后按 Delete/Backspace 或点面板「删除选中导线」删掉
+    const wh = dy.connecting ? null : wireAt(dy, Pt, 10)
+    if (wh) {
+      const w = dy.wires[wh.i]
+      dy.wireSel = w.id
+      dy.sel = null
+      dy.lastTap = null
+      say(`已选中一根导线（${(w.color || dy.wireColor).toUpperCase()}）：按 Delete 键删除，或右键直接删`)
+      return
+    }
     dy.sel = null
+    dy.wireSel = null
     dy.connecting = null
     dy.lastTap = null
   }
@@ -2930,6 +3048,13 @@ export default function SelfInductionScene() {
         c.y = clamp(Pt.y - (s.dragOff?.y || 0), 8 - e2.y0, A.area.y1 - 8 - e2.y1)
       }
       return
+    }
+    // 鼠标压在导线上就变成小手：明确告诉你「这根线点得中」
+    if (!dy.connecting) {
+      const wh = wireAt(dy, Pt, 10)
+      const cur = wh ? 'pointer' : ''
+      const cv = canvasRef.current
+      if (cv && cv.style.cursor !== cur) cv.style.cursor = cur
     }
   }
 
@@ -2960,41 +3085,17 @@ export default function SelfInductionScene() {
     const A = diyGeom(R2.W, R2.H)
     const Pt = { x: (x - A.org.x) / A.sc, y: (y - A.org.y) / A.sc }
 
-    // 先判导线：点在导线的贝塞尔曲线上就近删除（否则接错的线删不掉）
-    const distToWire = (w) => {
-      const c1 = s.diy.comps.find((c) => c.id === w.from.compId)
-      const c2 = s.diy.comps.find((c) => c.id === w.to.compId)
-      if (!c1 || !c2) return Infinity
-      const p1 = termPos(c1, w.from.port), p2 = termPos(c2, w.to.port)
-      const ext = 42                                   // 与 circuitKit.strokeBezierWire 同一套控制点
-      const q1 = { x: p1.x + (w.from.port === 0 ? -ext : ext), y: p1.y }
-      const q2 = { x: p2.x + (w.to.port === 0 ? -ext : ext), y: p2.y }
-      let best = Infinity
-      for (let k = 0; k <= 24; k++) {
-        const u = k / 24, iu = 1 - u
-        const bx = iu * iu * iu * p1.x + 3 * iu * iu * u * q1.x + 3 * iu * u * u * q2.x + u * u * u * p2.x
-        const by = iu * iu * iu * p1.y + 3 * iu * iu * u * q1.y + 3 * iu * u * u * q2.y + u * u * u * p2.y
-        const d = Math.hypot(Pt.x - bx, Pt.y - by)
-        if (d < best) best = d
-      }
-      return best
-    }
-    let wireHit = -1
-    let wireBest = 11                                  // 世界像素容差（差不多是线宽的 3 倍）
-    s.diy.wires.forEach((w, i) => {
-      const d = distToWire(w)
-      if (d < wireBest) { wireBest = d; wireHit = i }
-    })
+    // 先判导线：点在导线的贝塞尔曲线上就删这条线（否则接错的线删不掉）
+    const wh = wireAt(s.diy, Pt, 14)                   // 14 世界像素 ≈ 线宽的 7 倍，点得糙一点也删得掉
     const idx = s.diy.comps.findIndex((c) => {
       const e2 = compExtent(c.type)
       return Pt.x > c.x + e2.x0 - 6 && Pt.x < c.x + e2.x1 + 6 && Pt.y > c.y + e2.y0 - 6 && Pt.y < c.y + e2.y1 + 6
     })
     // 正好压在线上 → 删线；只是「在线附近、又在器材身上」→ 删器材（免得右键器材时误删它旁边的线）
-    const onLine = wireHit >= 0 && wireBest <= 4
-    if (wireHit >= 0 && (onLine || idx < 0)) {
-      s.diy.wires.splice(wireHit, 1)
+    const onLine = wh && wh.d <= 6
+    if (wh && (onLine || idx < 0)) {
       s.diy.t = 0
-      say('导线已删除（右键点线就删，点器材删器材）')
+      delWire(wh.id, '导线已删除（右键点线就删，点器材删器材）')
       return
     }
 
