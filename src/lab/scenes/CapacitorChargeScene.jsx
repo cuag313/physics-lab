@@ -151,6 +151,10 @@ export default function CapacitorChargeScene() {
         areas: canvasRef.current._clickAreas.map((a) => ({ n: a.n || '', x: Math.round(a.x), y: Math.round(a.y), w: Math.round(a.w), h: Math.round(a.h) })),
         diy: { K: +DIYK.toFixed(2), comps: S.current.diy.comps.map((c) => c.type + '@' + Math.round(c.x) + ',' + Math.round(c.y)), wires: S.current.diy.wires.length, closed: S.current.diy.comps.map((c) => !!c.closed) },
         view: canvasRef.current._diyView || null,
+        grips: S.current.diy.comps.filter((c) => c.type === 'switch').map((c) => {
+          const g = swGripWorld(c)
+          return g ? [Math.round(g.x0), Math.round(g.y0), Math.round(g.x1), Math.round(g.y1)] : null
+        }),
       }
     } catch (e) { console.error('render error:', e) }
   }
@@ -844,6 +848,44 @@ export default function CapacitorChargeScene() {
     rheostat: Math.round(FIG_W.rheostat / 2 * ((395 - 24) / 448) * 10) / 10,  // 54.7
   }
   let DIYK = 1.5   // 器材绘制放大倍数（随画布尺寸自适应，接线柱距离同步放大）
+
+  // 单向闸刀的开合热点 = 刀末端的**黑色绝缘柄**（与 electricSvgInstruments 的 bladeSVG 同源：
+  // 柄 rect 139,56.25,27,16.5，随刀绕铰链轴心 46.3,64.5 转 −27°）。捏柄才扳得动，点底座只选中/拖动。
+  const SW_PIVOT = [46.3, 64.5], SW_GRIP = { x: 139, y: 56.25, w: 27, h: 16.5 }
+  function swGripBox(closed) {
+    const th = (closed ? 0 : -27) * Math.PI / 180
+    const cos = Math.cos(th), sin = Math.sin(th)
+    const cx = SW_GRIP.x + SW_GRIP.w / 2, cy = SW_GRIP.y + SW_GRIP.h / 2
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+    for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      const dx = sx * SW_GRIP.w / 2, dy = sy * SW_GRIP.h / 2
+      const px = cx + dx, py = cy + dy
+      const rx = SW_PIVOT[0] + (px - SW_PIVOT[0]) * cos - (py - SW_PIVOT[1]) * sin
+      const ry = SW_PIVOT[1] + (px - SW_PIVOT[0]) * sin + (py - SW_PIVOT[1]) * cos
+      if (rx < x0) x0 = rx; if (rx > x1) x1 = rx
+      if (ry < y0) y0 = ry; if (ry > y1) y1 = ry
+    }
+    return { x0, y0, x1, y1 }
+  }
+  // 柄框 → 器材本地坐标（drawDiyComp 里已 scale(DIYK)，不要再乘 DIYK）
+  function swGripLocal(comp) {
+    const g = swGripBox(comp.closed), bx = figBox('switch')
+    if (!bx) return null
+    return { x: bx.x0 + g.x0 * bx.scale, y: bx.y0 + g.y0 * bx.scale, w: (g.x1 - g.x0) * bx.scale, h: (g.y1 - g.y0) * bx.scale }
+  }
+  // 柄框 → 世界坐标（命中判定用；多给 5 个图内像素的容错）
+  function swGripWorld(comp) {
+    const g = swGripBox(comp.closed), bx = figBox('switch')
+    if (!bx) return null
+    const pad = 5
+    return {
+      x0: comp.x + (bx.x0 + (g.x0 - pad) * bx.scale) * DIYK,
+      x1: comp.x + (bx.x0 + (g.x1 + pad) * bx.scale) * DIYK,
+      y0: comp.y + (bx.y0 + (g.y0 - pad) * bx.scale) * DIYK,
+      y1: comp.y + (bx.y0 + (g.y1 + pad) * bx.scale) * DIYK,
+    }
+  }
+
   function termPos(comp, i) {
     const d = (TERM[comp.type] || 26) * DIYK
     return { x: comp.x + (i === 0 ? -d : d), y: comp.y }
@@ -910,7 +952,7 @@ export default function CapacitorChargeScene() {
 
     if (!caps.length) return { ok: false, reason: '回路里还没有电容器' }
     if (!res.length) return { ok: false, reason: '回路里还没有小灯泡' }
-    if (best.openSwitch) return { ok: false, reason: '开关是断开的：双击开关（或点面板按钮）闭合', needClose: true }
+    if (best.openSwitch) return { ok: false, reason: '开关是断开的：点闸刀黑柄（或点面板按钮）闭合', needClose: true }
     // 串在回路里的电源电压相加（干电池组每盒 2 节 AA = 3 V），台上没接线的电源不计入
     const loopSrcs = [srcs[0], ...[...best.comps].filter((c) => SRC(c.type))]
     const U = loopSrcs.reduce((a, c) => a + (c.u ?? (c.type === 'cell' ? 3 : 12)), 0)
@@ -938,7 +980,7 @@ export default function CapacitorChargeScene() {
     ctx.textAlign = 'left'; ctx.textBaseline = 'top'
     ctx.fillText('自己动手 · 搭一个 RC 充放电电路', A.org.x + 4, 14)
     setFont(ctx, 10); ctx.fillStyle = C.sub
-    ctx.fillText('点右侧器材再点画布落位；点两个接线柱连线（点器材本体即吸附到最近的柱）；双击开关通断；右键删除。程序自动识别回路并跑真实 RC 曲线', A.org.x + 4, 33)
+    ctx.fillText('点右侧器材再点画布落位；点两个接线柱连线（点器材本体即吸附到最近的柱）；点闸刀黑柄通断；右键删除。程序自动识别回路并跑真实 RC 曲线', A.org.x + 4, 33)
 
     ctx.save(); ctx.translate(A.org.x, A.org.y); ctx.scale(A.sc, A.sc)
     ctx.beginPath(); ctx.roundRect(0, 0, A.area.x1, A.area.y1, 10)
@@ -1193,6 +1235,16 @@ export default function CapacitorChargeScene() {
     } else if (comp.type === 'switch') {
       ctx.fillStyle = comp.closed ? C.tealDark : C.faint
       ctx.fillText(comp.closed ? '闭合' : '断开', 0, ly + 1)
+      // 选中时把「开合热点」画出来：刀末端那块黑色绝缘柄
+      if (selected) {
+        const hp = swGripLocal(comp)
+        if (hp) {
+          ctx.beginPath(); ctx.roundRect(hp.x - 2.5, hp.y - 2.5, hp.w + 5, hp.h + 5, 5)
+          ctx.strokeStyle = 'rgba(226,163,60,0.95)'; ctx.lineWidth = 1.5; ctx.stroke()
+        }
+        setFont(ctx, 7.5); ctx.fillStyle = C.gold
+        ctx.fillText('点黑柄开合', 0, ly + 13)
+      }
     }
     ctx.restore()
   }
@@ -1271,7 +1323,7 @@ export default function CapacitorChargeScene() {
     const items = [
       { type: 'battery', name: '电源', sub: '蓄电池 12 V，可调' },
       { type: 'cell', name: '干电池组', sub: '2 节 AA，3 V（可串联）' },
-      { type: 'switch', name: '开关', sub: '双击通断' },
+      { type: 'switch', name: '开关', sub: '点黑柄通断' },
       { type: 'resistor', name: '小灯泡', sub: '灯丝 10 kΩ，可调' },
       { type: 'rheostat', name: '滑动变阻器', sub: '总阻 50 Ω，滑片可调' },
       { type: 'capacitor', name: '电容器 C', sub: '100 μF，可调' },
@@ -1408,7 +1460,7 @@ export default function CapacitorChargeScene() {
     const tips = [
       '① 点器材 → 再点画布落位',
       '② 点两个接线柱 → 连一根线',
-      '③ 双击开关 / 面板按钮 → 通断',
+      '③ 点闸刀黑柄 / 面板按钮 → 通断',
       '④ 右键器材 → 删除',
       '⑤ 回路接通后自动跑 RC 曲线',
     ]
@@ -1466,7 +1518,7 @@ export default function CapacitorChargeScene() {
     ]
     dy.sel = sw.id
     dy.t = 0
-    say('已搭好标准回路：电源—开关—R—C，双击开关即可充电')
+    say('已搭好标准回路：电源—开关—R—C，点闸刀黑柄即可充电')
   }
 
   // ═════════════════════════════════════════════
@@ -1513,6 +1565,35 @@ export default function CapacitorChargeScene() {
       say(`已放入${NAMES[t] || '器材'}`)
       return
     }
+    // 闸刀黑柄：捏柄就开合。这条必须排在接线柱判定之前 —— 刀合上时黑柄正好压在右柱帽上方
+    // （柄心离柱心只有 16 个世界像素），若让柱子优先，柄就永远点不中。只有「正在接线」或
+    // 「这一下就点在柱帽上（离柱心 9px 内）」时，才把这一下让给接线柱。
+    if (!dy.connecting) {
+      let gripHit = null
+      for (const c of dy.comps) {
+        if (c.type !== 'switch') continue
+        const g = swGripWorld(c)
+        if (g && Pt.x > g.x0 && Pt.x < g.x1 && Pt.y > g.y0 && Pt.y < g.y1) gripHit = c
+      }
+      if (gripHit) {
+        const dPost = Math.min(
+          Math.hypot(Pt.x - termPos(gripHit, 0).x, Pt.y - termPos(gripHit, 0).y),
+          Math.hypot(Pt.x - termPos(gripHit, 1).x, Pt.y - termPos(gripHit, 1).y),
+        )
+        if (dPost > 9 * DIYK / 1.7) {
+          const now = performance.now()
+          dy.sel = gripHit.id
+          // 连点两下：第二下不再反转（习惯性双击不该把刚扳的刀又扳回去）
+          if (!(dy.lastTap && dy.lastTap.id === gripHit.id && now - dy.lastTap.t < 180)) {
+            gripHit.closed = !gripHit.closed
+            dy.t = 0
+            say(gripHit.closed ? '开关闭合' : '开关断开')
+          }
+          dy.lastTap = { id: gripHit.id, t: now, x: Pt.x, y: Pt.y }
+          return
+        }
+      }
+    }
     // 点接线柱 → 连线（取最近的一根；柱子本身只有几个像素，容错给到 22 世界像素）
     const TR = 22 * DIYK / 1.7
     let best = null
@@ -1556,21 +1637,8 @@ export default function CapacitorChargeScene() {
         dy.lastTap = null
         return
       }
-      // 连点两下 = 双击（开关通断）。自己记「上一拍」而不靠浏览器的 dblclick：
-      // 第一拍会顺手进入拖动态，鼠标有一两像素抖动、或者组件被拖动几像素，浏览器就不再补发 dblclick 了。
-      const now = performance.now()
-      const last = dy.lastTap
-      if (last && last.id === picked.id && now - last.t < 450 && Math.hypot(Pt.x - last.x, Pt.y - last.y) < 18) {
-        dy.lastTap = null
-        dy.sel = picked.id
-        if (picked.type === 'switch') {
-          picked.closed = !picked.closed
-          dy.t = 0
-          say(picked.closed ? '开关闭合' : '开关断开')
-        }
-        return
-      }
-      dy.lastTap = { id: picked.id, t: now, x: Pt.x, y: Pt.y }
+      // 单向闸刀：开合热点只在**黑色绝缘柄**上（见下面的提前分支；这里只是兜底）
+      dy.lastTap = null
       dy.sel = picked.id
       dy.drag = 'comp'
       s.dragOff = { x: Pt.x - picked.x, y: Pt.y - picked.y }
