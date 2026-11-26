@@ -244,14 +244,16 @@ export function symInductor(ctx, x, y, o = {}) {
 
 /** 定值电阻：空心矩形（人教版画法，不用锯齿） */
 export function symResistor(ctx, x, y, o = {}) {
-  const { scale = 1, ink = INK } = o
+  const { scale = 1, ink = INK, axis = 'h' } = o
   const k = scale
   const W = SIZE.resistor.w * k, H = SIZE.resistor.h * k
   ctx.save()
+  ctx.translate(x, y)
+  if (axis === 'v') ctx.rotate(Math.PI / 2)   // 竖放：绕中心旋转，沿竖直导线上下接入
   ctx.strokeStyle = ink
   ctx.fillStyle = '#fff'
   ctx.lineWidth = 1.7 * k
-  ctx.beginPath(); ctx.rect(x - W / 2, y - H / 2, W, H); ctx.fill(); ctx.stroke()
+  ctx.beginPath(); ctx.rect(-W / 2, -H / 2, W, H); ctx.fill(); ctx.stroke()
   ctx.restore()
   return { half: W / 2 }
 }

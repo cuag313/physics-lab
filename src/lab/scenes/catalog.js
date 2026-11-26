@@ -884,27 +884,16 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'electricFieldDeflection',
     name: '带电粒子在电场中的偏转',
-    description: '带电粒子垂直进入匀强电场做类平抛运动，示波管原理，速度选择器',
+    description: '示波管演示：电子经 Ua 加速后垂直射入偏转板做类平抛运动，出板后匀速直线打到荧光屏；可叠图对比多组偏转电压、加正交磁场做速度选择器，也可沿场方向做直线加速/减速；自己动手可放入电子枪、极板、荧光屏并连线，调节参数实时看轨迹与落点',
     category: 'electric',
     subCategory: '高中电磁学',
     difficulty: 3,
     grade: '高三',
-    tags: ['电场偏转', '类平抛', '示波管', '速度选择器'],
+    tags: ['电场偏转', '类平抛', '示波管', '速度选择器', '直线加速减速', '动能定理', '自己动手'],
     examLevel: '★★★',
   },
 
   // ==================== 高中·恒定电流与电路实验（必修三 第 10 章） ====================
-  {
-    key: 'closedCircuitOhm',
-    name: '闭合电路欧姆定律',
-    description: '探究路端电压与电流关系 U=ε-Ir，内外电压分配（重规律探究；测量方法见电动势和内阻实验）',
-    category: 'electric',
-    subCategory: '高中电磁学',
-    difficulty: 3,
-    grade: '高二',
-    tags: ['闭合电路', '电动势', '内阻', 'U-I图像'],
-    examLevel: '★★★',
-  },
   {
     key: 'voltAmpereMethodHS',
     name: '伏安法测电阻（内接/外接）',
@@ -954,7 +943,7 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'emfInternalResistance',
     name: '测量电源电动势和内阻',
-    description: '两种电路方案，U-I图像截距与斜率，分析系统误差来源（重测量方法；规律探究见闭合电路欧姆定律）',
+    description: '两种电路方案，U-I图像截距与斜率，分析系统误差来源（重测量方法；闭合电路规律探究见欧姆定律场景模式③）',
     category: 'electric',
     subCategory: '高中电磁学',
     difficulty: 3,

@@ -91,7 +91,6 @@ const LOADERS = {
   electricFieldLine: () => import('./ElectricFieldLineScene'),
   electricPotential: () => import('./ElectricPotentialScene'),
   capacitorCharge: () => import('./CapacitorChargeScene'),
-  closedCircuitOhm: () => import('./ClosedCircuitOhmScene'),
   practiceRheostat: () => import('./PracticeRheostatScene'),
   simpleCircuit: () => import('./SimpleCircuitScene'),
   seriesParallel: () => import('./SeriesParallelScene'),
