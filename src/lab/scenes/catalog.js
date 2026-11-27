@@ -909,12 +909,12 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'meterConversion',
     name: '电表改装与校准',
-    description: '电流表改装为电压表/大量程电流表，校准刻度',
+    description: '从表头 G 的 Ig、Rg 与满偏电压 Ug 出发，并联分流改装电流表（Rs=Rg/(n−1)）、串联分压改装电压表（Rf=Rg(n−1)）；再用标准表逐点校准，可把 Rs/Rf 调偏验证“读数偏大/偏小”的误差规律',
     category: 'electric',
     subCategory: '高中电磁学',
     difficulty: 3,
     grade: '高二',
-    tags: ['电表改装', '分流', '分压', '校准'],
+    tags: ['电表改装', '分流', '分压', '表头G', '校准', '误差分析'],
     examLevel: '★★★',
   },
   {
