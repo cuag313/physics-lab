@@ -943,7 +943,7 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'emfInternalResistance',
     name: '测量电源电动势和内阻',
-    description: '两种电路方案，U-I图像截距与斜率，分析系统误差来源（重测量方法；闭合电路规律探究见欧姆定律场景模式③）',
+    description: '断开读开路电压得 ε，合闸改外阻记录多组 (I, U)，拟合 U-I 直线：截距读电动势、斜率读内阻；含甲乙两种接法与系统误差分析',
     category: 'electric',
     subCategory: '高中电磁学',
     difficulty: 3,
