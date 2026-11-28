@@ -391,7 +391,7 @@ export function drawRig(ctx, o = {}) {
   }
 
   /* ---------- 伪 3D：俯视导线与磁场的夹角（局部放大） ---------- */
-  drawAngle3D(ctx, { x: 424, y: 332, w: 186, h: 178 }, { theta })
+  drawAngle3D(ctx, { x: 424, y: 332, w: 186, h: 178 }, { theta, lenCm })
 
   // 长度标注：金色一段才是磁场中的 l
   line(ctx, cx + 96, loopBot + 1, cx + 108, loopBot + 1, ACTIVE, 3)
@@ -403,86 +403,162 @@ export function drawRig(ctx, o = {}) {
 }
 
 /* ==================================================================
- *  伪 3D：俯视看导线与磁场的夹角 α
+ *  俯视夹角图：真实的俯视图（水平面是正投影，90° 真的画成直角）
+ *  磁力线 B 沿水平方向指向磁铁后方；导体与 B 的夹角就是 α；
+ *  导体垂直于 B 的分量（有效长度）就是 l·sinα。
+ *  Tab1 原理卡与 Tab2 的「俯视 3D」小卡共用这一套画法。
  * ================================================================== */
-export function drawAngle3D(ctx, box, o = {}) {
-  const theta = clamp(o.theta, 0, 90)
-  const { x, y, w, h } = box
-  softCard(ctx, x, y, w, h, '#F8FBFF', '#CFE0EE')
-  T(ctx, '俯视 3D：导线与磁场的夹角', x + 12, y + 20, { size: 8.6, bold: true, color: '#0E4B86' })
-  T(ctx, `α = ${Math.round(theta)}°`, x + w - 12, y + 20, {
-    size: 9.4, color: '#C2410C', align: 'right', bold: true,
-  })
-  T(ctx, '⊗ B 向纸面里　金色段 = 磁场中的 l', x + 12, y + 35, { size: 7, color: '#3E6FA8' })
+export function drawAngleTopView(ctx, o = {}) {
+  const theta = clamp(o.theta == null ? 90 : o.theta, 0, 90)
+  const cx = o.cx
+  const cy = o.cy
+  const R = o.R || 40
+  const s = Math.sin((theta * Math.PI) / 180)
+  const c = Math.cos((theta * Math.PI) / 180)
+  const P = R * 1.18
+  const Q = R * 0.86
 
-  const C = { x: x + 94, y: y + 100 }
-  const Z = { x: 0.52, y: -0.34 } // “向纸面里”的深度轴在画布上的投影
-  const p = (a, b) => ({ x: C.x + a + b * Z.x, y: C.y + b * Z.y })
-
-  // 水平面（磁铁缝隙所在平面）
-  ctx.strokeStyle = 'rgba(120,150,170,0.4)'
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  const c1 = p(-36, -28), c2 = p(36, -28), c3 = p(36, 28), c4 = p(-36, 28)
-  ctx.moveTo(c1.x, c1.y)
-  ctx.lineTo(c2.x, c2.y)
-  ctx.lineTo(c3.x, c3.y)
-  ctx.lineTo(c4.x, c4.y)
-  ctx.closePath()
-  ctx.stroke()
-
-  // B：沿深度轴穿进纸面，末端用 ⊗ 表示“向里”
-  const bTail = p(0, -24)
-  const bTip = p(0, 32)
-  line(ctx, bTail.x, bTail.y, bTip.x, bTip.y, 'rgba(45,110,185,0.55)', 1.2)
-  ctx.strokeStyle = '#2D6EB9'
-  ctx.fillStyle = '#fff'
-  ctx.lineWidth = 1.2
-  ctx.beginPath()
-  ctx.arc(bTip.x, bTip.y, 5.2, 0, Math.PI * 2)
+  // 水平面（正投影，所以是矩形而不是平行四边形）
+  ctx.fillStyle = 'rgba(226,240,248,0.55)'
+  rr(ctx, cx - P, cy - Q, P * 2, Q * 2, 3)
   ctx.fill()
+  ctx.strokeStyle = 'rgba(120,150,170,0.5)'
+  ctx.lineWidth = 1
+  rr(ctx, cx - P, cy - Q, P * 2, Q * 2, 3)
   ctx.stroke()
-  line(ctx, bTip.x - 3.2, bTip.y - 3.2, bTip.x + 3.2, bTip.y + 3.2, '#2D6EB9', 1.1)
-  line(ctx, bTip.x + 3.2, bTip.y - 3.2, bTip.x - 3.2, bTip.y + 3.2, '#2D6EB9', 1.1)
 
-  // 导线（金色受力段），与 B 的夹角就是 α
-  const rad = (theta * Math.PI) / 180
-  const s = Math.sin(rad)
-  const c = Math.cos(rad)
-  const tip = p(s * 30, c * 30)
-  const tail = p(-s * 30, -c * 30)
-  line(ctx, tail.x, tail.y, tip.x, tip.y, '#E1A03A', 3.6)
-  if (theta > 10) T(ctx, 'I', tip.x + 6, tip.y + 2, { size: 8, color: '#B4701E', bold: true })
+  // 磁力线：沿深度方向（画面上向上）指向后方
+  for (const dx of [-P * 0.7, P * 0.7]) {
+    const x0 = cx + dx
+    const y0 = cy + Q * 0.8
+    const y1 = cy - Q * 0.86
+    line(ctx, x0, y0, x0, y1, 'rgba(45,110,185,0.72)', 1)
+    ctx.fillStyle = 'rgba(45,110,185,0.85)'
+    ctx.beginPath()
+    ctx.moveTo(x0, y1 - R * 0.1)
+    ctx.lineTo(x0 - R * 0.055, y1 + R * 0.015)
+    ctx.lineTo(x0 + R * 0.055, y1 + R * 0.015)
+    ctx.closePath()
+    ctx.fill()
+  }
+  if (theta > 8) {
+    T(ctx, 'B', cx - P * 0.7 - R * 0.11, cy - Q * 0.5, {
+      size: Math.max(7, R * 0.19), color: '#2D6EB9', bold: true, align: 'right',
+    })
+  }
 
-  // α 的圆弧（同一平面内）
-  if (theta >= 6) {
+  // 导体（金色受力段），方向与 B 成 α
+  const ux = s
+  const uy = -c
+  const x1 = cx - ux * R
+  const y1w = cy - uy * R
+  const x2 = cx + ux * R
+  const y2w = cy + uy * R
+  line(ctx, x1, y1w, x2, y2w, '#E1A03A', Math.max(2.6, R * 0.105))
+  line(ctx, x1, y1w - 1, x2, y2w - 1, 'rgba(255,225,160,0.75)', Math.max(1, R * 0.03))
+
+  // 电流方向：导线上的小箭头
+  {
+    const axp = cx - ux * R * 0.55
+    const ayp = cy - uy * R * 0.55
+    const nx = -uy
+    const ny = ux
+    ctx.fillStyle = '#B4701E'
+    ctx.beginPath()
+    ctx.moveTo(axp + ux * R * 0.1, ayp + uy * R * 0.1)
+    ctx.lineTo(axp - ux * R * 0.04 + nx * R * 0.06, ayp - uy * R * 0.04 + ny * R * 0.06)
+    ctx.lineTo(axp - ux * R * 0.04 - nx * R * 0.06, ayp - uy * R * 0.04 - ny * R * 0.06)
+    ctx.closePath()
+    ctx.fill()
+  }
+
+  // α 圆弧（半径固定，画出来就是真实角度）
+  if (theta >= 5) {
     ctx.save()
     ctx.setLineDash([3, 3])
     ctx.strokeStyle = 'rgba(194,65,12,0.85)'
     ctx.lineWidth = 1.1
     ctx.beginPath()
     for (let a = 0; a <= theta + 0.01; a += 3) {
-      const r2 = (a * Math.PI) / 180
-      const q = p(Math.sin(r2) * 17, Math.cos(r2) * 17)
-      if (a === 0) ctx.moveTo(q.x, q.y)
-      else ctx.lineTo(q.x, q.y)
+      const r2 = ((a * Math.PI) / 180)
+      const qx = cx + Math.sin(r2) * R * 0.5
+      const qy = cy - Math.cos(r2) * R * 0.5
+      if (a === 0) ctx.moveTo(qx, qy)
+      else ctx.lineTo(qx, qy)
     }
     ctx.stroke()
     ctx.restore()
   }
 
-  // F：垂直于这个平面向上
-  line(ctx, C.x, C.y - 4, C.x, C.y - 30, '#C62828', 2)
-  ctx.fillStyle = '#C62828'
-  ctx.beginPath()
-  ctx.moveTo(C.x, C.y - 38)
-  ctx.lineTo(C.x - 4, C.y - 28)
-  ctx.lineTo(C.x + 4, C.y - 28)
-  ctx.closePath()
-  ctx.fill()
-  T(ctx, 'F 竖直向上', C.x + 6, C.y - 30, { size: 7.6, color: '#B3261E', bold: true })
+  // 有效长度：导体垂直于 B 的分量 = l sinα
+  if (s > 0.1) {
+    const yb = cy + Q + R * 0.14
+    line(ctx, cx - s * R, yb, cx + s * R, yb, '#B4701E', Math.max(1.4, R * 0.045))
+    for (const xx of [cx - s * R, cx + s * R]) {
+      line(ctx, xx, yb - R * 0.07, xx, yb + R * 0.07, '#B4701E', Math.max(1, R * 0.035))
+    }
+    if (o.labels === true) {
+      T(ctx, 'l sinα', cx + s * R + R * 0.09, yb + R * 0.05, {
+        size: Math.max(7, R * 0.17), color: '#8A5A2B', bold: true,
+      })
+    }
+  }
 
-  T(ctx, 'α 是导线与磁场方向的夹角', x + 12, y + h - 9, { size: 7.2, color: '#5B7182' })
+  // F：垂直于这个面向上（俯视图里看作“出纸面”，用 ⊙ 表示）
+  if (s > 0.06) {
+    ctx.fillStyle = '#fff'
+    ctx.beginPath()
+    ctx.arc(cx, cy, R * 0.17, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = '#C62828'
+    ctx.lineWidth = 1.2
+    ctx.stroke()
+    ctx.fillStyle = '#C62828'
+    ctx.beginPath()
+    ctx.arc(cx, cy, R * 0.06, 0, Math.PI * 2)
+    ctx.fill()
+    if (o.labels === true) {
+      const nfx = Math.cos((theta * Math.PI) / 180)
+      const nfy = Math.sin((theta * Math.PI) / 180)
+      T(ctx, 'F', cx + nfx * R * 0.3, cy + nfy * R * 0.3, {
+        size: Math.max(7.2, R * 0.19), color: '#B3261E', bold: true, align: 'center',
+      })
+    }
+  }
+
+  if (o.labels && theta > 12) {
+    const half = (theta * Math.PI) / 360
+    T(ctx, 'α', cx + Math.sin(half) * R * 0.68, cy - Math.cos(half) * R * 0.68, {
+      size: Math.max(7, R * 0.18), color: '#C2410C', bold: true, align: 'center',
+    })
+    if (o.labels === true) {
+      T(ctx, 'I', cx - ux * R * 0.55 - uy * R * 0.26, cy - uy * R * 0.55 + ux * R * 0.26, {
+        size: Math.max(7.2, R * 0.19), color: '#B4701E', bold: true, align: 'center',
+      })
+    }
+  }
+}
+
+/* ==================================================================
+ *  Tab2 右侧小卡：俯视夹角（带标题与有效长度）
+ * ================================================================== */
+export function drawAngle3D(ctx, box, o = {}) {
+  const theta = clamp(o.theta, 0, 90)
+  const { x, y, w, h } = box
+  const lenCm = o.lenCm == null ? 3 : o.lenCm
+  softCard(ctx, x, y, w, h, '#F8FBFF', '#CFE0EE')
+  T(ctx, '俯视：导体与磁力线夹角', x + 12, y + 20, { size: 8.4, bold: true, color: '#0E4B86' })
+  T(ctx, `α = ${Math.round(theta)}°`, x + w - 12, y + 20, {
+    size: 9.4, color: '#C2410C', align: 'right', bold: true,
+  })
+  T(ctx, '磁力线沿水平方向指向磁铁后方', x + 12, y + 34, { size: 7, color: '#3E6FA8' })
+  T(ctx, `有效长度 l sinα = ${(lenCm * Math.sin((theta * Math.PI) / 180)).toFixed(2)} cm`, x + 12, y + 47, {
+    size: 7.2, color: theta >= 88 ? '#1E6B3B' : '#8A5A2B', bold: true,
+  })
+
+  drawAngleTopView(ctx, { cx: x + w / 2, cy: y + 104, R: 40, theta, labels: 'angle' })
+
+  T(ctx, 'α=90° 时导体⊥B，F = BIL 最大', x + 12, y + h - 9, { size: 7, color: '#5B7182' })
 }
 
 /* ==================================================================

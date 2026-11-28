@@ -6,7 +6,7 @@ import { drawKnowledgeCard } from '../ui/knowledgeCard'
 import {
   rr, T, chip, softCard, clamp, line, drawBoard, drawButton,
 } from './labArtKit'
-import { drawSupply, drawBalance, drawRig, drawChart } from './ampereArt'
+import { drawSupply, drawBalance, drawRig, drawChart, drawAngleTopView } from './ampereArt'
 
 /**
  * AmpereForceScene — ⚡ 探究安培力影响因素
@@ -92,6 +92,7 @@ export default function AmpereForceScene() {
     records: [],
     seed: 5,
     learnClosed: true,
+    learnAlpha: 90,
     hintText: '',
     drag: null,
     cardScroll: 0,
@@ -276,6 +277,9 @@ export default function AmpereForceScene() {
     T(ctx, '① 这套器材（视频同款）', c1.x + 18, c1.y + 26, { size: 12.5, bold: true, color: '#25313A' })
     chip(ctx, c1.x + c1.w - 118, c1.y + 12, 106, 22, '0.01 g 天平', '#1E6B3B', 1)
 
+    const sinA = Math.sin((s.learnAlpha * Math.PI) / 180)
+    const demoM = s.learnClosed ? (B * 0.45 * 0.03 * sinA / GRAV) * 1000 : 0
+
     const badge = (n, bx, by) => {
       ctx.fillStyle = '#1E6B3B'
       ctx.beginPath()
@@ -431,7 +435,7 @@ export default function AmpereForceScene() {
     ctx.fillStyle = '#0C2A22'
     rr(ctx, cx0 - 52, panY0 + 24, 104, 36, 4)
     ctx.fill()
-    T(ctx, '1.38 g', cx0 + 44, panY0 + 42, { size: 12, color: '#7BF3A6', align: 'right', mono: true, bold: true })
+    T(ctx, `${demoM.toFixed(2)} g`, cx0 + 44, panY0 + 42, { size: 12, color: '#7BF3A6', align: 'right', mono: true, bold: true })
     badge(4, cx0 - 122, panY0 + 16)
     T(ctx, '④ 0.01 g 电子天平', c1.x + 392, c1.y + 318, { size: 8.6, color: '#4B5A66' })
 
@@ -440,52 +444,34 @@ export default function AmpereForceScene() {
     softCard(ctx, c2.x, c2.y, c2.w, c2.h, '#FFFDF8', '#E8DCC8')
     T(ctx, '② 原理：牛顿第三定律把 F「搬到」天平上', c2.x + 18, c2.y + 24, { size: 12, bold: true, color: '#8A5A2B' })
 
-    const demoM = s.learnClosed ? (B * 0.45 * 0.03 / GRAV) * 1000 : 0
-    // 左：B 垂直纸面向里（⊗），I 向右 → 左手定则给出 F 竖直向上
-    const gx = c2.x + 22
-    const gy = c2.y + 104
-    const crossB = (mx, my) => {
-      ctx.strokeStyle = 'rgba(45,110,185,0.85)'
-      ctx.lineWidth = 1.1
-      ctx.beginPath()
-      ctx.arc(mx, my, 5, 0, Math.PI * 2)
-      ctx.stroke()
-      line(ctx, mx - 3.3, my - 3.3, mx + 3.3, my + 3.3, 'rgba(45,110,185,0.85)', 1.1)
-      line(ctx, mx + 3.3, my - 3.3, mx - 3.3, my + 3.3, 'rgba(45,110,185,0.85)', 1.1)
+    // 左：俯视图（与 Tab2 同一套逻辑）—— 导体与磁力线的夹角 α，有效长度 l sinα
+    const gx = c2.x + 120
+    const gy = c2.y + 100
+    drawAngleTopView(ctx, { cx: gx, cy: gy, R: 44, theta: s.learnAlpha, labels: true })
+
+    // α 三档快选
+    for (const [i, ang] of [0, 45, 90].entries()) {
+      const on = Math.abs(s.learnAlpha - ang) < 1
+      const bx = c2.x + 16 + i * 62
+      const by = c2.y + 150
+      chip(ctx, bx, by, 56, 20, `α=${ang}°`, on ? '#C2410C' : '#8A9AA4', on ? 1 : 0)
+      R._hits.push({
+        x: lay.X(bx), y: lay.Y(by), w: lay.V(56), h: lay.V(20),
+        cursor: 'pointer',
+        onClick: () => {
+          s.learnAlpha = ang
+          s.hintText = ang === 90
+            ? 'α=90°：导体与磁力线垂直，有效长度取满 l，安培力最大'
+            : ang === 0
+              ? 'α=0°：导体与磁力线平行，有效长度 l sinα=0，安培力为零'
+              : 'α=45°：有效长度只有 l sin45°≈0.71l，力也跟着变小'
+          forceUpdate((n) => n + 1)
+        },
+      })
     }
-    for (const [mx, my] of [[gx + 22, gy - 34], [gx + 84, gy - 34], [gx + 22, gy + 30], [gx + 84, gy + 30]]) {
-      crossB(mx, my)
-    }
-    // 单匝导线（水平放置）
-    line(ctx, gx + 8, gy, gx + 96, gy, '#C0763C', 4)
-    if (s.learnClosed) {
-      // I 方向：向右
-      ctx.fillStyle = '#E07B39'
-      ctx.beginPath()
-      ctx.moveTo(gx + 80, gy)
-      ctx.lineTo(gx + 68, gy - 5)
-      ctx.lineTo(gx + 68, gy + 5)
-      ctx.closePath()
-      ctx.fill()
-      // F 方向：竖直向上
-      line(ctx, gx + 52, gy - 4, gx + 52, gy - 48, '#C62828', 2.4)
-      ctx.fillStyle = '#C62828'
-      ctx.beginPath()
-      ctx.moveTo(gx + 52, gy - 56)
-      ctx.lineTo(gx + 47, gy - 44)
-      ctx.lineTo(gx + 57, gy - 44)
-      ctx.closePath()
-      ctx.fill()
-      T(ctx, 'F = BIL sinα', gx + 62, gy - 52, { size: 9.4, color: '#B3261E', bold: true })
-    }
-    T(ctx, 'B ⊗', gx + 2, gy - 37, { size: 9, color: '#2D6EB9', bold: true })
-    T(ctx, 'I', gx + 74, gy + 16, { size: 9, color: '#C06A2E', bold: true })
-    T(ctx, 'B 垂直纸面向里、I 向右 → 左手定则：F 向上', gx + 6, c2.y + 150, {
-      size: 8.4, color: '#2D6EB9',
-    })
 
     // 右：磁铁压天平
-    const mx = c2.x + 250
+    const mx = c2.x + 300
     ctx.fillStyle = '#2E5C97'
     rr(ctx, mx, gy - 66, 22, 46, 3)
     ctx.fill()
@@ -495,7 +481,7 @@ export default function AmpereForceScene() {
     ctx.fillStyle = '#9AA6AE'
     rr(ctx, mx, gy - 20, 74, 12, 3)
     ctx.fill()
-    if (s.learnClosed) {
+    if (s.learnClosed && sinA > 0.05) {
       line(ctx, mx + 37, gy - 76, mx + 37, gy - 24, '#C62828', 2.2)
       ctx.fillStyle = '#C62828'
       ctx.beginPath()
@@ -510,13 +496,18 @@ export default function AmpereForceScene() {
     ctx.beginPath()
     ctx.ellipse(mx + 37, gy + 4, 54, 8, 0, 0, Math.PI * 2)
     ctx.fill()
-    T(ctx, `天平读数 m = ${s.learnClosed ? demoM.toFixed(2) : '0.00'} g`, mx + 37, gy + 26, {
-      size: 9, color: '#1E6B3B', align: 'center', bold: true, mono: true,
+    T(ctx, `天平读数 m = ${s.learnClosed ? demoM.toFixed(2) : '0.00'} g${s.learnClosed && sinA < 0.05 ? '（α=0，F=0）' : ''}`, mx + 37, gy + 26, {
+      size: 8.6, color: '#1E6B3B', align: 'center', bold: true, mono: true,
+    })
+    T(ctx, '读数 m 代表的正是安培力 F = mg', mx + 37, gy + 44, {
+      size: 8.2, color: '#5B7182', align: 'center',
     })
 
-    T(ctx, 'm 的单位虽是 g，代表的却是安培力：F = mg', c2.x + 18, c2.y + 168, { size: 9.2, color: '#5B7182' })
-    T(ctx, 'F = BIL sinα　（α 是导线与磁场的夹角）', c2.x + c2.w - 18, c2.y + 168, {
-      size: 9.4, color: '#B3261E', align: 'right', bold: true, mono: true,
+    T(ctx, 'α 是导体与磁力线的夹角；α=90° 时导体⊥B，有效长度取满 l', c2.x + 18, c2.y + 184, {
+      size: 8.4, color: '#2D6EB9',
+    })
+    T(ctx, 'F = BIL sinα（只有 l sinα 这段受力）', c2.x + c2.w - 18, c2.y + 184, {
+      size: 9, color: '#B3261E', align: 'right', bold: true, mono: true,
     })
 
     const btn = { x: c2.x + c2.w - 116, y: c2.y + 12, w: 100, h: 22 }
@@ -548,7 +539,7 @@ export default function AmpereForceScene() {
     T(ctx, 'Ⅱ  F 与导线长度 l', r1.x + 14, r1.y + 92, { size: 10, bold: true, color: '#1E6B3B' })
     T(ctx, '固定 I、α=90°，换 l1/l2/l3 → 画 m–l 图', r1.x + 14, r1.y + 108, { size: 9, color: '#5B6B5F' })
     T(ctx, 'Ⅲ  F 与夹角 α', r1.x + 14, r1.y + 134, { size: 10, bold: true, color: '#0E4B86' })
-    T(ctx, '固定 I、l，改 α = 0/10/20/30/40°', r1.x + 14, r1.y + 150, { size: 9, color: '#5B6B5F' })
+    T(ctx, '固定 I、l，改 α = 0°→90°（每 5° 吸附）→ 画 m–sinα 图', r1.x + 14, r1.y + 150, { size: 8.6, color: '#5B6B5F' })
     T(ctx, '→ 横轴必须换成 sinα，才是过原点的直线', r1.x + 14, r1.y + 168, { size: 9, color: '#B3261E', bold: true })
 
     const r2 = { x: 636, y: 216, w: 348, h: 190 }
@@ -742,8 +733,8 @@ export default function AmpereForceScene() {
     T(ctx, s.tare ? `F = mg = ${(m.m / 1000 * GRAV).toFixed(4)} N` : 'F = mg（先置零）', rd.x + 180, rd.y + 54, {
       size: s.tare ? 11 : 9.6, color: s.tare ? '#C2410C' : '#8A959C', bold: true, mono: true,
     })
-    T(ctx, `I = ${s.I.toFixed(2)} A　l = ${LEN[s.lenIdx].cm} cm　α = ${Math.round(s.theta)}°`, rd.x + 14, rd.y + 80, {
-      size: 9.2, color: '#4B5A66', mono: true,
+    T(ctx, `I = ${s.I.toFixed(2)} A　l = ${LEN[s.lenIdx].cm} cm　α = ${Math.round(s.theta)}°　l sinα = ${(LEN[s.lenIdx].cm * Math.sin((s.theta * Math.PI) / 180)).toFixed(2)} cm`, rd.x + 14, rd.y + 80, {
+      size: 8.8, color: '#4B5A66', mono: true,
     })
     T(ctx, s.tare ? '读数即安培力对应的质量；画面宽度是投影 l·sinα' : '未置零：显示的是磁铁+支架自重 12.34 g', rd.x + 14, rd.y + rd.h - 12, {
       size: 8.4, color: s.tare ? '#6B7A83' : '#B3261E',
@@ -1147,7 +1138,7 @@ export default function AmpereForceScene() {
         S.current = {
           ...S.current, tab,
           mode: 'I', I: 0.8, lenIdx: 2, theta: 90, closed: false, tare: false,
-          records: [], seed: 5, learnClosed: true, tasks: {}, seen: {}, cardScroll: 0, hintText: '',
+          records: [], seed: 5, learnClosed: true, learnAlpha: 90, tasks: {}, seen: {}, cardScroll: 0, hintText: '',
         }
         forceUpdate((n) => n + 1)
       }}
