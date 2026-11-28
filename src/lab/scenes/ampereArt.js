@@ -222,7 +222,7 @@ export function drawRig(ctx, o = {}) {
   }
 
   // 导线在水平面上的投影宽度：线框绕竖直轴转过 α，底边投影 = l·sinα
-  const wPx = clamp(lenCm * 18 * Math.sin((theta * Math.PI) / 180), 0, 66)
+  const wPx = clamp(lenCm * 18 * Math.sin((theta * Math.PI) / 180), 0, 56)
   const socketY = 332
   const sockA = { x: cx - wPx / 2, y: socketY }
   const sockB = { x: cx + wPx / 2, y: socketY }
@@ -276,20 +276,54 @@ export function drawRig(ctx, o = {}) {
   }
 
   /* ---------- U 形磁铁：两极一前一后，磁感线垂直纸面向里 ---------- */
-  const gap = 76
-  const poleTopBack = panY - 126
-  const poleTopFront = panY - 110
-  const poleH = 112
-  // 底座（压在秤盘上）
-  ctx.fillStyle = '#9AA6AE'
-  rr(ctx, cx - 80, panY - 12, 160, 12, 3)
+  // 底座画成一块“向后收窄”的透视板：后边窄且高、前边宽且压在秤盘前沿，
+  // 让人一眼看出这块板是往后伸的，再配合两极一大一小，前后关系就立住了
+  const plateF = panY - 2
+  const plateB = panY - 20
+  const halfF = 82
+  const halfB = 60
+  // 板的厚度：先画左右两个侧面，再画顶面，才像一块有厚度的板
+  for (const sgn of [-1, 1]) {
+    ctx.beginPath()
+    ctx.moveTo(cx + sgn * halfF, plateF)
+    ctx.lineTo(cx + sgn * halfB, plateB)
+    ctx.lineTo(cx + sgn * halfB, plateB + 10)
+    ctx.lineTo(cx + sgn * halfF, plateF + 10)
+    ctx.closePath()
+    ctx.fillStyle = sgn > 0 ? '#8E9BA2' : '#7A868D'
+    ctx.fill()
+  }
+  ctx.beginPath()
+  ctx.moveTo(cx - halfB, plateB)
+  ctx.lineTo(cx + halfB, plateB)
+  ctx.lineTo(cx + halfF, plateF)
+  ctx.lineTo(cx - halfF, plateF)
+  ctx.closePath()
+  const pg = ctx.createLinearGradient(0, plateB, 0, plateF)
+  pg.addColorStop(0, '#C4CFD6')
+  pg.addColorStop(1, '#9FABB2')
+  ctx.fillStyle = pg
   ctx.fill()
-  ctx.strokeStyle = '#7C888F'
+  ctx.strokeStyle = 'rgba(110,125,135,0.55)'
   ctx.lineWidth = 1
-  rr(ctx, cx - 80, panY - 12, 160, 12, 3)
   ctx.stroke()
-  // 后极 S（蓝，偏左上：表示在纸面后方）
-  const rb = { x: cx - gap / 2 - 36, y: poleTopBack, w: 36, h: poleH }
+  // 前立面（比顶面暗一点）
+  ctx.beginPath()
+  ctx.moveTo(cx - halfF, plateF)
+  ctx.lineTo(cx + halfF, plateF)
+  ctx.lineTo(cx + halfF, plateF + 10)
+  ctx.lineTo(cx - halfF, plateF + 10)
+  ctx.closePath()
+  ctx.fillStyle = '#78848B'
+  ctx.fill()
+  // 压在秤盘上的接触阴影
+  ctx.fillStyle = 'rgba(60,75,85,0.18)'
+  ctx.beginPath()
+  ctx.ellipse(cx, plateF + 12, halfF * 0.96, 5, 0, 0, Math.PI * 2)
+  ctx.fill()
+
+  // 后极 S（蓝，小一圈、坐在板的后沿、加一层薄雾表示更远）
+  const rb = { x: cx - 58, y: plateB - 96, w: 32, h: 96 }
   const bg = ctx.createLinearGradient(rb.x, 0, rb.x + rb.w, 0)
   bg.addColorStop(0, '#244F86')
   bg.addColorStop(0.5, '#3B76BE')
@@ -297,10 +331,32 @@ export function drawRig(ctx, o = {}) {
   ctx.fillStyle = bg
   rr(ctx, rb.x, rb.y, rb.w, rb.h, 4)
   ctx.fill()
-  T(ctx, 'S', rb.x + rb.w / 2, rb.y + 18, { size: 12, color: '#fff', align: 'center', bold: true })
-  T(ctx, '后', rb.x + rb.w / 2, rb.y - 7, { size: 7, color: '#3B6FB6', align: 'center' })
-  // 前极 N（红，偏右下：表示靠近观察者）
-  const rf = { x: cx + gap / 2, y: poleTopFront, w: 36, h: poleH - 4 }
+  ctx.fillStyle = 'rgba(232,242,250,0.14)'
+  rr(ctx, rb.x, rb.y, rb.w, rb.h, 4)
+  ctx.fill()
+  ctx.strokeStyle = 'rgba(24,56,96,0.5)'
+  ctx.lineWidth = 1
+  rr(ctx, rb.x, rb.y, rb.w, rb.h, 4)
+  ctx.stroke()
+  T(ctx, 'S', rb.x + rb.w / 2, rb.y + 17, { size: 11, color: '#fff', align: 'center', bold: true })
+  const pill = (px, py, txt, col) => {
+    ctx.fillStyle = 'rgba(255,255,255,0.95)'
+    rr(ctx, px - 12, py - 13, 24, 13, 6)
+    ctx.fill()
+    ctx.strokeStyle = col
+    ctx.lineWidth = 1
+    rr(ctx, px - 12, py - 13, 24, 13, 6)
+    ctx.stroke()
+    T(ctx, txt, px, py - 4, { size: 8, color: col, align: 'center', bold: true })
+  }
+  pill(rb.x + rb.w / 2, rb.y - 2, '后', '#3B6FB6')
+
+  // 前极 N（红，大一圈、立在板的前沿、带自身投影）
+  const rf = { x: cx + 34, y: plateF - 110, w: 40, h: 110 }
+  ctx.fillStyle = 'rgba(60,75,85,0.16)'
+  ctx.beginPath()
+  ctx.ellipse(rf.x + rf.w / 2 + 6, plateF + 1, rf.w * 0.62, 4, 0, 0, Math.PI * 2)
+  ctx.fill()
   const rg2 = ctx.createLinearGradient(rf.x, 0, rf.x + rf.w, 0)
   rg2.addColorStop(0, '#B02B1F')
   rg2.addColorStop(0.5, '#E05A45')
@@ -308,8 +364,12 @@ export function drawRig(ctx, o = {}) {
   ctx.fillStyle = rg2
   rr(ctx, rf.x, rf.y, rf.w, rf.h, 4)
   ctx.fill()
-  T(ctx, 'N', rf.x + rf.w / 2, rf.y + 18, { size: 12, color: '#fff', align: 'center', bold: true })
-  T(ctx, '前', rf.x + rf.w / 2, rf.y - 7, { size: 7, color: '#B3261E', align: 'center' })
+  ctx.strokeStyle = 'rgba(120,26,18,0.5)'
+  ctx.lineWidth = 1
+  rr(ctx, rf.x, rf.y, rf.w, rf.h, 4)
+  ctx.stroke()
+  T(ctx, 'N', rf.x + rf.w / 2, rf.y + 19, { size: 12.5, color: '#fff', align: 'center', bold: true })
+  pill(rf.x + rf.w / 2, rf.y - 2, '前', '#B3261E')
 
   // 磁感线：从 N（前）指向 S（后）→ 垂直纸面向里，用 ⊗ 表示
   const crossed = (mx, my) => {
@@ -322,8 +382,8 @@ export function drawRig(ctx, o = {}) {
     line(ctx, mx + 2.8, my - 2.8, mx - 2.8, my + 2.8, 'rgba(45,110,185,0.85)', 1.2)
   }
   for (const [mx, my] of [
-    [cx - 32.5, panY - 114], [cx + 32.5, panY - 114],
-    [cx - 32.5, panY - 68], [cx + 32.5, panY - 68],
+    [cx - 22, panY - 100], [cx + 22, panY - 100],
+    [cx - 22, panY - 66], [cx + 22, panY - 66],
   ]) crossed(mx, my)
 
   /* ---------- 单匝 U 形导线：两腿插在插孔里，底边在磁铁缝隙中 ---------- */
@@ -625,3 +685,4 @@ export function drawChart(ctx, box, k, o = {}) {
   }
   return { plot }
 }
+
