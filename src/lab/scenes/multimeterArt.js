@@ -393,6 +393,15 @@ export function drawMultimeter(ctx, b, st = {}) {
   }
 }
 
+/** 刻度数字：带浅色描边，压在密集刻线上也能看清 */
+function scaleNum(ctx, txt, x, y, opt) {
+  ctx.save()
+  ctx.shadowColor = 'rgba(251,248,236,0.95)'
+  ctx.shadowBlur = 3.2
+  T(ctx, txt, x, y, opt)
+  ctx.restore()
+}
+
 /** Ω 刻度（∞ 在左、0 在右，非线性） */
 function drawOhmScale(ctx, cx, cy, Rs, ang, w) {
   const rOut = Rs * 1.0
@@ -407,7 +416,7 @@ function drawOhmScale(ctx, cx, cy, Rs, ang, w) {
     line(ctx, p1.x, p1.y, p2.x, p2.y, major ? '#3B4147' : '#6C7378', Math.max(0.9, w * (major ? 0.0038 : 0.0028)))
     if (txt) {
       const p = arcPos(cx, cy, rNum, a)
-      T(ctx, txt, p.x, p.y, {
+      scaleNum(ctx, txt, p.x, p.y, {
         size: Math.round(w * 0.0215), color: '#1E6B3B', align: 'center', bold: true,
       })
     }
@@ -443,14 +452,14 @@ function drawDcScale(ctx, cx, cy, Rs, ang, w) {
   // 外圈数字 0–250
   for (const v of [0, 50, 100, 150, 200, 250]) {
     const p = arcPos(cx, cy, Rs * 0.720, ang(v / 250))
-    T(ctx, String(v), p.x, p.y, {
+    scaleNum(ctx, String(v), p.x, p.y, {
       size: Math.round(w * 0.0205), color: '#A8281F', align: 'center', bold: true,
     })
   }
   // 内圈数字 0–50
   for (const v of [0, 10, 20, 30, 40, 50]) {
     const p = arcPos(cx, cy, Rs * 0.652, ang(v / 50))
-    T(ctx, String(v), p.x, p.y, {
+    scaleNum(ctx, String(v), p.x, p.y, {
       size: Math.round(w * 0.0175), color: '#8A3229', align: 'center',
     })
   }
@@ -469,7 +478,7 @@ function drawAcScale(ctx, cx, cy, Rs, ang, w) {
   }
   for (const v of [0, 2, 4, 6, 8, 10]) {
     const p = arcPos(cx, cy, Rs * 0.528, ang(v / 10))
-    T(ctx, String(v), p.x, p.y, {
+    scaleNum(ctx, String(v), p.x, p.y, {
       size: Math.round(w * 0.0175), color: '#A8281F', align: 'center',
     })
   }
@@ -614,6 +623,7 @@ export function drawProbeLead(ctx, from, tip, color, k, o = {}) {
   const c1 = { x: from.x + dx * 0.16, y: from.y + sag }
   const c2 = { x: tip.x - dx * 0.20, y: tip.y + sag * 0.45 }
 
+  if (o.part !== 'body') {
   ctx.save()
   ctx.beginPath()
   ctx.moveTo(from.x, from.y)
@@ -631,8 +641,10 @@ export function drawProbeLead(ctx, from, tip, color, k, o = {}) {
   ctx.lineWidth = Math.max(1, 1.3 * k)
   ctx.stroke()
   ctx.restore()
+  }
 
   // 表笔柄 + 金属尖（沿最后一段方向）
+  if (o.part === 'wire') return
   const ang = Math.atan2(tip.y - c2.y, tip.x - c2.x)
   const hx = tip.x - Math.cos(ang) * 15 * k
   const hy = tip.y - Math.sin(ang) * 15 * k
@@ -861,8 +873,9 @@ export function drawBulbBoard(ctx, p, k, st = {}) {
   T(ctx, '小灯泡电路（带测流断口）', p.x + 14 * k, p.y + 16 * k, {
     size: Math.round(11 * k), bold: true, color: '#25313A',
   })
-  T(ctx, closed ? '开关已合，灯亮' : '开关断开', p.x + p.w - 14 * k, p.y + 16 * k, {
-    size: Math.round(9.5 * k), color: closed ? '#15803D' : '#8A9AA4', align: 'right',
+  const on = lit > 0.05
+  T(ctx, on ? '开关已合，灯亮' : closed ? '开关已合，电路断开' : '开关断开', p.x + p.w - 14 * k, p.y + 16 * k, {
+    size: Math.round(9.5 * k), color: on ? '#15803D' : '#8A9AA4', align: 'right',
   })
 
   // —— 器材位置 ——
@@ -905,6 +918,9 @@ export function drawBulbBoard(ctx, p, k, st = {}) {
   })
   T(ctx, jumper ? '测流断口：点铜排打开' : '断口已打开：表笔串进去测电流', brk.x, brk.y2 + 22 * k, {
     size: Math.round(8.8 * k), color: jumper ? '#4B5A66' : '#C2410C', align: 'center',
+  })
+  T(ctx, '闸刀：点一下合 / 断', sw.cx, sw.cy + 22 * k, {
+    size: Math.round(8.8 * k), color: '#6B7A83', align: 'center',
   })
 
   return {
@@ -1112,9 +1128,8 @@ export function drawProbeDock(ctx, p, k) {
   ctx.strokeStyle = '#7C868E'
   ctx.lineWidth = 1
   ctx.stroke()
-  T(ctx, '短接', pad.x, pad.y + 1, { size: Math.round(9 * k), color: '#5B666E', align: 'center', bold: true })
-  T(ctx, 'Ω 调零：两笔都放这儿', pad.x, pad.y + pad.r * 0.42 + 14 * k, {
-    size: Math.round(8.5 * k), color: '#6B7A83', align: 'center',
+  T(ctx, 'Ω 调零：两笔都放这儿', p.x + p.w - 12 * k, p.y + p.h - 10 * k, {
+    size: Math.round(8.5 * k), color: '#6B7A83', align: 'right',
   })
   return {
     rest: [c1, c2],

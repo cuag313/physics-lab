@@ -384,6 +384,10 @@ export default function MultimeterScene() {
     const lay = layout(W, H)
     if (S.current.tab === 1) renderLearn(ctx, R, lay)
     else renderPractice(ctx, R, lay)
+    // 交互热区必须挂到 canvas 上，事件处理读的是 canvas._hits / _targets / _cardBox
+    R.canvas._hits = R._hits
+    R.canvas._targets = R._targets
+    R.canvas._cardBox = R._cardBox
   }
 
   /* ---------- 公共小件 ---------- */
@@ -455,7 +459,7 @@ export default function MultimeterScene() {
     })
 
     // 三条刻度速记
-    const g2 = { x: px, y: lay.Y(244), w: pw, h: lay.V(238) }
+    const g2 = { x: px, y: lay.Y(244), w: pw, h: lay.V(246) }
     softCard(ctx, g2.x, g2.y, g2.w, g2.h, '#FFFCF6', '#F2DCC0')
     T(ctx, '三条刻度，各读各的', g2.x + 14 * k, g2.y + 20 * k, {
       size: Math.round(11.5 * k), bold: true, color: '#C2410C',
@@ -466,24 +470,24 @@ export default function MultimeterScene() {
       { c: '#8A3229', t: '第三排 0–10', d: '交流 10 V 专用；本表无交流源，可当关机位' },
     ]
     rows.forEach((r, i) => {
-      const yy = g2.y + 46 * k + i * 50 * k
+      const yy = g2.y + 48 * k + i * 54 * k
       ctx.fillStyle = hexA(r.c, 0.10)
       rr(ctx, g2.x + 12 * k, yy - 12 * k, g2.w - 24 * k, 42 * k, 8)
       ctx.fill()
-      T(ctx, r.t, g2.x + 20 * k, yy - 1 * k, { size: Math.round(10 * k), bold: true, color: r.c })
-      T(ctx, r.d, g2.x + 20 * k, yy + 16 * k, { size: Math.round(9 * k), color: '#5B6B5F' })
+      T(ctx, r.t, g2.x + 20 * k, yy - 2 * k, { size: Math.round(11.5 * k), bold: true, color: r.c })
+      T(ctx, r.d, g2.x + 20 * k, yy + 18 * k, { size: Math.round(10.5 * k), color: '#4B5A66' })
     })
     T(ctx, '读数三步：先看档位 → 再看该读哪排 → 读格 × 倍率', g2.x + 14 * k, g2.y + g2.h - 16 * k, {
-      size: Math.round(9.5 * k), color: '#B08954',
+      size: Math.round(10.5 * k), color: '#A5762F',
     })
 
     // 操作要点
     const g3 = {
       x: px, y: lay.Y(496), w: pw,
-      h: Math.max(lay.V(96), lay.stage.y + lay.stage.h - lay.Y(496) - 10 * k),
+      h: lay.V(202),
     }
     softCard(ctx, g3.x, g3.y, g3.w, g3.h, '#FFFFFF', '#DFE7EC')
-    T(ctx, '上手前先做两件事', g3.x + 14 * k, g3.y + 20 * k, {
+    T(ctx, '上手前记住这几条', g3.x + 14 * k, g3.y + 20 * k, {
       size: Math.round(11.5 * k), bold: true, color: '#1565C0',
     })
     const tips = [
@@ -491,9 +495,11 @@ export default function MultimeterScene() {
       '② 欧姆调零：Ω 档每次换档都要短接表笔，转 Ω ADJ 到 0 Ω',
       '③ 表笔：红笔插 ＋、黑笔插 COM；Ω 档黑笔接内部电池正极',
       '④ 测电压并联、测电流串联、测电阻先断电',
+      '⑤ 估读：分度值 1 / 0.1 / 0.01 读到下一位；5 / 2 / 0.5 / 0.2 读到本位',
+      '⑥ 图注：①刻度 ②指针 ③开关 ④Ω ADJ ⑤插孔 ⑥机械螺丝',
     ]
     tips.forEach((t, i) => {
-      T(ctx, t, g3.x + 14 * k, g3.y + 46 * k + i * 21 * k, { size: Math.round(9 * k), color: '#4B5A66' })
+      T(ctx, t, g3.x + 14 * k, g3.y + 46 * k + i * 23 * k, { size: Math.round(10.5 * k), color: '#4B5A66' })
     })
 
     // 点击热区
@@ -550,11 +556,7 @@ export default function MultimeterScene() {
     })
     canvasRef.current._geo = geo
 
-    // 读数卡
-    const rd = lay.R(14, 492, 338, 116)
-    drawReadout(ctx, rd, k, m, dec, circ)
-
-    // 表笔架 / 短接片
+    // 表笔架 / 短接片（先画，供表笔落点用）
     const dock = lay.R(14, 618, 338, 128)
     const dockGeo = drawProbeDock(ctx, dock, k)
 
@@ -586,7 +588,11 @@ export default function MultimeterScene() {
     const tips = {}
     for (const which of ['red', 'black']) {
       const pr = s.probes[which]
-      if (pr.target && targets[pr.target]) {
+      if (pr.target === 'short') {
+        // 两支笔分开一点，避免笔身叠在一起盖住短接片
+        const off = (which === 'red' ? -1 : 1) * dockGeo.pad.r * 0.62
+        tips[which] = { x: targets.short.x + off, y: targets.short.y }
+      } else if (pr.target && targets[pr.target]) {
         tips[which] = { x: targets[pr.target].x, y: targets[pr.target].y }
       } else if (pr.free) {
         tips[which] = pr.free
@@ -596,8 +602,17 @@ export default function MultimeterScene() {
           : { x: dockGeo.rest[1].x, y: dockGeo.rest[1].y }
       }
     }
-    drawProbeLead(ctx, geo.jacks.pos, tips.red, '#C62828', k, { snap: !!s.probes.red.target })
-    drawProbeLead(ctx, geo.jacks.com, tips.black, '#16181A', k, { snap: !!s.probes.black.target })
+    // 导线先画（读数卡后画会压住横穿的线）
+    drawProbeLead(ctx, geo.jacks.pos, tips.red, '#C62828', k, { part: 'wire' })
+    drawProbeLead(ctx, geo.jacks.com, tips.black, '#16181A', k, { part: 'wire' })
+
+    // 读数卡
+    const rd = lay.R(14, 492, 338, 116)
+    drawReadout(ctx, rd, k, m, dec, circ)
+
+    // 表笔柄 / 金属尖压在最上层
+    drawProbeLead(ctx, geo.jacks.pos, tips.red, '#C62828', k, { part: 'body', snap: !!s.probes.red.target })
+    drawProbeLead(ctx, geo.jacks.com, tips.black, '#16181A', k, { part: 'body', snap: !!s.probes.black.target })
 
     // 拖拽中的提示
     if (s.drag && s.drag.type === 'tip') {
@@ -609,7 +624,7 @@ export default function MultimeterScene() {
     // 交互热区：表笔优先
     for (const which of ['red', 'black']) {
       R._hits.unshift({
-        x: tips[which].x - 14 * k, y: tips[which].y - 14 * k, w: 28 * k, h: 28 * k,
+        x: tips[which].x - 22 * k, y: tips[which].y - 22 * k, w: 44 * k, h: 44 * k,
         cursor: 'grab',
         onClick: () => { s.drag = { type: 'tip', which } },
       })
@@ -731,8 +746,8 @@ export default function MultimeterScene() {
         items: [
           [['Ω 刻度（上）：左 ∞ 右 0，'], ['不均匀', '#1E6B3B', 1], ['；读出数乘倍率才是电阻。']],
           [['第二排印了两套数 '], ['0–250 与 0–50', '#A8281F', 1], ['，直流 V 和 mA 共用，按量程选一套读。']],
-          [['第三排 '], ['0–10', '#8A3229', 1], [' 只配交流 10 V 档；本表没接交流，只当关机位。']],
-          [['dB、hFE 两条是附加刻度，本场景不用。']],
+          [['第三排 '], ['0–10', '#8A3229', 1], [' 只配交流 10 V 档，可当关机位；dB、hFE 附加刻度不用。']],
+          [['表盘正中的 Ω 读数 '], ['15', '#1E6B3B', 1], [' 就是 ×1 档的内阻；×10 档中值变 150 Ω，所以换档必须重新调零。']],
         ],
       },
       {
@@ -742,15 +757,14 @@ export default function MultimeterScene() {
           [['右上 '], ['ACV', '#A8281F', 1], [' 四档：10 / 50 / 250 / 500 V。']],
           [['右侧 '], ['Ω', '#1E6B3B', 1], [' 五档：×1 / ×10 / ×100 / ×1k / ×10k。']],
           [['下方 '], ['DCmA', '#A8281F', 1], ['：500 / 50 / 5 / 0.5 mA；另设 10 A 专用孔。']],
-          [['收表一定旋到 '], ['OFF 或交流最高档', '#C2410C', 1], ['，防止下次误测烧表。']],
+          [['收表一定旋到 '], ['OFF 或交流最高档', '#C2410C', 1], ['，防下次误测烧表。']],
         ],
       },
       {
         t: '两次调零，别混', c: '#C98A12',
         items: [
           [['机械调零', '#C2410C', 1], ['：测前指针不在左端 0，拧表盘下方螺丝；一次实验只做一次。']],
-          [['欧姆调零', '#C2410C', 1], ['：Ω 档 '], ['每换一次倍率都要重做', '#DC2626', 1], ['——短接表笔，转 Ω ADJ 到 0 Ω。']],
-          [['为什么：Ω 档用内部电池，电池旧了电动势下降，必须调内阻补偿。']],
+          [['欧姆调零', '#C2410C', 1], ['：Ω 档 '], ['每换一次倍率都要重做', '#DC2626', 1], ['——短接表笔转 Ω ADJ 到 0 Ω（内部电池旧了电动势会降）。']],
         ],
       },
       {
@@ -758,24 +772,17 @@ export default function MultimeterScene() {
         items: [
           [['红笔插 '], ['＋', '#C62828', 1], ['、黑笔插 '], ['COM', '#25313A', 1], ['；测直流时电流从红笔流入。']],
           [['Ω 档内部电池的正极接 '], ['黑表笔', '#C62828', 1], ['，所以黑笔接二极管 ＋ 端才导通。']],
-          [['测电压 '], ['并联', '#1565C0', 1], ['、测电流 '], ['串联', '#1565C0', 1], ['、测电阻必须 '], ['先断电', '#DC2626', 1], ['。']],
+          [['测电压 '], ['并联', '#1565C0', 1], ['、测电流 '], ['串联', '#1565C0', 1], ['；测电阻要 '], ['先断电', '#DC2626', 1], [' 并拆下来单独测。']],
         ],
       },
       {
         t: '读数三步', c: '#C2410C',
         items: [
-          [['① 看档位知道量程/倍率；② 找该读哪一排；③ 读格 × 倍率。']],
-          [['选档原则：指针落在 '], ['刻度中段', '#C2410C', 1], [' 最准；偏到两端就换档。']],
+          [['① 看档位 → ② 找该读哪排 → ③ 读格 × 倍率；指针落在 '], ['中段', '#C2410C', 1], [' 最准。']],
           [['Ω 档读数 '], ['不估读', '#1E6B3B', 1], ['，×1k 档读 12 就是 12 kΩ。']],
         ],
       },
-      {
-        t: '部件对照', c: '#7C3AED',
-        items: [
-          [['① 表盘刻度 ② 指针 ③ 选择开关']],
-          [['④ 欧姆调零（Ω ADJ） ⑤ 表笔插孔 ⑥ 机械调零螺丝']],
-        ],
-      },
+
     ]
   }
 
@@ -868,6 +875,7 @@ export default function MultimeterScene() {
         if (a.pick && a.onPick) {
           const id = a.pick(x, y)
           if (id) { a.onPick(id); return }
+          continue
         }
         if (a.onDrag) {
           s.drag = { type: 'dragArea', area: a, y0: y }

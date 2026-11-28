@@ -93,14 +93,14 @@ export function drawKnowledgeCard(ctx, rect, SECTIONS, opts = {}) {
     // 小节标题：左侧色条 + 同色淡药丸
     if (isVis(cy, 21)) {
       ctx.fillStyle = sec.c
-      ctx.beginPath(); ctx.roundRect(left - 2, cy + 5, 3.4, 13, 2); ctx.fill()
+      ctx.beginPath(); ctx.roundRect(left - 2, cy + 2, 3.4, 12, 2); ctx.fill()
       ctx.font = `bold ${Math.min(12.5, fs + 1.5)}px "Microsoft YaHei", sans-serif`
       const tw = ctx.measureText(sec.t).width
       ctx.fillStyle = hexA(sec.c, 0.13)
-      ctx.beginPath(); ctx.roundRect(left + 6, cy + 1, tw + 16, 21, 10); ctx.fill()
+      ctx.beginPath(); ctx.roundRect(left + 6, cy - 2, tw + 16, 19, 10); ctx.fill()
       ctx.fillStyle = sec.c
       ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(sec.t, left + 14, cy + 12)
+      ctx.fillText(sec.t, left + 14, cy + 8)
     }
     cy += R.head
 
@@ -162,6 +162,7 @@ export function drawKnowledgeCard(ctx, rect, SECTIONS, opts = {}) {
 
 /** 富文本按宽度折行：返回 {s, c, b}[] 的行数组 */
 export function layoutRuns(ctx, runs, maxW, fs) {
+  const NO_START = '，。、；：！？）》”’%…'
   const lines = []
   let cur = [], curW = 0, buf = '', bufC = null, bufB = false
   const flushBuf = () => {
@@ -174,7 +175,8 @@ export function layoutRuns(ctx, runs, maxW, fs) {
     bufC = color; bufB = bold
     for (const ch of String(txt)) {
       const chW = ctx.measureText(ch).width
-      if (curW + chW > maxW && (cur.length || buf)) {
+      // 避头点：标点不另起一行（宁可这一行略超宽）
+      if (curW + chW > maxW && (cur.length || buf) && !NO_START.includes(ch)) {
         flushBuf(); lines.push(cur); cur = []; curW = 0
       }
       buf += ch; curW += chW
