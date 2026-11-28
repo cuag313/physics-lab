@@ -37,7 +37,7 @@ const BASE = 12.34 // 磁铁 + 支架自重（g）：不置零时天平显示的
 
 const MODES = {
   I: { t: 'F–I', label: '研究电流 I', xLabel: 'I / A', xMax: 1.2, dec: 1, unit: 'A', x: (p) => p.I },
-  L: { t: 'F–l', label: '研究长度 l', xLabel: 'l / cm', xMax: 3, dec: 0, unit: 'cm', x: (p) => p.Lcm },
+  L: { t: 'F–l', label: '研究长度 l', xLabel: 'l / cm', xMax: 3, dec: 0, unit: 'cm', x: (p) => p.Lcm, xTicks: 3 },
   A: { t: 'F–sinα', label: '研究角度 α', xLabel: 'sin α', xMax: 1, dec: 1, unit: '', x: (p) => Math.sin((p.theta * Math.PI) / 180) },
 }
 
@@ -150,6 +150,33 @@ export default function AmpereForceScene() {
     if (mode === 'L') { s.I = 0.8; s.theta = 90 }
     if (mode === 'A') { s.I = 0.8; s.lenIdx = 2 }
     s.hintText = `已切到「${MODES[mode].label}」：其余两个量固定，只改这一个`
+  }
+
+  /* 改东西之前自动断电：真实操作也是先断再换，省得点不动 */
+  function dropPower(s) {
+    if (!s.closed) return false
+    s.closed = false
+    return true
+  }
+  function doTare(s) {
+    const dropped = dropPower(s)
+    if (s.tare) { s.hintText = '天平已经置零过了，直接合闸读数就行'; return }
+    s.tare = true
+    s.hintText = dropped
+      ? '已自动断开电源再置零：读数从现在起就是纯安培力'
+      : '天平已置零：读数从现在起就是导线对磁铁的压力（安培力）'
+  }
+  function doMode(s, key) {
+    const dropped = dropPower(s)
+    setMode(s, key)
+    if (dropped) s.hintText = `已自动断电，切到「${MODES[key].label}」`
+  }
+  function doLen(s, i) {
+    let pre = ''
+    if (s.mode !== 'L') { doMode(s, 'L'); pre = '已自动切到「F–l」；' }
+    else if (dropPower(s)) pre = '已自动断电；'
+    s.lenIdx = i
+    s.hintText = `${pre}换上 ${LEN[i].id}（${LEN[i].cm} cm）`
   }
 
   function recordPoint(s) {
@@ -326,6 +353,21 @@ export default function AmpereForceScene() {
       rr(ctx, cx0 + dx - 3, top0 + 8, 6, 186, 3)
       ctx.stroke()
     }
+    // 单匝导线：插在角度盘下面的两个插座里，垂到磁铁缝隙中
+    const sockY0 = c1.y + 110
+    for (const dx of [-18, 18]) {
+      ctx.fillStyle = '#8794A0'
+      rr(ctx, cx0 + dx - 3.5, sockY0 - 4, 7, 9, 2)
+      ctx.fill()
+    }
+    ctx.strokeStyle = '#C0763C'
+    ctx.lineWidth = 2.4
+    ctx.beginPath()
+    ctx.moveTo(cx0 - 18, sockY0 + 5)
+    ctx.lineTo(cx0 - 18, c1.y + 196)
+    ctx.lineTo(cx0 + 18, c1.y + 196)
+    ctx.lineTo(cx0 + 18, sockY0 + 5)
+    ctx.stroke()
     // 角度盘
     const dcy = top0 + 42
     ctx.fillStyle = 'rgba(245,250,252,0.95)'
@@ -360,15 +402,6 @@ export default function AmpereForceScene() {
       line(ctx, mx - 2.2, my - 2.2, mx + 2.2, my + 2.2, 'rgba(45,110,185,0.8)', 0.9)
       line(ctx, mx + 2.2, my - 2.2, mx - 2.2, my + 2.2, 'rgba(45,110,185,0.8)', 0.9)
     }
-    // 单匝导线
-    ctx.strokeStyle = '#C0763C'
-    ctx.lineWidth = 2.4
-    ctx.beginPath()
-    ctx.moveTo(cx0 - 18, c1.y + 132)
-    ctx.lineTo(cx0 - 18, c1.y + 196)
-    ctx.lineTo(cx0 + 18, c1.y + 196)
-    ctx.lineTo(cx0 + 18, c1.y + 132)
-    ctx.stroke()
     // 安培力
     line(ctx, cx0, c1.y + 190, cx0, c1.y + 148, '#C62828', 2)
     ctx.fillStyle = '#C62828'
@@ -591,11 +624,11 @@ export default function AmpereForceScene() {
       ...lay.R(sup.knob.cx - 26, sup.knob.cy - 26, 52, 52),
       cursor: 'ns-resize',
       onDrag: (x, y, dy) => {
-        if (s.mode !== 'I') { s.hintText = '切到「F–I」模式才能改电流（控制变量）'; return }
+        if (s.mode !== 'I') doMode(s, 'I')
         s.I = clamp(Math.round((s.I - (dy / k) * 0.012) * 50) / 50, I_MIN, I_MAX)
       },
       onClick: () => {
-        if (s.mode !== 'I') s.hintText = '切到「F–I」模式才能改电流（控制变量）'
+        if (s.mode !== 'I') { doMode(s, 'I'); forceUpdate((n) => n + 1) }
       },
     })
 
@@ -629,21 +662,14 @@ export default function AmpereForceScene() {
       T(ctx, `${LEN[i].id} = ${LEN[i].cm} cm`, bx + 92, by + 16, {
         size: 9.4, color: enabled ? '#4B5A66' : '#A6B2BA', bold: active,
       })
-      T(ctx, active ? '正在使用' : (enabled ? '点击换上' : '先切到 F–l'), bx + 92, by + 32, {
+      T(ctx, active ? '正在使用' : '点击换上（会自动断电）', bx + 92, by + 32, {
         size: 8, color: active ? '#B9772E' : '#A6B2BA',
       })
       R._hits.push({
         ...lay.R(bx, by, rack.w - 28, 46),
-        cursor: enabled ? 'pointer' : 'default',
+        cursor: 'pointer',
         onClick: () => {
-          if (s.mode !== 'L') {
-            s.hintText = '换长度要在「F–l」模式下做（I、α 固定）'
-          } else if (s.closed) {
-            s.hintText = '先断开电源再换导线：带电换线，导线会被磁铁吸偏'
-          } else {
-            s.lenIdx = i
-            s.hintText = `已换上 ${LEN[i].id}（${LEN[i].cm} cm）`
-          }
+          doLen(s, i)
           forceUpdate((n) => n + 1)
         },
       })
@@ -656,22 +682,15 @@ export default function AmpereForceScene() {
       ...lay.R(b.tare.x, b.tare.y, b.tare.w, b.tare.h),
       cursor: 'pointer',
       onClick: () => {
-        if (s.closed) {
-          s.hintText = '先断开电源再置零：通电时线圈正被安培力托着，这时置零会把 F 一起清掉'
-        } else if (s.tare) {
-          s.hintText = '天平已经置零过了，直接合闸读数就行'
-        } else {
-          s.tare = true
-          s.hintText = '天平已置零：读数从现在起就是导线对磁铁的压力（安培力）'
-        }
+        doTare(s)
         forceUpdate((n) => n + 1)
       },
     })
 
     // 电源到顶板接线柱的引线：先画，让角度盘压在线上（线从盘后绕过）
     const lw = Math.max(2, 2.6 * k)
-    const TERM_A = { x: 340 - 58, y: 205 }
-    const TERM_B = { x: 340 + 58, y: 205 }
+    const TERM_A = { x: 340 - 58, y: 216 }
+    const TERM_B = { x: 340 + 58, y: 216 }
     const wire = (x1, y1, runY, x2, y2, col) => {
       ctx.beginPath()
       ctx.moveTo(x1, y1)
@@ -685,8 +704,8 @@ export default function AmpereForceScene() {
       ctx.lineCap = 'round'
       ctx.stroke()
     }
-    wire(sup.termPos.x, sup.termPos.y, 230, TERM_A.x, TERM_A.y, '#C0392B')
-    wire(sup.termNeg.x, sup.termNeg.y, 252, TERM_B.x, TERM_B.y, '#16232B')
+    wire(sup.termPos.x, sup.termPos.y, 210, TERM_A.x, TERM_A.y, '#C0392B')
+    wire(sup.termNeg.x, sup.termNeg.y, 228, TERM_B.x, TERM_B.y, '#16232B')
 
     // 支架 + 磁铁 + 导线
     const rig = drawRig(ctx, {
@@ -697,19 +716,20 @@ export default function AmpereForceScene() {
     // 角度盘热区（拖动）
     R._hits.push({
       ...lay.R(rig.dial.cx - rig.dial.r - 6, rig.dial.cy - rig.dial.r - 6, (rig.dial.r + 6) * 2, (rig.dial.r + 6) * 2),
-      cursor: s.mode === 'A' ? 'grab' : 'default',
+      cursor: 'grab',
       onDrag: (x, y) => {
-        if (s.mode !== 'A') { s.hintText = '切到「F–sinα」模式才能改角度（控制变量）'; return }
-        if (s.closed) { s.hintText = '先断开电源再转线圈：通电时转盘带着导线一起受力'; return }
+        if (s.mode !== 'A') doMode(s, 'A')
+        if (dropPower(s) && s.mode === 'A') s.hintText = '已自动断电再转线圈，转到位后重新合闸'
         const sx = (x - lay.ox) / k
         const sy = (y - lay.oy) / k
         let ang = (Math.atan2(rig.dial.cy - sy, sx - rig.dial.cx) * 180) / Math.PI
         ang = clamp(ang, 0, 90)
         s.theta = Math.round(ang / 5) * 5
       },
-      onClick: () => { if (s.mode !== 'A') s.hintText = '切到「F–sinα」模式才能改角度（控制变量）' },
+      onClick: () => {
+        if (s.mode !== 'A') { doMode(s, 'A'); forceUpdate((n) => n + 1) }
+      },
     })
-
     /* ---------- 读数卡 ---------- */
     const rd = { x: 620, y: 16, w: 360, h: 116 }
     softCard(ctx, rd.x, rd.y, rd.w, rd.h, '#FFFFFF', '#DFE7EC')
@@ -748,8 +768,7 @@ export default function AmpereForceScene() {
         ...lay.R(bx, ch.y + 34, tabW, 24),
         cursor: 'pointer',
         onClick: () => {
-          if (s.closed) { s.hintText = '先断开电源再换探究：切模式会把导线、角度复位'; forceUpdate((n) => n + 1); return }
-          setMode(s, key)
+          doMode(s, key)
           forceUpdate((n) => n + 1)
         },
       })
@@ -758,7 +777,7 @@ export default function AmpereForceScene() {
     const fit = modeFit(s, s.mode)
     const M = MODES[s.mode]
     drawChart(ctx, { x: ch.x + 4, y: ch.y + 66, w: ch.w - 8, h: 208 }, k, {
-      points: pts, fit, xMax: M.xMax, yMax: 4, xLabel: M.xLabel, xUnit: M.unit, xDec: M.dec,
+      points: pts, fit, xMax: M.xMax, yMax: 4, xTicks: M.xTicks, xLabel: M.xLabel, xUnit: M.unit, xDec: M.dec,
     })
     T(ctx, `「${M.label}」已记 ${pts.length}/4 组`, ch.x + 14, ch.y + ch.h - 10, {
       size: 8.4, color: '#6B7A83',
@@ -803,12 +822,9 @@ export default function AmpereForceScene() {
     const fL = modeFit(s, 'L')
     const fA = modeFit(s, 'A')
     const lineTxt = (lab, f, ok) => `${lab}  ${f ? (ok ? '✅ 过原点直线' : '⚠ 点太散') : '—'}`
-    T(ctx, lineTxt('F ∝ I ', fI, fI && fI.b > 0), rc.x + 14, rc.y + 42, { size: 9, color: fI ? '#1E6B3B' : '#8A959C' })
-    T(ctx, lineTxt('F ∝ l ', fL, fL && fL.b > 0), rc.x + 14, rc.y + 58, { size: 9, color: fL ? '#1E6B3B' : '#8A959C' })
-    T(ctx, lineTxt('F ∝ sinα', fA, fA && fA.b > 0), rc.x + 14, rc.y + 74, { size: 9, color: fA ? '#1E6B3B' : '#8A959C' })
-    T(ctx, s.hintText || '流程：置零 → 合闸 → 三次探究各记 ≥3 组 → 看三条正比', rc.x + 14, rc.y + 90, {
-      size: 8.2, color: s.hintText ? '#B3261E' : '#8A959C',
-    })
+    T(ctx, lineTxt('F ∝ I ', fI, fI && fI.b > 0), rc.x + 14, rc.y + 44, { size: 9, color: fI ? '#1E6B3B' : '#8A959C' })
+    T(ctx, lineTxt('F ∝ l ', fL, fL && fL.b > 0), rc.x + 14, rc.y + 61, { size: 9, color: fL ? '#1E6B3B' : '#8A959C' })
+    T(ctx, lineTxt('F ∝ sinα', fA, fA && fA.b > 0), rc.x + 14, rc.y + 78, { size: 9, color: fA ? '#1E6B3B' : '#8A959C' })
 
     const bw = (rc.w - 40) / 2
     const by = rc.y + rc.h - 34
@@ -844,6 +860,25 @@ export default function AmpereForceScene() {
       }
     }
     if (newly) setTimeout(() => forceUpdate((n) => n + 1), 0)
+
+    // 操作提示条：任何“点不动”都会在这里给出可见反馈
+    if (s.hintText) {
+      const t = { x: 232, y: 18, w: 366, h: 34 }
+      ctx.fillStyle = 'rgba(255,250,238,0.97)'
+      rr(ctx, t.x, t.y, t.w, t.h, 8)
+      ctx.fill()
+      ctx.strokeStyle = '#E3C48B'
+      ctx.lineWidth = 1
+      rr(ctx, t.x, t.y, t.w, t.h, 8)
+      ctx.stroke()
+      ctx.fillStyle = '#C08A3E'
+      ctx.beginPath()
+      ctx.arc(t.x + 17, t.y + 17, 7.5, 0, Math.PI * 2)
+      ctx.fill()
+      T(ctx, 'i', t.x + 17, t.y + 18, { size: 9, color: '#fff', align: 'center', bold: true })
+      const txt = s.hintText.length > 30 ? s.hintText.slice(0, 30) + '…' : s.hintText
+      T(ctx, txt, t.x + 30, t.y + 18, { size: 8.8, color: '#7A5320', bold: false })
+    }
 
     ctx.restore()
     if (lay.panel) {
@@ -1059,7 +1094,7 @@ export default function AmpereForceScene() {
           </button>
           <button
             type="button"
-            onClick={() => { s.tare = true; s.hintText = '天平已置零'; forceUpdate((n) => n + 1) }}
+            onClick={() => { doTare(s); forceUpdate((n) => n + 1) }}
             style={{ fontSize: 12, padding: '4px 10px', borderRadius: 8, border: '1px solid #c9d6e2', background: '#fff', color: '#33526e', cursor: 'pointer' }}
           >
             ⚖ 置零

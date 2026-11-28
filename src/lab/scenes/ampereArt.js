@@ -205,9 +205,21 @@ export function drawRig(ctx, o = {}) {
   rr(ctx, cx - 92, topY, 184, 12, 4)
   ctx.stroke()
 
-  // 顶板两端的接线柱：电源的红/黑线接在这里
-  const termA = { x: cx - 58, y: topY + 9 }
-  const termB = { x: cx + 58, y: topY + 9 }
+  // 顶板两端的接线柱：电源的红/黑线接在这里（柱体露在顶板下方，才看得见）
+  const termA = { x: cx - 58, y: topY + 20 }
+  const termB = { x: cx + 58, y: topY + 20 }
+  for (const [t, col] of [[termA, '#C0392B'], [termB, '#16232B']]) {
+    ctx.fillStyle = col
+    rr(ctx, t.x - 1.8, topY + 11, 3.6, 7, 1.6)
+    ctx.fill()
+    ctx.beginPath()
+    ctx.arc(t.x, t.y, 4.6, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.fillStyle = 'rgba(255,255,255,0.55)'
+    ctx.beginPath()
+    ctx.arc(t.x - 1.2, t.y - 1.4, 1.6, 0, Math.PI * 2)
+    ctx.fill()
+  }
 
   // 导线在水平面上的投影宽度：线框绕竖直轴转过 α，底边投影 = l·sinα
   const wPx = clamp(lenCm * 18 * Math.sin((theta * Math.PI) / 180), 0, 66)
@@ -217,8 +229,8 @@ export function drawRig(ctx, o = {}) {
 
   // 支架内部走线：接线柱 → 竖直下行（贴着角度盘外侧）→ 横向到两个插孔
   const jumper = (tx, ty, sx, col) => {
-    line(ctx, tx, ty, tx, socketY - 6, col, 1.5)
-    line(ctx, tx, socketY, sx, socketY, col, 1.5)
+    line(ctx, tx, ty, tx, socketY, col, 1.6)
+    line(ctx, tx, socketY, sx, socketY, col, 1.6)
   }
   jumper(termA.x, termA.y, sockA.x, '#C0392B')
   jumper(termB.x, termB.y, sockB.x, '#16232B')
@@ -313,40 +325,41 @@ export function drawRig(ctx, o = {}) {
     [cx - 32.5, panY - 114], [cx + 32.5, panY - 114],
     [cx - 32.5, panY - 68], [cx + 32.5, panY - 68],
   ]) crossed(mx, my)
-  T(ctx, 'B ⊗ 垂直纸面向里', cx + 96, panY - 112, { size: 8.4, color: '#2D6EB9', bold: true })
-  T(ctx, '两极一前一后（图中错开画）', cx + 96, panY - 97, { size: 7, color: '#6B7A83' })
 
   /* ---------- 单匝 U 形导线：两腿插在插孔里，底边在磁铁缝隙中 ---------- */
   const loopBot = panY - 44
+  const LEAD = '#8C9BA6' // 引线/线框两腿：灰铜色（不在磁场里的部分）
+  const ACTIVE = '#E1A03A' // 磁场中真正受力的一小段：金色
   if (wPx > 2) {
-    line(ctx, sockA.x, socketY, sockA.x, loopBot, COPPER, 3)
-    line(ctx, sockB.x, socketY, sockB.x, loopBot, COPPER, 3)
-    line(ctx, sockA.x, loopBot, sockB.x, loopBot, COPPER, 3.4)
+    line(ctx, sockA.x, socketY, sockA.x, loopBot, LEAD, 2.6)
+    line(ctx, sockB.x, socketY, sockB.x, loopBot, LEAD, 2.6)
+    line(ctx, sockA.x, loopBot, sockB.x, loopBot, ACTIVE, 4.4)
+    line(ctx, sockA.x, loopBot - 1, sockB.x, loopBot - 1, '#F6C97A', 1.2)
   } else {
-    line(ctx, cx, socketY, cx, loopBot, COPPER, 3)
+    line(ctx, cx, socketY, cx, loopBot, LEAD, 2.6)
   }
 
   // 电流方向：底边上由左向右（从红接线柱 → 左腿 → 底边 → 右腿 → 黑接线柱）
   if (o.closed) {
     if (wPx > 12) {
-      ctx.fillStyle = '#E07B39'
+      ctx.fillStyle = '#7A3E12'
       for (let i = 0; i < 2; i++) {
         const ax = cx - wPx / 4 + i * (wPx / 2)
         ctx.beginPath()
-        ctx.moveTo(ax + 7, loopBot)
-        ctx.lineTo(ax - 2, loopBot - 5)
-        ctx.lineTo(ax - 2, loopBot + 5)
+        ctx.moveTo(ax + 6, loopBot)
+        ctx.lineTo(ax - 2, loopBot - 4.2)
+        ctx.lineTo(ax - 2, loopBot + 4.2)
         ctx.closePath()
         ctx.fill()
       }
     } else {
-      // 线框转到几乎与纸面垂直：电流穿出/穿入纸面，用 ⊙ 表示
-      ctx.strokeStyle = '#E07B39'
+      // 线框转到几乎与纸面垂直：电流穿出纸面，用 ⊙ 表示
+      ctx.strokeStyle = ACTIVE
       ctx.lineWidth = 1.4
       ctx.beginPath()
       ctx.arc(cx, loopBot, 5, 0, Math.PI * 2)
       ctx.stroke()
-      ctx.fillStyle = '#E07B39'
+      ctx.fillStyle = ACTIVE
       ctx.beginPath()
       ctx.arc(cx, loopBot, 2, 0, Math.PI * 2)
       ctx.fill()
@@ -377,12 +390,99 @@ export function drawRig(ctx, o = {}) {
     T(ctx, 'F′', cx - 24, loopBot + 18, { size: 8, color: '#8A5A2B', bold: true, align: 'right' })
   }
 
-  // 长度标注
-  T(ctx, `l = ${lenCm.toFixed(0)} cm`, cx + 96, loopBot + 6, {
-    size: 8.2, color: '#8A5A2B', bold: true,
+  /* ---------- 伪 3D：俯视导线与磁场的夹角（局部放大） ---------- */
+  drawAngle3D(ctx, { x: 424, y: 332, w: 186, h: 178 }, { theta })
+
+  // 长度标注：金色一段才是磁场中的 l
+  line(ctx, cx + 96, loopBot + 1, cx + 108, loopBot + 1, ACTIVE, 3)
+  T(ctx, `l = ${lenCm.toFixed(0)} cm（金段）`, cx + 113, loopBot + 3, {
+    size: 8, color: '#8A5A2B', bold: true,
   })
 
   return { dial, termA, termB, sockA, sockB }
+}
+
+/* ==================================================================
+ *  伪 3D：俯视看导线与磁场的夹角 α
+ * ================================================================== */
+export function drawAngle3D(ctx, box, o = {}) {
+  const theta = clamp(o.theta, 0, 90)
+  const { x, y, w, h } = box
+  softCard(ctx, x, y, w, h, '#F8FBFF', '#CFE0EE')
+  T(ctx, '俯视 3D：导线与磁场的夹角', x + 12, y + 20, { size: 8.6, bold: true, color: '#0E4B86' })
+  T(ctx, `α = ${Math.round(theta)}°`, x + w - 12, y + 20, {
+    size: 9.4, color: '#C2410C', align: 'right', bold: true,
+  })
+  T(ctx, '⊗ B 向纸面里　金色段 = 磁场中的 l', x + 12, y + 35, { size: 7, color: '#3E6FA8' })
+
+  const C = { x: x + 94, y: y + 100 }
+  const Z = { x: 0.52, y: -0.34 } // “向纸面里”的深度轴在画布上的投影
+  const p = (a, b) => ({ x: C.x + a + b * Z.x, y: C.y + b * Z.y })
+
+  // 水平面（磁铁缝隙所在平面）
+  ctx.strokeStyle = 'rgba(120,150,170,0.4)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  const c1 = p(-36, -28), c2 = p(36, -28), c3 = p(36, 28), c4 = p(-36, 28)
+  ctx.moveTo(c1.x, c1.y)
+  ctx.lineTo(c2.x, c2.y)
+  ctx.lineTo(c3.x, c3.y)
+  ctx.lineTo(c4.x, c4.y)
+  ctx.closePath()
+  ctx.stroke()
+
+  // B：沿深度轴穿进纸面，末端用 ⊗ 表示“向里”
+  const bTail = p(0, -24)
+  const bTip = p(0, 32)
+  line(ctx, bTail.x, bTail.y, bTip.x, bTip.y, 'rgba(45,110,185,0.55)', 1.2)
+  ctx.strokeStyle = '#2D6EB9'
+  ctx.fillStyle = '#fff'
+  ctx.lineWidth = 1.2
+  ctx.beginPath()
+  ctx.arc(bTip.x, bTip.y, 5.2, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.stroke()
+  line(ctx, bTip.x - 3.2, bTip.y - 3.2, bTip.x + 3.2, bTip.y + 3.2, '#2D6EB9', 1.1)
+  line(ctx, bTip.x + 3.2, bTip.y - 3.2, bTip.x - 3.2, bTip.y + 3.2, '#2D6EB9', 1.1)
+
+  // 导线（金色受力段），与 B 的夹角就是 α
+  const rad = (theta * Math.PI) / 180
+  const s = Math.sin(rad)
+  const c = Math.cos(rad)
+  const tip = p(s * 30, c * 30)
+  const tail = p(-s * 30, -c * 30)
+  line(ctx, tail.x, tail.y, tip.x, tip.y, '#E1A03A', 3.6)
+  if (theta > 10) T(ctx, 'I', tip.x + 6, tip.y + 2, { size: 8, color: '#B4701E', bold: true })
+
+  // α 的圆弧（同一平面内）
+  if (theta >= 6) {
+    ctx.save()
+    ctx.setLineDash([3, 3])
+    ctx.strokeStyle = 'rgba(194,65,12,0.85)'
+    ctx.lineWidth = 1.1
+    ctx.beginPath()
+    for (let a = 0; a <= theta + 0.01; a += 3) {
+      const r2 = (a * Math.PI) / 180
+      const q = p(Math.sin(r2) * 17, Math.cos(r2) * 17)
+      if (a === 0) ctx.moveTo(q.x, q.y)
+      else ctx.lineTo(q.x, q.y)
+    }
+    ctx.stroke()
+    ctx.restore()
+  }
+
+  // F：垂直于这个平面向上
+  line(ctx, C.x, C.y - 4, C.x, C.y - 30, '#C62828', 2)
+  ctx.fillStyle = '#C62828'
+  ctx.beginPath()
+  ctx.moveTo(C.x, C.y - 38)
+  ctx.lineTo(C.x - 4, C.y - 28)
+  ctx.lineTo(C.x + 4, C.y - 28)
+  ctx.closePath()
+  ctx.fill()
+  T(ctx, 'F 竖直向上', C.x + 6, C.y - 30, { size: 7.6, color: '#B3261E', bold: true })
+
+  T(ctx, 'α 是导线与磁场方向的夹角', x + 12, y + h - 9, { size: 7.2, color: '#5B7182' })
 }
 
 /* ==================================================================
@@ -398,7 +498,7 @@ export function drawChart(ctx, box, k, o = {}) {
   const plot = { x: padL, y: padT, w: padR - padL, h: padB - padT }
   const px = (v) => plot.x + clamp(v / xMax, 0, 1) * plot.w
   const py = (v) => plot.y + plot.h - clamp(v / yMax, 0, 1) * plot.h
-  const ticks = 4
+  const ticks = o.xTicks || 4
 
   for (let i = 0; i <= ticks; i++) {
     const gx = plot.x + (i / ticks) * plot.w
