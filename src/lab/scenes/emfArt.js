@@ -503,6 +503,17 @@ export function drawMethodChart(ctx, box, k, o = {}) {
     size: Math.max(7.4, 8.4 * k), color: '#8A959C', align: 'right', bold: true,
   })
 
+  // 空表提示（放在绘图区左下角，避开直线与工作点）
+  if (!(o.points || []).length) {
+    const hx = plot.x + 6 * k
+    T(ctx, '还没有数据', hx, plot.y + plot.h - 28 * k, {
+      size: Math.max(7.6, 9 * k), color: '#AEB9C1', bold: true,
+    })
+    T(ctx, '合闸后拖 R滑，自动记 (I, U)', hx, plot.y + plot.h - 12 * k, {
+      size: Math.max(7.2, 8.4 * k), color: '#AEB9C1',
+    })
+  }
+
   ctx.save()
   ctx.beginPath()
   ctx.rect(plot.x, plot.y, plot.w, plot.h)
@@ -528,27 +539,33 @@ export function drawMethodChart(ctx, box, k, o = {}) {
     ctx.arc(px(p.I), py(p.U), 3 * k, 0, Math.PI * 2)
     ctx.fill()
   }
-  // ΔU/ΔI 三角
+  // ΔU/ΔI 三角（取已记录数据的电流跨度）
   if (o.showTriangle && o.fit) {
-    const i1 = 0.10
-    const i2 = 0.40
-    const u1 = o.fit.a + o.fit.b * i1
-    const u2 = o.fit.a + o.fit.b * i2
-    ctx.setLineDash([4, 3])
-    line(ctx, px(i1), py(u1), px(i1), py(u2), '#8A5A2B', 1.2)
-    line(ctx, px(i1), py(u2), px(i2), py(u2), '#8A5A2B', 1.2)
-    ctx.setLineDash([])
-    if (!o.fromZero) {
-      T(ctx, 'ΔU', px(i1) - 6 * k, py((u1 + u2) / 2), {
-        size: Math.max(7.4, 8.2 * k), color: '#8A5A2B', align: 'right', bold: true,
-      })
-      T(ctx, 'ΔI', px((i1 + i2) / 2), py(u2) - 9 * k, {
-        size: Math.max(7.4, 8.2 * k), color: '#8A5A2B', align: 'center', bold: true,
-      })
-    } else {
-      T(ctx, 'r = |ΔU/ΔI|', px(i2) + 6 * k, py(u2) + 12 * k, {
-        size: Math.max(7.4, 8.2 * k), color: '#8A5A2B', bold: true,
-      })
+    let i1 = 0.10
+    let i2 = 0.40
+    if (o.points && o.points.length >= 2) {
+      i1 = Math.min(...o.points.map((p) => p.I))
+      i2 = Math.max(...o.points.map((p) => p.I))
+    }
+    if (i2 - i1 > 0.06) {
+      const u1 = o.fit.a + o.fit.b * i1
+      const u2 = o.fit.a + o.fit.b * i2
+      ctx.setLineDash([4, 3])
+      line(ctx, px(i1), py(u1), px(i1), py(u2), '#8A5A2B', 1.2)
+      line(ctx, px(i1), py(u2), px(i2), py(u2), '#8A5A2B', 1.2)
+      ctx.setLineDash([])
+      if (!o.fromZero) {
+        T(ctx, 'ΔU', px(i1) - 6 * k, py((u1 + u2) / 2), {
+          size: Math.max(7.4, 8.2 * k), color: '#8A5A2B', align: 'right', bold: true,
+        })
+        T(ctx, 'ΔI', px((i1 + i2) / 2), py(u2) - 9 * k, {
+          size: Math.max(7.4, 8.2 * k), color: '#8A5A2B', align: 'center', bold: true,
+        })
+      } else {
+        T(ctx, 'r = |ΔU/ΔI|', px(i2) + 6 * k, py(u2) + 12 * k, {
+          size: Math.max(7.4, 8.2 * k), color: '#8A5A2B', bold: true,
+        })
+      }
     }
   }
   // 当前工作点
@@ -601,8 +618,8 @@ export function drawDataTable(ctx, box, k, points, rows = 6, o = {}) {
   for (let i = 0; i < rows; i++) {
     const yy = headY + 9 * k + rowH * (i + 0.5)
     const p = points[i]
-    if (i === 0 && p) {
-      ctx.fillStyle = hexA('#1E6B3B', 0.06)
+    if (p && i === Math.min(points.length, rows) - 1) {
+      ctx.fillStyle = hexA('#1E6B3B', 0.07)
       rr(ctx, box.x + 8 * k, yy - rowH / 2 + 1, box.w - 16 * k, rowH - 2, 4)
       ctx.fill()
     }

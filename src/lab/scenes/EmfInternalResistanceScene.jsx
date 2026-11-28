@@ -55,6 +55,8 @@ export default function EmfInternalResistanceScene() {
     points: [],
     seed: 3,
     fromZero: false,
+    learnPoints: [],
+    learnHint: '',
     nv: 0,
     na: 0,
     drag: null,
@@ -103,6 +105,34 @@ export default function EmfInternalResistanceScene() {
 
   function fitNow(s) {
     return s.points.length >= 2 ? fitLine(s.points) : null
+  }
+
+  /**
+   * Tab1：按电路当前的真实状态记一组数据
+   * 只有合闸、且这个外阻值之前没记过才记；同一组阻值不重复
+   */
+  function recordLearn(s, m) {
+    if (!m || !m.closed) {
+      s.learnHint = '先合闸，才有电流和路端电压可记'
+      return
+    }
+    if (!Number.isFinite(m.R) || !Number.isFinite(m.I)) return
+    const n = s.learnPoints.length
+    if (n >= 6) {
+      s.learnHint = '已记满 6 组：点「清空」重测，或直接看图像法结果'
+      return
+    }
+    if (s.learnPoints.some((p) => Math.abs(p.R - m.R) < 0.45)) {
+      s.learnHint = `R外 = ${m.R.toFixed(1)} Ω 这组已经记过了，换个阻值再记`
+      return
+    }
+    const k = n + 1
+    s.learnPoints.push({
+      R: m.R,
+      I: m.I + jitter(k + 11, 0.0016),
+      U: m.U + jitter(k + 57, 0.005),
+    })
+    s.learnHint = `已记第 ${k} 组：I=${m.I.toFixed(3)} A，U=${m.U.toFixed(2)} V`
   }
 
   function spreadOf(points) {
@@ -195,8 +225,8 @@ export default function EmfInternalResistanceScene() {
     const s = S.current
     const k = lay.s
     const m = measureDemo(s)
-    const pts = samplePoints()
-    const fit = fitLine(pts)
+    const pts = s.learnPoints
+    const fit = pts.length >= 2 ? fitLine(pts) : null
 
     ctx.save()
     ctx.translate(lay.ox, lay.oy)
@@ -220,24 +250,39 @@ export default function EmfInternalResistanceScene() {
       x: lay.X(sch.switchHit.x), y: lay.Y(sch.switchHit.y),
       w: lay.V(sch.switchHit.w), h: lay.V(sch.switchHit.h),
       cursor: 'pointer',
-      onClick: () => { s.switchClosed = !s.switchClosed },
+      onClick: () => {
+        s.switchClosed = !s.switchClosed
+        recordLearn(s, measure(s))
+      },
     })
     R._hits.push({
       x: lay.X(sch.sliderHit.x), y: lay.Y(sch.sliderHit.y),
       w: lay.V(sch.sliderHit.w), h: lay.V(sch.sliderHit.h),
       cursor: 'ew-resize',
       onDrag: (x) => { s.ratio = sch.mapX((x - lay.ox) / k) },
-      onClick: (x) => { s.ratio = sch.mapX((x - lay.ox) / k) },
+      onClick: (x) => {
+        s.ratio = sch.mapX((x - lay.ox) / k)
+        recordLearn(s, measure(s))
+      },
+      onEnd: () => { recordLearn(s, measure(s)) },
     })
 
     /* ---------- ② 数据表 ---------- */
     const c2 = { x: 16, y: 330, w: 282, h: 214 }
     softCard(ctx, c2.x, c2.y, c2.w, c2.h, '#FFFFFF', '#DFE7EC')
-    T(ctx, '② 数据表（示范 6 组）', c2.x + 14, c2.y + 24, { size: 11.5, bold: true, color: '#25313A' })
-    T(ctx, '电流从 0.14 A 拉到 0.38 A', c2.x + c2.w - 14, c2.y + 24, {
-      size: 8.4, color: '#8A959C', align: 'right',
+    T(ctx, '② 数据表（自动记组）', c2.x + 14, c2.y + 24, { size: 11.5, bold: true, color: '#25313A' })
+    T(ctx, `已记 ${pts.length}/6 · 清空`, c2.x + c2.w - 14, c2.y + 24, {
+      size: 8.4, color: '#1565C0', align: 'right', bold: true,
     })
-    drawDataTable(ctx, { x: c2.x + 4, y: c2.y + 32, w: c2.w - 8, h: 176 }, k, pts, 6, { card: false })
+    R._hits.push({
+      x: lay.X(c2.x + c2.w - 92), y: lay.Y(c2.y + 10), w: lay.V(88), h: lay.V(22),
+      cursor: 'pointer',
+      onClick: () => { s.learnPoints = []; s.learnHint = '' },
+    })
+    drawDataTable(ctx, { x: c2.x + 4, y: c2.y + 32, w: c2.w - 8, h: 164 }, k, pts, 6, { card: false })
+    T(ctx, pts.length ? s.learnHint || '继续拖滑变，换几个阻值再记' : '合闸后拖「R滑」，每变一次自动记一组', c2.x + 14, c2.y + 206, {
+      size: 8.2, color: pts.length ? '#7A8790' : '#B3261E',
+    })
 
     /* ---------- ③ 两种算法 ---------- */
     const c3 = { x: 306, y: 330, w: 280, h: 214 }
@@ -280,9 +325,11 @@ export default function EmfInternalResistanceScene() {
     })
 
     const tx = c4.x + 322
-    T(ctx, '截距（与纵轴交点）= E = 2.90 V', tx, c4.y + 82, { size: 9.2, color: '#1E6B3B', bold: true })
-    T(ctx, '斜率大小 |ΔU/ΔI| = r = 1.00 Ω', tx, c4.y + 104, { size: 9.2, color: '#C2410C', bold: true })
-    T(ctx, '从 0 起时横轴交点 = I短（2.9 A 在图外）', tx, c4.y + 128, { size: 8.4, color: '#5B7182' })
+    const Eshow = fit ? fit.a : CELL.E
+    const rShow = fit ? fit.r : CELL.r
+    T(ctx, fit ? `截距 = E测 ${Eshow.toFixed(2)} V（真值 2.90）` : '截距 = E（真值 2.90 V）', tx, c4.y + 82, { size: 9, color: '#1E6B3B', bold: true })
+    T(ctx, fit ? `斜率 |ΔU/ΔI| = r测 ${rShow.toFixed(2)} Ω（真值 1.00）` : '斜率 = r（真值 1.00 Ω）', tx, c4.y + 104, { size: 9, color: '#C2410C', bold: true })
+    T(ctx, pts.length < 2 ? '先记 2 组以上，才连得出直线' : '从 0 起时横轴交点 = I短（2.9 A 在图外）', tx, c4.y + 128, { size: 8.4, color: '#5B7182' })
     T(ctx, '不从 0 起：交点没意义，r 只能用 ΔU/ΔI', tx, c4.y + 148, { size: 8.4, color: '#5B7182' })
     T(ctx, '（红圈 = 当前滑片位置对应的工作点）', tx, c4.y + 170, { size: 8.2, color: '#9AA6AE' })
 
@@ -335,23 +382,6 @@ export default function EmfInternalResistanceScene() {
       })
       R._cardBox = out ? { x: lay.panel.x, y: lay.panel.y + 2, w: lay.panel.w, h: out.cardH, maxScroll: out.maxScroll, scroll: out.scroll } : null
     }
-  }
-
-  /** Tab1 示范数据：6 组，电流从 0.14 A 拉到 0.48 A */
-  function samplePoints() {
-    const out = []
-    for (let i = 0; i < 6; i++) {
-      const ratio = (i / 5) * 0.9
-      const R = RH.max - (RH.max - RH.min) * ratio
-      const I = CELL.E / (R + CELL.r + CELL.RA)
-      const U = CELL.E - I * CELL.r
-      out.push({
-        I: I + jitter(i + 7, 0.0012),
-        U: U + jitter(i + 71, 0.004),
-        R,
-      })
-    }
-    return out
   }
 
   /* ================================================================
@@ -727,6 +757,8 @@ export default function EmfInternalResistanceScene() {
     const s = S.current
     if (s.drag && !s.drag.moved && s.drag.area.onClick) {
       s.drag.area.onClick(s.drag.lastX ?? s.drag.x0, s.drag.lastY ?? s.drag.y0)
+    } else if (s.drag && s.drag.moved && s.drag.area.onEnd) {
+      s.drag.area.onEnd()
     }
     s.drag = null
     s.cardDrag = null
@@ -812,6 +844,7 @@ export default function EmfInternalResistanceScene() {
         S.current = {
           ...S.current, tab,
           ratio: 0, switchClosed: false, points: [], seed: 3, fromZero: false,
+          learnPoints: [], learnHint: '',
           nv: 0, na: 0, tasks: {}, seen: {}, cardScroll: 0, hintText: '',
         }
         forceUpdate((n) => n + 1)
@@ -843,7 +876,7 @@ export default function EmfInternalResistanceScene() {
             : '用伏安法测两节旧干电池的 E 和 r：断开读开路电压，合闸改外阻记录多组 (I, U)，拟合成一条直线读截距与斜率。'}
           steps={tab === 1 ? [
             '① 认电路：电池(E,r)、开关 S、滑动变阻器 R滑、电流表 A 串联；电压表 V 并在电池两端',
-            '② 合闸前先把 R滑 调到最大，合上开关，读第一组 (I, U)；再逐步减小外阻，测 6 组以上',
+            '② 合闸后拖「R滑」：松手就把这一组 (R外, I, U) 记进表里，换几个阻值记满 6 组',
             '③ 数据别用解方程组法（两组一对、误差大）：描点连成一条直线，用图像法读 E 和 r',
             '④ 纵轴截距 = E，斜率 |ΔU/ΔI| = r；点右上角切「纵轴从 0 / 只留变化段」看两者的差别',
           ] : [
