@@ -932,12 +932,12 @@ export const EXPERIMENT_CATALOG = [
   {
     key: 'multimeter',
     name: '练习使用多用电表',
-    description: '欧姆调零、档位选择、二极管测量',
+    description: '机械调零、欧姆调零与换档读数、二极管正反、灯泡电压电流',
     category: 'electric',
     subCategory: '高中电磁学',
     difficulty: 2,
     grade: '高二',
-    tags: ['多用电表', '欧姆档', '二极管'],
+    tags: ['多用电表', '欧姆档', '机械调零', '二极管', '灯泡电路'],
     examLevel: '★★',
   },
   {
