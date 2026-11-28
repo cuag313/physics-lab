@@ -419,7 +419,7 @@ export default function MultimeterScene() {
       rangeId: s.range1, frac: s.needle, mech: s.mech, zeroAdj: 0.625, callouts: true, knob: s.knob,
     })
     canvasRef.current._geo = geo
-    T(ctx, 'MF-47 型指针式多用电表（点档位切档 · 点螺丝机械调零 · 拖 Ω ADJ 调零）', meter.x, meter.y + meter.h + 16 * k, {
+    T(ctx, 'MF-47 型指针式多用电表（点档位切档 · 点/上下拖螺丝机械调零 · 拖 Ω ADJ 调零）', meter.x, meter.y + meter.h + 16 * k, {
       size: Math.round(10 * k), color: '#6B7A83',
     })
 
@@ -504,17 +504,7 @@ export default function MultimeterScene() {
 
     // 点击热区
     addKnobHits(R, geo, (id) => setRange(id, 1))
-    R._hits.push({
-      x: geo.mech.x - 12 * k, y: geo.mech.y - 12 * k, w: 24 * k, h: 24 * k,
-      onClick: () => { S.current.mech = clamp(S.current.mech - 0.022, -0.05, 0.05) },
-    })
-    R._hits.push({
-      x: geo.zeroKnob.x - geo.zeroKnob.r, y: geo.zeroKnob.y - geo.zeroKnob.r,
-      w: geo.zeroKnob.r * 2, h: geo.zeroKnob.r * 2,
-      onDrag: (x, y, dy) => {
-        S.current.zeroAdj = clamp(S.current.zeroAdj + (dy || 0) / (220 * k), 0, 1)
-      },
-    })
+    addTrimHits(R, geo, k)
     if (lay.panel) {
       const out = drawKnowledgeCard(ctx, lay.panel, buildLearnSections(), {
         title: '📖 表盘与档位',
@@ -634,15 +624,7 @@ export default function MultimeterScene() {
       { ...bg.jumperHit, onClick: () => { s.jumperClosed = !s.jumperClosed; forceUpdate((n) => n + 1) }, cursor: 'pointer' },
     )
     addKnobHits(R, geo, (id) => setRange(id, 2))
-    R._hits.push({
-      x: geo.mech.x - 12 * k, y: geo.mech.y - 12 * k, w: 24 * k, h: 24 * k,
-      onClick: () => { S.current.mech = clamp(S.current.mech - 0.022, -0.05, 0.05) },
-    })
-    R._hits.push({
-      x: geo.zeroKnob.x - geo.zeroKnob.r, y: geo.zeroKnob.y - geo.zeroKnob.r,
-      w: geo.zeroKnob.r * 2, h: geo.zeroKnob.r * 2,
-      onDrag: (x, y, dy) => { S.current.zeroAdj = clamp(S.current.zeroAdj + (dy || 0) / (220 * k), 0, 1) },
-    })
+    addTrimHits(R, geo, k)
 
     // 任务判定
     const done = evaluateTasks(m)
@@ -703,6 +685,25 @@ export default function MultimeterScene() {
         size: Math.round(8.8 * k), color: m.warn ? '#C62828' : '#6B7A83', bold: !!m.warn,
       })
     }
+  }
+
+  function addTrimHits(R, geo, k) {
+    const s = S.current
+    // 机械调零螺丝：可拖可点；拖 1px ≈ 0.3°，点一下 ≈ 3°，上下两个方向都能调
+    R._hits.push({
+      x: geo.mech.x - 18 * k, y: geo.mech.y - 18 * k, w: 36 * k, h: 36 * k,
+      cursor: 'ns-resize',
+      onClick: () => { s.mech = clamp(s.mech - 0.03, -0.09, 0.09) },
+      onDrag: (x, y, dy) => { s.mech = clamp(s.mech - (dy || 0) / (300 * k), -0.09, 0.09) },
+    })
+    // Ω ADJ：上下拖约 100px 走完全行程（原来 220px 太钝），点一下也能微调
+    const zr = geo.zeroKnob.r * 1.12
+    R._hits.push({
+      x: geo.zeroKnob.x - zr, y: geo.zeroKnob.y - zr, w: zr * 2, h: zr * 2,
+      cursor: 'ns-resize',
+      onClick: () => { s.zeroAdj = clamp(s.zeroAdj + 0.025, 0, 1) },
+      onDrag: (x, y, dy) => { s.zeroAdj = clamp(s.zeroAdj + (dy || 0) / (100 * k), 0, 1) },
+    })
   }
 
   function addKnobHits(R, geo, onPick) {
@@ -879,7 +880,7 @@ export default function MultimeterScene() {
           continue
         }
         if (a.onDrag) {
-          s.drag = { type: 'dragArea', area: a, y0: y }
+          s.drag = { type: 'dragArea', area: a, y0: y, x0: x, moved: false }
           return
         }
         a.onClick?.(x, y)
@@ -907,6 +908,7 @@ export default function MultimeterScene() {
         s.probes[which].target = null
       } else if (s.drag.type === 'dragArea') {
         const a = s.drag.area
+        if (Math.abs(x - (s.drag.x0 ?? x)) > 1.5 || Math.abs(y - s.drag.y0) > 1.5) s.drag.moved = true
         a.onDrag(x, y, y - s.drag.y0)
         s.drag.y0 = y
       }
@@ -922,6 +924,7 @@ export default function MultimeterScene() {
   const handleMouseUp = useCallback(() => {
     const s = S.current
     const cv = canvasRef.current
+    if (s.drag && s.drag.type === 'dragArea' && !s.drag.moved && s.drag.area.onClick) s.drag.area.onClick()
     if (s.drag && s.drag.type === 'tip') {
       const which = s.drag.which
       const p = s.probes[which].free
@@ -993,7 +996,7 @@ export default function MultimeterScene() {
       ))}
       {tab === 2 && (
         <>
-          <button type="button" onClick={() => { s.mech = clamp(s.mech - 0.022, -0.05, 0.05); forceUpdate((n) => n + 1) }}
+          <button type="button" onClick={() => { s.mech = clamp(s.mech - 0.03, -0.09, 0.09); forceUpdate((n) => n + 1) }}
             style={{ fontSize: 12, padding: '4px 9px', borderRadius: 8, border: '1px solid #c9d6e2', background: '#fff', cursor: 'pointer' }}>
             🔧 机械调零
           </button>
