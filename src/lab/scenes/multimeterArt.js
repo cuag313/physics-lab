@@ -12,33 +12,33 @@ const DEG = Math.PI / 180
 
 /** 档位：angle 为旋钮上的角度（0 = 正上，顺时针为正） */
 export const MM_RANGES = [
-  // 直流电压（左上 → 顶）
-  { id: 'dcv0p25', group: 'dcv', label: '0.25', angle: -105, kind: 'dcv', full: 0.25 },
-  { id: 'dcv1', group: 'dcv', label: '1', angle: -90, kind: 'dcv', full: 1 },
-  { id: 'dcv2p5', group: 'dcv', label: '2.5', angle: -75, kind: 'dcv', full: 2.5 },
-  { id: 'dcv10', group: 'dcv', label: '10', angle: -60, kind: 'dcv', full: 10 },
-  { id: 'dcv50', group: 'dcv', label: '50', angle: -45, kind: 'dcv', full: 50 },
-  { id: 'dcv250', group: 'dcv', label: '250', angle: -30, kind: 'dcv', full: 250 },
-  { id: 'dcv500', group: 'dcv', label: '500', angle: -15, kind: 'dcv', full: 500 },
-  // 交流电压（顶 → 右上）
-  { id: 'acv10', group: 'acv', label: '10', angle: 15, kind: 'acv', full: 10, rowMax: 10 },
-  { id: 'acv50', group: 'acv', label: '50', angle: 30, kind: 'acv', full: 50 },
-  { id: 'acv250', group: 'acv', label: '250', angle: 45, kind: 'acv', full: 250 },
-  { id: 'acv500', group: 'acv', label: '500', angle: 60, kind: 'acv', full: 500 },
-  // 欧姆（右上 → 右下）
-  { id: 'ohm10k', group: 'ohm', label: '10k', angle: 75, kind: 'ohm', mult: 10000 },
-  { id: 'ohm1k', group: 'ohm', label: '1k', angle: 90, kind: 'ohm', mult: 1000 },
-  { id: 'ohm100', group: 'ohm', label: '100', angle: 105, kind: 'ohm', mult: 100 },
-  { id: 'ohm10', group: 'ohm', label: '10', angle: 120, kind: 'ohm', mult: 10 },
-  { id: 'ohm1', group: 'ohm', label: '1', angle: 135, kind: 'ohm', mult: 1 },
-  // 直流电流（右下 → 下方）
-  { id: 'dca500', group: 'dca', label: '500', angle: 150, kind: 'dca', full: 0.5 },
-  { id: 'dca50', group: 'dca', label: '50', angle: 165, kind: 'dca', full: 0.05 },
-  { id: 'dca5', group: 'dca', label: '5', angle: 180, kind: 'dca', full: 0.005 },
-  { id: 'dca0p5', group: 'dca', label: '0.5', angle: -165, kind: 'dca', full: 0.0005 },
-  { id: 'a10', group: 'dca', label: '10A', angle: -150, kind: 'dca', full: 10 },
-  // 关机
-  { id: 'off', group: 'off', label: 'OFF', angle: -135, kind: 'off' },
+  // 直流电压：左上 500 → 左下 0.25，顺时针递减（与 MF-47 实机一致）
+  { id: 'dcv500', group: 'dcv', label: '500', angle: -38, kind: 'dcv', full: 500 },
+  { id: 'dcv250', group: 'dcv', label: '250', angle: -54, kind: 'dcv', full: 250 },
+  { id: 'dcv50', group: 'dcv', label: '50', angle: -70, kind: 'dcv', full: 50 },
+  { id: 'dcv10', group: 'dcv', label: '10', angle: -86, kind: 'dcv', full: 10 },
+  { id: 'dcv2p5', group: 'dcv', label: '2.5', angle: -102, kind: 'dcv', full: 2.5 },
+  { id: 'dcv1', group: 'dcv', label: '1', angle: -118, kind: 'dcv', full: 1 },
+  { id: 'dcv0p25', group: 'dcv', label: '0.25', angle: -134, kind: 'dcv', full: 0.25 },
+  // 交流电压：顶部，500 靠左上 → 10 靠右上，顺时针递减
+  { id: 'acv500', group: 'acv', label: '500', angle: -16, kind: 'acv', full: 500 },
+  { id: 'acv250', group: 'acv', label: '250', angle: 0, kind: 'acv', full: 250 },
+  { id: 'acv50', group: 'acv', label: '50', angle: 16, kind: 'acv', full: 50 },
+  { id: 'acv10', group: 'acv', label: '10', angle: 32, kind: 'acv', full: 10, rowMax: 10 },
+  // 欧姆：右上 10k → 右下 1，顺时针递减
+  { id: 'ohm10k', group: 'ohm', label: '10k', angle: 48, kind: 'ohm', mult: 10000 },
+  { id: 'ohm1k', group: 'ohm', label: '1k', angle: 64, kind: 'ohm', mult: 1000 },
+  { id: 'ohm100', group: 'ohm', label: '100', angle: 80, kind: 'ohm', mult: 100 },
+  { id: 'ohm10', group: 'ohm', label: '10', angle: 96, kind: 'ohm', mult: 10 },
+  { id: 'ohm1', group: 'ohm', label: '1', angle: 112, kind: 'ohm', mult: 1 },
+  // 关机在欧姆与 mA 之间（实机 4~5 点方向）
+  { id: 'off', group: 'off', label: 'OFF', angle: 128, kind: 'off' },
+  // 直流电流：右下方，500 → 0.5 顺时针递减
+  { id: 'dca500', group: 'dca', label: '500', angle: 144, kind: 'dca', full: 0.5 },
+  { id: 'dca50', group: 'dca', label: '50', angle: 160, kind: 'dca', full: 0.05 },
+  { id: 'dca5', group: 'dca', label: '5', angle: 176, kind: 'dca', full: 0.005 },
+  { id: 'dca0p5', group: 'dca', label: '0.5', angle: 192, kind: 'dca', full: 0.0005 },
+  { id: 'a10', group: 'dca', label: '10A', angle: 208, kind: 'dca', full: 10 },
 ]
 
 export const RANGE_BY_ID = Object.fromEntries(MM_RANGES.map((r) => [r.id, r]))
@@ -48,7 +48,7 @@ const GROUP_C = {
   dcv: '#A8281F',
   acv: '#A8281F',
   dca: '#A8281F',
-  off: '#2C3238',
+  off: '#DCE3E8',
 }
 
 /** 欧姆刻度（数值, 是否印字）：左侧 ∞ → 右侧 0 */
@@ -306,41 +306,41 @@ export function drawMultimeter(ctx, b, st = {}) {
     ctx.stroke()
   }
 
+  // 档位数字：一律横排、内外两圈交错，避免相邻档咬字、也避免倒写
   const labels = []
+  const labelR = ringR
+  const seen = {}
   for (const r of MM_RANGES) {
-    const a = r.angle * DEG
-    const p = polar(kx, ky, ringR, r.angle)
     // 档位刻线
     const t1 = polar(kx, ky, kr * 1.16, r.angle)
     const t2 = polar(kx, ky, kr * 1.30, r.angle)
     line(ctx, t1.x, t1.y, t2.x, t2.y, GROUP_C[r.group], Math.max(1.2, w * 0.006))
-    // 文字（下半圈翻正）
-    const flip = r.angle > 90 || r.angle < -90
-    ctx.save()
-    ctx.translate(p.x, p.y)
-    ctx.rotate(a + (flip ? Math.PI : 0))
-    ctx.font = `${range.id === r.id ? 'bold ' : ''}${Math.round((r.label.length >= 4 ? w * 0.019 : w * 0.0235))}px "Microsoft YaHei", sans-serif`
-    ctx.fillStyle = GROUP_C[r.group]
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(r.label, 0, 0)
-    ctx.restore()
+    void (seen[r.group] = (seen[r.group] ?? -1) + 1)
+    const p = polar(kx, ky, labelR, r.angle)
+    const txt = r.id === 'acv10' ? `${r.label}～` : r.label
+    T(ctx, txt, p.x, p.y, {
+      size: Math.max(8, Math.round((txt.length >= 3 ? w * 0.0185 : w * 0.0215))),
+      color: GROUP_C[r.group],
+      align: 'center',
+      bold: range.id === r.id,
+    })
     labels.push({ id: r.id, angle: r.angle, x: p.x, y: p.y })
   }
-
-  // 组标签
+  // 组标签：压在相邻两个档位数字夹缝里、紧贴弧外侧（顶部的 ACV 没地方放，改用 10～ 的波浪号标段）
   const caps = [
-    { t: 'DCV', a: -62, c: GROUP_C.dcv },
-    { t: 'ACV', a: 38, c: GROUP_C.acv },
-    { t: 'Ω', a: 106, c: GROUP_C.ohm },
+    { t: 'DCV', a: -78, c: GROUP_C.dcv },
+    { t: 'Ω', a: 72, c: GROUP_C.ohm },
+    { t: 'DCmA', a: 152, c: GROUP_C.dca },
   ]
   for (const cp of caps) {
-    const p = polar(kx, ky, ringR + w * 0.062, cp.a)
-    T(ctx, cp.t, p.x, p.y, { size: Math.round(w * 0.018), color: hexA(cp.c, 0.85), align: 'center', bold: true })
+    const p = polar(kx, ky, ringR + w * 0.040, cp.a)
+    T(ctx, cp.t, p.x, p.y, {
+      size: Math.max(7, Math.round(w * 0.0155)), color: hexA(cp.c, 0.95), align: 'center', bold: true,
+    })
   }
-
-  // 选择开关
-  drawSelector(ctx, kx, ky, kr, range.angle, w)
+  // 选择开关（角度可由场景侧缓动传入，指针才会“转”过去而不是瞬移）
+  const knobAng = Number.isFinite(st.knob) ? st.knob : range.angle
+  drawSelector(ctx, kx, ky, kr, knobAng, w)
 
   // 欧姆调零
   const zk = { x: x + w * 0.815, y: y + h * 0.612, r: w * 0.058 }
@@ -389,7 +389,7 @@ export function drawMultimeter(ctx, b, st = {}) {
 
   return {
     box: b, face, hub: { x: cx, y: cy, r: Rs }, knob: { x: kx, y: ky, r: kr },
-    ringR, ranges: labels, zeroKnob: zk, mech: mechScrew, jacks,
+    ringR, ranges: labels, knobAng, zeroKnob: zk, mech: mechScrew, jacks,
   }
 }
 

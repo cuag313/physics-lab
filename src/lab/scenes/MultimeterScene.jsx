@@ -82,7 +82,7 @@ export default function MultimeterScene() {
     demo: 'r12k',
     mech: 0.055,
     zeroAdj: 0.22,
-    knob: -135,
+    knob: RANGE_BY_ID.ohm1k.angle,
     needle: 0,
     probes: { red: { target: null, free: null }, black: { target: null, free: null } },
     drag: null,
@@ -416,7 +416,7 @@ export default function MultimeterScene() {
 
     const meter = lay.R(24, 30, 438, 600)
     const geo = drawMultimeter(ctx, meter, {
-      rangeId: s.range1, frac: s.needle, mech: s.mech, zeroAdj: 0.625, callouts: true,
+      rangeId: s.range1, frac: s.needle, mech: s.mech, zeroAdj: 0.625, callouts: true, knob: s.knob,
     })
     canvasRef.current._geo = geo
     T(ctx, 'MF-47 型指针式多用电表（点档位切档 · 点螺丝机械调零 · 拖 Ω ADJ 调零）', meter.x, meter.y + meter.h + 16 * k, {
@@ -552,7 +552,7 @@ export default function MultimeterScene() {
 
     const meter = lay.R(14, 14, 338, 464)
     const geo = drawMultimeter(ctx, meter, {
-      rangeId: s.range2, frac: s.needle, mech: s.mech, zeroAdj: s.zeroAdj, callouts: false,
+      rangeId: s.range2, frac: s.needle, mech: s.mech, zeroAdj: s.zeroAdj, callouts: false, knob: s.knob,
     })
     canvasRef.current._geo = geo
 
@@ -714,16 +714,17 @@ export default function MultimeterScene() {
         const dx = x - geo.knob.x
         const dy = y - geo.knob.y
         const rad = Math.hypot(dx, dy)
-        if (rad < geo.knob.r * 0.92 || rad > geo.knob.r * 2.0) return null
+        // 只接受「旋钮外沿 ↔ 档位环外弧」这一圈，点表头黑带、面板空白都不切档
+        const rOut = (geo.ringR || geo.knob.r * 1.44) * 1.08
+        if (rad < geo.knob.r * 0.95 || rad > rOut) return null
         const ang = Math.atan2(dx, -dy) * 180 / Math.PI
         let best = null
         let bestD = 99
         for (const r of MM_RANGES) {
           const dd = Math.abs(((ang - r.angle + 540) % 360) - 180)
-          const diff = 180 - dd
-          if (diff < bestD) { bestD = diff; best = r.id }
+          if (dd < bestD) { bestD = dd; best = r.id }
         }
-        return bestD <= 11 ? best : null
+        return bestD <= 7.5 ? best : null
       },
       onPick,
     })
@@ -844,16 +845,16 @@ export default function MultimeterScene() {
     const dx = x - geo.knob.x
     const dy = y - geo.knob.y
     const rad = Math.hypot(dx, dy)
-    if (rad < geo.knob.r * 0.92 || rad > geo.knob.r * 2.0) return false
+    const rOut = (geo.ringR || geo.knob.r * 1.44) * 1.08
+    if (rad < geo.knob.r * 0.95 || rad > rOut) return false
     const ang = Math.atan2(dx, -dy) * 180 / Math.PI
     let best = null
     let bestD = 99
     for (const r of MM_RANGES) {
       const dd = Math.abs(((ang - r.angle + 540) % 360) - 180)
-      const diff = 180 - dd
-      if (diff < bestD) { bestD = diff; best = r.id }
+      if (dd < bestD) { bestD = dd; best = r.id }
     }
-    if (bestD > 11) return false
+    if (bestD > 7.5) return false
     setRange(best, which)
     return true
   }, [setRange])
@@ -1016,13 +1017,21 @@ export default function MultimeterScene() {
     <SceneShell
       title="⚡ 练习使用多用电表"
       tab={tab}
-      onTabChange={(t) => { S.current.tab = t; setTab(t); S.current.drag = null; S.current.cardDrag = null }}
+      onTabChange={(t) => {
+        S.current.tab = t
+        S.current.drag = null
+        S.current.cardDrag = null
+        // 换页时旋钮直接落在该页当前档位，不要从上一页的档位一路扫过去（会看着像乱跳）
+        S.current.knob = RANGE_BY_ID[t === 1 ? S.current.range1 : S.current.range2].angle
+        setTab(t)
+      }}
       tab1Label="📖 认识表盘"
       tab2Label="🔧 自己动手"
       onReset={() => {
         S.current = {
           ...S.current, tab,
-          range2: 'off', mech: 0.055, zeroAdj: 0.22, knob: -135, needle: 0,
+          range2: 'off', mech: 0.055, zeroAdj: 0.22,
+          knob: RANGE_BY_ID.off.angle, needle: 0,
           probes: { red: { target: null, free: null }, black: { target: null, free: null } },
           switchClosed: false, jumperClosed: true, tasks: {}, seen: {}, cardScroll: 0,
         }
