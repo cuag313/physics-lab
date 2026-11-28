@@ -7,15 +7,17 @@ import {
   rr, T, chip, softCard, clamp, line, drawBoard, drawLead, drawButton,
   drawMeterArt, drawBatteryArt, drawSwitchArt, drawRheostatArt, rangeTicks,
 } from './labArtKit'
-import { drawBatterySection, drawUIChart, fitLine } from './emfArt'
+import { drawSchematic, drawMethodChart, drawDataTable, drawUIChart, fitLine } from './emfArt'
 
 /**
  * EmfInternalResistanceScene — ⚡ 测量电源的电动势和内阻
  *
  * 版式照「多用电表 / 测小灯泡伏安特性」两场景：
- *   Tab1 📖 认识电源 —— 干电池剖面（锌筒 / 碳棒 / MnO₂ / 电解液）+ 拖动外阻看 U-I 上的工作点；
+ *   Tab1 📖 实验方法 —— 照乐乐课堂的顺序：原理图（电池/开关/R滑/A/V）+ 6 组数据表 +
+ *                        方程组法 vs 图像法 + 图象（纵轴可切「从 0 / 只留变化段」，带 ΔU/ΔI 三角）
+ *                        + 四条注意事项（小阻值滑变、旧电池、避免大电流、纵轴陷阱）；
  *   Tab2 🔧 自己动手 —— 闸刀合断、拖滑片改外阻、读两只表、记录 5 组以上、自动拟合
- *                         U-I 直线，用截距读 ε、用斜率读 r，任务自动判定。
+ *                         U-I 直线，用截距读 E、用斜率读 r，任务自动判定。
  *
  * 物理口径：
  *   两节旧干电池 ε=2.90 V、r=1.00 Ω；电流表内阻 RA=0.10 Ω；电压表内阻很大（分流忽略）。
@@ -35,13 +37,6 @@ const TASK_DEFS = [
   { id: 'off', t: '断开闸刀、滑片回最大端收尾', d: '做完断开开关，滑片退回最左，两表回零' },
 ]
 
-const PART_TEXT = [
-    '碳棒（正极集流体）：插在中心导电，不参与反应；正极活性物质是包在它外面的 MnO₂。',
-    'MnO₂ 糊状物：正极活性物质，放电时被还原。它和电解液一起构成电池内阻的主要来源。',
-    '锌筒（负极）：既是负极也是外壳，放电时锌被氧化溶解，用久了筒壁变薄会漏液。',
-    '电解液（糊状）：靠离子迁移导电，迁移比电子慢得多 → 这就是内阻 r；电池变旧、温度低，r 会变大。',
-]
-
 function jitter(seed, amp) {
   const v = ((seed * 9301 + 49297) % 233280) / 233280
   return (v - 0.5) * 2 * amp
@@ -59,7 +54,7 @@ export default function EmfInternalResistanceScene() {
     switchClosed: false,
     points: [],
     seed: 3,
-    focus: -1,
+    fromZero: false,
     nv: 0,
     na: 0,
     drag: null,
@@ -101,12 +96,9 @@ export default function EmfInternalResistanceScene() {
     return { R, I, U, closed }
   }
 
-  /** Tab1 演示用：假定电路闭合，只改外阻，看工作点沿 U-I 直线滑动 */
+  /** Tab1 演示用：按当前滑片位置算外阻（合闸才算电流） */
   function measureDemo(s) {
-    const rr0 = Number.isFinite(s.ratio) ? clamp(s.ratio, 0, 1) : 0
-    const R = RH.max - (RH.max - RH.min) * rr0
-    const I = CELL.E / (R + CELL.r + CELL.RA)
-    return { R, I, U: CELL.E - I * CELL.r, closed: true }
+    return measure(s)
   }
 
   function fitNow(s) {
@@ -197,102 +189,141 @@ export default function EmfInternalResistanceScene() {
   }
 
   /* ================================================================
-   *  Tab 1：认识电源
+   *  Tab 1：实验方法（照乐乐课堂：原理图 → 数据表 → 两种算法 → 图像法）
    * ================================================================ */
   function renderLearn(ctx, R, lay) {
     const s = S.current
     const k = lay.s
     const m = measureDemo(s)
+    const pts = samplePoints()
+    const fit = fitLine(pts)
 
     ctx.save()
     ctx.translate(lay.ox, lay.oy)
     ctx.scale(k, k)
 
-    // 左：剖面卡
-    const card = { x: 24, y: 24, w: 470, h: 600 }
-    softCard(ctx, card.x, card.y, card.w, card.h, '#FFFFFF', '#DFE7EC')
-    T(ctx, '🔋 干电池里面有什么', card.x + 20, card.y + 26, { size: 12.5, bold: true, color: '#25313A' })
-    T(ctx, '点图上编号或部位，看它和内阻的关系', card.x + 20, card.y + 44, { size: 9, color: '#8A959C' })
-
-    const sec = drawBatterySection(ctx, { x: card.x + 8, y: card.y + 58, w: 340, h: 452 }, 1, { focus: s.focus })
-
-    // 底部说明
-    const capY = card.y + card.h - 66
-    softCard(ctx, card.x + 14, capY, card.w - 28, 52, '#FFF8EC', '#F0DCC0')
-    const txt = s.focus >= 0 ? PART_TEXT[s.focus] : '电池 = 把化学能变成电能的装置：ε 是它能给出的「每库仑功」，r 是它自己没送出去的损耗。'
-    const lines = wrapText(ctx, txt, card.w - 60, 9.4, 2)
-    lines.forEach((ln, i) => {
-      T(ctx, ln, card.x + 28, capY + 16 + i * 15, { size: 9.4, color: '#7A5A2E' })
+    /* ---------- ① 原理图 ---------- */
+    const c1 = { x: 16, y: 16, w: 570, h: 300 }
+    softCard(ctx, c1.x, c1.y, c1.w, c1.h, '#FFFFFF', '#DFE7EC')
+    T(ctx, '① 伏安法测 E、r 的电路', c1.x + 18, c1.y + 26, { size: 12.5, bold: true, color: '#25313A' })
+    T(ctx, 'U = E − I r', c1.x + c1.w - 18, c1.y + 26, { size: 14, bold: true, color: '#B3261E', align: 'right', mono: true })
+    const sch = drawSchematic(ctx, { x: c1.x + 16, y: c1.y + 42, w: c1.w - 32, h: 200 }, k, {
+      closed: s.switchClosed, ratio: s.ratio,
     })
-
-    // 右侧三张卡
-    const c1 = { x: 510, y: 24, w: 470, h: 190 }
-    softCard(ctx, c1.x, c1.y, c1.w, c1.h, '#EAF3FF', '#C9DDF5')
-    T(ctx, '① 电动势 ε 与路端电压 U', c1.x + 18, c1.y + 24, { size: 12, bold: true, color: '#15508C' })
-    chip(ctx, c1.x + 18, c1.y + 38, 118, 24, 'ε = W/q  （单位 V）', '#1565C0', 1)
-    T(ctx, '闭合电路：', c1.x + 18, c1.y + 84, { size: 10, color: '#33526E' })
-    T(ctx, 'U = ε − I r', c1.x + 92, c1.y + 84, { size: 15, bold: true, color: '#0E4B86', mono: true })
-    T(ctx, '开路 I=0 → U = ε（电压表直接量出 ε）', c1.x + 18, c1.y + 112, { size: 9.5, color: '#33526E' })
-    T(ctx, '短路 U=0 → I短 = ε/r（很危险，别做）', c1.x + 18, c1.y + 134, { size: 9.5, color: '#B3261E' })
-    T(ctx, 'ε 由电源本身决定，跟接不接外电路无关；r 是内阻，I·r 叫内电压。', c1.x + 18, c1.y + 160, { size: 9.2, color: '#5B7182' })
-
-    const c2 = { x: 510, y: 226, w: 470, h: 300 }
-    softCard(ctx, c2.x, c2.y, c2.w, c2.h, '#FFFFFF', '#DFE7EC')
-    T(ctx, '② U-I 图像怎么读', c2.x + 18, c2.y + 22, { size: 12, bold: true, color: '#25313A' })
-    drawUIChart(ctx, { x: c2.x + 10, y: c2.y + 30, w: c2.w - 20, h: 182 }, 1, {
-      points: [], E: CELL.E, r: CELL.r, op: { I: m.I, U: m.U }, title: '',
+    T(ctx, '两个未知数 E、r → 至少 2 组数据；为减小偶然误差，一般测 6 组以上', c1.x + 18, c1.y + 280, {
+      size: 9.2, color: '#5B7182',
     })
-    T(ctx, '纵轴截距 = ε（2.90 V）', c2.x + 24, c2.y + 226, { size: 9.6, color: '#1E6B3B', bold: true })
-    T(ctx, '斜率 |ΔU/ΔI| = r（1.00 Ω）', c2.x + 250, c2.y + 226, { size: 9.6, color: '#C2410C', bold: true })
-
-    // 外阻滑条（左端 20 Ω = 滑片最左，右端 5 Ω）
-    const trk = { x: c2.x + 60, y: c2.y + 266, w: c2.w - 120 }
-    T(ctx, `外阻 R = ${m.R.toFixed(1)} Ω`, c2.x + 18, c2.y + 248, { size: 9.6, color: '#33526E', bold: true })
-    T(ctx, `I = ${m.I.toFixed(3)} A　U = ${m.U.toFixed(2)} V`, c2.x + c2.w - 18, c2.y + 248, {
-      size: 9.6, color: '#B3261E', align: 'right', bold: true, mono: true,
+    T(ctx, `I = ${m.I.toFixed(3)} A　U = ${m.U.toFixed(2)} V　R外 = ${m.R.toFixed(1)} Ω`, c1.x + c1.w - 18, c1.y + 280, {
+      size: 9, color: '#B3261E', align: 'right', bold: true, mono: true,
     })
-    line(ctx, trk.x, trk.y, trk.x + trk.w, trk.y, '#C9D6E2', 4)
-    const knobX = trk.x + trk.w * clamp(s.ratio, 0, 1)
-    line(ctx, trk.x, trk.y, knobX, trk.y, '#4C97E8', 4)
-    ctx.fillStyle = '#1E6FD0'
-    ctx.beginPath()
-    ctx.arc(knobX, trk.y, 7, 0, Math.PI * 2)
-    ctx.fill()
-    T(ctx, '20 Ω（阻值最大）', trk.x, trk.y + 16, { size: 8.4, color: '#8A959C', align: 'left' })
-    T(ctx, '5 Ω（电流最大）', trk.x + trk.w, trk.y + 16, { size: 8.4, color: '#8A959C', align: 'right' })
     R._hits.push({
-      x: lay.X(c2.x + 40), y: lay.Y(trk.y - 18), w: lay.V(c2.w - 80), h: lay.V(36),
+      x: lay.X(sch.switchHit.x), y: lay.Y(sch.switchHit.y),
+      w: lay.V(sch.switchHit.w), h: lay.V(sch.switchHit.h),
+      cursor: 'pointer',
+      onClick: () => { s.switchClosed = !s.switchClosed },
+    })
+    R._hits.push({
+      x: lay.X(sch.sliderHit.x), y: lay.Y(sch.sliderHit.y),
+      w: lay.V(sch.sliderHit.w), h: lay.V(sch.sliderHit.h),
       cursor: 'ew-resize',
-      onDrag: (x) => {
-        s.ratio = clamp(((x - lay.X(trk.x)) / lay.V(trk.w)), 0, 1)
-      },
-      onClick: (x) => {
-        s.ratio = clamp(((x - lay.X(trk.x)) / lay.V(trk.w)), 0, 1)
-      },
+      onDrag: (x) => { s.ratio = sch.mapX((x - lay.ox) / k) },
+      onClick: (x) => { s.ratio = sch.mapX((x - lay.ox) / k) },
     })
 
-    const c3 = { x: 510, y: 544, w: 470, h: 198 }
+    /* ---------- ② 数据表 ---------- */
+    const c2 = { x: 16, y: 330, w: 282, h: 214 }
+    softCard(ctx, c2.x, c2.y, c2.w, c2.h, '#FFFFFF', '#DFE7EC')
+    T(ctx, '② 数据表（示范 6 组）', c2.x + 14, c2.y + 24, { size: 11.5, bold: true, color: '#25313A' })
+    T(ctx, '电流从 0.14 A 拉到 0.38 A', c2.x + c2.w - 14, c2.y + 24, {
+      size: 8.4, color: '#8A959C', align: 'right',
+    })
+    drawDataTable(ctx, { x: c2.x + 4, y: c2.y + 32, w: c2.w - 8, h: 176 }, k, pts, 6, { card: false })
+
+    /* ---------- ③ 两种算法 ---------- */
+    const c3 = { x: 306, y: 330, w: 280, h: 214 }
     softCard(ctx, c3.x, c3.y, c3.w, c3.h, '#FFF8F0', '#F0DCC0')
-    T(ctx, '③ 两种接法的系统误差', c3.x + 18, c3.y + 22, { size: 12, bold: true, color: '#9A4B12' })
-    T(ctx, '甲：V 并在电源两端，A 串在外电路', c3.x + 18, c3.y + 50, { size: 9.8, color: '#7A4A22', bold: true })
-    T(ctx, '电压表要分一小股电流 → 电流表读数偏小 → ε、r 都略偏小', c3.x + 18, c3.y + 70, { size: 9.2, color: '#7A4A22' })
-    T(ctx, '乙：A 接在电源与负载之间，V 并在负载两端', c3.x + 18, c3.y + 96, { size: 9.8, color: '#7A4A22', bold: true })
-    T(ctx, '电流表要分一点电压 → 电压表读数偏小 → ε 测得准、r测 = r + RA 偏大', c3.x + 18, c3.y + 116, { size: 9.2, color: '#7A4A22' })
-    line(ctx, c3.x + 18, c3.y + 130, c3.x + c3.w - 18, c3.y + 130, '#EBD3B4', 1)
-    T(ctx, '本实验用甲法（V 直接并在电池两端）：RV 很大时分流可忽略，测得最接近真值。', c3.x + 18, c3.y + 148, { size: 9.2, color: '#8A5A2B' })
-    T(ctx, '数据要求：至少 5 组、电流跨度拉大；描点连直线求截距和斜率，不要连折线。', c3.x + 18, c3.y + 170, { size: 9.2, color: '#8A5A2B' })
+    T(ctx, '③ 数据怎么处理', c3.x + 14, c3.y + 24, { size: 11.5, bold: true, color: '#8A5A2B' })
+    T(ctx, '方程组法', c3.x + 14, c3.y + 50, { size: 9.6, bold: true, color: '#9A4B12' })
+    T(ctx, '两组解一对 (E、r)，多组两两组合再平均', c3.x + 14, c3.y + 66, { size: 9, color: '#7A4A22' })
+    T(ctx, '→ 误差大、费时间，只用旧教材法', c3.x + 14, c3.y + 82, { size: 9, color: '#7A4A22' })
+    T(ctx, '图像法', c3.x + 14, c3.y + 108, { size: 9.6, bold: true, color: '#1E6B3B' })
+    T(ctx, '描点 → 连一条直线（不要连折线）', c3.x + 14, c3.y + 124, { size: 9, color: '#4B5A66' })
+    T(ctx, '截距读 E，斜率读 r → 又准又直观', c3.x + 14, c3.y + 140, { size: 9, color: '#4B5A66' })
+    T(ctx, '要求：≥5 组，且电流跨度尽量拉大', c3.x + 14, c3.y + 166, { size: 9, color: '#8A5A2B', bold: true })
+    chip(ctx, c3.x + 14, c3.y + 178, 132, 22, '推荐：图像法', '#1E6B3B', 1)
 
-    // 部位点击热区
-    const parts = sec.parts
-    const keys = ['rod', 'paste', 'shell', 'electrolyte']
-    keys.forEach((key, i) => {
-      const p = parts[key]
-      R._hits.push({
-        x: lay.X(p.x - p.r), y: lay.Y(p.y - p.r), w: lay.V(p.r * 2), h: lay.V(p.r * 2),
-        cursor: 'pointer',
-        onClick: () => { s.focus = i },
-      })
+    /* ---------- ④ 图像法 ---------- */
+    const c4 = { x: 16, y: 552, w: 570, h: 196 }
+    softCard(ctx, c4.x, c4.y, c4.w, c4.h, '#FFFFFF', '#DFE7EC')
+    T(ctx, '④ 图像法：纵轴截距 = E，斜率 = r', c4.x + 16, c4.y + 22, { size: 11.5, bold: true, color: '#25313A' })
+    drawMethodChart(ctx, { x: c4.x + 4, y: c4.y + 28, w: 306, h: 160 }, k, {
+      points: pts, E: CELL.E, r: CELL.r, fit,
+      op: { I: m.I, U: m.U }, fromZero: s.fromZero, showTriangle: true,
     })
+
+    const tg = { x: c4.x + 322, y: c4.y + 30, w: 236, h: 26 }
+    ctx.fillStyle = s.fromZero ? '#EAF3FF' : '#FFF3E0'
+    rr(ctx, tg.x, tg.y, tg.w, tg.h, 7)
+    ctx.fill()
+    ctx.strokeStyle = s.fromZero ? '#9CC3E8' : '#E8BE8B'
+    ctx.lineWidth = 1.2
+    rr(ctx, tg.x, tg.y, tg.w, tg.h, 7)
+    ctx.stroke()
+    T(ctx, s.fromZero ? '纵轴：从 0 起（线太平）' : '纵轴：2.2–3.0 V（看得清斜率）', tg.x + tg.w / 2, tg.y + 13, {
+      size: 9, color: s.fromZero ? '#15508C' : '#A85B12', align: 'center', bold: true,
+    })
+    T(ctx, '⇄', tg.x + tg.w - 10, tg.y + 17, { size: 10, color: s.fromZero ? '#7FA8CC' : '#C89B62', align: 'right' })
+    R._hits.push({
+      x: lay.X(tg.x), y: lay.Y(tg.y), w: lay.V(tg.w), h: lay.V(tg.h),
+      cursor: 'pointer',
+      onClick: () => { s.fromZero = !s.fromZero },
+    })
+
+    const tx = c4.x + 322
+    T(ctx, '截距（与纵轴交点）= E = 2.90 V', tx, c4.y + 82, { size: 9.2, color: '#1E6B3B', bold: true })
+    T(ctx, '斜率大小 |ΔU/ΔI| = r = 1.00 Ω', tx, c4.y + 104, { size: 9.2, color: '#C2410C', bold: true })
+    T(ctx, '从 0 起时横轴交点 = I短（2.9 A 在图外）', tx, c4.y + 128, { size: 8.4, color: '#5B7182' })
+    T(ctx, '不从 0 起：交点没意义，r 只能用 ΔU/ΔI', tx, c4.y + 148, { size: 8.4, color: '#5B7182' })
+    T(ctx, '（红圈 = 当前滑片位置对应的工作点）', tx, c4.y + 170, { size: 8.2, color: '#9AA6AE' })
+
+    /* ---------- 右侧四张要点卡 ---------- */
+    const r1 = { x: 600, y: 16, w: 380, h: 178 }
+    softCard(ctx, r1.x, r1.y, r1.w, r1.h, '#EAF3FF', '#C9DDF5')
+    T(ctx, '⑤ 器材选两个要点', r1.x + 16, r1.y + 24, { size: 11.5, bold: true, color: '#15508C' })
+    T(ctx, '· 滑变选小阻值（20 Ω）：干电池 r 小，', r1.x + 16, r1.y + 52, { size: 9.2, color: '#33526E' })
+    T(ctx, '　阻值大了一调电流就跳，点拉不开', r1.x + 16, r1.y + 68, { size: 9.2, color: '#33526E' })
+    T(ctx, '· 电池用旧的：新电池 r 太小，线太平，', r1.x + 16, r1.y + 96, { size: 9.2, color: '#33526E' })
+    T(ctx, '　截距和斜率都不好读', r1.x + 16, r1.y + 112, { size: 9.2, color: '#33526E' })
+    T(ctx, '· 非用新电池：串一个 R0 当额外内阻，', r1.x + 16, r1.y + 140, { size: 9.2, color: '#33526E' })
+    T(ctx, '　算完把 r测 减去 R0', r1.x + 16, r1.y + 156, { size: 9.2, color: '#33526E' })
+
+    const r2 = { x: 600, y: 202, w: 380, h: 172 }
+    softCard(ctx, r2.x, r2.y, r2.w, r2.h, '#FFF4F2', '#F3CFC8')
+    T(ctx, '⚠ 别让电流太大', r2.x + 16, r2.y + 24, { size: 11.5, bold: true, color: '#B3261E' })
+    T(ctx, '干电池大电流放电：E 会下降、r 明显变大', r2.x + 16, r2.y + 52, { size: 9.2, color: '#8C3B34' })
+    T(ctx, '→ 同一实验里测出的 E、r 一组一个样', r2.x + 16, r2.y + 68, { size: 9.2, color: '#8C3B34' })
+    T(ctx, '做法：电流别调太大；读数要快，', r2.x + 16, r2.y + 94, { size: 9.2, color: '#5B403C' })
+    T(ctx, '读完立刻断开开关', r2.x + 16, r2.y + 110, { size: 9.2, color: '#5B403C', bold: true })
+    T(ctx, '量程：V 0–3 V、A 0–0.6 A；', r2.x + 16, r2.y + 136, { size: 9.2, color: '#5B403C' })
+    T(ctx, '本实验 I 约 0.14–0.48 A，不会过载', r2.x + 16, r2.y + 152, { size: 9.2, color: '#5B403C' })
+
+    const r3 = { x: 600, y: 382, w: 380, h: 182 }
+    softCard(ctx, r3.x, r3.y, r3.w, r3.h, '#FFFFFF', '#DFE7EC')
+    T(ctx, '📐 纵轴不从 0 开始', r3.x + 16, r3.y + 24, { size: 11.5, bold: true, color: '#25313A' })
+    T(ctx, '线太平、坐标纸下半张空着 → 可让纵轴从 2.2 V 起', r3.x + 16, r3.y + 52, { size: 9, color: '#4B5A66' })
+    T(ctx, '注意：横轴交点不再是短路电流 I短', r3.x + 16, r3.y + 74, { size: 9.2, color: '#B3261E', bold: true })
+    T(ctx, '但纵轴截距仍是 E；斜率仍等于 r，', r3.x + 16, r3.y + 98, { size: 9.2, color: '#4B5A66' })
+    T(ctx, '必须用 ΔU/ΔI 算，不能拿两个交点相除', r3.x + 16, r3.y + 114, { size: 9.2, color: '#4B5A66', bold: true })
+    T(ctx, '（视频里反复强调的坑）', r3.x + 16, r3.y + 140, { size: 8.6, color: '#9AA6AE' })
+
+    const r4 = { x: 600, y: 572, w: 380, h: 176 }
+    softCard(ctx, r4.x, r4.y, r4.w, r4.h, '#F3FBF5', '#CDE8D6')
+    T(ctx, '🧪 本场景口径', r4.x + 16, r4.y + 24, { size: 11.5, bold: true, color: '#1E6B3B' })
+    T(ctx, '两节旧干电池：E = 2.90 V、r = 1.00 Ω', r4.x + 16, r4.y + 52, { size: 9.2, color: '#2F5B41' })
+    T(ctx, 'R滑 5–20 Ω（选的就是小阻值）', r4.x + 16, r4.y + 70, { size: 9.2, color: '#2F5B41' })
+    T(ctx, '接法：甲法（V 并在电池两端）', r4.x + 16, r4.y + 96, { size: 9.2, color: '#2F5B41' })
+    T(ctx, 'RV 很大，分流可忽略 → 测得≈真值', r4.x + 16, r4.y + 112, { size: 9.2, color: '#2F5B41' })
+    T(ctx, '切「自己动手」：合闸、改阻值、记 6 组', r4.x + 16, r4.y + 138, { size: 9.2, color: '#1E6B3B', bold: true })
 
     ctx.restore()
 
@@ -306,21 +337,20 @@ export default function EmfInternalResistanceScene() {
     }
   }
 
-  function wrapText(ctx, txt, maxW, size, maxLines) {
-    ctx.save()
-    ctx.font = `${size}px "Microsoft YaHei", sans-serif`
+  /** Tab1 示范数据：6 组，电流从 0.14 A 拉到 0.48 A */
+  function samplePoints() {
     const out = []
-    let cur = ''
-    for (const ch of txt) {
-      if (ctx.measureText(cur + ch).width > maxW && cur) {
-        out.push(cur)
-        cur = ''
-        if (out.length >= maxLines) break
-      }
-      cur += ch
+    for (let i = 0; i < 6; i++) {
+      const ratio = (i / 5) * 0.9
+      const R = RH.max - (RH.max - RH.min) * ratio
+      const I = CELL.E / (R + CELL.r + CELL.RA)
+      const U = CELL.E - I * CELL.r
+      out.push({
+        I: I + jitter(i + 7, 0.0012),
+        U: U + jitter(i + 71, 0.004),
+        R,
+      })
     }
-    if (cur && out.length < maxLines) out.push(cur)
-    ctx.restore()
     return out
   }
 
@@ -571,42 +601,41 @@ export default function EmfInternalResistanceScene() {
   function buildLearnSections() {
     return [
       {
-        t: '电动势 ε', c: '#C2410C',
+        t: '实验原理', c: '#B3261E',
         items: [
-          [['把 1 C 正电荷从负极搬到正极，非静电力做的功 ', ], ['W/q', '#B3261E', 1], ['，单位 V。']],
-          [['干电池标称 1.5 V，两节串联 ≈3 V；旧电池 ε 略降、r 变大。']],
-          [['ε 由电源本身决定，跟外电路接不接、接多大都无关。']],
+          [['闭合电路：', ], ['U = E − I r', '#0E4B86', 1], ['；E、r 两个未知数，至少要测 2 组 (I、U)。']],
+          [['为减小偶然误差，一般测 ', ], ['6 组以上', '#B3261E', 1], ['，且电流跨度要拉大。']],
+          [['合闸前先把滑动变阻器调到 ', ], ['阻值最大', '#B3261E', 1], ['（U 最大、I 最小），再逐步减小外阻。']],
         ],
       },
       {
-        t: '路端电压 U', c: '#1E6B3B',
+        t: '两种数据处理', c: '#C2410C',
         items: [
-          [['闭合电路：', ], ['U = ε − I r', '#0E4B86', 1], ['（I·r 叫内电压）。']],
-          [['开路 I=0 → ', ], ['U = ε', '#15803D', 1], ['，所以断开开关量到的就是 ε。']],
-          [['短路 U=0 → I短 = ε/r，会烧电池，绝不能做。']],
+          [['方程组法：两组解一对 (E、r)，多组两两组合再平均 → 误差大、费时。']],
+          [['图像法：描点 → 连一条直线（不是折线）→ 截距读 E、斜率读 r，更准更直观。']],
         ],
       },
       {
-        t: 'U-I 图像怎么读', c: '#C2410C',
+        t: '图象怎么读', c: '#1E6B3B',
         items: [
-          [['纵轴截距（I=0）= ', ], ['ε', '#B3261E', 1], ['；斜率绝对值 |ΔU/ΔI| = ', ], ['r', '#B3261E', 1], ['。']],
-          [['横轴截距 = 短路电流 ε/r。直线往下走，说明 U 随 I 增大而减小。']],
-          [['点少时延长线误差大；电流跨度拉大，截距和斜率才稳。']],
+          [['纵轴截距（I=0）= ', ], ['E', '#B3261E', 1], ['；斜率绝对值 ', ], ['|ΔU/ΔI| = r', '#B3261E', 1], ['。']],
+          [['纵轴从 0 起时，横轴交点才是短路电流 I短 = E/r。']],
+          [['纵轴不从 0 起时，横轴交点', ], ['不再是短路电流', '#B3261E', 1], ['，但截距仍是 E，r 仍等于斜率 —— 必须用 ΔU/ΔI 算，不能拿两个交点相除。']],
         ],
       },
       {
-        t: '两种接法 & 误差', c: '#7A4A22',
+        t: '注意事项', c: '#7A4A22',
         items: [
-          [['甲：V 并电源两端、A 串外电路 → 电压表分流 → I 偏小 → ε、r 都略偏小。本实验用甲法。']],
+          [['滑变选小阻值（如 20 Ω）：电池 r 小，阻值大了一调电流就跳。']],
+          [['电池用旧的：新电池 r 太小 → U-I 线太平，截距、斜率都不好读；非用新电池就串一个 R0 增大等效内阻，最后把 R0 从 r测 里减掉。']],
+          [['避免大电流：干电池大电流放电时 E 下降、r 明显变大；读数要快，读完立即断开。']],
+        ],
+      },
+      {
+        t: '两种接法 & 误差', c: '#33526E',
+        items: [
+          [['甲：V 并电源两端、A 串外电路 → 电压表分流 → I 偏小 → E、r 都略偏小。本实验用甲法。']],
           [['乙：A 接电源与负载之间、V 并负载 → 电流表分压 → r测 = r + RA 偏大。']],
-          [['RV 越大、RA 越小，系统误差越小。']],
-        ],
-      },
-      {
-        t: '数据处理', c: '#33526E',
-        items: [
-          [['至少 5 组、电流交错分布；描点连成一条直线（不连折线），再求截距和斜率。']],
-          [['滑变要从最大阻值开始，先大 U 小 I，再逐步减小外阻。']],
         ],
       },
     ]
@@ -721,9 +750,9 @@ export default function EmfInternalResistanceScene() {
     <>
       {tab === 1 && (
         <>
-          <span style={{ fontSize: 12, color: '#555' }}>拖动蓝色滑条改变外阻，看工作点沿直线滑动</span>
+          <span style={{ fontSize: 12, color: '#555' }}>点开关合闸、拖「R滑」改外阻，看 I、U 与工作点一起变</span>
           <span style={{ fontSize: 12, color: '#8a6d3b' }}>
-            ε = 2.90 V · r = 1.00 Ω
+            E = 2.90 V · r = 1.00 Ω
           </span>
         </>
       )}
@@ -777,12 +806,12 @@ export default function EmfInternalResistanceScene() {
         S.current.cardDrag = null
         setTab(t)
       }}
-      tab1Label="📖 认识电源"
+      tab1Label="📖 实验方法"
       tab2Label="🔧 自己动手"
       onReset={() => {
         S.current = {
           ...S.current, tab,
-          ratio: 0, switchClosed: false, points: [], seed: 3, focus: -1,
+          ratio: 0, switchClosed: false, points: [], seed: 3, fromZero: false,
           nv: 0, na: 0, tasks: {}, seen: {}, cardScroll: 0, hintText: '',
         }
         forceUpdate((n) => n + 1)
@@ -810,23 +839,23 @@ export default function EmfInternalResistanceScene() {
         />
         <InfoDock
           purpose={tab === 1
-            ? '看懂电源为什么有「电动势」又有「内阻」：电池内部谁在搬运电荷、谁在拖后腿，U-I 直线的截距和斜率各代表什么。'
-            : '用伏安法测两节旧干电池的 ε 和 r：断开读开路电压，合闸改外阻记录多组 (I, U)，拟合成一条直线读截距与斜率。'}
+            ? '按实验顺序走一遍：先看懂电路和 U = E − Ir，再知道为什么要测 6 组、为什么用图像法而不是解方程组，最后记住四个坑。'
+            : '用伏安法测两节旧干电池的 E 和 r：断开读开路电压，合闸改外阻记录多组 (I, U)，拟合成一条直线读截距与斜率。'}
           steps={tab === 1 ? [
-            '① 点电池剖面上的碳棒 / MnO₂ / 锌筒 / 电解液，看各自和内阻的关系',
-            '② 拖右下角蓝色滑条改外阻，看 U-I 图上的红点沿直线滑动',
-            '③ 盯住两个数：I 增大时 U 一定下降，下降的快慢就是 r',
-            '④ 记住：直线延长到 I=0 的截距才是 ε，不能直接读第一个点',
+            '① 认电路：电池(E,r)、开关 S、滑动变阻器 R滑、电流表 A 串联；电压表 V 并在电池两端',
+            '② 合闸前先把 R滑 调到最大，合上开关，读第一组 (I, U)；再逐步减小外阻，测 6 组以上',
+            '③ 数据别用解方程组法（两组一对、误差大）：描点连成一条直线，用图像法读 E 和 r',
+            '④ 纵轴截距 = E，斜率 |ΔU/ΔI| = r；点右上角切「纵轴从 0 / 只留变化段」看两者的差别',
           ] : [
-            '先断开闸刀：电压表读数就是 ε（约 2.9 V）',
+            '先断开闸刀：电压表读数就是 E（约 2.9 V）',
             '点闸刀合上；把滑片拖到最左端（外阻最大 20 Ω）',
             '点「记录这一组」，得到大 U、小 I 的第 1 组',
             '滑片每次右移一点（外阻变小、电流变大），记满 5 组以上',
-            '5 组后自动拟合直线：读纵轴截距 = ε，读斜率绝对值 = r',
+            '5 组后自动拟合直线：读纵轴截距 = E，读斜率绝对值 = r',
             '断开闸刀、滑片退回最大端，两表回零',
           ]}
           hint={tab === 1
-            ? 'ε 是「电源能给出多少」，r 是「电源自己吃掉多少」：U = ε − I·r。'
+            ? '四个坑：滑变要小阻值、电池要用旧的（或串 R0 再减掉）、别让电流太大（读完立即断电）、纵轴不从 0 起时只能用 ΔU/ΔI 求 r。'
             : '接线要点：电压表并在电池两端（甲法），电流表串在外电路。电流表不能并在电源上，会短路。'}
         />
       </div>

@@ -1,10 +1,12 @@
 /**
  * emfArt — 「测量电源电动势和内阻」专用美术件
  *
- * 只放这一课独有的两件：
- *   ① drawBatterySection 干电池剖面（Tab1 讲 ε 与 r 的来源，可点部位高亮）
- *   ② drawUIChart        U-I 图像卡（Tab1 演示 / Tab2 记录点 + 拟合直线共用）
- * 其余器材（电池组、闸刀、滑动变阻器、电表、导线）一律走 labArtKit 共享件。
+ * 本课独有的四件：
+ *   ① drawSchematic      Tab1 实验原理图（电池 E,r / 开关 / R滑 / A / V，照乐乐课堂画法）
+ *   ② drawMethodChart    Tab1 图象法卡（纵轴可「从 0」或「只留变化段」，带 ΔU/ΔI 三角）
+ *   ③ drawDataTable      Tab1 数据表（U、I 六组）
+ *   ④ drawUIChart        Tab2 记录点 + 拟合直线共用
+ * 另 drawBatterySection 干电池剖面备用；物理器材一律走 labArtKit 共享件。
  */
 import { rr, T, line, hexA, softCard, chip, clamp } from './labArtKit'
 
@@ -298,8 +300,7 @@ export function fitLine(points) {
 }
 
 /** 数据小表：最近记录 */
-export function drawRecordList(ctx, box, k, points, o = {}) {
-  softCard(ctx, box.x, box.y, box.w, box.h, '#FFFCF6', '#F2DCC0')
+export function drawRecordList(ctx, box, k, points, o = {}) {  softCard(ctx, box.x, box.y, box.w, box.h, '#FFFCF6', '#F2DCC0')
   T(ctx, '记录表', box.x + 12 * k, box.y + 18 * k, {
     size: Math.round(10.5 * k), bold: true, color: '#C2410C',
   })
@@ -316,3 +317,301 @@ export function drawRecordList(ctx, box, k, points, o = {}) {
   })
   void o
 }
+
+/* ==================================================================
+ *  Tab1：实验原理图（照乐乐课堂的画法：细线 + 元件符号）
+ * ================================================================== */
+
+/**
+ * 画「伏安法测 E、r」原理图
+ * o: { closed, ratio, k }
+ * 返回 { switchHit, sliderHit, mapX }
+ */
+export function drawSchematic(ctx, box, k, o = {}) {
+  const L = box.x + 30
+  const R = box.x + box.w - 30
+  const TP = box.y + 34
+  const BT = box.y + box.h - 34
+  const rheoX1 = L + (R - L) * 0.28
+  const rheoX2 = L + (R - L) * 0.54
+  const rw = rheoX2 - rheoX1
+  const ampX = L + (R - L) * 0.80
+  const batX = L + (R - L) * 0.20
+  const swX1 = L + (R - L) * 0.50
+  const swX2 = swX1 + Math.max(38, (R - L) * 0.10)
+  const vX = L + (R - L) * 0.40
+  const vY = TP + (BT - TP) * 0.60
+  const vR = 15
+  const wire = '#3A4750'
+  const lw = 1.8
+
+  ctx.save()
+  ctx.lineCap = 'round'
+
+  // 外框导线（留出元件缺口）
+  line(ctx, L, TP, rheoX1, TP, wire, lw)
+  line(ctx, rheoX2, TP, ampX - 17, TP, wire, lw)
+  line(ctx, ampX + 17, TP, R, TP, wire, lw)
+  line(ctx, L, TP, L, BT, wire, lw)
+  line(ctx, R, TP, R, BT, wire, lw)
+  line(ctx, L, BT, batX - 11, BT, wire, lw)
+  line(ctx, batX + 11, BT, swX1 - 4, BT, wire, lw)
+  line(ctx, swX2, BT, R, BT, wire, lw)
+
+  // 电压表：跨接在左右两条竖线之间（测量电源两端电压）
+  line(ctx, vX - vR, vY, L, vY, wire, lw)
+  line(ctx, vX + vR, vY, R, vY, wire, lw)
+
+  // 电池符号（长短双板）
+  line(ctx, batX - 4, BT - 15, batX - 4, BT + 15, wire, 2.6)
+  line(ctx, batX + 5, BT - 8, batX + 5, BT + 8, wire, 5)
+  T(ctx, '＋', batX - 6, BT - 22, { size: 10, color: '#C62828', align: 'center' })
+  T(ctx, '－', batX + 15, BT - 18, { size: 10, color: '#1565C0', align: 'center' })
+  T(ctx, 'E, r（旧电池）', batX - 2, BT + 22, { size: 9, color: '#3A4750', align: 'center' })
+
+  // 开关 S
+  ctx.fillStyle = '#3A4750'
+  ctx.beginPath()
+  ctx.arc(swX1, BT, 3, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.beginPath()
+  ctx.arc(swX2, BT, 3, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = '#C62828'
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.moveTo(swX1, BT - 2)
+  if (o.closed) ctx.lineTo(swX2, BT - 2)
+  else ctx.lineTo(swX2 - 8, BT - 26)
+  ctx.stroke()
+  ctx.lineCap = 'butt'
+  T(ctx, 'S', swX1 - 30, BT + 22, { size: 9.5, color: '#3A4750', bold: true })
+  T(ctx, o.closed ? '合（点一下断开）' : '断（点一下合闸）', swX1 - 14, BT + 22, {
+    size: 8.4, color: o.closed ? '#15803D' : '#8A959C',
+  })
+
+  // 滑动变阻器（矩形 + 滑片箭头）
+  ctx.fillStyle = '#FFFFFF'
+  rr(ctx, rheoX1, TP - 8, rw, 16, 3)
+  ctx.fill()
+  ctx.strokeStyle = '#3A4750'
+  ctx.lineWidth = 1.6
+  rr(ctx, rheoX1, TP - 8, rw, 16, 3)
+  ctx.stroke()
+  const sx = rheoX1 + clamp(o.ratio == null ? 0 : o.ratio, 0, 1) * rw
+  ctx.strokeStyle = '#C2410C'
+  ctx.lineWidth = 2
+  ctx.beginPath()
+  ctx.moveTo(sx, TP - 30)
+  ctx.lineTo(sx, TP - 9)
+  ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(sx, TP - 6)
+  ctx.lineTo(sx - 4, TP - 13)
+  ctx.lineTo(sx + 4, TP - 13)
+  ctx.closePath()
+  ctx.fillStyle = '#C2410C'
+  ctx.fill()
+  T(ctx, 'R滑（选小阻值 20 Ω）', rheoX1 + rw / 2, TP + 22, { size: 8.6, color: '#5B6B5F', align: 'center' })
+
+  // 电流表 A
+  ctx.fillStyle = '#FFFFFF'
+  ctx.beginPath()
+  ctx.arc(ampX, TP, 17, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = '#3A4750'
+  ctx.lineWidth = 1.6
+  ctx.stroke()
+  T(ctx, 'A', ampX, TP, { size: 12, bold: true, color: '#3A4750', align: 'center' })
+  T(ctx, '0–0.6 A', ampX, TP + 27, { size: 8, color: '#8A959C', align: 'center' })
+
+  // 电压表 V
+  ctx.fillStyle = '#FFFFFF'
+  ctx.beginPath()
+  ctx.arc(vX, vY, vR, 0, Math.PI * 2)
+  ctx.fill()
+  ctx.strokeStyle = '#3A4750'
+  ctx.lineWidth = 1.6
+  ctx.stroke()
+  T(ctx, 'V', vX, vY, { size: 12, bold: true, color: '#3A4750', align: 'center' })
+  T(ctx, '0–3 V', vX, vY + 26, { size: 8, color: '#8A959C', align: 'center' })
+
+  // 节点小圆点
+  for (const p of [[L, vY], [R, vY]]) {
+    ctx.fillStyle = '#3A4750'
+    ctx.beginPath()
+    ctx.arc(p[0], p[1], 2.6, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  ctx.restore()
+
+  return {
+    switchHit: { x: swX1 - 18, y: BT - 40, w: swX2 - swX1 + 34, h: 62 },
+    sliderHit: { x: rheoX1 - 12, y: TP - 36, w: rw + 24, h: 52 },
+    mapX: (x) => clamp((x - rheoX1) / rw, 0, 1),
+  }
+}
+
+/**
+ * Tab1 图象法卡
+ * o: { points, E, r, fit, op, fromZero, showTriangle }
+ */
+export function drawMethodChart(ctx, box, k, o = {}) {
+  const xMax = 0.6
+  const yMin = o.fromZero ? 0 : 2.2
+  const yMax = 3.0
+  const padL = box.x + 42 * k
+  const padR = box.x + box.w - 16 * k
+  const padT = box.y + 16 * k
+  const padB = box.y + box.h - 34 * k
+  const plot = { x: padL, y: padT, w: padR - padL, h: padB - padT }
+  const px = (v) => plot.x + clamp(v / xMax, 0, 1) * plot.w
+  const py = (v) => plot.y + plot.h - clamp((v - yMin) / (yMax - yMin), 0, 1) * plot.h
+  const yTicks = []
+  for (let v = yMin; v <= yMax + 1e-6; v += o.fromZero ? 0.5 : 0.2) yTicks.push(v)
+  const nY = yTicks.length - 1
+  const nx = 6
+
+  // 网格
+  for (let i = 0; i <= nx; i++) {
+    const gx = plot.x + (i / nx) * plot.w
+    line(ctx, gx, plot.y, gx, plot.y + plot.h, 'rgba(120,150,170,0.18)', 1)
+  }
+  for (let i = 0; i <= nY; i++) {
+    const gy = plot.y + (i / nY) * plot.h
+    line(ctx, plot.x, gy, plot.x + plot.w, gy, 'rgba(120,150,170,0.18)', 1)
+  }
+  line(ctx, plot.x, plot.y + plot.h, plot.x + plot.w, plot.y + plot.h, '#5A6670', 1.2)
+  line(ctx, plot.x, plot.y, plot.x, plot.y + plot.h, '#5A6670', 1.2)
+
+  // 刻度
+  for (let i = 0; i <= nx; i++) {
+    const v = (xMax / nx) * i
+    T(ctx, v.toFixed(1), px(v), plot.y + plot.h + 12 * k, {
+      size: Math.max(7.4, 8 * k), color: '#6B7A83', align: 'center',
+    })
+  }
+  for (const v of yTicks) {
+    T(ctx, v.toFixed(1), plot.x - 6 * k, py(v), {
+      size: Math.max(7.4, 8 * k), color: '#6B7A83', align: 'right',
+    })
+  }
+  T(ctx, 'I/A', plot.x + plot.w - 4 * k, plot.y + plot.h - 9 * k, {
+    size: Math.max(7.4, 8.4 * k), color: '#8A959C', align: 'right', bold: true,
+  })
+  T(ctx, 'U/V', plot.x + plot.w - 4 * k, plot.y + 9 * k, {
+    size: Math.max(7.4, 8.4 * k), color: '#8A959C', align: 'right', bold: true,
+  })
+
+  ctx.save()
+  ctx.beginPath()
+  ctx.rect(plot.x, plot.y, plot.w, plot.h)
+  ctx.clip()
+
+  // 理论线
+  if (Number.isFinite(o.E)) {
+    const i0 = 0
+    const i1 = Math.min(xMax, (o.E - yMin) / (o.r || 1))
+    line(ctx, px(i0), py(o.E), px(Math.max(i0, i1)), py(o.E - (o.r || 1) * Math.max(i0, i1)),
+      'rgba(30,107,59,0.5)', 1.4)
+  }
+  // 拟合线
+  if (o.fit) {
+    const iEnd = Math.min(xMax, (o.fit.a - yMin + 3) / Math.max(0.001, -o.fit.b))
+    line(ctx, px(0), py(o.fit.a), px(iEnd), py(o.fit.a + o.fit.b * iEnd), '#E0761F', 2.2)
+  }
+  // 数据点
+  for (const p of o.points || []) {
+    if (p.U < yMin - 0.05 || p.U > yMax + 0.05) continue
+    ctx.fillStyle = '#1E6B3B'
+    ctx.beginPath()
+    ctx.arc(px(p.I), py(p.U), 3 * k, 0, Math.PI * 2)
+    ctx.fill()
+  }
+  // ΔU/ΔI 三角
+  if (o.showTriangle && o.fit) {
+    const i1 = 0.10
+    const i2 = 0.40
+    const u1 = o.fit.a + o.fit.b * i1
+    const u2 = o.fit.a + o.fit.b * i2
+    ctx.setLineDash([4, 3])
+    line(ctx, px(i1), py(u1), px(i1), py(u2), '#8A5A2B', 1.2)
+    line(ctx, px(i1), py(u2), px(i2), py(u2), '#8A5A2B', 1.2)
+    ctx.setLineDash([])
+    if (!o.fromZero) {
+      T(ctx, 'ΔU', px(i1) - 6 * k, py((u1 + u2) / 2), {
+        size: Math.max(7.4, 8.2 * k), color: '#8A5A2B', align: 'right', bold: true,
+      })
+      T(ctx, 'ΔI', px((i1 + i2) / 2), py(u2) - 9 * k, {
+        size: Math.max(7.4, 8.2 * k), color: '#8A5A2B', align: 'center', bold: true,
+      })
+    } else {
+      T(ctx, 'r = |ΔU/ΔI|', px(i2) + 6 * k, py(u2) + 12 * k, {
+        size: Math.max(7.4, 8.2 * k), color: '#8A5A2B', bold: true,
+      })
+    }
+  }
+  // 当前工作点
+  if (o.op && Number.isFinite(o.op.I)) {
+    ctx.strokeStyle = '#C62828'
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.arc(px(o.op.I), py(o.op.U), 5 * k, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+  ctx.restore()
+
+  // 截距标注 E（纵轴，标在轴外侧，避免压住直线与数据点）
+  if (Number.isFinite(o.E)) {
+    const ey = py(o.E)
+    if (ey >= plot.y - 2 && ey <= plot.y + plot.h + 2) {
+      ctx.fillStyle = '#1E6B3B'
+      ctx.beginPath()
+      ctx.arc(plot.x, ey, 3, 0, Math.PI * 2)
+      ctx.fill()
+      T(ctx, 'E', plot.x + 5 * k, ey + 13 * k, {
+        size: Math.max(7.6, 8.4 * k), color: '#1E6B3B', bold: true,
+      })
+    }
+  }
+  // 横轴截距 I短（只有纵轴从 0 起才在图上）
+  if (o.fromZero) {
+    const iS = o.E / (o.r || 1)
+    if (iS <= xMax) {
+      T(ctx, 'I短', px(iS), plot.y + plot.h - 10 * k, {
+        size: Math.max(7.4, 8.2 * k), color: '#B3261E', align: 'center', bold: true,
+      })
+    }
+  }
+  return { plot }
+}
+
+/** Tab1 数据表（U、I 六组） */
+export function drawDataTable(ctx, box, k, points, rows = 6, o = {}) {
+  if (o.card !== false) softCard(ctx, box.x, box.y, box.w, box.h, '#FFFFFF', '#DFE7EC')
+  const colW = (box.w - 28 * k) / 3
+  const headY = box.y + 16 * k
+  ;['U / V', 'I / A', 'R外 / Ω'].forEach((t, i) => {
+    T(ctx, t, box.x + 14 * k + i * colW + (i ? colW : 0), headY, {
+      size: Math.max(7.6, 8.6 * k), color: '#7A8790', align: i ? 'right' : 'left', bold: true,
+    })
+  })
+  line(ctx, box.x + 10 * k, headY + 9 * k, box.x + box.w - 10 * k, headY + 9 * k, '#E7EDF1', 1)
+  const rowH = Math.min(19 * k, (box.h - 34 * k) / rows)
+  for (let i = 0; i < rows; i++) {
+    const yy = headY + 9 * k + rowH * (i + 0.5)
+    const p = points[i]
+    if (i === 0 && p) {
+      ctx.fillStyle = hexA('#1E6B3B', 0.06)
+      rr(ctx, box.x + 8 * k, yy - rowH / 2 + 1, box.w - 16 * k, rowH - 2, 4)
+      ctx.fill()
+    }
+    const cells = p ? [p.U.toFixed(2), p.I.toFixed(3), p.R.toFixed(1)] : ['—', '—', '—']
+    cells.forEach((c, ci) => {
+      T(ctx, c, box.x + 14 * k + ci * colW + (ci ? colW : 0), yy, {
+        size: Math.max(7.4, 8.4 * k), color: p ? '#25313A' : '#B9C4CB', align: ci ? 'right' : 'left', mono: ci > 0,
+      })
+    })
+  }
+}
+
